@@ -1,64 +1,59 @@
-import * as React from "react"
-
-import { Button } from "@/components/ui/button"
+'use client'
+import * as React from "react";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-// import { RadioGroupDemo } from "./controllers/RadioGroup"
-// import { SelectScrollable } from "./WatchlistSelector/SelectScrollable"
-import { SelectInterval } from "./controllers/SelectInterval"
-import { SelectIndicators } from "./controllers/SelectIndicators"
-import { CalendarForm } from "./controllers/CalendarForm"
+} from "@/components/ui/card";
+import { SelectInterval } from "./controllers/SelectInterval";
+import { SelectIndicators } from "./controllers/SelectIndicators";
+import { CalendarForm } from "./controllers/CalendarForm";
+import { WatchlistSelector } from "./controllers/WatchlistSelector/WatchlistSelector";
 
-// import { RadioGroupDemo } from "./WatchlistSelector/RadioGroup"
-import { WatchlistSelector } from "./WatchlistSelector/WatchlistSelector"
+interface CardWithFormProps {
+  onCompanyChange: (companyId: string | null) => void;
+  onDateChange: (date: Date | undefined) => void;
+  onIntervalChange: (interval: string) => void;
+  onIndicatorsChange: (indicators: string[]) => void;
+}
 
-
-export function CardWithForm() {
+export function CardWithForm({
+  onCompanyChange,
+  onDateChange,
+  onIntervalChange,
+  onIndicatorsChange,
+}: CardWithFormProps) {
   return (
     <Card className="w-full border border-opacity-30 border-gray-300">
       <CardContent className="p-6">
         <div className="flex justify-between gap-4 ">
           <div className="p-3 border border-opacity-30 border-gray-300 rounded-md flex-1 h-24 flex items-center justify-center">
-            
-            <WatchlistSelector />
+            <WatchlistSelector 
+              onCompanySelect={onCompanyChange}
+            />
           </div>
           
-          {/* Section 2 */}
-          {/* <div className="p-3 border border-opacity-30 border-gray-300 rounded-md flex-1 h-24 flex items-center justify-center">
-            <SelectScrollable />
-          </div> */}
-          
-          {/* Section 3 */}
+          {/* Interval Selector */}
           <div className="p-3 border border-opacity-30 border-gray-300 rounded-md flex-1 h-24 flex items-center justify-center">
-            <SelectInterval />
+            <SelectInterval 
+              onIntervalChange={onIntervalChange}
+            />
           </div>
           
-          {/* Section 4 */}
+          {/* Indicators Selector */}
           <div className="p-3 border border-opacity-30 border-gray-300 rounded-md flex-1 h-24 flex items-center justify-center">
-            <SelectIndicators />
+            <SelectIndicators 
+              onIndicatorsChange={onIndicatorsChange}
+            />
           </div>
           
-          {/* Section 5 */}
+          {/* Date Selector */}
           <div className="p-3 border border-opacity-30 border-gray-300 rounded-md flex-1 h-24 flex items-center justify-center">
-            <CalendarForm />
+            <CalendarForm 
+              onDateChange={onDateChange}
+            />
           </div>
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }

@@ -1,4 +1,6 @@
-import { AppSidebar } from "../components/app-sidebar"
+'use client'
+import { useState } from 'react';
+import { AppSidebar } from "../components/app-sidebar";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -6,19 +8,25 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import { Separator } from "@/components/ui/separator"
+} from "@/components/ui/breadcrumb";
+import { Separator } from "@/components/ui/separator";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 
-import { ModeToggle } from "../components/toggleButton"
-// Use default import
-import {CardWithForm} from "../components/options"
+import { ModeToggle } from "../components/toggleButton";
+import { CardWithForm } from "../components/options";
+import { StockChart } from "../components/charts/StockChart";
 
 export default function Page() {
+  // State for all selectors
+  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedInterval, setSelectedInterval] = useState('10m');
+  const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
+
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -36,7 +44,7 @@ export default function Page() {
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem>
-                  <BreadcrumbPage>Data Fetching</BreadcrumbPage>
+                  <BreadcrumbPage>Stock Chart</BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
               <ModeToggle />
@@ -44,18 +52,26 @@ export default function Page() {
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          {/* Full width card outside the grid */}
-          <CardWithForm />
+          {/* Control panel with selectors */}
+          <CardWithForm 
+            onCompanyChange={setSelectedCompany}
+            onDateChange={setSelectedDate}
+            onIntervalChange={setSelectedInterval}
+            onIndicatorsChange={setSelectedIndicators}
+          />
           
-          {/* Rest of your grid content */}
-          <div className="grid auto-rows-min gap-4 md:grid-cols-3 w-full">
-            <div className="aspect-video rounded-xl bg-muted/50" />
-            <div className="aspect-video rounded-xl bg-muted/50" />
-            <div className="aspect-video rounded-xl bg-muted/50" />
+          {/* Stock chart */}
+          <div className="min-h-[600px] flex-1 rounded-xl bg-muted/50">
+            <StockChart 
+              companyId={selectedCompany}
+              startDate={selectedDate}
+              endDate={undefined}
+              interval={selectedInterval}
+              indicators={selectedIndicators}
+            />
           </div>
-          <div className="min-h-[100vh] flex-1 rounded-xl bg-muted/50 md:min-h-min" />
         </div>
       </SidebarInset>
     </SidebarProvider>
-  )
+  );
 }

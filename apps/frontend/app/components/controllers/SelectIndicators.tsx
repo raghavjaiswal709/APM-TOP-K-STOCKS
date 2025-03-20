@@ -1,5 +1,5 @@
+'use client'
 import * as React from "react";
-
 import {
   Select,
   SelectContent,
@@ -10,11 +10,34 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export function SelectIndicators() {
+interface SelectIndicatorsProps {
+  onIndicatorsChange?: (indicators: string[]) => void;
+}
+
+export function SelectIndicators({ onIndicatorsChange }: SelectIndicatorsProps) {
+  const [selectedIndicators, setSelectedIndicators] = React.useState<string[]>([]);
+
+  const handleValueChange = (value: string) => {
+    // Toggle the indicator in the array
+    const newIndicators = selectedIndicators.includes(value)
+      ? selectedIndicators.filter(i => i !== value)
+      : [...selectedIndicators, value];
+    
+    setSelectedIndicators(newIndicators);
+    
+    if (onIndicatorsChange) {
+      onIndicatorsChange(newIndicators);
+    }
+  };
+
   return (
-    <Select>
+    <Select onValueChange={handleValueChange}>
       <SelectTrigger>
-        <SelectValue placeholder="Select Indicator" />
+        <SelectValue placeholder={
+          selectedIndicators.length 
+            ? `${selectedIndicators.length} indicator(s) selected` 
+            : "Select Indicators"
+        } />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
@@ -30,12 +53,6 @@ export function SelectIndicators() {
           <SelectItem value="pe">Price-to-Earnings Ratio (P/E)</SelectItem>
           <SelectItem value="dividend">Dividend Yield</SelectItem>
           <SelectItem value="bookValue">Book Value</SelectItem>
-        </SelectGroup>
-        <SelectGroup>
-          <SelectLabel>Economic Indicators</SelectLabel>
-          <SelectItem value="cpi">Consumer Price Index (CPI)</SelectItem>
-          <SelectItem value="ppi">Producer Price Index (PPI)</SelectItem>
-          <SelectItem value="gdp">Gross Domestic Product (GDP)</SelectItem>
         </SelectGroup>
       </SelectContent>
     </Select>

@@ -1,4 +1,4 @@
-// src/components/WatchlistSelector/SelectScrollable.tsx
+'use client'
 import * as React from "react";
 import {
   Select,
@@ -25,9 +25,15 @@ interface SelectScrollableProps {
   companies: Company[];
   loading: boolean;
   exists: boolean;
+  onCompanySelect?: (companyCode: string | null) => void;
 }
 
-export function SelectScrollable({ companies, loading, exists }: SelectScrollableProps) {
+export function SelectScrollable({ 
+  companies, 
+  loading, 
+  exists, 
+  onCompanySelect 
+}: SelectScrollableProps) {
   if (loading) {
     return <div className="w-[280px] p-2 border rounded">Loading watchlist data...</div>;
   }
@@ -36,8 +42,14 @@ export function SelectScrollable({ companies, loading, exists }: SelectScrollabl
     return <div className="w-[280px] p-2 border rounded text-red-500">No watchlist data found for today</div>;
   }
 
+  const handleValueChange = (value: string) => {
+    if (onCompanySelect) {
+      onCompanySelect(value || null);
+    }
+  };
+
   return (
-    <Select>
+    <Select onValueChange={handleValueChange}>
       <SelectTrigger className="w-[280px]">
         <SelectValue placeholder="Select a company" />
       </SelectTrigger>
