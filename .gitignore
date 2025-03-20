@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+lerna-debug.log
+node_modules
+# Build outputs
+/backend/dist/
+/frontend/.next/
+/frontend/out/
+build/
+dist/
+*.tsbuildinfo
+/monorepo/apps/frontend/node_modules/
+/monorepo/apps/backend/node_modules/
+/monorepo/node_modules
+node_modules
+
+# Cache
+.cache/
+**/.swc/
+.turbo
+.eslintcache
+.npm
+.yarn/cache
+tsconfig.build.tsbuildinfo
+
+# Frontend specific
+.next/
+.vercel
+next-env.d.ts
+.nuxt
+.output
+storybook-static/
+
+# Backend specific
+.nyc_output
+coverage/
+
+# Editor specific
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+.directory
+Thumbs.db
+
+# Environment and local configs
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Package manager locks (optional - typically these should be committed)
+# package-lock.json
+# yarn.lock
+
+# Debug files
+.log
+*.log

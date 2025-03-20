@@ -1,0 +1,22 @@
+# Use official Node.js image
+FROM node:18-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Copy package.json first to leverage Docker caching
+COPY apps/backend/package.json ./
+
+# Install dependencies (ensuring Nest CLI is installed)
+RUN npm install && npm install -g @nestjs/cli
+
+# Copy the rest of the backend code
+COPY apps/backend ./
+
+# Build the backend
+RUN npm run build
+
+EXPOSE 5000
+
+# Start the backend server
+CMD ["npm", "run", "start"]

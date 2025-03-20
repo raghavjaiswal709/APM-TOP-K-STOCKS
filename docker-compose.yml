@@ -1,0 +1,51 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "5000:5000"
+    env_file:
+      - apps/backend/.env
+    volumes:
+      - ./apps/backend:/app
+    depends_on:
+      database:
+        condition: service_healthy
+    command: ["npm", "run", "start"]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    # env_file:
+    #   - apps/frontend/.env
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules  # Ensures dependencies are installed inside container
+    depends_on:
+      backend:
+        condition: service_started
+    command: ["npm", "run", "start"]
+
+  database:
+    image: postgres:latest
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d mydb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
