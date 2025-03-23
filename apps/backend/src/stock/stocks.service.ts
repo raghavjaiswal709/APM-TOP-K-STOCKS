@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, RequestTimeoutException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StockData } from './entities/stock.entity';
@@ -33,26 +33,28 @@ export class StockService {
 
   async getStockDataFromPython(params: StockDataRequestDto): Promise<StockDataDto[]> {
     return new Promise((resolve, reject) => {
-      // Path to the Python script using relative path from the service file
       const scriptPath = path.resolve(__dirname, '../../data/data_fetch.py');
       
-      // Construct command with parameters
       const command = `python ${scriptPath} --company_id=${params.companyId} --start_date="${params.startDate.toISOString()}" --end_date="${params.endDate.toISOString()}" --interval=${params.interval}`;
-
-      exec(command, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Error executing Python script: ${error.message}`);
-          return reject(new InternalServerErrorException('Failed to fetch stock data'));
-        }
-      });
       
       console.log(`Executing command: ${command}`);
       
-      // Execute the command
-      exec(command, (error, stdout, stderr) => {
+      const timeout = 300000;
+      
+      const timeoutId = setTimeout(() => {
+        reject(new RequestTimeoutException('Python script execution timed out after 5 minutes'));
+      }, timeout);
+      
+      const childProcess = exec(command, { 
+        maxBuffer: 1024 * 1024 * 50, // 50MB buffer
+        timeout: timeout
+      }, (error, stdout, stderr) => {
+        // Clear the timeout as the process has completed
+        clearTimeout(timeoutId);
+        
         if (error) {
           console.error(`Error executing Python script: ${error.message}`);
-          return reject(new InternalServerErrorException('Failed to fetch stock data'));
+          return reject(new InternalServerErrorException(`Failed to fetch stock data: ${error.message}`));
         }
         
         if (stderr) {
@@ -60,7 +62,6 @@ export class StockService {
         }
         
         try {
-          // Parse the output into our DTO format
           const lines = stdout.trim().split('\n');
           const results: StockDataDto[] = [];
           
@@ -92,6 +93,12 @@ export class StockService {
           console.error(`Error parsing Python script output: ${parseError}`);
           reject(new InternalServerErrorException('Failed to parse stock data'));
         }
+      });
+      
+      childProcess.on('error', (error) => {
+        clearTimeout(timeoutId);
+        console.error(`Child process error: ${error.message}`);
+        reject(new InternalServerErrorException(`Child process error: ${error.message}`));
       });
     });
   }

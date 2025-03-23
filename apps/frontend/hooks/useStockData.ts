@@ -29,7 +29,6 @@ export function useStockData({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Don't fetch if no company is selected
     if (!companyId) {
       setData([]);
       return;
@@ -40,13 +39,11 @@ export function useStockData({
       setError(null);
 
       try {
-        // Build URL with query parameters
         const queryParams = new URLSearchParams();
         if (startDate) queryParams.append('startDate', startDate.toISOString());
         if (endDate) queryParams.append('endDate', endDate.toISOString());
         if (interval) queryParams.append('interval', interval);
         
-        // Add indicators if needed
         indicators.forEach(indicator => {
           queryParams.append('indicators', indicator);
         });
@@ -54,8 +51,13 @@ export function useStockData({
         const url = `/api/companies/${companyId}/ohlcv?${queryParams.toString()}`;
         console.log('Fetching stock data from:', url);
 
-        const response = await fetch(url);
-        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
+
+        const response = await fetch(url, { signal: controller.signal });
+
+        clearTimeout(timeoutId);
+
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
@@ -76,9 +78,5 @@ export function useStockData({
     fetchStockData();
   }, [companyId, startDate, endDate, interval, indicators]);
 
-  return {
-    data,
-    loading,
-    error
-  };
+  return { data, loading, error };
 }

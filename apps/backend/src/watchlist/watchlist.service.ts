@@ -22,16 +22,13 @@ export class WatchlistService {
 
   async getWatchlistData(watchlist: string, date?: string): Promise<Company[]> {
     return new Promise((resolve, reject) => {
-      // Use today's date if not provided
       const targetDate = date || moment().format('YYYY-MM-DD');
       
-      // Construct the file path
       const fileName = `watchlist_${watchlist}_${targetDate}.csv`;
       const filePath = path.join(this.basePath, fileName);
       
       console.log(`Attempting to read from: ${filePath}`);
       
-      // Check if file exists
       if (!fs.existsSync(filePath)) {
         console.error(`File not found: ${filePath}`);
         return reject(new NotFoundException(`Watchlist ${watchlist} not found for date ${targetDate}`));
@@ -39,7 +36,6 @@ export class WatchlistService {
       
       const results: Company[] = [];
       
-      // Create readable stream to process CSV
       fs.createReadStream(filePath)
         .pipe(parse({
           delimiter: ',',

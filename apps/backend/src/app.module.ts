@@ -26,7 +26,7 @@ dotenv.config();
         : false,
       logging: process.env.NODE_ENV !== 'production',
       retryAttempts: 3,
-      retryDelay: 3000,
+      retryDelay: 300000,
       autoLoadEntities: true,
     }),
     StockModule,

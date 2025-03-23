@@ -1,4 +1,3 @@
-// src/hooks/useWatchlist.ts
 import { useState, useEffect } from 'react';
 
 interface Company {
@@ -23,26 +22,27 @@ export function useWatchlist() {
     async function fetchWatchlist() {
       setLoading(true);
       setError(null);
-      
+
       try {
-        // Use specific date format matching your file names
-        const today = '2025-02-16'; // This should match your actual CSV file dates
-        
-        // Ensure correct API path construction
+        const today = '2025-02-16'; // Ensure this matches your CSV file dates
         const apiUrl = `/api/watchlist/${selectedWatchlist}?date=${today}`;
-        
+
         console.log('Fetching watchlist data from:', apiUrl);
-        
-        const response = await fetch(apiUrl);
-        
-        // Handle non-200 responses properly
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
+
+        const response = await fetch(apiUrl, { signal: controller.signal });
+
+        clearTimeout(timeoutId);
+
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
-        
+
         const data = await response.json();
         console.log('Watchlist data received:', data);
-        
+
         setCompanies(data.companies || []);
         setExists(data.exists);
       } catch (err) {
@@ -58,12 +58,5 @@ export function useWatchlist() {
     fetchWatchlist();
   }, [selectedWatchlist]);
 
-  return {
-    selectedWatchlist,
-    setSelectedWatchlist,
-    companies,
-    loading,
-    error,
-    exists,
-  };
+  return { selectedWatchlist, setSelectedWatchlist, companies, loading, error, exists };
 }

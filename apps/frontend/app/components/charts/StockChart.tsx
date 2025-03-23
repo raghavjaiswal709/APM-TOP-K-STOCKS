@@ -59,13 +59,24 @@ export function StockChart({
   companyId,
   startDate,
   endDate,
-  interval = '10m',
+  interval = '1d',
   indicators = [],
   height = 600,
   width = 1200,
   defaultChartType = 'candlestick',
   showControls = true
 }: StockChartProps) {
+  // Calculate default dates (last month) if not provided
+  const defaultEndDate = useMemo(() => new Date(), []);
+  const defaultStartDate = useMemo(() => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - 1);
+    return date;
+  }, []);
+
+  const effectiveStartDate = startDate || defaultStartDate;
+  const effectiveEndDate = endDate || defaultEndDate;
+
   // Chart state
   const [selectedInterval, setSelectedInterval] = useState(interval);
   const [selectedChartType, setSelectedChartType] = useState(defaultChartType);
@@ -79,12 +90,13 @@ export function StockChart({
   const [annotations, setAnnotations] = useState<any[]>([]);
   const [chartTheme, setChartTheme] = useState<'light' | 'dark'>('dark');
   const [crosshair, setCrosshair] = useState(true);
+  const [sidebarVisible, setSidebarVisible] = useState(showControls);
 
   // Get stock data
   const { data, loading, error } = useStockData({
     companyId,
-    startDate,
-    endDate,
+    startDate: effectiveStartDate,
+    endDate: effectiveEndDate,
     interval: selectedInterval,
     indicators: activeIndicators
   });
@@ -98,6 +110,11 @@ export function StockChart({
     // Update indicators when prop changes
     setActiveIndicators(indicators);
   }, [indicators]);
+
+  useEffect(() => {
+    // Update sidebar visibility when prop changes
+    setSidebarVisible(showControls);
+  }, [showControls]);
 
   // Utility function to calculate indicators
   const calculateIndicator = (type: string, prices: number[], options = {}) => {
@@ -198,7 +215,7 @@ export function StockChart({
         return { macdLine, signalLine: paddedSignalLine, histogram };
       }
       case 'obv': {
-        if (!data.length) return [];
+        if (!data || !data.length) return [];
         
         const obv = [0]; // Start with 0
         
@@ -282,10 +299,14 @@ export function StockChart({
           close: data.map(item => item.close),
           type: 'candlestick',
           name: 'Price',
-          decreasing: { line: { color: '#FF4136' } },
-          increasing: { line: { color: '#2ECC40' } },
-          whiskerwidth: 0.2,
-          line: { width: 1 }
+          decreasing: { line: { color: '#ef5350', width: 3 },
+          fillcolor: 'rgba(239, 83, 80, 0.8)'  // Semi-transparent red fill
+ }, // Increased width
+          increasing: { line: { color: '#26a69a', width: 3 },
+          fillcolor: 'rgba(38, 166, 154, 0.8)'  }, // Increased width
+          whiskerwidth: 0.6, // Increased from 0.2 for better visibility
+          line: { width: 1.5 } // Slightly increased base width
+          
         };
         break;
       case 'ohlc':
@@ -297,9 +318,9 @@ export function StockChart({
           close: data.map(item => item.close),
           type: 'ohlc',
           name: 'Price',
-          decreasing: { line: { color: '#FF4136' } },
-          increasing: { line: { color: '#2ECC40' } },
-          line: { width: 1 }
+          decreasing: { line: { color: '#FF4136', width: 2 } }, // Increased width
+          increasing: { line: { color: '#2ECC40', width: 2 } }, // Increased width
+          line: { width: 1.5 } // Slightly increased width
         };
         break;
       case 'heiken-ashi':
@@ -311,10 +332,10 @@ export function StockChart({
           close: chartData.map(item => item.ha_close),
           type: 'candlestick',
           name: 'Heiken Ashi',
-          decreasing: { line: { color: '#FF4136' } },
-          increasing: { line: { color: '#2ECC40' } },
-          whiskerwidth: 0.2,
-          line: { width: 1 }
+          decreasing: { line: { color: '#FF4136', width: 2.5 } }, // Increased width
+          increasing: { line: { color: '#2ECC40', width: 2.5 } }, // Increased width
+          whiskerwidth: 0.6, // Increased from 0.2 for better visibility
+          line: { width: 1.5 } // Slightly increased base width
         };
         break;
       case 'line':
@@ -580,7 +601,7 @@ export function StockChart({
         bgcolor: 'rgba(0,0,0,0)',
         font: { color: colors.text }
       },
-      margin: { r: showControls ? 80 : 50, l: 50, b: 50, t: 50, pad: 4 },
+      margin: { r: 50, l: 50, b: 50, t: 50, pad: 4 },
       paper_bgcolor: colors.bg,
       plot_bgcolor: colors.bg,
       font: { color: colors.text },
@@ -592,7 +613,17 @@ export function StockChart({
         showgrid: showGridlines,
         gridcolor: colors.grid,
         linecolor: colors.axisLine,
-        title: { text: '', font: { color: colors.text } }
+        title: { text: '', font: { color: colors.text } },
+        // Ensure proper spacing between bars for candlesticks
+        rangebreaks: [
+          { pattern: 'day of week', bounds: [6, 1] } // Hide weekends
+        ],
+        autorange: false, // Disable autorange
+  range: timeLabels.length > 0 ? 
+    [timeLabels[0], timeLabels[timeLabels.length - 1]] : // Set range to actual data limits
+    undefined,
+  constrain: 'domain', // Constrain panning to the domain
+  constraintoward: 'center' // When zooming out, constrain toward center
       },
       yaxis: {
         title: 'Price',
@@ -725,8 +756,7 @@ export function StockChart({
     chartTheme, 
     crosshair, 
     annotations, 
-    selectedInterval,
-    showControls
+    selectedInterval
   ]);
 
   const config = {
@@ -776,6 +806,11 @@ export function StockChart({
     );
   };
 
+  // Toggle sidebar
+  const toggleSidebar = () => {
+    setSidebarVisible(!sidebarVisible);
+  };
+
   // Loading state
   if (loading) {
     return (
@@ -795,7 +830,6 @@ export function StockChart({
   }
 
   // No company
-  // No company
   if (!companyId) {
     return (
       <div className="flex justify-center items-center h-full bg-muted/50 rounded-xl">
@@ -805,9 +839,9 @@ export function StockChart({
   }
 
   return (
-    <div className="w-full h-full flex">
+    <div className="w-full h-full flex relative">
       {/* Main Chart Area */}
-      <div className={`${showControls ? 'w-5/6' : 'w-full'} h-full`}>
+      <div className={`h-full transition-all duration-300 ease-in-out ${sidebarVisible ? 'w-5/6' : 'w-full'}`}>
         <Plot
           data={plotData}
           layout={layout}
@@ -823,236 +857,255 @@ export function StockChart({
         />
       </div>
 
+      {/* Sidebar Toggle Button */}
+      <button 
+        className="absolute top-4 right-4 z-10 bg-primary text-primary-foreground p-2 rounded-full shadow-md hover:bg-primary/90 transition-all"
+        onClick={toggleSidebar}
+        aria-label={sidebarVisible ? "Hide Controls" : "Show Controls"}
+      >
+        {sidebarVisible ? (
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        )}
+      </button>
+
       {/* Controls Panel */}
-      {showControls && (
-        <div className="w-1/6 h-full overflow-y-auto bg-muted/20 border-l border-gray-200 dark:border-gray-700 p-2">
-          <div className="flex flex-col space-y-4">
-            {/* Time Frame Panel */}
-            {/* <div className="border rounded-md p-2 bg-muted/20">
-              <h3 className="font-medium text-sm mb-2">Time Frame</h3>
-              <div className="flex flex-col space-y-1">
-                {timeIntervals.map(int => (
-                  <button
-                    key={int.id}
-                    className={`px-2 py-1 text-xs rounded ${selectedInterval === int.id 
-                      ? 'bg-primary text-primary-foreground' 
-                      : 'bg-secondary hover:bg-secondary/80'}`}
-                    onClick={() => setSelectedInterval(int.id)}
-                  >
-                    {int.name}
-                  </button>
-                ))}
-              </div>
-            </div> */}
-
-            {/* Chart Type Panel */}
-            <div className="border rounded-md p-2 bg-muted/20">
-              <h3 className="font-medium text-sm mb-2">Chart Type</h3>
-              <div className="flex flex-col space-y-1">
-                {chartTypes.map(type => (
-                  <button
-                    key={type.id}
-                    className={`px-2 py-1 text-xs rounded ${selectedChartType === type.id 
-                      ? 'bg-primary text-primary-foreground' 
-                      : 'bg-secondary hover:bg-secondary/80'}`}
-                    onClick={() => setSelectedChartType(type.id)}
-                  >
-                    {type.name}
-                  </button>
-                ))}
-              </div>
+      <div 
+        className={`h-full overflow-y-auto bg-muted/20 border-l border-gray-200 dark:border-gray-700 p-2 transition-all duration-300 ease-in-out ${
+          sidebarVisible ? 'w-1/6 opacity-100' : 'w-0 opacity-0 overflow-hidden'
+        }`}
+      >
+        <div className="flex flex-col space-y-4">
+          {/* Time Frame Panel */}
+          <div className="border rounded-md p-2 bg-muted/20">
+            <h3 className="font-medium text-sm mb-2">Time Frame</h3>
+            <div className="flex flex-col space-y-1">
+              {timeIntervals.map(int => (
+                <button
+                  key={int.id}
+                  className={`px-2 py-1 text-xs rounded ${selectedInterval === int.id 
+                    ? 'bg-primary text-primary-foreground' 
+                    : 'bg-secondary hover:bg-secondary/80'}`}
+                  onClick={() => setSelectedInterval(int.id)}
+                >
+                  {int.name}
+                </button>
+              ))}
             </div>
-
-            {/* Indicators Panel */}
-            <div className="border rounded-md p-2 bg-muted/20">
-              <h3 className="font-medium text-sm mb-2">Indicators</h3>
-              <div className="flex flex-col space-y-1">
-                {availableIndicators.map(ind => (
-                  <div key={ind.id}>
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        className="mr-2"
-                        checked={activeIndicators.includes(ind.id)}
-                        onChange={() => toggleIndicator(ind.id)}
-                      />
-                      <span className="text-xs">{ind.name}</span>
-                    </label>
-
-                    {/* Show periods for MA if selected */}
-                    {ind.id === 'ma' && activeIndicators.includes('ma') && (
-                      <div className="ml-4 mt-1 flex flex-wrap gap-1">
-                        {ind.periods.map(period => (
-                          <button
-                            key={period}
-                            className={`px-1.5 py-0.5 text-xs rounded ${selectedMAperiods.includes(period) 
-                              ? 'bg-primary text-primary-foreground' 
-                              : 'bg-secondary hover:bg-secondary/80'}`}
-                            onClick={() => toggleMAPeriod(period)}
-                          >
-                            {period}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Show periods for EMA if selected */}
-                    {ind.id === 'ema' && activeIndicators.includes('ema') && (
-                      <div className="ml-4 mt-1 flex flex-wrap gap-1">
-                        {ind.periods.map(period => (
-                          <button
-                            key={period}
-                            className={`px-1.5 py-0.5 text-xs rounded ${selectedEMAperiods.includes(period) 
-                              ? 'bg-primary text-primary-foreground' 
-                              : 'bg-secondary hover:bg-secondary/80'}`}
-                            onClick={() => toggleEMAPeriod(period)}
-                          >
-                            {period}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Display Options Panel */}
-            <div className="border rounded-md p-2 bg-muted/20">
-              <h3 className="font-medium text-sm mb-2">Display Options</h3>
-              <div className="flex flex-col space-y-2">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    className="mr-2"
-                    checked={showVolume}
-                    onChange={() => setShowVolume(!showVolume)}
-                  />
-                  <span className="text-xs">Show Volume</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    className="mr-2"
-                    checked={showGridlines}
-                    onChange={() => setShowGridlines(!showGridlines)}
-                  />
-                  <span className="text-xs">Show Gridlines</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    className="mr-2"
-                    checked={logScale}
-                    onChange={() => setLogScale(!logScale)}
-                  />
-                  <span className="text-xs">Log Scale</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    className="mr-2"
-                    checked={crosshair}
-                    onChange={() => setCrosshair(!crosshair)}
-                  />
-                  <span className="text-xs">Crosshair</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Drawing Tools Panel */}
-            <div className="border rounded-md p-2 bg-muted/20">
-              <h3 className="font-medium text-sm mb-2">Drawing Tools</h3>
-              <div className="grid grid-cols-2 gap-1">
-                <button
-                  className={`px-2 py-1 text-xs rounded ${drawingMode === 'drawline' 
-                    ? 'bg-primary text-primary-foreground' 
-                    : 'bg-secondary hover:bg-secondary/80'}`}
-                  onClick={() => setDrawingMode(drawingMode === 'drawline' ? null : 'drawline')}
-                >
-                  Line
-                </button>
-                <button
-                  className={`px-2 py-1 text-xs rounded ${drawingMode === 'drawrect' 
-                    ? 'bg-primary text-primary-foreground' 
-                    : 'bg-secondary hover:bg-secondary/80'}`}
-                  onClick={() => setDrawingMode(drawingMode === 'drawrect' ? null : 'drawrect')}
-                >
-                  Rectangle
-                </button>
-                <button
-                  className={`px-2 py-1 text-xs rounded ${drawingMode === 'drawcircle' 
-                    ? 'bg-primary text-primary-foreground' 
-                    : 'bg-secondary hover:bg-secondary/80'}`}
-                  onClick={() => setDrawingMode(drawingMode === 'drawcircle' ? null : 'drawcircle')}
-                >
-                  Circle
-                </button>
-                <button
-                  className={`px-2 py-1 text-xs rounded ${drawingMode === 'drawopenpath' 
-                    ? 'bg-primary text-primary-foreground' 
-                    : 'bg-secondary hover:bg-secondary/80'}`}
-                  onClick={() => setDrawingMode(drawingMode === 'drawopenpath' ? null : 'drawopenpath')}
-                >
-                  Path
-                </button>
-                <button
-                  className="px-2 py-1 text-xs rounded bg-secondary hover:bg-secondary/80 col-span-2"
-                  onClick={() => {
-                    setAnnotations([]);
-                    setDrawingMode(null);
-                  }}
-                >
-                  Clear All
-                </button>
-              </div>
-            </div>
-
-            {/* Theme Panel */}
-            <div className="border rounded-md p-2 bg-muted/20">
-              <h3 className="font-medium text-sm mb-2">Theme</h3>
-              <div className="flex gap-1">
-                <button
-                  className={`px-2 py-1 text-xs rounded flex-1 ${chartTheme === 'light' 
-                    ? 'bg-primary text-primary-foreground' 
-                    : 'bg-secondary hover:bg-secondary/80'}`}
-                  onClick={() => setChartTheme('light')}
-                >
-                  Light
-                </button>
-                <button
-                  className={`px-2 py-1 text-xs rounded flex-1 ${chartTheme === 'dark' 
-                    ? 'bg-primary text-primary-foreground' 
-                    : 'bg-secondary hover:bg-secondary/80'}`}
-                  onClick={() => setChartTheme('dark')}
-                >
-                  Dark
-                </button>
-              </div>
-            </div>
-
-            {/* Reset Button */}
-            <button
-              className="w-full px-2 py-1 text-xs rounded bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                setSelectedChartType(defaultChartType);
-                setSelectedInterval(interval);
-                setActiveIndicators(indicators);
-                setSelectedMAperiods([20]);
-                setSelectedEMAperiods([9]);
-                setShowVolume(true);
-                setShowGridlines(true);
-                setLogScale(false);
-                setDrawingMode(null);
-                setAnnotations([]);
-                setCrosshair(true);
-              }}
-            >
-              Reset All
-            </button>
           </div>
+
+          {/* Chart Type Panel */}
+          <div className="border rounded-md p-2 bg-muted/20">
+            <h3 className="font-medium text-sm mb-2">Chart Type</h3>
+            <div className="flex flex-col space-y-1">
+              {chartTypes.map(type => (
+                <button
+                  key={type.id}
+                  className={`px-2 py-1 text-xs rounded ${selectedChartType === type.id 
+                    ? 'bg-primary text-primary-foreground' 
+                    : 'bg-secondary hover:bg-secondary/80'}`}
+                  onClick={() => setSelectedChartType(type.id)}
+                >
+                  {type.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Indicators Panel */}
+          <div className="border rounded-md p-2 bg-muted/20">
+            <h3 className="font-medium text-sm mb-2">Indicators</h3>
+            <div className="flex flex-col space-y-1">
+              {availableIndicators.map(ind => (
+                <div key={ind.id}>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      className="mr-2"
+                      checked={activeIndicators.includes(ind.id)}
+                      onChange={() => toggleIndicator(ind.id)}
+                    />
+                    <span className="text-xs">{ind.name}</span>
+                  </label>
+
+                  {/* Show periods for MA if selected */}
+                  {ind.id === 'ma' && activeIndicators.includes('ma') && (
+                    <div className="ml-4 mt-1 flex flex-wrap gap-1">
+                      {ind.periods.map(period => (
+                        <button
+                          key={period}
+                          className={`px-1.5 py-0.5 text-xs rounded ${selectedMAperiods.includes(period) 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'bg-secondary hover:bg-secondary/80'}`}
+                          onClick={() => toggleMAPeriod(period)}
+                        >
+                          {period}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Show periods for EMA if selected */}
+                  {ind.id === 'ema' && activeIndicators.includes('ema') && (
+                    <div className="ml-4 mt-1 flex flex-wrap gap-1">
+                      {ind.periods.map(period => (
+                        <button
+                          key={period}
+                          className={`px-1.5 py-0.5 text-xs rounded ${selectedEMAperiods.includes(period) 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'bg-secondary hover:bg-secondary/80'}`}
+                          onClick={() => toggleEMAPeriod(period)}
+                        >
+                          {period}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Display Options Panel */}
+          <div className="border rounded-md p-2 bg-muted/20">
+            <h3 className="font-medium text-sm mb-2">Display Options</h3>
+            <div className="flex flex-col space-y-2">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  className="mr-2"
+                  checked={showVolume}
+                  onChange={() => setShowVolume(!showVolume)}
+                />
+                <span className="text-xs">Show Volume</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  className="mr-2"
+                  checked={showGridlines}
+                  onChange={() => setShowGridlines(!showGridlines)}
+                />
+                <span className="text-xs">Show Gridlines</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  className="mr-2"
+                  checked={logScale}
+                  onChange={() => setLogScale(!logScale)}
+                />
+                <span className="text-xs">Log Scale</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  className="mr-2"
+                  checked={crosshair}
+                  onChange={() => setCrosshair(!crosshair)}
+                />
+                <span className="text-xs">Crosshair</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Drawing Tools Panel */}
+          <div className="border rounded-md p-2 bg-muted/20">
+            <h3 className="font-medium text-sm mb-2">Drawing Tools</h3>
+            <div className="grid grid-cols-2 gap-1">
+              <button
+                className={`px-2 py-1 text-xs rounded ${drawingMode === 'drawline' 
+                  ? 'bg-primary text-primary-foreground' 
+                  : 'bg-secondary hover:bg-secondary/80'}`}
+                onClick={() => setDrawingMode(drawingMode === 'drawline' ? null : 'drawline')}
+              >
+                Line
+              </button>
+              <button
+                className={`px-2 py-1 text-xs rounded ${drawingMode === 'drawrect' 
+                  ? 'bg-primary text-primary-foreground' 
+                  : 'bg-secondary hover:bg-secondary/80'}`}
+                onClick={() => setDrawingMode(drawingMode === 'drawrect' ? null : 'drawrect')}
+              >
+                Rectangle
+              </button>
+              <button
+                className={`px-2 py-1 text-xs rounded ${drawingMode === 'drawcircle' 
+                  ? 'bg-primary text-primary-foreground' 
+                  : 'bg-secondary hover:bg-secondary/80'}`}
+                onClick={() => setDrawingMode(drawingMode === 'drawcircle' ? null : 'drawcircle')}
+              >
+                Circle
+              </button>
+              <button
+                className={`px-2 py-1 text-xs rounded ${drawingMode === 'drawopenpath' 
+                  ? 'bg-primary text-primary-foreground' 
+                  : 'bg-secondary hover:bg-secondary/80'}`}
+                onClick={() => setDrawingMode(drawingMode === 'drawopenpath' ? null : 'drawopenpath')}
+              >
+                Path
+              </button>
+              <button
+                className="px-2 py-1 text-xs rounded bg-secondary hover:bg-secondary/80 col-span-2"
+                onClick={() => {
+                  setAnnotations([]);
+                  setDrawingMode(null);
+                }}
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+
+          {/* Theme Panel */}
+          <div className="border rounded-md p-2 bg-muted/20">
+            <h3 className="font-medium text-sm mb-2">Theme</h3>
+            <div className="flex gap-1">
+              <button
+                className={`px-2 py-1 text-xs rounded flex-1 ${chartTheme === 'light' 
+                  ? 'bg-primary text-primary-foreground' 
+                  : 'bg-secondary hover:bg-secondary/80'}`}
+                onClick={() => setChartTheme('light')}
+              >
+                Light
+              </button>
+              <button
+                className={`px-2 py-1 text-xs rounded flex-1 ${chartTheme === 'dark' 
+                  ? 'bg-primary text-primary-foreground' 
+                  : 'bg-secondary hover:bg-secondary/80'}`}
+                onClick={() => setChartTheme('dark')}
+              >
+                Dark
+              </button>
+            </div>
+          </div>
+
+          {/* Reset Button */}
+          <button
+            className="w-full px-2 py-1 text-xs rounded bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => {
+              setSelectedChartType(defaultChartType);
+              setSelectedInterval(interval);
+              setActiveIndicators(indicators);
+              setSelectedMAperiods([20]);
+              setSelectedEMAperiods([9]);
+              setShowVolume(true);
+              setShowGridlines(true);
+              setLogScale(false);
+              setDrawingMode(null);
+              setAnnotations([]);
+              setCrosshair(true);
+            }}
+          >
+            Reset All
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
