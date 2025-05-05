@@ -61,27 +61,27 @@ const data = {
       ],
     },
     {
-      title: "Stock Screeners",
+      title: "LIve Market",
       url: "#",
       icon: SquareTerminal,
-      items: [
-        {
-          title: "Undervalued Growth",
-          url: "#",
-        },
-        {
-          title: "Buy the Dip",
-          url: "#",
-        },
-        {
-          title: "High Dividend Yield",
-          url: "#",
-        },
-        {
-          title: "Analyst Picks",
-          url: "#",
-        },
-      ],
+      // items: [
+      //   {
+      //     title: "Undervalued Growth",
+      //     url: "#",
+      //   },
+      //   {
+      //     title: "Buy the Dip",
+      //     url: "#",
+      //   },
+      //   {
+      //     title: "High Dividend Yield",
+      //     url: "#",
+      //   },
+      //   {
+      //     title: "Analyst Picks",
+      //     url: "#",
+      //   },
+      // ],
     },
     {
       title: "Watchlist",

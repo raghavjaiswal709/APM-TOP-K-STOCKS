@@ -1,4 +1,7 @@
-module.exports = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  transpilePackages: ['lightweight-charts'],
+  
   async rewrites() {
     return [
       {
@@ -8,3 +11,5 @@ module.exports = {
     ];
   },
 };
+
+module.exports = nextConfig;
