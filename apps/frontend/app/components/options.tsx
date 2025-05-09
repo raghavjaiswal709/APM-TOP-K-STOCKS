@@ -7,13 +7,15 @@ import {
 import { SelectInterval } from "./controllers/SelectInterval";
 import { SelectIndicators } from "./controllers/SelectIndicators";
 import { CalendarForm } from "./controllers/CalendarForm";
-import { WatchlistSelector } from "./controllers/WatchlistSelector/WatchlistSelector";
+import { WatchlistSelector } from "./controllers/WatchlistSelector";
 
 interface CardWithFormProps {
   onCompanyChange: (companyId: string | null) => void;
   onDateChange: (date: Date | undefined) => void;
   onIntervalChange: (interval: string) => void;
   onIndicatorsChange: (indicators: string[]) => void;
+  selectedWatchlist?: string;
+  onWatchlistChange?: (watchlist: string) => void;
 }
 
 export function CardWithForm({
@@ -21,6 +23,8 @@ export function CardWithForm({
   onDateChange,
   onIntervalChange,
   onIndicatorsChange,
+  selectedWatchlist,
+  onWatchlistChange,
 }: CardWithFormProps) {
   return (
     <Card className="w-full border border-opacity-30 border-gray-300">
@@ -29,6 +33,8 @@ export function CardWithForm({
           <div className="p-3 border border-opacity-30 border-gray-300 rounded-md flex-1 h-24 flex items-center justify-center">
             <WatchlistSelector 
               onCompanySelect={onCompanyChange}
+              selectedWatchlist={selectedWatchlist}
+              onWatchlistChange={onWatchlistChange}
             />
           </div>
           

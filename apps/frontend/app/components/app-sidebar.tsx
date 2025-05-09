@@ -62,7 +62,7 @@ const data = {
     },
     {
       title: "LIve Market",
-      url: "#",
+      url: "/market-data",
       icon: SquareTerminal,
       // items: [
       //   {

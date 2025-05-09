@@ -32,7 +32,9 @@ def main():
         'user': 'temp_raghav',
         'password': 'password',
         'host': '100.93.172.21',
-        'port': '5432'
+        'port': '5432',
+        'options=':'no-gssapi'
+
     }
 
     try:

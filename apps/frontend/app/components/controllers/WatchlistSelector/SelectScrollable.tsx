@@ -3,9 +3,7 @@ import * as React from "react";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -28,43 +26,41 @@ interface SelectScrollableProps {
   onCompanySelect?: (companyCode: string | null) => void;
 }
 
-export function SelectScrollable({ 
-  companies, 
-  loading, 
-  exists, 
-  onCompanySelect 
+export function SelectScrollable({
+  companies,
+  loading,
+  exists,
+  onCompanySelect,
 }: SelectScrollableProps) {
-  if (loading) {
-    return <div className="w-[280px] p-2 border rounded">Loading watchlist data...</div>;
-  }
-
-  if (!exists) {
-    return <div className="w-[280px] p-2 border rounded text-red-500">No watchlist data found for today</div>;
-  }
-
   const handleValueChange = (value: string) => {
     if (onCompanySelect) {
-      onCompanySelect(value || null);
+      onCompanySelect(value);
     }
   };
 
   return (
     <Select onValueChange={handleValueChange}>
-      <SelectTrigger className="w-[280px]">
-        <SelectValue placeholder="Select a company" />
+      <SelectTrigger className="w-[180px]">
+        <SelectValue placeholder={
+          loading ? "Loading..." : 
+          !exists ? "Watchlist not found" :
+          companies.length === 0 ? "No companies" :
+          "Select company"
+        } />
       </SelectTrigger>
       <SelectContent>
-        {companies.length === 0 ? (
-          <div className="p-2 text-center text-gray-500">No companies found</div>
+        {loading ? (
+          <SelectItem value="loading" disabled>Loading companies...</SelectItem>
+        ) : !exists ? (
+          <SelectItem value="not-found" disabled>Watchlist not found</SelectItem>
+        ) : companies.length === 0 ? (
+          <SelectItem value="empty" disabled>No companies in watchlist</SelectItem>
         ) : (
-          <SelectGroup>
-            <SelectLabel>Companies</SelectLabel>
-            {companies.map((company) => (
-              <SelectItem key={company.company_code} value={company.company_code}>
-                {company.name} ({company.exchange}) - {company.tradingsymbol}
-              </SelectItem>
-            ))}
-          </SelectGroup>
+          companies.map((company) => (
+            <SelectItem key={company.company_code} value={company.company_code}>
+              {company.tradingsymbol} - {company.name}
+            </SelectItem>
+          ))
         )}
       </SelectContent>
     </Select>

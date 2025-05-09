@@ -6,35 +6,47 @@ import { SelectScrollable } from "./SelectScrollable";
 
 interface WatchlistSelectorProps {
   onCompanySelect?: (companyCode: string | null) => void;
+  selectedWatchlist?: string;
+  onWatchlistChange?: (watchlist: string) => void;
 }
 
-export function WatchlistSelector({ onCompanySelect }: WatchlistSelectorProps) {
+export function WatchlistSelector({ 
+  onCompanySelect,
+  selectedWatchlist: externalSelectedWatchlist,
+  onWatchlistChange
+}: WatchlistSelectorProps) {
   const {
-    selectedWatchlist,
-    setSelectedWatchlist,
+    selectedWatchlist: internalSelectedWatchlist,
+    setSelectedWatchlist: internalSetSelectedWatchlist,
     companies,
     loading,
     error,
     exists,
   } = useWatchlist();
-
-  // Debug the request flow
-  React.useEffect(() => {
-    console.log('Current watchlist:', selectedWatchlist);
-    console.log('Companies loaded:', companies.length);
-  }, [selectedWatchlist, companies]);
+  
+  // Use either external or internal state
+  const effectiveWatchlist = externalSelectedWatchlist || internalSelectedWatchlist;
+  
+  // Handle watchlist change
+  const handleWatchlistChange = (value: string) => {
+    if (onWatchlistChange) {
+      onWatchlistChange(value);
+    } else {
+      internalSetSelectedWatchlist(value);
+    }
+  };
 
   return (
     <div className="flex gap-5 items-center">
       <div>
         <RadioGroupDemo
-          value={selectedWatchlist} 
-          onChange={setSelectedWatchlist}
+          value={effectiveWatchlist} 
+          onChange={handleWatchlistChange}
         />
       </div>
       
       {error && (
-        <div className="text-red-500">{error}</div>
+        <div className="text-red-500 text-xs">{error}</div>
       )}
       
       <div>
