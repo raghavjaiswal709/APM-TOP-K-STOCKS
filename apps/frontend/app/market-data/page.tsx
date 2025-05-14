@@ -1,246 +1,60 @@
-// 'use client';
-// import React, { useEffect, useState } from 'react';
-// import { io, Socket } from 'socket.io-client';
-// import dynamic from 'next/dynamic';
-
-// // Import chart component with dynamic loading (no SSR)
-// const MarketChart = dynamic(() => import('./components/MarketChart'), {
-//   ssr: false,
-// });
-
-// interface MarketData {
-//   ltp: number;
-//   change?: number;
-//   changePercent?: number;
-//   open?: number;
-//   high?: number;
-//   low?: number;
-//   close?: number;
-//   volume?: number;
-//   timestamp?: number;
-//   bid?: number;
-//   ask?: number;
-//   // Fyers specific fields
-//   symbol?: string;
-//   ch?: number;
-//   chp?: number;
-//   open_price?: number;
-//   high_price?: number;
-//   low_price?: number;
-//   prev_close_price?: number;
-//   vol_traded_today?: number;
-//   last_traded_time?: number;
-//   bid_price?: number;
-//   ask_price?: number;
-//   [key: string]: any;
-// }
-
-// const MarketDataPage: React.FC = () => {
-//   const [socket, setSocket] = useState<Socket | null>(null);
-//   const [selectedSymbol, setSelectedSymbol] = useState<string>('NSE:ADANIENT-EQ');
-//   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
-//   const [availableSymbols] = useState<string[]>([
-    
-//     'NSE:ADANIENT-EQ'
-//   ]);
-
-//   useEffect(() => {
-//     // Connect to WebSocket server
-//     const newSocket = io('http://localhost:5000');
-//     setSocket(newSocket);
-
-//     // Set up event listeners
-//     newSocket.on('connect', () => {
-//       console.log('Connected to WebSocket server');
-//     });
-
-//     newSocket.on('disconnect', () => {
-//       console.log('Disconnected from WebSocket server');
-//     });
-
-//     newSocket.on('marketData', (data: any) => {
-//       console.log('Received market data:', data);
-//       if (data && data.symbol) {
-//         setMarketData(prev => ({
-//           ...prev,
-//           [data.symbol]: data
-//         }));
-//       }
-//     });
-
-//     // Subscribe to default symbol
-//     if (selectedSymbol) {
-//       newSocket.emit('subscribe', { symbol: selectedSymbol });
-//     }
-
-//     // Cleanup on unmount
-//     return () => {
-//       if (newSocket) {
-//         newSocket.disconnect();
-//       }
-//     };
-//   }, []);
-
-//   // Handle symbol change
-//   useEffect(() => {
-//     if (socket && selectedSymbol) {
-//       // Subscribe to new symbol
-//       socket.emit('subscribe', { symbol: selectedSymbol });
-      
-//       // Unsubscribe from previous symbols (except the selected one)
-//       Object.keys(marketData).forEach(symbol => {
-//         if (symbol !== selectedSymbol) {
-//           socket.emit('unsubscribe', { symbol });
-//         }
-//       });
-//     }
-//   }, [selectedSymbol, socket]);
-
-//   const formatPrice = (price?: number) => {
-//     return price?.toFixed(2) || '0.00';
-//   };
-
-//   const formatChange = (change?: number, percent?: number) => {
-//     if ((!change && change !== 0) || (!percent && percent !== 0)) return '-';
-//     const sign = change >= 0 ? '+' : '';
-//     return `${sign}${change.toFixed(2)} (${sign}${percent.toFixed(2)}%)`;
-//   };
-
-//   const getChangeClass = (change?: number) => {
-//     if (!change && change !== 0) return '';
-//     return change >= 0 ? 'text-green-500' : 'text-red-500';
-//   };
-
-//   const currentData = marketData[selectedSymbol];
-  
-//   // Use either standard or Fyers-specific field names
-//   const getValue = (data: MarketData | undefined, field: string, fyersField: string) => {
-//     if (!data) return undefined;
-//     return data[field] !== undefined ? data[field] : data[fyersField];
-//   };
-
-//   return (
-//     <div className="container mx-auto p-4">
-//       <h1 className="text-2xl font-bold mb-4">Live Market Data</h1>
-      
-//       <div className="mb-4">
-//         <label htmlFor="symbol" className="block mb-2">Select Symbol:</label>
-//         <select
-//           id="symbol"
-//           value={selectedSymbol}
-//           onChange={(e) => setSelectedSymbol(e.target.value)}
-//           className="p-2 border rounded w-full md:w-64"
-//         >
-//           {availableSymbols.map(symbol => (
-//             <option key={symbol} value={symbol}>{symbol}</option>
-//           ))}
-//         </select>
-//       </div>
-      
-//       {currentData ? (
-//         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-//           <div className="bg-white p-4 rounded shadow">
-//             <h2 className="text-xl font-semibold mb-2">{selectedSymbol}</h2>
-//             <div className="text-3xl font-bold mb-2">₹{formatPrice(currentData.ltp)}</div>
-//             <div className={`text-lg ${getChangeClass(getValue(currentData, 'change', 'ch'))}`}>
-//               {formatChange(
-//                 getValue(currentData, 'change', 'ch'), 
-//                 getValue(currentData, 'changePercent', 'chp')
-//               )}
-//             </div>
-            
-//             <div className="grid grid-cols-2 gap-2 mt-4">
-//               <div>
-//                 <div className="text-sm text-gray-500">Open</div>
-//                 <div>₹{formatPrice(getValue(currentData, 'open', 'open_price'))}</div>
-//               </div>
-//               <div>
-//                 <div className="text-sm text-gray-500">Prev Close</div>
-//                 <div>₹{formatPrice(getValue(currentData, 'close', 'prev_close_price'))}</div>
-//               </div>
-//               <div>
-//                 <div className="text-sm text-gray-500">High</div>
-//                 <div>₹{formatPrice(getValue(currentData, 'high', 'high_price'))}</div>
-//               </div>
-//               <div>
-//                 <div className="text-sm text-gray-500">Low</div>
-//                 <div>₹{formatPrice(getValue(currentData, 'low', 'low_price'))}</div>
-//               </div>
-//               <div>
-//                 <div className="text-sm text-gray-500">Bid</div>
-//                 <div>₹{formatPrice(getValue(currentData, 'bid', 'bid_price'))}</div>
-//               </div>
-//               <div>
-//                 <div className="text-sm text-gray-500">Ask</div>
-//                 <div>₹{formatPrice(getValue(currentData, 'ask', 'ask_price'))}</div>
-//               </div>
-//               <div>
-//                 <div className="text-sm text-gray-500">Volume</div>
-//                 <div>{getValue(currentData, 'volume', 'vol_traded_today')?.toLocaleString() || '0'}</div>
-//               </div>
-//               <div>
-//                 <div className="text-sm text-gray-500">Last Updated</div>
-//                 <div>{new Date((getValue(currentData, 'timestamp', 'last_traded_time') || 0) * 1000).toLocaleTimeString()}</div>
-//               </div>
-//             </div>
-//           </div>
-          
-//           <div className="bg-white p-4 rounded shadow h-80">
-//             <MarketChart symbol={selectedSymbol} data={currentData} />
-//           </div>
-//         </div>
-//       ) : (
-//         <div className="bg-white p-4 rounded shadow text-center">
-//           <p>Loading market data...</p>
-//         </div>
-//       )}
-      
-//       {/* Debug section */}
-//       <div className="mt-8 p-4 bg-gray-100 rounded">
-//         <h3 className="text-lg font-semibold mb-2">Raw Market Data (Debug)</h3>
-//         <pre className="text-xs overflow-auto max-h-60">
-//           {JSON.stringify(currentData, null, 2)}
-//         </pre>
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default MarketDataPage;
-
-
+// app/market-data/page.tsx
 'use client';
-import React, { useEffect, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
+import React, { useEffect, useState, useCallback } from 'react';
+import { getSocket } from '@/lib/socket';
 import dynamic from 'next/dynamic';
+import { MoonIcon, SunIcon } from '@heroicons/react/24/outline';
 
-// Import chart component with dynamic loading (no SSR)
-const MarketChart = dynamic(() => import('./components/MarketChart'), {
+// Import Plotly chart with dynamic loading (no SSR)
+const PlotlyChart = dynamic(() => import('./components/charts/PlotlyChart'), { 
   ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-zinc-900">
+      <div className="animate-pulse text-blue-500">Loading chart...</div>
+    </div>
+  )
 });
 
 interface MarketData {
-  ltp: number;
   symbol: string;
-  ch?: number;
-  chp?: number;
-  open_price?: number;
-  high_price?: number;
-  low_price?: number;
-  prev_close_price?: number;
-  vol_traded_today?: number;
-  last_traded_time?: number;
-  bid_price?: number;
-  ask_price?: number;
-  [key: string]: any;
+  ltp: number;
+  change?: number;
+  changePercent?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
+  bid?: number;
+  ask?: number;
+  timestamp: number;
+  sma_20?: number;
+  ema_9?: number;
+  rsi_14?: number;
+}
+
+interface OHLCData {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface TradingHours {
+  start: string;
+  end: string;
+  current: string;
+  isActive: boolean;
 }
 
 const MarketDataPage: React.FC = () => {
-  // Use a state to track client-side rendering
   const [isClient, setIsClient] = useState(false);
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState<string>('NSE:ADANIENT-EQ');
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
+  const [historicalData, setHistoricalData] = useState<Record<string, MarketData[]>>({});
+  const [ohlcData, setOhlcData] = useState<Record<string, OHLCData[]>>({});
   const [availableSymbols] = useState<string[]>([
     'NSE:NIFTY50-INDEX',
     'NSE:BANKNIFTY-INDEX',
@@ -251,64 +65,153 @@ const MarketDataPage: React.FC = () => {
   ]);
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
   const [lastDataReceived, setLastDataReceived] = useState<Date | null>(null);
+  const [dataCount, setDataCount] = useState<number>(0);
+  const [tradingHours, setTradingHours] = useState<TradingHours>({
+    start: '',
+    end: '',
+    current: '',
+    isActive: false
+  });
 
-  // First useEffect to set isClient to true once component mounts
+  // Set isClient to true on mount
   useEffect(() => {
     setIsClient(true);
     console.log('Component mounted, isClient set to true');
   }, []);
 
-  // Socket connection useEffect - only runs on client side
+  // Socket connection
   useEffect(() => {
     if (!isClient) return;
 
-    console.log('Attempting to connect to WebSocket server at http://localhost:5000');
+    console.log('Connecting to Python WebSocket server...');
     
-    // Connect to WebSocket server
-    const newSocket = io('http://localhost:5000', {
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    });
-    
-    setSocket(newSocket);
+    const socket = getSocket();
 
-    // Set up event listeners with detailed logging
-    newSocket.on('connect', () => {
-      console.log('✅ Connected to WebSocket server');
-      console.log('Socket ID:', newSocket.id);
+    socket.on('connect', () => {
+      console.log('✅ Connected to Python WebSocket server');
+      console.log('Socket ID:', socket.id);
       setSocketStatus('Connected');
+      
+      // Get trading hours
+      socket.emit('get_trading_status', {}, (response: any) => {
+        console.log('Trading status:', response);
+        setTradingHours({
+          start: response.trading_start,
+          end: response.trading_end,
+          current: response.current_time,
+          isActive: response.trading_active
+        });
+      });
+      
+      // Subscribe to symbol immediately after connection
+      console.log('🔔 Subscribing to symbol after connection:', selectedSymbol);
+      socket.emit('subscribe', { symbol: selectedSymbol });
     });
 
-    newSocket.on('connect_error', (error) => {
+    socket.on('connect_error', (error) => {
       console.error('❌ Connection error:', error.message);
       setSocketStatus(`Connection error: ${error.message}`);
     });
 
-    newSocket.on('disconnect', (reason) => {
-      console.log('❌ Disconnected from WebSocket server. Reason:', reason);
+    socket.on('disconnect', (reason) => {
+      console.log('❌ Disconnected from Python WebSocket server. Reason:', reason);
       setSocketStatus(`Disconnected: ${reason}`);
     });
 
-    newSocket.on('marketData', (data: any) => {
+    socket.on('marketData', (data: MarketData) => {
       console.log('📊 Received market data:', data);
       setLastDataReceived(new Date());
+      setDataCount(prev => prev + 1);
       
       if (data && data.symbol) {
+        // Update market data state
         setMarketData(prev => ({
           ...prev,
           [data.symbol]: data
         }));
-      } else {
-        console.warn('⚠️ Received market data without symbol property:', data);
+        
+        // Add to historical data
+        setHistoricalData(prev => {
+          const symbol = data.symbol;
+          const existingHistory = prev[symbol] || [];
+          
+          // Check if this timestamp already exists
+          const exists = existingHistory.some(item => item.timestamp === data.timestamp);
+          if (exists) return prev;
+          
+          // Add new data point
+          const newHistory = [...existingHistory, data];
+          
+          // Sort by timestamp
+          newHistory.sort((a, b) => a.timestamp - b.timestamp);
+          
+          return {
+            ...prev,
+            [symbol]: newHistory
+          };
+        });
       }
     });
-
-    // Subscribe to default symbol with a small delay to ensure connection
-    setTimeout(() => {
-      console.log('🔔 Subscribing to symbol:', selectedSymbol);
-      newSocket.emit('subscribe', { symbol: selectedSymbol });
-    }, 1000);
+    
+    socket.on('historicalData', (data: { symbol: string, data: MarketData[] }) => {
+      console.log('📈 Received historical data:', data);
+      
+      if (data && data.symbol && Array.isArray(data.data)) {
+        // Sort historical data by timestamp
+        const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
+        
+        setHistoricalData(prev => ({
+          ...prev,
+          [data.symbol]: sortedData
+        }));
+        
+        console.log(`Processed ${sortedData.length} historical data points for ${data.symbol}`);
+        
+        // If we have current data, make sure it's the most recent
+        if (marketData[data.symbol] && sortedData.length > 0) {
+          const lastHistorical = sortedData[sortedData.length - 1];
+          const current = marketData[data.symbol];
+          
+          if (lastHistorical.timestamp > current.timestamp) {
+            setMarketData(prev => ({
+              ...prev,
+              [data.symbol]: lastHistorical
+            }));
+          }
+        } else if (sortedData.length > 0) {
+          // If we don't have current data, use the most recent historical point
+          setMarketData(prev => ({
+            ...prev,
+            [data.symbol]: sortedData[sortedData.length - 1]
+          }));
+        }
+      }
+    });
+    
+    socket.on('ohlcData', (data: { symbol: string, data: OHLCData[] }) => {
+      console.log('📊 Received OHLC data:', data);
+      
+      if (data && data.symbol && Array.isArray(data.data)) {
+        // Sort OHLC data by timestamp
+        const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
+        
+        setOhlcData(prev => ({
+          ...prev,
+          [data.symbol]: sortedData
+        }));
+        
+        console.log(`Processed ${sortedData.length} OHLC data points for ${data.symbol}`);
+      }
+    });
+    
+    socket.on('heartbeat', (data: any) => {
+      // Update trading hours on heartbeat
+      setTradingHours(prev => ({
+        ...prev,
+        current: new Date().toISOString(),
+        isActive: data.trading_active
+      }));
+    });
 
     // Check for data every 5 seconds
     const dataCheckInterval = setInterval(() => {
@@ -317,6 +220,12 @@ const MarketDataPage: React.FC = () => {
       
       if (!lastReceived || now.getTime() - lastReceived.getTime() > 10000) {
         console.warn('⚠️ No market data received in the last 10 seconds');
+        
+        // Try to resubscribe
+        if (socket.connected) {
+          console.log('🔄 Attempting to resubscribe to:', selectedSymbol);
+          socket.emit('subscribe', { symbol: selectedSymbol });
+        }
       }
     }, 5000);
 
@@ -324,17 +233,26 @@ const MarketDataPage: React.FC = () => {
     return () => {
       console.log('Component unmounting, cleaning up socket connection');
       clearInterval(dataCheckInterval);
-      if (newSocket) {
-        newSocket.disconnect();
-      }
+      
+      // Unsubscribe from all symbols
+      Object.keys(marketData).forEach(symbol => {
+        console.log('🔕 Unsubscribing from:', symbol);
+        socket.emit('unsubscribe', { symbol });
+      });
     };
-  }, [isClient, selectedSymbol]);
+  }, [isClient]);
 
-  // Handle symbol change - only runs on client side
+  // Handle symbol change
   useEffect(() => {
-    if (!isClient || !socket) return;
+    if (!isClient) return;
     
     console.log('🔄 Symbol changed to:', selectedSymbol);
+    const socket = getSocket();
+    
+    if (!socket.connected) {
+      console.log('Socket not connected, waiting for connection...');
+      return;
+    }
     
     // Subscribe to new symbol
     socket.emit('subscribe', { symbol: selectedSymbol });
@@ -347,7 +265,7 @@ const MarketDataPage: React.FC = () => {
         socket.emit('unsubscribe', { symbol });
       }
     });
-  }, [selectedSymbol, socket, marketData, isClient]);
+  }, [selectedSymbol, isClient]);
 
   const formatPrice = (price?: number) => {
     return price?.toFixed(2) || '0.00';
@@ -365,108 +283,185 @@ const MarketDataPage: React.FC = () => {
   };
 
   const currentData = marketData[selectedSymbol];
+  const symbolHistory = historicalData[selectedSymbol] || [];
+  const symbolOhlc = ohlcData[selectedSymbol] || [];
 
   // Return a loading state during server rendering
   if (!isClient) {
-    return <div className="container mx-auto p-4">Loading market data...</div>;
+    return <div className="container mx-auto p-4 bg-zinc-900 text-white">Loading market data...</div>;
   }
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Live Market Data</h1>
-      
-      <div className="mb-4 p-2 bg-gray-100 rounded">
-        <p><strong>Socket Status:</strong> {socketStatus}</p>
-        <p><strong>Last Data Received:</strong> {lastDataReceived ? lastDataReceived.toLocaleTimeString() : 'No data yet'}</p>
-        <p><strong>Available Symbols:</strong> {availableSymbols.length}</p>
-        <p><strong>Cached Symbols:</strong> {Object.keys(marketData).join(', ') || 'None'}</p>
-      </div>
-      
-      <div className="mb-4">
-        <label htmlFor="symbol" className="block mb-2">Select Symbol:</label>
-        <select
-          id="symbol"
-          value={selectedSymbol}
-          onChange={(e) => setSelectedSymbol(e.target.value)}
-          className="p-2 border rounded w-full md:w-64"
-        >
-          {availableSymbols.map(symbol => (
-            <option key={symbol} value={symbol}>{symbol}</option>
-          ))}
-        </select>
-      </div>
-      
-      {currentData ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div className="bg-white p-4 rounded shadow">
-            <h2 className="text-xl font-semibold mb-2">{selectedSymbol}</h2>
-            <div className="text-3xl font-bold mb-2">₹{formatPrice(currentData.ltp)}</div>
-            <div className={`text-lg ${getChangeClass(currentData.ch)}`}>
-              {formatChange(currentData.ch, currentData.chp)}
+    <div className="min-h-screen bg-zinc-900 text-zinc-100">
+      <div className="container mx-auto p-4">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-white">Live Market Data</h1>
+          <div className="flex items-center space-x-2">
+            <span className={`inline-block w-2 h-2 rounded-full ${
+              socketStatus.includes('Connected') ? 'bg-green-500' : 'bg-red-500'
+            }`}></span>
+            <span className="text-sm text-zinc-400">{socketStatus}</span>
+          </div>
+        </div>
+        
+        <div className="mb-6 p-4 bg-zinc-800 rounded-lg shadow-lg">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <p className="text-sm text-zinc-400">Symbol</p>
+              <select
+                value={selectedSymbol}
+                onChange={(e) => setSelectedSymbol(e.target.value)}
+                className="mt-1 w-full bg-zinc-700 text-white border border-zinc-600 rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {availableSymbols.map(symbol => (
+                  <option key={symbol} value={symbol}>{symbol}</option>
+                ))}
+                            </select>
             </div>
-            
-            <div className="grid grid-cols-2 gap-2 mt-4">
-              <div>
-                <div className="text-sm text-gray-500">Open</div>
-                <div>₹{formatPrice(currentData.open_price)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500">Prev Close</div>
-                <div>₹{formatPrice(currentData.prev_close_price)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500">High</div>
-                <div>₹{formatPrice(currentData.high_price)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500">Low</div>
-                <div>₹{formatPrice(currentData.low_price)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500">Bid</div>
-                <div>₹{formatPrice(currentData.bid_price)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500">Ask</div>
-                <div>₹{formatPrice(currentData.ask_price)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500">Volume</div>
-                <div>{currentData.vol_traded_today?.toLocaleString() || '0'}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500">Last Updated</div>
-                <div>{new Date((currentData.last_traded_time || 0) * 1000).toLocaleTimeString()}</div>
-              </div>
+            <div>
+              <p className="text-sm text-zinc-400">Last Update</p>
+              <p className="mt-1 font-medium">{lastDataReceived ? lastDataReceived.toLocaleTimeString() : 'No data yet'}</p>
+            </div>
+            <div>
+              <p className="text-sm text-zinc-400">Data Points</p>
+              <p className="mt-1 font-medium">{symbolHistory.length} historical / {dataCount} updates</p>
+            </div>
+            <div>
+              <p className="text-sm text-zinc-400">Market Status</p>
+              <p className={`mt-1 font-medium ${tradingHours.isActive ? 'text-green-500' : 'text-red-500'}`}>
+                {tradingHours.isActive ? 'Market Open' : 'Market Closed'}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+          <div className="lg:col-span-3">
+            <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-[600px]">
+              {symbolHistory.length > 0 ? (
+                <PlotlyChart 
+                  symbol={selectedSymbol} 
+                  data={currentData} 
+                  historicalData={symbolHistory}
+                  ohlcData={symbolOhlc}
+                  tradingHours={tradingHours}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-zinc-400">Loading historical data for {selectedSymbol}...</p>
+                </div>
+              )}
             </div>
           </div>
           
-          <div className="bg-white p-4 rounded shadow h-80">
-            <MarketChart symbol={selectedSymbol} data={{
-              ltp: currentData.ltp,
-              timestamp: currentData.last_traded_time || Math.floor(Date.now() / 1000)
-            }} />
+          <div className="bg-zinc-800 p-4 rounded-lg shadow-lg">
+            {currentData ? (
+              <>
+                <h2 className="text-xl font-semibold mb-2 text-white">{selectedSymbol}</h2>
+                <div className="text-3xl font-bold mb-2 text-white">₹{formatPrice(currentData.ltp)}</div>
+                <div className={`text-lg ${getChangeClass(currentData.change)}`}>
+                  {formatChange(currentData.change, currentData.changePercent)}
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 mt-6">
+                  <div className="bg-zinc-700 p-3 rounded">
+                    <div className="text-xs text-zinc-400">Open</div>
+                    <div className="text-lg">₹{formatPrice(currentData.open)}</div>
+                  </div>
+                  <div className="bg-zinc-700 p-3 rounded">
+                    <div className="text-xs text-zinc-400">Prev Close</div>
+                    <div className="text-lg">₹{formatPrice(currentData.close)}</div>
+                  </div>
+                  <div className="bg-zinc-700 p-3 rounded">
+                    <div className="text-xs text-zinc-400">High</div>
+                    <div className="text-lg">₹{formatPrice(currentData.high)}</div>
+                  </div>
+                  <div className="bg-zinc-700 p-3 rounded">
+                    <div className="text-xs text-zinc-400">Low</div>
+                    <div className="text-lg">₹{formatPrice(currentData.low)}</div>
+                  </div>
+                </div>
+                
+                <div className="mt-6 border-t border-zinc-700 pt-4">
+                  <div className="grid grid-cols-2 gap-y-2">
+                    <div>
+                      <div className="text-xs text-zinc-400">Bid</div>
+                      <div>₹{formatPrice(currentData.bid)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-zinc-400">Ask</div>
+                      <div>₹{formatPrice(currentData.ask)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-zinc-400">Volume</div>
+                      <div>{currentData.volume?.toLocaleString() || '0'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-zinc-400">Last Updated</div>
+                      <div>{new Date(currentData.timestamp * 1000).toLocaleTimeString()}</div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Technical Indicators */}
+                {(currentData.sma_20 || currentData.ema_9 || currentData.rsi_14) && (
+                  <div className="mt-6 border-t border-zinc-700 pt-4">
+                    <h3 className="text-sm font-medium mb-2 text-zinc-300">Technical Indicators</h3>
+                    <div className="grid grid-cols-3 gap-2">
+                      {currentData.sma_20 && (
+                        <div className="bg-zinc-700 p-2 rounded">
+                          <div className="text-xs text-orange-500">SMA 20</div>
+                          <div className="text-sm">₹{formatPrice(currentData.sma_20)}</div>
+                        </div>
+                      )}
+                      {currentData.ema_9 && (
+                        <div className="bg-zinc-700 p-2 rounded">
+                          <div className="text-xs text-purple-500">EMA 9</div>
+                          <div className="text-sm">₹{formatPrice(currentData.ema_9)}</div>
+                        </div>
+                      )}
+                      {currentData.rsi_14 && (
+                        <div className="bg-zinc-700 p-2 rounded">
+                          <div className="text-xs text-cyan-500">RSI 14</div>
+                          <div className="text-sm">{currentData.rsi_14.toFixed(2)}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-zinc-400">No data available</p>
+              </div>
+            )}
           </div>
         </div>
-      ) : (
-        <div className="bg-white p-4 rounded shadow text-center">
-          <p>No data available for {selectedSymbol}. Waiting for updates...</p>
+        
+        {/* Debug section */}
+        <div className="mt-8 p-4 bg-zinc-800 rounded-lg shadow-lg">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-lg font-semibold text-white">Raw Market Data</h3>
+            <div className="text-xs text-zinc-400">
+              {symbolHistory.length > 0 && (
+                <>
+                  Trading Hours: {new Date(tradingHours.start).toLocaleTimeString()} - {new Date(tradingHours.end).toLocaleTimeString()}
+                </>
+              )}
+            </div>
+          </div>
+          {currentData ? (
+            <pre className="text-xs overflow-auto max-h-60 bg-zinc-900 p-4 rounded text-zinc-300">
+              {JSON.stringify(currentData, null, 2)}
+            </pre>
+          ) : (
+            <p className="text-zinc-400">No data received yet. Check console for connection details.</p>
+          )}
         </div>
-      )}
-      
-      {/* Debug section */}
-      <div className="mt-8 p-4 bg-gray-100 rounded">
-        <h3 className="text-lg font-semibold mb-2">Raw Market Data (Debug)</h3>
-        {currentData ? (
-          <pre className="text-xs overflow-auto max-h-60">
-            {JSON.stringify(currentData, null, 2)}
-          </pre>
-        ) : (
-          <p>No data received yet. Check console for connection details.</p>
-        )}
       </div>
     </div>
   );
 };
 
 export default MarketDataPage;
+

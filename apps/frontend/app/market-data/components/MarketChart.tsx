@@ -1,327 +1,6 @@
-// // 'use client';
-
-// // import React, { useEffect, useRef, useState } from 'react';
-// // import {
-// //   createChart,
-// //   ColorType,
-// //   LineSeries,
-// //   ISeriesApi,
-// //   UTCTimestamp, // Use UTCTimestamp for clarity
-// //   Time, // Time type includes UTCTimestamp
-// //   LineData, // Type for data points
-// //   ChartOptions, // For chart options type safety
-// //   DeepPartial,
-// // } from 'lightweight-charts';
-
-// // // Interface for the data received from the backend WebSocket
-// // interface MarketData {
-// //   ltp: number;
-// //   change?: number; // Optional fields based on backend
-// //   changePercent?: number;
-// //   open?: number;
-// //   high?: number;
-// //   low?: number;
-// //   close?: number;
-// //   volume?: number;
-// //   timestamp: number; // Crucial: Assuming this is UNIX timestamp in SECONDS from Fyers
-// //   // Add bid/ask if your backend sends them
-// //   bid?: number;
-// //   ask?: number;
-// // }
-
-// // interface MarketChartProps {
-// //   symbol: string; // The currently selected symbol
-// //   data: MarketData | null | undefined; // The latest data point for the selected symbol
-// // }
-
-// // const MarketChart: React.FC<MarketChartProps> = ({ symbol, data }) => {
-// //   const chartContainerRef = useRef<HTMLDivElement>(null);
-// //   // Explicitly type chart and series refs for better intellisense and safety
-// //   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
-// //   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-// //   // Local state to track if the chart has been initialized
-// //   const [isChartInitialized, setIsChartInitialized] = useState(false);
-
-// //   // --- Chart Initialization Effect ---
-// //   useEffect(() => {
-// //     if (!chartContainerRef.current || chartRef.current) {
-// //       // Don't re-initialize if already created or container not ready
-// //       return;
-// //     }
-
-// //     const chartOptions: DeepPartial<ChartOptions> = {
-// //       layout: {
-// //         background: { type: ColorType.Solid, color: 'transparent' },
-// //         textColor: 'rgba(255, 255, 255, 0.9)', // Adjust based on your theme
-// //       },
-// //       grid: {
-// //         vertLines: { color: 'rgba(197, 203, 206, 0.1)' },
-// //         horzLines: { color: 'rgba(197, 203, 206, 0.1)' },
-// //       },
-// //       timeScale: {
-// //         timeVisible: true, // Show time on the axis
-// //         secondsVisible: true, // Show seconds for real-time data clarity
-// //         // Fix: Ensure timescale ticks don't overlap excessively on frequent updates
-// //         minBarSpacing: 0.1,
-// //       },
-// //       width: chartContainerRef.current.clientWidth,
-// //       height: 300, // Fixed height, adjust as needed
-// //       // Improve real-time scrolling behavior
-// //       rightPriceScale: {
-// //         scaleMargins: {
-// //           top: 0.1, // 10% margin above
-// //           bottom: 0.1, // 10% margin below
-// //         },
-// //       },
-// //       // Handle zooming and panning
-// //       handleScroll: true,
-// //       handleScale: true,
-// //     };
-
-// //     chartRef.current = createChart(chartContainerRef.current, chartOptions);
-// //     seriesRef.current = chartRef.current.addSeries(LineSeries, {
-// //       color: '#2962FF', // Blue line color
-// //       lineWidth: 2,
-// //       // Optional: Improve visual appearance
-// //       lastValueVisible: true, // Show last value label on price scale
-// //       priceLineVisible: true, // Show horizontal line at the last price
-// //     });
-
-// //     setIsChartInitialized(true); // Mark chart as initialized
-// //     console.log('Lightweight Chart Initialized');
-
-// //     // --- Resize Handler ---
-// //     const handleResize = () => {
-// //       if (chartRef.current && chartContainerRef.current) {
-// //         chartRef.current.resize(
-// //           chartContainerRef.current.clientWidth,
-// //           300, // Keep height consistent or read from container
-// //         );
-// //       }
-// //     };
-
-// //     window.addEventListener('resize', handleResize);
-
-// //     // --- Cleanup on Unmount ---
-// //     return () => {
-// //       window.removeEventListener('resize', handleResize);
-// //       if (chartRef.current) {
-// //         chartRef.current.remove();
-// //         console.log('Lightweight Chart Removed');
-// //       }
-// //       chartRef.current = null;
-// //       seriesRef.current = null;
-// //       setIsChartInitialized(false);
-// //     };
-// //   }, []); // Empty dependency array: Runs only once on mount
-
-// //   // --- Data Update Effect ---
-// //   useEffect(() => {
-// //     // Exit if chart is not ready or data is invalid/missing
-// //     if (
-// //       !isChartInitialized ||
-// //       !seriesRef.current ||
-// //       !data ||
-// //       typeof data.ltp !== 'number' ||
-// //       typeof data.timestamp !== 'number' // Ensure timestamp exists and is a number
-// //     ) {
-// //       return;
-// //     }
-
-// //     // --- Use Timestamp from Backend (Fyers) ---
-// //     // Assuming data.timestamp is UNIX timestamp in SECONDS
-// //     const newTime = data.timestamp as UTCTimestamp; // Cast for type safety
-// //     const newValue = data.ltp;
-// //     const newPoint: LineData = { time: newTime, value: newValue };
-
-// //     try {
-// //       // --- Use update() for efficiency and automatic duplicate handling ---
-// //       // lightweight-charts v4+ `update` method handles duplicate timestamps
-// //       // by updating the existing point's value. No manual check needed!
-// //       seriesRef.current.update(newPoint);
-// //     } catch (error) {
-// //       // Log errors during update, potentially related to data format
-// //       console.error(
-// //         `Error updating chart series for ${symbol}:`,
-// //         error,
-// //         'Data point:',
-// //         newPoint,
-// //       );
-// //     }
-
-// //     // Optional: Auto-scroll to the latest bar (might be slightly jittery on very fast updates)
-// //     // Consider adding a user toggle for this behavior
-// //     // chartRef.current?.timeScale().scrollToRealTime();
-
-// //   }, [data, isChartInitialized]); // Re-run ONLY when `data` or `isChartInitialized` changes
-
-// //   // --- Symbol Change Effect ---
-// //   useEffect(() => {
-// //     // When the symbol changes, clear the existing series data
-// //     if (seriesRef.current && isChartInitialized) {
-// //       console.log(`Symbol changed to ${symbol}. Clearing chart data.`);
-// //       seriesRef.current.setData([]); // Clear all data points for the new symbol
-// //       // History loading could potentially go here if needed
-// //     }
-// //     // NOTE: Do NOT clear dataPoints.current here, it's managed by the update effect
-// //   }, [symbol, isChartInitialized]); // Re-run when `symbol` or `isChartInitialized` changes
-
-// //   // --- Render ---
-// //   return (
-// //     <div className="w-full h-[300px]" ref={chartContainerRef} />
-// //     // Ensure parent container allows this div to have width/height
-// //   );
-// // };
-
-// // export default MarketChart;
-
-
-// 'use client';
-
-// import React, { useEffect, useRef, useState } from 'react';
-// import { createChart, ColorType, LineSeries, ISeriesApi, UTCTimestamp, Time, LineData, ChartOptions, DeepPartial } from 'lightweight-charts';
-
-// interface MarketData {
-//   ltp: number;
-//   change?: number;
-//   changePercent?: number;
-//   open?: number;
-//   high?: number;
-//   low?: number;
-//   close?: number;
-//   volume?: number;
-//   timestamp: number; // Crucial: Assuming this is UNIX timestamp in SECONDS from Fyers
-//   bid?: number;
-//   ask?: number;
-// }
-
-// interface MarketChartProps {
-//   symbol: string;
-//   data: MarketData | null | undefined;
-// }
-
-// const MarketChart: React.FC<MarketChartProps> = ({ symbol, data }) => {
-//   const chartContainerRef = useRef<HTMLDivElement>(null);
-//   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
-//   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-//   const [isChartInitialized, setIsChartInitialized] = useState(false);
-
-//   // Chart Initialization Effect
-//   useEffect(() => {
-//     if (!chartContainerRef.current || chartRef.current) {
-//       return;
-//     }
-
-//     const chartOptions: DeepPartial<ChartOptions> = {
-//       layout: {
-//         background: { type: ColorType.Solid, color: 'transparent' },
-//         textColor: 'rgba(255, 255, 255, 0.9)',
-//       },
-//       grid: {
-//         vertLines: { color: 'rgba(197, 203, 206, 0.1)' },
-//         horzLines: { color: 'rgba(197, 203, 206, 0.1)' },
-//       },
-//       timeScale: {
-//         timeVisible: true,
-//         secondsVisible: true,
-//         minBarSpacing: 0.1,
-//       },
-//       width: chartContainerRef.current.clientWidth,
-//       height: 300,
-//       rightPriceScale: {
-//         scaleMargins: {
-//           top: 0.1,
-//           bottom: 0.1,
-//         },
-//       },
-//       handleScroll: true,
-//       handleScale: true,
-//     };
-
-//     chartRef.current = createChart(chartContainerRef.current, chartOptions);
-//     seriesRef.current = chartRef.current.addSeries(LineSeries, {
-//       color: '#2962FF',
-//       lineWidth: 2,
-//       lastValueVisible: true,
-//       priceLineVisible: true,
-//     });
-
-//     setIsChartInitialized(true);
-//     console.log('Lightweight Chart Initialized');
-
-//     // Resize Handler
-//     const handleResize = () => {
-//       if (chartRef.current && chartContainerRef.current) {
-//         chartRef.current.resize(
-//           chartContainerRef.current.clientWidth,
-//           300,
-//         );
-//       }
-//     };
-
-//     window.addEventListener('resize', handleResize);
-
-//     // Cleanup on Unmount
-//     return () => {
-//       window.removeEventListener('resize', handleResize);
-//       if (chartRef.current) {
-//         chartRef.current.remove();
-//         console.log('Lightweight Chart Removed');
-//       }
-//       chartRef.current = null;
-//       seriesRef.current = null;
-//       setIsChartInitialized(false);
-//     };
-//   }, []);
-
-//   // Data Update Effect
-//   useEffect(() => {
-//     if (
-//       !isChartInitialized ||
-//       !seriesRef.current ||
-//       !data ||
-//       typeof data.ltp !== 'number' ||
-//       typeof data.timestamp !== 'number'
-//     ) {
-//       return;
-//     }
-
-//     // Use Timestamp from Backend (Fyers)
-//     const newTime = data.timestamp as UTCTimestamp;
-//     const newValue = data.ltp;
-//     const newPoint: LineData = { time: newTime, value: newValue };
-
-//     try {
-//       // Use update() for efficiency and automatic duplicate handling
-//       seriesRef.current.update(newPoint);
-//     } catch (error) {
-//       console.error(
-//         `Error updating chart series for ${symbol}:`,
-//         error,
-//         'Data point:',
-//         newPoint,
-//       );
-//     }
-//   }, [data, isChartInitialized, symbol]);
-
-//   // Symbol Change Effect
-//   useEffect(() => {
-//     if (seriesRef.current && isChartInitialized) {
-//       console.log(`Symbol changed to ${symbol}. Clearing chart data.`);
-//       seriesRef.current.setData([]);
-//     }
-//   }, [symbol, isChartInitialized]);
-
-//   return (
-//     <div className="w-full h-[300px]" ref={chartContainerRef} />
-//   );
-// };
-
-// export default MarketChart;
-
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType, LineSeries, ISeriesApi, UTCTimestamp, LineData, ChartOptions, DeepPartial } from 'lightweight-charts';
+import { createChart, ColorType, ISeriesApi, UTCTimestamp, LineData } from 'lightweight-charts';
 
 interface MarketData {
   ltp: number;
@@ -338,87 +17,190 @@ const MarketChart: React.FC<MarketChartProps> = ({ symbol, data }) => {
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const [isChartInitialized, setIsChartInitialized] = useState(false);
-  const dataPointsRef = useRef<Map<number, number>>(new Map());
-  // Add this state to track client-side rendering
+  const dataPointsRef = useRef<LineData[]>([]);
   const [isClient, setIsClient] = useState(false);
+  const [chartHeight] = useState(500);
+  const [initializationAttempt, setInitializationAttempt] = useState(0);
 
   // Set isClient to true on mount
   useEffect(() => {
     setIsClient(true);
+    console.log('MarketChart component mounted');
   }, []);
 
-  // Chart Initialization Effect - only run on client
-  useEffect(() => {
-    if (!isClient || !chartContainerRef.current || chartRef.current) {
-      return;
+  // Create dummy data function
+  const createDummyData = () => {
+    const now = Math.floor(Date.now() / 1000);
+    const initialData: LineData[] = [];
+    
+    // Create multiple data points with different timestamps
+    for (let i = 10; i > 0; i--) {
+      initialData.push({
+        time: (now - i * 60) as UTCTimestamp,
+        value: data?.ltp || 100 + Math.random() * 10
+      });
+    }
+    
+    return initialData;
+  };
+
+  // Initialize chart function - separate from the effect for clarity
+  const initializeChart = () => {
+    if (!chartContainerRef.current) {
+      console.log('Chart container ref is not available');
+      return false;
     }
 
-    const chartOptions: DeepPartial<ChartOptions> = {
-      layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: 'rgba(255, 255, 255, 0.9)',
-      },
-      grid: {
-        vertLines: { color: 'rgba(197, 203, 206, 0.1)' },
-        horzLines: { color: 'rgba(197, 203, 206, 0.1)' },
-      },
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: true,
-        minBarSpacing: 0.1,
-      },
-      width: chartContainerRef.current.clientWidth,
-      height: 300,
-      rightPriceScale: {
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.1,
+    try {
+      // Create dummy data first
+      const initialData = createDummyData();
+      dataPointsRef.current = initialData;
+      
+      // First, render a hidden div to ensure the container has dimensions
+      const containerWidth = chartContainerRef.current.clientWidth;
+      const containerHeight = chartContainerRef.current.clientHeight;
+      
+      console.log(`Container dimensions: ${containerWidth}x${containerHeight}`);
+      
+      if (containerWidth <= 0 || containerHeight <= 0) {
+        console.log('Container has zero dimensions, will retry');
+        return false;
+      }
+      
+      // Create chart with explicit dimensions
+      chartRef.current = createChart(chartContainerRef.current, {
+        width: containerWidth,
+        height: chartHeight,
+        layout: {
+          background: { type: ColorType.Solid, color: 'white' },
+          textColor: '#333',
+          fontSize: 12,
         },
-      },
-      handleScroll: true,
-      handleScale: true,
-    };
+        grid: {
+          vertLines: { color: '#f0f0f0' },
+          horzLines: { color: '#f0f0f0' },
+        },
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: true,
+          minBarSpacing: 10,
+          fixLeftEdge: true,
+          fixRightEdge: true,
+        },
+        rightPriceScale: {
+          scaleMargins: {
+            top: 0.1,
+            bottom: 0.1,
+          },
+          borderVisible: false,
+        },
+        crosshair: {
+          mode: 1,
+        },
+        handleScroll: true,
+        handleScale: true,
+      });
+      
+      // Create series and set data in one step
+      seriesRef.current = chartRef.current.addSeries({
+        color: '#2962FF',
+        lineWidth: 2,
+        lastValueVisible: true,
+        priceLineVisible: true,
+        title: symbol,
+      });
+      
+      // Set initial data immediately
+      seriesRef.current.setData(initialData);
+      
+      // Fit content
+      chartRef.current.timeScale().fitContent();
+      
+      setIsChartInitialized(true);
+      console.log('Chart initialized successfully');
+      return true;
+      
+    } catch (error) {
+      console.error('Error initializing chart:', error);
+      
+      // Clean up any partial initialization
+      if (chartRef.current) {
+        try {
+          chartRef.current.remove();
+        } catch (e) {
+          console.error('Error removing chart during cleanup:', e);
+        }
+        chartRef.current = null;
+        seriesRef.current = null;
+      }
+      
+      return false;
+    }
+  };
 
-    chartRef.current = createChart(chartContainerRef.current, chartOptions);
-    seriesRef.current = chartRef.current.addSeries({
-      color: '#2962FF',
-      lineWidth: 2,
-      lastValueVisible: true,
-      priceLineVisible: true,
+  // Create and initialize chart
+  useEffect(() => {
+    if (!isClient || !chartContainerRef.current || chartRef.current) return;
+    
+    // Use requestAnimationFrame to ensure the DOM is ready
+    const frameId = requestAnimationFrame(() => {
+      // Use a timeout to give the browser a chance to calculate dimensions
+      setTimeout(() => {
+        const success = initializeChart();
+        
+        if (!success && initializationAttempt < 5) {
+          // Try again if initialization failed
+          setInitializationAttempt(prev => prev + 1);
+        }
+      }, 300); // Longer timeout to ensure DOM is ready
     });
-
-    setIsChartInitialized(true);
-    console.log('Lightweight Chart Initialized');
-
-    // Resize Handler
+    
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
+  }, [isClient, initializationAttempt]);
+  
+  // Handle resize
+  useEffect(() => {
+    if (!isClient) return;
+    
     const handleResize = () => {
       if (chartRef.current && chartContainerRef.current) {
-        chartRef.current.resize(
-          chartContainerRef.current.clientWidth,
-          300,
-        );
+        const width = chartContainerRef.current.clientWidth;
+        if (width > 0) {
+          chartRef.current.resize(width, chartHeight);
+          chartRef.current.timeScale().fitContent();
+        }
       }
     };
-
+    
     window.addEventListener('resize', handleResize);
-
-    // Cleanup on Unmount
+    
     return () => {
       window.removeEventListener('resize', handleResize);
-      if (chartRef.current) {
-        chartRef.current.remove();
-        console.log('Lightweight Chart Removed');
-      }
-      chartRef.current = null;
-      seriesRef.current = null;
-      setIsChartInitialized(false);
     };
-  }, [isClient]); // Add isClient as a dependency
-
-  // Data Update Effect
+  }, [isClient, chartHeight]);
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (chartRef.current) {
+        try {
+          chartRef.current.remove();
+        } catch (e) {
+          console.error('Error removing chart:', e);
+        }
+        chartRef.current = null;
+        seriesRef.current = null;
+        setIsChartInitialized(false);
+      }
+    };
+  }, []);
+  
+  // Update chart with new data
   useEffect(() => {
     if (
-      !isClient || // Only run on client
+      !isClient || 
       !isChartInitialized ||
       !seriesRef.current ||
       !data ||
@@ -428,47 +210,130 @@ const MarketChart: React.FC<MarketChartProps> = ({ symbol, data }) => {
       return;
     }
 
-    // Use Timestamp from Backend (Fyers)
-    const newTime = data.timestamp as UTCTimestamp;
-    const newValue = data.ltp;
-    
-    // Store the data point
-    dataPointsRef.current.set(newTime, newValue);
-    
-    // Create a new point
-    const newPoint: LineData = { time: newTime, value: newValue };
-
     try {
-      // Update the chart
-      seriesRef.current.update(newPoint);
+      // Ensure timestamp is valid
+      const newTime = Math.floor(data.timestamp) as UTCTimestamp;
+      const newValue = data.ltp;
+      
+      // Check if we already have a point with this timestamp
+      const existingIndex = dataPointsRef.current.findIndex(p => p.time === newTime);
+      
+      if (existingIndex >= 0) {
+        // Update existing point
+        dataPointsRef.current[existingIndex].value = newValue;
+        
+        // Need to use setData for updates to existing points
+        const sortedData = [...dataPointsRef.current].sort((a, b) => 
+          (a.time as number) - (b.time as number)
+        );
+        seriesRef.current.setData(sortedData);
+      } else {
+        // Add new point
+        const newPoint: LineData = { time: newTime, value: newValue };
+        dataPointsRef.current.push(newPoint);
+        
+        // Sort by time to ensure ascending order
+        dataPointsRef.current.sort((a, b) => (a.time as number) - (b.time as number));
+        
+        // Use update for new points
+        seriesRef.current.update(newPoint);
+      }
+      
+      // Limit data points to prevent performance issues
+      if (dataPointsRef.current.length > 300) {
+        dataPointsRef.current = dataPointsRef.current.slice(-300);
+      }
+      
+      // Scroll to latest data
+      if (chartRef.current) {
+        chartRef.current.timeScale().scrollToRealTime();
+      }
     } catch (error) {
-      console.error(
-        `Error updating chart series for ${symbol}:`,
-        error,
-        'Data point:',
-        newPoint,
-      );
+      console.error('Error updating chart:', error);
+      
+      // Recovery attempt
+      if (seriesRef.current && dataPointsRef.current.length > 0) {
+        try {
+          console.log('Attempting recovery by setting all data');
+          // Ensure data is properly sorted
+          const sortedData = [...dataPointsRef.current].sort((a, b) => 
+            (a.time as number) - (b.time as number)
+          );
+          seriesRef.current.setData(sortedData);
+        } catch (recoveryError) {
+          console.error('Recovery failed:', recoveryError);
+        }
+      }
     }
-  }, [data, isChartInitialized, symbol, isClient]); // Add isClient as a dependency
+  }, [data, isChartInitialized, isClient]);
 
-  // Symbol Change Effect
+  // Symbol change effect
   useEffect(() => {
-    if (!isClient) return; // Only run on client
+    if (!isClient || !isChartInitialized || !seriesRef.current) return;
     
-    if (seriesRef.current && isChartInitialized) {
-      console.log(`Symbol changed to ${symbol}. Clearing chart data.`);
-      seriesRef.current.setData([]);
-      dataPointsRef.current.clear();
+    console.log(`Symbol changed to ${symbol}. Resetting chart data.`);
+    
+    try {
+      // Reset data points for new symbol
+      const initialData = createDummyData();
+      dataPointsRef.current = initialData;
+      
+      // Update series data
+      seriesRef.current.setData(initialData);
+      
+      // Update title
+      seriesRef.current.applyOptions({
+        title: symbol
+      });
+      
+      // Fit content
+      if (chartRef.current) {
+        chartRef.current.timeScale().fitContent();
+      }
+    } catch (error) {
+      console.error('Error resetting chart on symbol change:', error);
     }
-  }, [symbol, isChartInitialized, isClient]); // Add isClient as a dependency
+  }, [symbol, isChartInitialized, isClient]);
 
-  // Show a placeholder during server-side rendering
+  // Show loading during SSR
   if (!isClient) {
-    return <div className="w-full h-[300px] bg-gray-100 flex items-center justify-center">Loading chart...</div>;
+    return (
+      <div className="w-full h-[500px] bg-gray-100 flex items-center justify-center">
+        <div className="text-gray-500">Loading chart...</div>
+      </div>
+    );
   }
 
   return (
-    <div className="w-full h-[300px]" ref={chartContainerRef} />
+    <div className="relative w-full h-[500px] border border-gray-200 rounded shadow-sm bg-white overflow-hidden">
+      {/* Chart title */}
+      <div className="absolute top-2 left-2 z-10 text-sm font-medium text-gray-700">
+        {symbol} Price Chart
+      </div>
+      
+      {/* Chart container - explicit dimensions are crucial */}
+      <div 
+        className="w-full h-full" 
+        style={{ 
+          width: '100%',
+          height: '100%',
+          minWidth: '300px',
+          minHeight: '300px'
+        }} 
+        ref={chartContainerRef}
+      />
+      
+      {/* Loading overlay */}
+      {!isChartInitialized && (
+        <div className="absolute inset-0 bg-white bg-opacity-70 flex items-center justify-center">
+          <div className="text-blue-500">
+            {initializationAttempt > 0 
+              ? `Initializing chart (attempt ${initializationAttempt}/5)...` 
+              : 'Initializing chart...'}
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
