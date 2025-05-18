@@ -37,11 +37,9 @@ const isMarketDataRoute = pathname?.includes('/market-data');
   const [selectedInterval, setSelectedInterval] = useState('10m');
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
   
-  // Get watchlist data for the companies list
   const { companies, selectedWatchlist, setSelectedWatchlist, loading, error } = useWatchlist();
 
-  // Set page title based on route
-  const pageTitle = isMarketDataRoute ? "Market Data" : "Stock Chart";
+  const pageTitle = isMarketDataRoute ? "Market Data" : "Hitorical Data";
 
   return (
     <SidebarProvider>
@@ -55,7 +53,7 @@ const isMarketDataRoute = pathname?.includes('/market-data');
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block">
                   <BreadcrumbLink href="#">
-                    Building Your Application
+                    Dashboard
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
@@ -70,10 +68,8 @@ const isMarketDataRoute = pathname?.includes('/market-data');
         
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
           {isMarketDataRoute ? (
-            // Render Market Data Page
             <MarketDataPage />
           ) : (
-            // Render Dashboard Content
             <>
               {/* Control panel with selectors */}
               <CardWithForm 

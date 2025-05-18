@@ -46,6 +46,9 @@ const data = {
       icon: PieChart,
       isActive: true,
       items: [
+        { title: "Historical Data",
+      url: "/",
+      icon: SquareTerminal,},
         {
           title: "Overview",
           url: "#",
@@ -173,7 +176,6 @@ const data = {
     },
   ],
   projects: [
-    /* Existing commented projects remain unchanged */
   ],
 }
 

@@ -1,11 +1,25 @@
-// app/market-data/page.tsx
 'use client';
 import React, { useEffect, useState, useCallback } from 'react';
 import { getSocket } from '@/lib/socket';
 import dynamic from 'next/dynamic';
 import { MoonIcon, SunIcon } from '@heroicons/react/24/outline';
+import { AppSidebar } from "../components/app-sidebar";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { Separator } from "@/components/ui/separator";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { ModeToggle } from "../components/toggleButton";
 
-// Import Plotly chart with dynamic loading (no SSR)
 const PlotlyChart = dynamic(() => import('./components/charts/PlotlyChart'), { 
   ssr: false,
   loading: () => (
@@ -55,18 +69,18 @@ const MarketDataPage: React.FC = () => {
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
   const [historicalData, setHistoricalData] = useState<Record<string, MarketData[]>>({});
   const [ohlcData, setOhlcData] = useState<Record<string, OHLCData[]>>({});
- const [availableSymbols] = useState<string[]>([
-  'NSE:NIFTY50-INDEX',
-  'NSE:BANKNIFTY-INDEX',
-  'NSE:RELIANCE-EQ',
-  'NSE:TCS-EQ',
-  'NSE:INFY-EQ',
-  'NSE:HDFCBANK-EQ',
-  'NSE:ICICIBANK-EQ',
-  'NSE:LT-EQ',
-  'NSE:SBIN-EQ',
-  'NSE:HINDUNILVR-EQ'
-]);
+  const [availableSymbols] = useState<string[]>([
+    'NSE:NIFTY50-INDEX',
+    'NSE:BANKNIFTY-INDEX',
+    'NSE:RELIANCE-EQ',
+    'NSE:TCS-EQ',
+    'NSE:INFY-EQ',
+    'NSE:HDFCBANK-EQ',
+    'NSE:ICICIBANK-EQ',
+    'NSE:LT-EQ',
+    'NSE:SBIN-EQ',
+    'NSE:HINDUNILVR-EQ'
+  ]);
 
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
   const [lastDataReceived, setLastDataReceived] = useState<Date | null>(null);
@@ -192,7 +206,7 @@ const MarketDataPage: React.FC = () => {
         }
       }
     });
-    
+
     socket.on('ohlcData', (data: { symbol: string, data: OHLCData[] }) => {
       console.log('📊 Received OHLC data:', data);
       
@@ -291,182 +305,240 @@ const MarketDataPage: React.FC = () => {
   const symbolHistory = historicalData[selectedSymbol] || [];
   const symbolOhlc = ohlcData[selectedSymbol] || [];
 
-  // Return a loading state during server rendering
-  if (!isClient) {
-    return <div className="container mx-auto p-4 bg-zinc-900 text-white">Loading market data...</div>;
-  }
+ // Return a loading state during server rendering
+if (!isClient) {
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>
+        <header className="flex h-16 shrink-0 items-center gap-2 w-full">
+          <div className="flex items-center gap-2 px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <Breadcrumb className="flex items-center justify-end gap-2">
+              <BreadcrumbList>
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink href="#">
+                    Building Your Application
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden md:block" />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Live Market Data</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+              <ModeToggle />
+            </Breadcrumb>
+          </div>
+        </header>
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+          <div className="container mx-auto p-4 bg-zinc-900 text-white flex items-center justify-center h-[80vh]">
+            <div className="text-xl animate-pulse">Loading market data...</div>
+          </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
+
 
   return (
-    <div className="min-h-screen bg-zinc-900 text-zinc-100">
-      <div className="container mx-auto p-4">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-white">Live Market Data</h1>
-          <div className="flex items-center space-x-2">
-            <span className={`inline-block w-2 h-2 rounded-full ${
-              socketStatus.includes('Connected') ? 'bg-green-500' : 'bg-red-500'
-            }`}></span>
-            <span className="text-sm text-zinc-400">{socketStatus}</span>
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>
+        <header className="flex h-16 shrink-0 items-center gap-2 w-full">
+          <div className="flex items-center gap-2 px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <Breadcrumb className="flex items-center justify-end gap-2">
+              <BreadcrumbList>
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink href="#">
+                    Building Your Application
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden md:block" />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Live Market Data</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+              <ModeToggle />
+            </Breadcrumb>
           </div>
-        </div>
-        
-        <div className="mb-6 p-4 bg-zinc-800 rounded-lg shadow-lg">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <p className="text-sm text-zinc-400">Symbol</p>
-              <select
-                value={selectedSymbol}
-                onChange={(e) => setSelectedSymbol(e.target.value)}
-                className="mt-1 w-full bg-zinc-700 text-white border border-zinc-600 rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {availableSymbols.map(symbol => (
-                  <option key={symbol} value={symbol}>{symbol}</option>
-                ))}
-                            </select>
-            </div>
-            <div>
-              <p className="text-sm text-zinc-400">Last Update</p>
-              <p className="mt-1 font-medium">{lastDataReceived ? lastDataReceived.toLocaleTimeString() : 'No data yet'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-zinc-400">Data Points</p>
-              <p className="mt-1 font-medium">{symbolHistory.length} historical / {dataCount} updates</p>
-            </div>
-            <div>
-              <p className="text-sm text-zinc-400">Market Status</p>
-              <p className={`mt-1 font-medium ${tradingHours.isActive ? 'text-green-500' : 'text-red-500'}`}>
-                {tradingHours.isActive ? 'Market Open' : 'Market Closed'}
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
-          <div className="lg:col-span-3">
-            <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-[600px]">
-              {symbolHistory.length > 0 ? (
-                <PlotlyChart 
-                  symbol={selectedSymbol} 
-                  data={currentData} 
-                  historicalData={symbolHistory}
-                  ohlcData={symbolOhlc}
-                  tradingHours={tradingHours}
-                />
-              ) : (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-zinc-400">Loading historical data for {selectedSymbol}...</p>
+        </header>
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+          <div className="min-h-screen bg-zinc-900 text-zinc-100">
+            <div className="container mx-auto p-4">
+              <div className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold text-white">Live Market Data</h1>
+                <div className="flex items-center space-x-2">
+                  <span className={`inline-block w-2 h-2 rounded-full ${
+                    socketStatus.includes('Connected') ? 'bg-green-500' : 'bg-red-500'
+                  }`}></span>
+                  <span className="text-sm text-zinc-400">{socketStatus}</span>
                 </div>
-              )}
-            </div>
-          </div>
-          
-          <div className="bg-zinc-800 p-4 rounded-lg shadow-lg">
-            {currentData ? (
-              <>
-                <h2 className="text-xl font-semibold mb-2 text-white">{selectedSymbol}</h2>
-                <div className="text-3xl font-bold mb-2 text-white">₹{formatPrice(currentData.ltp)}</div>
-                <div className={`text-lg ${getChangeClass(currentData.change)}`}>
-                  {formatChange(currentData.change, currentData.changePercent)}
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4 mt-6">
-                  <div className="bg-zinc-700 p-3 rounded">
-                    <div className="text-xs text-zinc-400">Open</div>
-                    <div className="text-lg">₹{formatPrice(currentData.open)}</div>
-                  </div>
-                  <div className="bg-zinc-700 p-3 rounded">
-                    <div className="text-xs text-zinc-400">Prev Close</div>
-                    <div className="text-lg">₹{formatPrice(currentData.close)}</div>
-                  </div>
-                  <div className="bg-zinc-700 p-3 rounded">
-                    <div className="text-xs text-zinc-400">High</div>
-                    <div className="text-lg">₹{formatPrice(currentData.high)}</div>
-                  </div>
-                  <div className="bg-zinc-700 p-3 rounded">
-                    <div className="text-xs text-zinc-400">Low</div>
-                    <div className="text-lg">₹{formatPrice(currentData.low)}</div>
-                  </div>
-                </div>
-                
-                <div className="mt-6 border-t border-zinc-700 pt-4">
-                  <div className="grid grid-cols-2 gap-y-2">
-                    <div>
-                      <div className="text-xs text-zinc-400">Bid</div>
-                      <div>₹{formatPrice(currentData.bid)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-zinc-400">Ask</div>
-                      <div>₹{formatPrice(currentData.ask)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-zinc-400">Volume</div>
-                      <div>{currentData.volume?.toLocaleString() || '0'}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-zinc-400">Last Updated</div>
-                      <div>{new Date(currentData.timestamp * 1000).toLocaleTimeString()}</div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Technical Indicators */}
-                {(currentData.sma_20 || currentData.ema_9 || currentData.rsi_14) && (
-                  <div className="mt-6 border-t border-zinc-700 pt-4">
-                    <h3 className="text-sm font-medium mb-2 text-zinc-300">Technical Indicators</h3>
-                    <div className="grid grid-cols-3 gap-2">
-                      {currentData.sma_20 && (
-                        <div className="bg-zinc-700 p-2 rounded">
-                          <div className="text-xs text-orange-500">SMA 20</div>
-                          <div className="text-sm">₹{formatPrice(currentData.sma_20)}</div>
-                        </div>
-                      )}
-                      {currentData.ema_9 && (
-                        <div className="bg-zinc-700 p-2 rounded">
-                          <div className="text-xs text-purple-500">EMA 9</div>
-                          <div className="text-sm">₹{formatPrice(currentData.ema_9)}</div>
-                        </div>
-                      )}
-                      {currentData.rsi_14 && (
-                        <div className="bg-zinc-700 p-2 rounded">
-                          <div className="text-xs text-cyan-500">RSI 14</div>
-                          <div className="text-sm">{currentData.rsi_14.toFixed(2)}</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-zinc-400">No data available</p>
               </div>
-            )}
-          </div>
-        </div>
-        
-        {/* Debug section */}
-        <div className="mt-8 p-4 bg-zinc-800 rounded-lg shadow-lg">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-lg font-semibold text-white">Raw Market Data</h3>
-            <div className="text-xs text-zinc-400">
-              {symbolHistory.length > 0 && (
-                <>
-                  Trading Hours: {new Date(tradingHours.start).toLocaleTimeString()} - {new Date(tradingHours.end).toLocaleTimeString()}
-                </>
-              )}
+              
+              <div className="mb-6 p-4 bg-zinc-800 rounded-lg shadow-lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-zinc-400">Symbol</p>
+                    <select
+                      value={selectedSymbol}
+                      onChange={(e) => setSelectedSymbol(e.target.value)}
+                      className="mt-1 w-full bg-zinc-700 text-white border border-zinc-600 rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {availableSymbols.map(symbol => (
+                        <option key={symbol} value={symbol}>{symbol}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <p className="text-sm text-zinc-400">Last Update</p>
+                    <p className="mt-1 font-medium">{lastDataReceived ? lastDataReceived.toLocaleTimeString() : 'No data yet'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-zinc-400">Data Points</p>
+                    <p className="mt-1 font-medium">{symbolHistory.length} historical / {dataCount} updates</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-zinc-400">Market Status</p>
+                    <p className={`mt-1 font-medium ${tradingHours.isActive ? 'text-green-500' : 'text-red-500'}`}>
+                      {tradingHours.isActive ? 'Market Open' : 'Market Closed'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+                <div className="lg:col-span-3">
+                  <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-[600px]">
+                    {symbolHistory.length > 0 ? (
+                      <PlotlyChart 
+                        symbol={selectedSymbol} 
+                        data={currentData} 
+                        historicalData={symbolHistory}
+                        ohlcData={symbolOhlc}
+                        tradingHours={tradingHours}
+                      />
+                    ) : (
+                      <div className="h-full flex items-center justify-center">
+                        <p className="text-zinc-400">Loading historical data for {selectedSymbol}...</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="bg-zinc-800 p-4 rounded-lg shadow-lg">
+                  {currentData ? (
+                    <>
+                      <h2 className="text-xl font-semibold mb-2 text-white">{selectedSymbol}</h2>
+                      <div className="text-3xl font-bold mb-2 text-white">₹{formatPrice(currentData.ltp)}</div>
+                      <div className={`text-lg ${getChangeClass(currentData.change)}`}>
+                        {formatChange(currentData.change, currentData.changePercent)}
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4 mt-6">
+                        <div className="bg-zinc-700 p-3 rounded">
+                          <div className="text-xs text-zinc-400">Open</div>
+                          <div className="text-lg">₹{formatPrice(currentData.open)}</div>
+                        </div>
+                        <div className="bg-zinc-700 p-3 rounded">
+                          <div className="text-xs text-zinc-400">Prev Close</div>
+                          <div className="text-lg">₹{formatPrice(currentData.close)}</div>
+                        </div>
+                        <div className="bg-zinc-700 p-3 rounded">
+                          <div className="text-xs text-zinc-400">High</div>
+                          <div className="text-lg">₹{formatPrice(currentData.high)}</div>
+                        </div>
+                        <div className="bg-zinc-700 p-3 rounded">
+                          <div className="text-xs text-zinc-400">Low</div>
+                          <div className="text-lg">₹{formatPrice(currentData.low)}</div>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-6 border-t border-zinc-700 pt-4">
+                        <div className="grid grid-cols-2 gap-y-2">
+                          <div>
+                            <div className="text-xs text-zinc-400">Bid</div>
+                            <div>₹{formatPrice(currentData.bid)}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-zinc-400">Ask</div>
+                            <div>₹{formatPrice(currentData.ask)}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-zinc-400">Volume</div>
+                            <div>{currentData.volume?.toLocaleString() || '0'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-zinc-400">Last Updated</div>
+                            <div>{new Date(currentData.timestamp * 1000).toLocaleTimeString()}</div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Technical Indicators */}
+                      {(currentData.sma_20 || currentData.ema_9 || currentData.rsi_14) && (
+                        <div className="mt-6 border-t border-zinc-700 pt-4">
+                          <h3 className="text-sm font-medium mb-2 text-zinc-300">Technical Indicators</h3>
+                          <div className="grid grid-cols-3 gap-2">
+                            {currentData.sma_20 && (
+                              <div className="bg-zinc-700 p-2 rounded">
+                                <div className="text-xs text-orange-500">SMA 20</div>
+                                <div className="text-sm">₹{formatPrice(currentData.sma_20)}</div>
+                              </div>
+                            )}
+                            {currentData.ema_9 && (
+                              <div className="bg-zinc-700 p-2 rounded">
+                                <div className="text-xs text-purple-500">EMA 9</div>
+                                <div className="text-sm">₹{formatPrice(currentData.ema_9)}</div>
+                              </div>
+                            )}
+                            {currentData.rsi_14 && (
+                              <div className="bg-zinc-700 p-2 rounded">
+                                <div className="text-xs text-cyan-500">RSI 14</div>
+                                <div className="text-sm">{currentData.rsi_14.toFixed(2)}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-zinc-400">No data available</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Debug section */}
+              <div className="mt-8 p-4 bg-zinc-800 rounded-lg shadow-lg">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-lg font-semibold text-white">Raw Market Data</h3>
+                  <div className="text-xs text-zinc-400">
+                    {symbolHistory.length > 0 && (
+                      <>
+                        Trading Hours: {new Date(tradingHours.start).toLocaleTimeString()} - {new Date(tradingHours.end).toLocaleTimeString()}
+                      </>
+                    )}
+                  </div>
+                </div>
+                {currentData ? (
+                  <pre className="text-xs overflow-auto max-h-60 bg-zinc-900 p-4 rounded text-zinc-300">
+                    {JSON.stringify(currentData, null, 2)}
+                  </pre>
+                ) : (
+                  <p className="text-zinc-400">No data received yet. Check console for connection details.</p>
+                )}
+              </div>
             </div>
           </div>
-          {currentData ? (
-            <pre className="text-xs overflow-auto max-h-60 bg-zinc-900 p-4 rounded text-zinc-300">
-              {JSON.stringify(currentData, null, 2)}
-            </pre>
-          ) : (
-            <p className="text-zinc-400">No data received yet. Check console for connection details.</p>
-          )}
         </div>
-      </div>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 };
 
 export default MarketDataPage;
-
