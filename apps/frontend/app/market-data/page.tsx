@@ -55,14 +55,19 @@ const MarketDataPage: React.FC = () => {
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
   const [historicalData, setHistoricalData] = useState<Record<string, MarketData[]>>({});
   const [ohlcData, setOhlcData] = useState<Record<string, OHLCData[]>>({});
-  const [availableSymbols] = useState<string[]>([
-    'NSE:NIFTY50-INDEX',
-    'NSE:BANKNIFTY-INDEX',
-    'NSE:RELIANCE-EQ',
-    'NSE:TCS-EQ',
-    'NSE:INFY-EQ',
-    'NSE:ADANIENT-EQ'
-  ]);
+ const [availableSymbols] = useState<string[]>([
+  'NSE:NIFTY50-INDEX',
+  'NSE:BANKNIFTY-INDEX',
+  'NSE:RELIANCE-EQ',
+  'NSE:TCS-EQ',
+  'NSE:INFY-EQ',
+  'NSE:HDFCBANK-EQ',
+  'NSE:ICICIBANK-EQ',
+  'NSE:LT-EQ',
+  'NSE:SBIN-EQ',
+  'NSE:HINDUNILVR-EQ'
+]);
+
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
   const [lastDataReceived, setLastDataReceived] = useState<Date | null>(null);
   const [dataCount, setDataCount] = useState<number>(0);

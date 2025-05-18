@@ -33,7 +33,7 @@ def main():
         'password': 'password',
         'host': '100.93.172.21',
         'port': '5432',
-        'options=':'no-gssapi'
+        # 'options=':'no-gssapi'
 
     }
 

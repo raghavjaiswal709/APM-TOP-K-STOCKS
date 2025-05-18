@@ -13,7 +13,7 @@ import { AppService } from './app.service';
     // Only import DB-free modules here
     // MarketDataModule,
     WatchlistModule, // DB-free
-    // StockModule,     // DB-dependent, will handle its own DB connection
+    StockModule,     // DB-dependent, will handle its own DB connection
   ],
   controllers: [AppController],
   providers: [AppService],

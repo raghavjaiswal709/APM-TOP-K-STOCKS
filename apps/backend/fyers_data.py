@@ -350,7 +350,7 @@ def generate_sample_historical_data(symbol):
     
     # Generate data points every minute
     current = start_time
-    base_price = 2200.0  # Base price for ADANIENT
+    base_price = 2500.0  # Base price for ADANIENT
     
     # Generate minute-by-minute data
     while current <= current_time:

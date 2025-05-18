@@ -3,11 +3,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Plot from 'react-plotly.js';
 import { 
-  ChartBarIcon, 
-  ChartBarSquareIcon,
+  ChevronRight, 
+  type LucideIcon,
   ArrowTrendingUpIcon,
+  BarChartIcon,
+  LineChartIcon,
+  CandlestickChartIcon,
   ArrowsRightLeftIcon
-} from '@heroicons/react/24/outline';
+} from "lucide-react";
 
 interface DataPoint {
   ltp: number;
@@ -22,6 +25,8 @@ interface DataPoint {
   sma_20?: number;
   ema_9?: number;
   rsi_14?: number;
+  bid?: number;
+  ask?: number;
 }
 
 interface OHLCPoint {
@@ -54,6 +59,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   tradingHours,
 }) => {
   const chartRef = useRef<any>(null);
+  const spreadChartRef = useRef<any>(null);
   const [initialized, setInitialized] = useState(false);
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1D');
   const [chartType, setChartType] = useState<'line' | 'candle'>('candle');
@@ -61,10 +67,12 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     sma20: boolean;
     ema9: boolean;
     rsi: boolean;
+    bidAsk: boolean;
   }>({
     sma20: false,
     ema9: false,
-    rsi: false
+    rsi: false,
+    bidAsk: true // Enable bid-ask by default
   });
   
   // Prepare line chart data
@@ -89,12 +97,24 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const x = allData.map(point => new Date(point.timestamp * 1000));
     const y = allData.map(point => point.ltp);
     
+    // Extract bid and ask data
+    const bid = allData.map(point => point.bid || null);
+    const ask = allData.map(point => point.ask || null);
+    
+    // Calculate spread where both bid and ask exist
+    const spread = allData.map(point => {
+      if (point.ask && point.bid) {
+        return point.ask - point.bid;
+      }
+      return null;
+    });
+    
     // Extract indicator data if available
     const sma20 = allData.map(point => point.sma_20 || null);
     const ema9 = allData.map(point => point.ema_9 || null);
     const rsi = allData.map(point => point.rsi_14 || null);
     
-    return { x, y, allData, sma20, ema9, rsi };
+    return { x, y, allData, sma20, ema9, rsi, bid, ask, spread };
   };
   
   // Prepare candlestick data
@@ -131,8 +151,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     // For line chart
     if (chartType === 'line') {
       const prices = visibleData.map(point => point.ltp);
-      const minPrice = Math.min(...prices);
-      const maxPrice = Math.max(...prices);
+      const minPrice = Math.min(...prices.filter(p => p !== null && p !== undefined));
+      const maxPrice = Math.max(...prices.filter(p => p !== null && p !== undefined));
       
       // Add padding (5% of the range)
       const padding = (maxPrice - minPrice) * 0.05;
@@ -159,6 +179,39 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
     
     return undefined;
+  };
+  
+  // Calculate bid-ask y-axis range
+  const calculateBidAskRange = () => {
+    const { bid, ask } = prepareLineChartData();
+    
+    const validBids = bid.filter(b => b !== null && b !== undefined) as number[];
+    const validAsks = ask.filter(a => a !== null && a !== undefined) as number[];
+    
+    if (validBids.length === 0 || validAsks.length === 0) return undefined;
+    
+    const minBid = Math.min(...validBids);
+    const maxAsk = Math.max(...validAsks);
+    
+    // Add padding (5% of the range)
+    const padding = (maxAsk - minBid) * 0.05;
+    return [minBid - padding, maxAsk + padding];
+  };
+  
+  // Calculate spread y-axis range
+  const calculateSpreadRange = () => {
+    const { spread } = prepareLineChartData();
+    
+    const validSpreads = spread.filter(s => s !== null && s !== undefined) as number[];
+    
+    if (validSpreads.length === 0) return [0, 1]; // Default range if no valid spreads
+    
+    const minSpread = Math.min(...validSpreads);
+    const maxSpread = Math.max(...validSpreads);
+    
+    // Add padding (10% of the range)
+    const padding = Math.max((maxSpread - minSpread) * 0.1, 0.01);
+    return [Math.max(0, minSpread - padding), maxSpread + padding];
   };
   
   // Calculate time range based on selected timeframe
@@ -226,7 +279,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       indicator: {
         sma20: '#f97316',  // Orange
         ema9: '#8b5cf6',   // Purple
-        rsi: '#06b6d4'     // Cyan
+        rsi: '#06b6d4',    // Cyan
+        bid: '#22c55e',    // Green
+        ask: '#ef4444',    // Red
+        spread: '#3b82f6'  // Blue
       }
     };
   };
@@ -259,6 +315,16 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         'yaxis.range': calculateYAxisRange(),
         'yaxis.autorange': false
       });
+      
+      // Update spread chart if it exists
+      const spreadDiv = document.getElementById('spread-chart');
+      if (spreadDiv) {
+        // @ts-ignore - Plotly is available globally
+        Plotly.relayout(spreadDiv, {
+          'xaxis.range': getTimeRange(),
+          'xaxis.autorange': false
+        });
+      }
     } catch (err) {
       console.error('Error updating timeframe:', err);
     }
@@ -270,7 +336,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
   
   // Toggle indicators
-  const toggleIndicator = (indicator: 'sma20' | 'ema9' | 'rsi') => {
+  const toggleIndicator = (indicator: 'sma20' | 'ema9' | 'rsi' | 'bidAsk') => {
     setShowIndicators(prev => ({
       ...prev,
       [indicator]: !prev[indicator]
@@ -298,8 +364,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         
         if (visibleData.length > 0) {
           const prices = visibleData.map(point => point.ltp);
-          minValue = Math.min(...prices);
-          maxValue = Math.max(...prices);
+          minValue = Math.min(...prices.filter(p => p !== null && p !== undefined));
+          maxValue = Math.max(...prices.filter(p => p !== null && p !== undefined));
         }
       } else {
         visibleData = ohlcData.filter(
@@ -328,6 +394,16 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             'yaxis.autorange': false
           });
         }
+      }
+      
+      // Also update the spread chart with the same x-axis range
+      const spreadDiv = document.getElementById('spread-chart');
+      if (spreadDiv) {
+        // @ts-ignore - Plotly is available globally
+        Plotly.relayout(spreadDiv, {
+          'xaxis.range': [startDate, endDate],
+          'xaxis.autorange': false
+        });
       }
     }
   };
@@ -380,10 +456,37 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           'yaxis.autorange': false
         });
       }
+      
+      // Update bid-ask data if enabled
+      if (showIndicators.bidAsk) {
+        const { x, bid, ask } = prepareLineChartData();
+        
+        // @ts-ignore - Plotly is available globally
+        Plotly.update(plotDiv, {
+          x: [x, x],
+          y: [bid, ask]
+        }, {}, [1, 2]);
+      }
+      
+      // Update spread chart if it exists
+      const spreadDiv = document.getElementById('spread-chart');
+      if (spreadDiv) {
+        const { x, spread } = prepareLineChartData();
+        
+        // @ts-ignore - Plotly is available globally
+        Plotly.update(spreadDiv, {
+          x: [x],
+          y: [spread]
+        }, {
+          'xaxis.range': getTimeRange(),
+          'yaxis.range': calculateSpreadRange(),
+          'yaxis.autorange': false
+        });
+      }
     } catch (err) {
       console.error('Error updating chart:', err);
     }
-  }, [data, historicalData, ohlcData, initialized, selectedTimeframe, chartType]);
+  }, [data, historicalData, ohlcData, initialized, selectedTimeframe, chartType, showIndicators.bidAsk]);
   
   // Create plot data based on chart type
   const createPlotData = () => {
@@ -391,7 +494,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const plotData: any[] = [];
     
     if (chartType === 'line') {
-      const { x, y, sma20, ema9, rsi } = prepareLineChartData();
+      const { x, y, sma20, ema9, rsi, bid, ask } = prepareLineChartData();
       
       // Main price line
       plotData.push({
@@ -400,10 +503,35 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         type: 'scatter',
         mode: 'lines',
         line: { color: colors.line, width: 2 },
-        name: symbol,
+        name: `${symbol} Price`,
         hoverinfo: 'y+text',
         text: x.map(date => date.toLocaleTimeString()),
       });
+      
+      // Add bid and ask lines if enabled
+      if (showIndicators.bidAsk) {
+        plotData.push({
+          x,
+          y: bid,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.bid, width: 1.5, dash: 'dot' },
+          name: 'Bid Price',
+          yaxis: 'y',
+          hoverinfo: 'y+name',
+        });
+        
+        plotData.push({
+          x,
+          y: ask,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.ask, width: 1.5, dash: 'dot' },
+          name: 'Ask Price',
+          yaxis: 'y',
+          hoverinfo: 'y+name',
+        });
+      }
       
       // Add indicators if enabled
       if (showIndicators.sma20) {
@@ -446,6 +574,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     } else {
       // Candlestick chart
       const { x, open, high, low, close, volume } = prepareCandlestickData();
+      const { bid, ask } = prepareLineChartData();
       
       plotData.push({
         x,
@@ -460,6 +589,33 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         hoverinfo: 'all',
         showlegend: false
       });
+      
+      // Add bid and ask lines if enabled
+      if (showIndicators.bidAsk) {
+        const { x: lineX, bid, ask } = prepareLineChartData();
+        
+        plotData.push({
+          x: lineX,
+          y: bid,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.bid, width: 1.5, dash: 'dot' },
+          name: 'Bid Price',
+          yaxis: 'y',
+          hoverinfo: 'y+name',
+        });
+        
+        plotData.push({
+          x: lineX,
+          y: ask,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.ask, width: 1.5, dash: 'dot' },
+          name: 'Ask Price',
+          yaxis: 'y',
+          hoverinfo: 'y+name',
+        });
+      }
       
       // Add volume as a bar chart in a separate subplot
       plotData.push({
@@ -479,16 +635,34 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return plotData;
   };
   
+  // Create spread chart data
+  const createSpreadData = () => {
+    const colors = getColorTheme();
+    const { x, spread } = prepareLineChartData();
+    
+    return [{
+      x,
+      y: spread,
+      type: 'scatter',
+      mode: 'lines',
+      fill: 'tozeroy',
+      line: { color: colors.indicator.spread, width: 1.5 },
+      name: 'Bid-Ask Spread',
+      hoverinfo: 'y+name',
+    }];
+  };
+  
   // Create layout based on chart type and indicators
   const createLayout = () => {
     const colors = getColorTheme();
     const timeRange = getTimeRange();
     const yRange = calculateYAxisRange();
+    const bidAskRange = calculateBidAskRange();
     
     // Base layout
     const layout: any = {
       autosize: true,
-      margin: { l: 50, r: 20, t: 40, b: 40 },
+      margin: { l: 50, r: 50, t: 40, b: 40 },
       title: {
         text: `${symbol} Price Chart`,
         font: { size: 16, color: colors.text },
@@ -560,6 +734,49 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return layout;
   };
   
+  // Create spread chart layout
+  const createSpreadLayout = () => {
+    const colors = getColorTheme();
+    const timeRange = getTimeRange();
+    const spreadRange = calculateSpreadRange();
+    
+    return {
+      autosize: true,
+      height: 150,
+      margin: { l: 50, r: 50, t: 30, b: 30 },
+      title: {
+        text: 'Bid-Ask Spread',
+        font: { size: 14, color: colors.text },
+      },
+      xaxis: {
+        title: '',
+        type: 'date',
+        range: timeRange,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+        rangeslider: { visible: false },
+        fixedrange: false,
+      },
+      yaxis: {
+        title: 'Spread (₹)',
+        range: spreadRange,
+        autorange: false,
+        fixedrange: false,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+      },
+      hovermode: 'closest',
+      showlegend: false,
+      plot_bgcolor: colors.bg,
+      paper_bgcolor: colors.paper,
+      font: { family: 'Arial, sans-serif', color: colors.text },
+    };
+  };
+  
   // Create timeframe selector buttons
   const timeframeButtons = [
     { label: '1m', value: '1m' },
@@ -600,7 +817,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             onClick={() => setChartType('line')}
             title="Line Chart"
           >
-            <ArrowTrendingUpIcon className="h-5 w-5" />
+            <LineChartIcon className="h-5 w-5" />
           </button>
           
           <button
@@ -610,7 +827,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             onClick={() => setChartType('candle')}
             title="Candlestick Chart"
           >
-            <ChartBarIcon className="h-5 w-5" />
+            <CandlestickChartIcon className="h-5 w-5" />
           </button>
           
           {/* Indicator toggles */}
@@ -643,10 +860,20 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           >
             <span className="text-xs font-bold">RSI</span>
           </button>
+          
+          <button
+            className={`p-1 rounded ${
+              showIndicators.bidAsk ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+            }`}
+            onClick={() => toggleIndicator('bidAsk')}
+            title="Bid-Ask"
+          >
+            <span className="text-xs font-bold">B/A</span>
+          </button>
         </div>
       </div>
       
-      <div className="flex-grow">
+      <div className="flex-grow mb-2">
         <Plot
           id="plotly-chart"
           ref={chartRef}
@@ -666,6 +893,23 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           style={{ width: '100%', height: '100%' }}
           useResizeHandler={true}
           onRelayout={handleRelayout}
+        />
+      </div>
+      
+      {/* Spread Chart */}
+      <div className="h-[150px]">
+        <Plot
+          id="spread-chart"
+          ref={spreadChartRef}
+          data={createSpreadData()}
+          layout={createSpreadLayout()}
+          config={{
+            responsive: true,
+            displayModeBar: false,
+            displaylogo: false,
+          }}
+          style={{ width: '100%', height: '100%' }}
+          useResizeHandler={true}
         />
       </div>
     </div>
