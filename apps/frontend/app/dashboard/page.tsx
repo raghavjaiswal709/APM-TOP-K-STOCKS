@@ -24,12 +24,18 @@ import { useWatchlist } from "@/hooks/useWatchlist";
 
 // Import the MarketDataPage dynamically to avoid SSR issues
 import dynamic from 'next/dynamic';
-const MarketDataPage = dynamic(() => import('../market-data/page'), { ssr: false });
+const MarketDataPage = dynamic(() => import('../market-data/page'), { 
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-[80vh]">
+      <div className="animate-pulse text-blue-500">Loading market data...</div>
+    </div>
+  )
+});
 
 export default function Page() {
-const pathname = usePathname();
-const isMarketDataRoute = pathname?.includes('/market-data');
-
+  const pathname = usePathname();
+  const isMarketDataRoute = pathname?.includes('/market-data');
   
   // State for all selectors
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
@@ -39,7 +45,45 @@ const isMarketDataRoute = pathname?.includes('/market-data');
   
   const { companies, selectedWatchlist, setSelectedWatchlist, loading, error } = useWatchlist();
 
-  const pageTitle = isMarketDataRoute ? "Market Data" : "Hitorical Data";
+  const pageTitle = isMarketDataRoute ? "Market Data" : "Historical Data";
+
+  // Fix for transparent dropdowns in Tailwind v4 with shadcn/ui
+  useEffect(() => {
+    // Create a style element
+    const styleElement = document.createElement('style');
+    styleElement.innerHTML = `
+      :root {
+        --popover: 0 0% 3.9%;
+        --popover-foreground: 0 0% 98%;
+      }
+      
+      .select-content {
+        background-color: hsl(0 0% 3.9%) !important;
+        color: hsl(0 0% 98%) !important;
+        border: 1px solid hsl(0 0% 14.9%) !important;
+      }
+      
+      [data-radix-select-viewport] {
+        background-color: hsl(0 0% 3.9%) !important;
+      }
+      
+      [data-radix-select-item] {
+        color: hsl(0 0% 98%) !important;
+      }
+      
+      [data-radix-select-item]:focus {
+        background-color: hsl(0 0% 14.9%) !important;
+      }
+    `;
+    
+    // Append the style element to the document head
+    document.head.appendChild(styleElement);
+    
+    // Clean up function to remove the style element when component unmounts
+    return () => {
+      document.head.removeChild(styleElement);
+    };
+  }, []);
 
   return (
     <SidebarProvider>

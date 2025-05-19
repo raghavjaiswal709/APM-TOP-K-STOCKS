@@ -38,16 +38,18 @@ grant_type = "authorization_code"
 # Track connected clients and their subscriptions
 clients = {}
 symbol_to_clients = {}
-running = True
+running = True  # Global variable to control the main loop
 
 # Store historical data for each symbol
-# We'll store the entire trading day's data (9:30 AM to 3:15 PM)
 historical_data = {}
 ohlc_data = {}  # Store OHLC data for candlestick charts
 MAX_HISTORY_POINTS = 10000  # Limit per symbol to prevent memory issues
 
 # Indian timezone
 INDIA_TZ = pytz.timezone('Asia/Kolkata')
+
+# Global variable for Fyers connection
+fyers = None
 
 # Trading day start and end times (9:30 AM to 3:15 PM, Indian time)
 def get_trading_hours():
@@ -316,6 +318,7 @@ def onopen():
 
 def heartbeat_task():
     """Send heartbeat to all clients every 30 seconds"""
+    global running
     while running:
         try:
             sio.emit('heartbeat', {
@@ -357,7 +360,8 @@ def generate_sample_historical_data(symbol):
         # Generate a random price movement with some trend
         minute_of_day = current.hour * 60 + current.minute
         trend_factor = np.sin(minute_of_day / 180 * np.pi) * 20  # Sinusoidal trend
-        noise = (hash(str(current)) % 100 - 50) / 5.0  # Random noise
+        # Use a more Python 3.11 friendly way to generate random noise
+        noise = (int(current.timestamp() * 1000) % 100 - 50) / 5.0  # Random noise
         
         price = base_price + trend_factor + noise
         price = max(price, base_price * 0.9)  # Ensure price doesn't go too low
@@ -368,7 +372,7 @@ def generate_sample_historical_data(symbol):
             'ltp': price,
             'change': price - base_price,
             'changePercent': ((price - base_price) / base_price) * 100,
-            'volume': hash(str(current)) % 10000 + 5000,
+            'volume': int(current.timestamp() * 1000) % 10000 + 5000,
             'open': base_price - 5,
             'high': base_price + 10,
             'low': base_price - 10,
@@ -382,10 +386,11 @@ def generate_sample_historical_data(symbol):
         # Create OHLC data for candlestick chart (1-minute candles)
         minute_timestamp = int(current.timestamp())
         
-        # Add some randomness to OHLC data
-        open_price = price - (hash(str(current) + "open") % 10 - 5)
-        high_price = max(price, open_price) + (hash(str(current) + "high") % 10)
-        low_price = min(price, open_price) - (hash(str(current) + "low") % 10)
+        # Add some randomness to OHLC data - using timestamp instead of hash for Python 3.11
+        seed = int(current.timestamp() * 1000)
+        open_price = price - (seed % 10 - 5)
+        high_price = max(price, open_price) + ((seed + 1) % 10)
+        low_price = min(price, open_price) - ((seed + 2) % 10)
         close_price = price
         
         ohlc_data[symbol].append({
@@ -403,7 +408,8 @@ def generate_sample_historical_data(symbol):
     logger.info(f"Generated {len(historical_data[symbol])} sample data points for {symbol}")
     logger.info(f"Generated {len(ohlc_data[symbol])} OHLC candles for {symbol}")
 
-def main():
+# Modified to be synchronous instead of async to avoid coroutine warnings
+def main_process():
     global fyers, running
     
     try:
@@ -466,6 +472,20 @@ def main():
         logger.error(f"Error: {e}")
         import traceback
         traceback.print_exc()
+
+def main():
+    global running
+    
+    try:
+        # Use eventlet to spawn the main process function (no async/await)
+        eventlet.spawn(main_process)
+        
+        # Block the main thread to keep the program running
+        while running:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Shutting down...")
+        running = False
 
 if __name__ == "__main__":
     try:
