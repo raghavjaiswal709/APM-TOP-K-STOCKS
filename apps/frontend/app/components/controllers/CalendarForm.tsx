@@ -37,7 +37,6 @@ export function CalendarForm({ onDateChange }: CalendarFormProps) {
     },
   });
 
-  // When the form value changes, call the parent's onDateChange callback
   useEffect(() => {
     const subscription = form.watch((value) => {
       if (onDateChange) {
@@ -45,7 +44,6 @@ export function CalendarForm({ onDateChange }: CalendarFormProps) {
       }
     });
     
-    // Cleanup subscription on unmount
     return () => subscription.unsubscribe();
   }, [form, onDateChange]);
 
@@ -63,7 +61,7 @@ export function CalendarForm({ onDateChange }: CalendarFormProps) {
                     <Button
                       variant={"outline"}
                       className={cn(
-                        "w-[240px] pl-3 text-left font-normal",
+                        "w-[240px] pl-3 text-left font-normal justify-start",
                         !field.value && "text-muted-foreground"
                       )}
                     >
@@ -76,7 +74,7 @@ export function CalendarForm({ onDateChange }: CalendarFormProps) {
                     </Button>
                   </FormControl>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className="w-auto p-0 bg-popover border border-border shadow-md" align="start">
                   <Calendar
                     mode="single"
                     selected={field.value}

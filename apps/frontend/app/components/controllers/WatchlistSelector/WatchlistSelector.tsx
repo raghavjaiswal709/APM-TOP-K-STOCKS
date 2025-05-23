@@ -24,10 +24,8 @@ export function WatchlistSelector({
     exists,
   } = useWatchlist();
   
-  // Use either external or internal state
   const effectiveWatchlist = externalSelectedWatchlist || internalSelectedWatchlist;
   
-  // Handle watchlist change
   const handleWatchlistChange = (value: string) => {
     if (onWatchlistChange) {
       onWatchlistChange(value);
@@ -46,7 +44,9 @@ export function WatchlistSelector({
       </div>
       
       {error && (
-        <div className="text-red-500 text-xs">{error}</div>
+        <div className="text-destructive text-xs bg-destructive/10 px-2 py-1 rounded">
+          {error}
+        </div>
       )}
       
       <div>

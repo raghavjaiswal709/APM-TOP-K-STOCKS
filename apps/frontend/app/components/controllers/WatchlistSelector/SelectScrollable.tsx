@@ -1,12 +1,6 @@
 'use client'
 import * as React from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 
 interface Company {
   company_code: string;
@@ -32,37 +26,73 @@ export function SelectScrollable({
   exists,
   onCompanySelect,
 }: SelectScrollableProps) {
+  const [selectedValue, setSelectedValue] = React.useState<string>("");
+
   const handleValueChange = (value: string) => {
+    setSelectedValue(value);
     if (onCompanySelect) {
-      onCompanySelect(value);
+      onCompanySelect(value || null);
     }
   };
 
+  // Convert companies to combobox options with enhanced search
+  const options: ComboboxOption[] = React.useMemo(() => {
+    return companies.map((company) => ({
+      value: company.company_code,
+      label: `${company.tradingsymbol} - ${company.name}`,
+      searchText: `${company.tradingsymbol} ${company.name} ${company.company_code} ${company.exchange}`.toLowerCase(),
+    }));
+  }, [companies]);
+
+  if (loading) {
+    return (
+      <Combobox
+        options={[]}
+        value=""
+        onSelect={() => {}}
+        placeholder="Loading companies..."
+        className="w-[280px]"
+        loading={true}
+        disabled={true}
+      />
+    );
+  }
+
+  if (!exists) {
+    return (
+      <Combobox
+        options={[]}
+        value=""
+        onSelect={() => {}}
+        placeholder="Watchlist not found"
+        className="w-[280px]"
+        disabled={true}
+      />
+    );
+  }
+
+  if (companies.length === 0) {
+    return (
+      <Combobox
+        options={[]}
+        value=""
+        onSelect={() => {}}
+        placeholder="No companies available"
+        className="w-[280px]"
+        disabled={true}
+      />
+    );
+  }
+
   return (
-    <Select onValueChange={handleValueChange}>
-      <SelectTrigger className="w-[180px]">
-        <SelectValue placeholder={
-          loading ? "Loading..." : 
-          !exists ? "Watchlist not found" :
-          companies.length === 0 ? "No companies" :
-          "Select company"
-        } />
-      </SelectTrigger>
-      <SelectContent>
-        {loading ? (
-          <SelectItem value="loading" disabled>Loading companies...</SelectItem>
-        ) : !exists ? (
-          <SelectItem value="not-found" disabled>Watchlist not found</SelectItem>
-        ) : companies.length === 0 ? (
-          <SelectItem value="empty" disabled>No companies in watchlist</SelectItem>
-        ) : (
-          companies.map((company) => (
-            <SelectItem key={company.company_code} value={company.company_code}>
-              {company.tradingsymbol} - {company.name}
-            </SelectItem>
-          ))
-        )}
-      </SelectContent>
-    </Select>
+    <Combobox
+      options={options}
+      value={selectedValue}
+      onSelect={handleValueChange}
+      placeholder="Search & select company..."
+      searchPlaceholder="Search companies..."
+      emptyText="No companies found."
+      className="w-[280px]"
+    />
   );
 }

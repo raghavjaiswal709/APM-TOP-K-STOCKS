@@ -7,8 +7,8 @@ import {
   type LucideIcon,
   ArrowTrendingUpIcon,
   BarChartIcon,
-  LineChartIcon,
-  CandlestickChartIcon,
+  LineChart ,
+  CandlestickChart,
   ArrowsRightLeftIcon
 } from "lucide-react";
 
@@ -817,7 +817,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             onClick={() => setChartType('line')}
             title="Line Chart"
           >
-            <LineChartIcon className="h-5 w-5" />
+            <LineChart  className="h-5 w-5" />
           </button>
           
           <button
@@ -827,7 +827,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             onClick={() => setChartType('candle')}
             title="Candlestick Chart"
           >
-            <CandlestickChartIcon className="h-5 w-5" />
+            <CandlestickChart className="h-5 w-5" />
           </button>
           
           {/* Indicator toggles */}
