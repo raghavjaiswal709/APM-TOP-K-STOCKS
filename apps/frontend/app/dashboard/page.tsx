@@ -137,7 +137,7 @@ export default function Page() {
               </div>
               
               {/* Watchlist Companies List */}
-              <Card className="w-full border border-opacity-30 border-gray-300 h-[400px] overflow-hidden">
+              <Card className="w-full border border-opacity-30  h-[400px] overflow-hidden">
                 <CardContent className="p-4">
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="text-lg font-medium">Watchlist {selectedWatchlist} Companies</h3>

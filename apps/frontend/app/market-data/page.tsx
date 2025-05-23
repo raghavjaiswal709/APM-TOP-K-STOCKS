@@ -65,7 +65,7 @@ interface TradingHours {
 
 const MarketDataPage: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
-  const [selectedSymbol, setSelectedSymbol] = useState<string>('NSE:ADANIENT-EQ');
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('');
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
   const [historicalData, setHistoricalData] = useState<Record<string, MarketData[]>>({});
   const [ohlcData, setOhlcData] = useState<Record<string, OHLCData[]>>({});

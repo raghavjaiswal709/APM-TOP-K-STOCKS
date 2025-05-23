@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   backend:
     build:
@@ -9,6 +11,7 @@ services:
       - apps/backend/.env
     volumes:
       - ./apps/backend:/app
+      - /app/node_modules
     depends_on:
       database:
         condition: service_healthy
@@ -20,15 +23,13 @@ services:
       dockerfile: Dockerfile.frontend
     ports:
       - "3000:3000"
-    # env_file:
-    #   - apps/frontend/.env
     volumes:
       - ./apps/frontend:/app
-      - /app/node_modules  # Ensures dependencies are installed inside container
+      - /app/node_modules
     depends_on:
       backend:
         condition: service_started
-    command: ["npm", "run", "start"]
+    command: ["npm", "run", "dev"]
 
   database:
     image: postgres:latest
@@ -46,6 +47,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  python-services:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    stdin_open: true
+    tty: true
+      
+    volumes:
+      - ./apps/backend/data:/app/data
+    depends_on:
+      - database
+      - backend
 
 volumes:
   postgres_data:
