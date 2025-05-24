@@ -4,7 +4,7 @@ import { format } from "date-fns"
 import { CalendarIcon } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
-import { useEffect } from "react"
+import { useEffect, useCallback } from "react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -37,15 +37,35 @@ export function CalendarForm({ onDateChange }: CalendarFormProps) {
     },
   });
 
+  // Memoize the callback to prevent unnecessary effect re-runs
+  const memoizedOnDateChange = useCallback(onDateChange, [onDateChange]);
+
+  // Watch for form changes and trigger callback
   useEffect(() => {
-    const subscription = form.watch((value) => {
-      if (onDateChange) {
-        onDateChange(value.selectedDate);
+    const subscription = form.watch((value, { name }) => {
+      if (name === 'selectedDate' && memoizedOnDateChange) {
+        console.log('Calendar date changed:', value.selectedDate); // Debug log
+        memoizedOnDateChange(value.selectedDate);
       }
     });
     
     return () => subscription.unsubscribe();
-  }, [form, onDateChange]);
+  }, [form, memoizedOnDateChange]);
+
+  // Handle date selection with immediate callback
+  const handleDateSelect = useCallback((date: Date | undefined) => {
+    form.setValue('selectedDate', date, { 
+      shouldValidate: true,
+      shouldDirty: true,
+      shouldTouch: true 
+    });
+    
+    // Immediately call the callback
+    if (memoizedOnDateChange) {
+      console.log('Direct date selection:', date); // Debug log
+      memoizedOnDateChange(date);
+    }
+  }, [form, memoizedOnDateChange]);
 
   return (
     <Form {...form}>
@@ -78,7 +98,7 @@ export function CalendarForm({ onDateChange }: CalendarFormProps) {
                   <Calendar
                     mode="single"
                     selected={field.value}
-                    onSelect={field.onChange}
+                    onSelect={handleDateSelect} // Use our custom handler
                     disabled={(date) =>
                       date > new Date() || date < new Date("1900-01-01")
                     }
