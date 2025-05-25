@@ -1,7 +1,7 @@
 'use client'
 import { zodResolver } from "@hookform/resolvers/zod"
 import { format } from "date-fns"
-import { CalendarIcon } from "lucide-react"
+import { CalendarIcon, Search } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { useEffect, useCallback } from "react"
@@ -14,6 +14,7 @@ import {
   FormControl,
   FormField,
   FormItem,
+  FormLabel,
 } from "@/components/ui/form"
 import {
   Popover,
@@ -22,73 +23,102 @@ import {
 } from "@/components/ui/popover"
 
 const FormSchema = z.object({
-  selectedDate: z.date().optional(),
+  startDate: z.date().optional(),
+  endDate: z.date().optional(),
+}).refine((data) => {
+  if (data.startDate && data.endDate) {
+    return data.startDate <= data.endDate;
+  }
+  return true;
+}, {
+  message: "End date must be after start date",
+  path: ["endDate"],
 });
 
 interface CalendarFormProps {
-  onDateChange?: (date: Date | undefined) => void;
+  onDateRangeChange?: (startDate: Date | undefined, endDate: Date | undefined) => void;
+  onFetchData?: () => void;
+  loading?: boolean;
 }
 
-export function CalendarForm({ onDateChange }: CalendarFormProps) {
+export function CalendarForm({ onDateRangeChange, onFetchData, loading = false }: CalendarFormProps) {
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
-      selectedDate: undefined,
+      startDate: undefined,
+      endDate: undefined,
     },
   });
 
-  // Memoize the callback to prevent unnecessary effect re-runs
-  const memoizedOnDateChange = useCallback(onDateChange, [onDateChange]);
+  const memoizedOnDateRangeChange = useCallback(onDateRangeChange, [onDateRangeChange]);
 
   // Watch for form changes and trigger callback
   useEffect(() => {
-    const subscription = form.watch((value, { name }) => {
-      if (name === 'selectedDate' && memoizedOnDateChange) {
-        console.log('Calendar date changed:', value.selectedDate); // Debug log
-        memoizedOnDateChange(value.selectedDate);
+    const subscription = form.watch((value) => {
+      if (memoizedOnDateRangeChange) {
+        console.log('Date range changed:', value.startDate, value.endDate);
+        memoizedOnDateRangeChange(value.startDate, value.endDate);
       }
     });
     
     return () => subscription.unsubscribe();
-  }, [form, memoizedOnDateChange]);
+  }, [form, memoizedOnDateRangeChange]);
 
-  // Handle date selection with immediate callback
-  const handleDateSelect = useCallback((date: Date | undefined) => {
-    form.setValue('selectedDate', date, { 
+  const handleStartDateSelect = useCallback((date: Date | undefined) => {
+    form.setValue('startDate', date, { 
       shouldValidate: true,
       shouldDirty: true,
       shouldTouch: true 
     });
     
-    // Immediately call the callback
-    if (memoizedOnDateChange) {
-      console.log('Direct date selection:', date); // Debug log
-      memoizedOnDateChange(date);
+    // Clear end date if it's before the new start date
+    const currentEndDate = form.getValues('endDate');
+    if (date && currentEndDate && date > currentEndDate) {
+      form.setValue('endDate', undefined);
     }
-  }, [form, memoizedOnDateChange]);
+  }, [form]);
+
+  const handleEndDateSelect = useCallback((date: Date | undefined) => {
+    form.setValue('endDate', date, { 
+      shouldValidate: true,
+      shouldDirty: true,
+      shouldTouch: true 
+    });
+  }, [form]);
+
+  const handleFetchClick = () => {
+    if (onFetchData) {
+      onFetchData();
+    }
+  };
+
+  const startDate = form.watch('startDate');
+  const endDate = form.watch('endDate');
 
   return (
     <Form {...form}>
-      <form className="space-y-8">
+      <div className="flex flex-wrap items-end gap-4">
+        {/* Start Date */}
         <FormField
           control={form.control}
-          name="selectedDate"
+          name="startDate"
           render={({ field }) => (
             <FormItem className="flex flex-col">
+              {/* <FormLabel className="text-sm font-medium">Start Date</FormLabel> */}
               <Popover>
                 <PopoverTrigger asChild>
                   <FormControl>
                     <Button
                       variant={"outline"}
                       className={cn(
-                        "w-[240px] pl-3 text-left font-normal justify-start",
+                        "w-[200px] pl-3 text-left font-normal justify-start",
                         !field.value && "text-muted-foreground"
                       )}
                     >
                       {field.value ? (
                         format(field.value, "PPP")
                       ) : (
-                        <span>Pick a date</span>
+                        <span>Pick start date</span>
                       )}
                       <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                     </Button>
@@ -98,9 +128,9 @@ export function CalendarForm({ onDateChange }: CalendarFormProps) {
                   <Calendar
                     mode="single"
                     selected={field.value}
-                    onSelect={handleDateSelect} // Use our custom handler
+                    onSelect={handleStartDateSelect}
                     disabled={(date) =>
-                      date > new Date() || date < new Date("1900-01-01")
+                      date > new Date() || date < new Date("2020-01-01")
                     }
                     initialFocus
                   />
@@ -109,7 +139,81 @@ export function CalendarForm({ onDateChange }: CalendarFormProps) {
             </FormItem>
           )}
         />
-      </form>
+
+        {/* End Date */}
+        <FormField
+          control={form.control}
+          name="endDate"
+          render={({ field }) => (
+            <FormItem className="flex flex-col">
+              {/* <FormLabel className="text-sm font-medium">End Date (Optional)</FormLabel> */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <FormControl>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-[200px] pl-3 text-left font-normal justify-start",
+                        !field.value && "text-muted-foreground"
+                      )}
+                    >
+                      {field.value ? (
+                        format(field.value, "PPP")
+                      ) : (
+                        <span>Pick end date</span>
+                      )}
+                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                    </Button>
+                  </FormControl>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 bg-popover border border-border shadow-md" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={field.value}
+                    onSelect={handleEndDateSelect}
+                    disabled={(date) =>
+                      date > new Date() || 
+                      date < new Date("2020-01-01") ||
+                      (startDate && date < startDate)
+                    }
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </FormItem>
+          )}
+        />
+
+        {/* Fetch Data Button */}
+        <Button 
+          onClick={handleFetchClick}
+          disabled={loading || !startDate}
+          className="px-6 py-2 bg-white hover:bg-white/50 text-black font-medium"
+        >
+          {loading ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              Fetching...
+            </>
+          ) : (
+            <>
+              <Search className="h-4 w-4 mr-2" />
+              Fetch Data
+            </>
+          )}
+        </Button>
+
+        {/* Date Range Info */}
+        {/* {startDate && (
+          <div className="text-sm text-muted-foreground bg-muted/50 px-3 py-2 rounded-md">
+            {endDate ? (
+              <span>📊 Range: {format(startDate, "MMM dd")} - {format(endDate, "MMM dd")}</span>
+            ) : (
+              <span>⏰ First 15 mins of {format(startDate, "MMM dd, yyyy")}</span>
+            )}
+          </div>
+        )} */}
+      </div>
     </Form>
   );
 }

@@ -20,9 +20,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ModeToggle } from "../components/toggleButton";
 import { CardWithForm } from "../components/options";
 import { StockChart } from "../components/charts/StockChart";
+import { CalendarForm } from "../components/controllers/CalendarForm";
 import { useWatchlist } from "@/hooks/useWatchlist";
+import { useStockData } from "@/hooks/useStockData";
 
-// Import the MarketDataPage dynamically to avoid SSR issues
 import dynamic from 'next/dynamic';
 const MarketDataPage = dynamic(() => import('../market-data/page'), { 
   ssr: false,
@@ -39,17 +40,44 @@ export default function Page() {
   
   // State for all selectors
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [selectedInterval, setSelectedInterval] = useState('10m');
+  const [selectedStartDate, setSelectedStartDate] = useState<Date | undefined>(undefined);
+  const [selectedEndDate, setSelectedEndDate] = useState<Date | undefined>(undefined);
+  const [selectedInterval, setSelectedInterval] = useState('1m');
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
   
-  const { companies, selectedWatchlist, setSelectedWatchlist, loading, error } = useWatchlist();
+  const { companies, selectedWatchlist, setSelectedWatchlist, loading: watchlistLoading, error: watchlistError } = useWatchlist();
+  
+  // Use the enhanced stock data hook
+  const { data: stockData, loading: stockLoading, error: stockError, fetchData, clearData } = useStockData({
+    companyId: selectedCompany,
+    interval: selectedInterval,
+    indicators: selectedIndicators
+  });
 
   const pageTitle = isMarketDataRoute ? "Market Data" : "Historical Data";
 
-  // Fix for transparent dropdowns in Tailwind v4 with shadcn/ui
+  // Handle date range changes
+  const handleDateRangeChange = (startDate: Date | undefined, endDate: Date | undefined) => {
+    setSelectedStartDate(startDate);
+    setSelectedEndDate(endDate);
+    // Clear existing data when dates change
+    clearData();
+  };
+
+  // Handle manual data fetch
+  const handleFetchData = () => {
+    if (selectedCompany && selectedStartDate) {
+      fetchData(selectedStartDate, selectedEndDate);
+    }
+  };
+
+  // Clear data when company changes
   useEffect(() => {
-    // Create a style element
+    clearData();
+  }, [selectedCompany, clearData]);
+
+  // Fix for transparent dropdowns
+  useEffect(() => {
     const styleElement = document.createElement('style');
     styleElement.innerHTML = `
       :root {
@@ -76,10 +104,8 @@ export default function Page() {
       }
     `;
     
-    // Append the style element to the document head
     document.head.appendChild(styleElement);
     
-    // Clean up function to remove the style element when component unmounts
     return () => {
       document.head.removeChild(styleElement);
     };
@@ -115,43 +141,79 @@ export default function Page() {
             <MarketDataPage />
           ) : (
             <>
-              {/* Control panel with selectors */}
-              <CardWithForm 
-                onCompanyChange={setSelectedCompany}
-                onDateChange={setSelectedDate}
-                onIntervalChange={setSelectedInterval}
-                onIndicatorsChange={setSelectedIndicators}
-                selectedWatchlist={selectedWatchlist}
-                onWatchlistChange={setSelectedWatchlist}
-              />
+              {/* Enhanced Control panel */}
+              <Card className="w-full">
+                <CardContent className="p-4">
+                  <div className="space-y-4 flex">
+                    {/* Company and Watchlist Selection */}
+                    <CardWithForm 
+                      onCompanyChange={setSelectedCompany}
+                      onIntervalChange={setSelectedInterval}
+                      onIndicatorsChange={setSelectedIndicators}
+                      selectedWatchlist={selectedWatchlist}
+                      onWatchlistChange={setSelectedWatchlist}
+                    />
+                    
+                    {/* Date Range Selection with Fetch Button */}
+                    <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-centerStart Date">
+                      {/* <h3 className="text-sm font-medium mb-3">📅 Date Range Selection</h3> */}
+                      <CalendarForm 
+                        onDateRangeChange={handleDateRangeChange}
+                        onFetchData={handleFetchData}
+                        loading={stockLoading}
+                      />
+                    </div>
+                    
+                    {/* Status Display */}
+                    {stockError && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
+                        ❌ {stockError}
+                      </div>
+                    )}
+                    
+                    {/* {stockData.length > 0 && (
+                      <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-md text-sm">
+                        ✅ Loaded {stockData.length} data points
+                        {selectedEndDate ? 
+                          ` from ${selectedStartDate?.toLocaleDateString()} to ${selectedEndDate.toLocaleDateString()}` :
+                          ` for first 15 minutes of ${selectedStartDate?.toLocaleDateString()}`
+                        }
+                      </div>
+                    )} */}
+                  </div>
+                </CardContent>
+              </Card>
               
-              {/* Stock chart */}
+              {/* Enhanced Stock chart */}
               <div className="min-h-[500px] flex-1 rounded-xl bg-muted/50">
                 <StockChart 
                   companyId={selectedCompany}
-                  startDate={selectedDate}
-                  endDate={undefined}
+                  data={stockData}
+                  startDate={selectedStartDate}
+                  endDate={selectedEndDate}
                   interval={selectedInterval}
                   indicators={selectedIndicators}
+                  loading={stockLoading}
+                  error={stockError}
                 />
               </div>
               
               {/* Watchlist Companies List */}
-              <Card className="w-full border border-opacity-30  h-[400px] overflow-hidden">
+              <Card className="w-full border border-opacity-30 h-[400px] overflow-hidden">
                 <CardContent className="p-4">
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="text-lg font-medium">Watchlist {selectedWatchlist} Companies</h3>
                     <span className="text-sm text-muted-foreground">
-                      {loading ? 'Loading...' : `${companies.length} companies`}
+                      {watchlistLoading ? 'Loading...' : `${companies.length} companies`}
                     </span>
                   </div>
                   
-                  <div className="h-[440px] overflow-y-auto pr-2">
-                    {error ? (
+                  <div className="h-[340px] overflow-y-auto pr-2">
+                    {watchlistError ? (
                       <div className="flex items-center justify-center h-full text-destructive">
-                        {error}
+                        {watchlistError}
                       </div>
-                    ) : loading ? (
+                    ) : watchlistLoading ? (
                       <div className="grid grid-cols-1 gap-2 animate-pulse">
                         {[...Array(9)].map((_, i) => (
                           <div key={i} className="h-8 bg-muted rounded"></div>

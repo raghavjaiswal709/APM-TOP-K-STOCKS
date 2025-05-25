@@ -35,7 +35,12 @@ export class StockService {
     return new Promise((resolve, reject) => {
       const scriptPath = path.resolve(__dirname, '../../data/data_fetch.py');
       
-      const command = `python ${scriptPath} --company_id=${params.companyId} --start_date="${params.startDate.toISOString()}" --end_date="${params.endDate.toISOString()}" --interval=${params.interval}`;
+      let command = `python ${scriptPath} --company_id=${params.companyId} --start_date="${params.startDate.toISOString()}" --end_date="${params.endDate.toISOString()}" --interval=${params.interval}`;
+      
+      // Add first fifteen minutes flag
+      if (params.firstFifteenMinutes) {
+        command += ' --first_fifteen_minutes=true';
+      }
       
       console.log(`Executing command: ${command}`);
       
@@ -46,10 +51,9 @@ export class StockService {
       }, timeout);
       
       const childProcess = exec(command, { 
-        maxBuffer: 1024 * 1024 * 50, // 50MB buffer
+        maxBuffer: 1024 * 1024 * 50,
         timeout: timeout
       }, (error, stdout, stderr) => {
-        // Clear the timeout as the process has completed
         clearTimeout(timeoutId);
         
         if (error) {
@@ -67,7 +71,6 @@ export class StockService {
           
           for (const line of lines) {
             if (line.startsWith('Interval:')) {
-              // Parse line format: "Interval: 2024-02-28 10:10:00, Open: 51.4, High: 51.4, Low: 51.4, Close: 51.4, Volume: 9175.0"
               const parts = line.split(',');
               const intervalPart = parts[0].replace('Interval:', '').trim();
               const openPart = parts[1].replace('Open:', '').trim();
@@ -88,7 +91,22 @@ export class StockService {
           }
           
           console.log(`Successfully parsed ${results.length} data points`);
-          resolve(results);
+          
+          // Filter to first 15 minutes if requested
+          if (params.firstFifteenMinutes && results.length > 0) {
+            const startTime = new Date(results[0].interval_start);
+            const endTime = new Date(startTime.getTime() + 375 * 60 * 1000); // 15 minutes later
+            
+            const filteredResults = results.filter(item => {
+              const itemTime = new Date(item.interval_start);
+              return itemTime >= startTime && itemTime <= endTime;
+            });
+            
+            console.log(`Filtered to first 15 minutes: ${filteredResults.length} data points`);
+            resolve(filteredResults);
+          } else {
+            resolve(results);
+          }
         } catch (parseError) {
           console.error(`Error parsing Python script output: ${parseError}`);
           reject(new InternalServerErrorException('Failed to parse stock data'));

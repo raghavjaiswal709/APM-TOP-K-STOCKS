@@ -1,7 +1,6 @@
 'use client'
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { useStockData } from '@/hooks/useStockData';
 import { 
   LineChart, 
   CandlestickChart, 
@@ -21,7 +20,8 @@ import {
   Sun,
   Moon,
   Eye,
-  EyeOff
+  EyeOff,
+  Clock
 } from 'lucide-react';
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
@@ -66,32 +66,49 @@ const drawingTools = [
   { id: 'eraseshape', name: 'Eraser', icon: Eraser }
 ];
 
+interface StockDataPoint {
+  interval_start: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 interface StockChartProps {
   companyId: string | null;
+  data?: StockDataPoint[];
   startDate?: Date;
   endDate?: Date;
   interval?: string;
   indicators?: string[];
+  loading?: boolean;
+  error?: string | null;
   height?: number;
   width?: number;
   defaultChartType?: string;
   showControls?: boolean;
   theme?: 'light' | 'dark';
   onThemeChange?: (theme: 'light' | 'dark') => void;
+  onIntervalChange?: (interval: string) => void;
 }
 
 export function StockChart({
   companyId,
+  data = [],
   startDate,
   endDate,
-  interval = '1d',
+  interval = '1m',
   indicators = [],
+  loading = false,
+  error = null,
   height = 600,
   width = 1200,
   defaultChartType = 'candlestick',
   showControls = true,
   theme = 'dark',
-  onThemeChange
+  onThemeChange,
+  onIntervalChange
 }: StockChartProps) {
   // Chart state management
   const [selectedInterval, setSelectedInterval] = useState(interval);
@@ -116,37 +133,10 @@ export function StockChart({
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
 
-  // Date range management
-  const defaultEndDate = useMemo(() => new Date(), []);
-  const defaultStartDate = useMemo(() => {
-    const date = new Date();
-    date.setMonth(date.getMonth() - 1);
-    return date;
-  }, []);
-
-  const effectiveStartDate = startDate || defaultStartDate;
-  const effectiveEndDate = endDate || defaultEndDate;
-
-  // Data fetching
-  const { data, loading, error } = useStockData({
-    companyId,
-    startDate: effectiveStartDate,
-    endDate: effectiveEndDate,
-    interval: selectedInterval,
-    indicators: activeIndicators
-  });
-
-  // Auto-refresh effect
+  // Sync interval with props
   useEffect(() => {
-    if (!autoRefresh || !companyId) return;
-
-    const intervalId = setInterval(() => {
-      // Trigger data refresh
-      window.location.reload();
-    }, refreshInterval);
-
-    return () => clearInterval(intervalId);
-  }, [autoRefresh, refreshInterval, companyId]);
+    setSelectedInterval(interval);
+  }, [interval]);
 
   // Theme synchronization
   useEffect(() => {
@@ -775,7 +765,13 @@ export function StockChart({
       },
       shapes: annotations,
       title: {
-        text: companyId ? `${companyId} - ${selectedInterval.toUpperCase()} Chart (Market Hours Only)` : 'Select a Company',
+        text: companyId ? 
+          `${companyId} - ${selectedInterval.toUpperCase()} Chart ${startDate && endDate ? 
+            `(${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()})` : 
+            startDate ? `(First 15 mins of ${startDate.toLocaleDateString()})` : 
+            '(Market Hours Only)'
+          }` : 
+          'Select a Company',
         font: { color: colors.text, size: 16, family: 'Inter, system-ui, sans-serif' },
         x: 0.5,
         xanchor: 'center'
@@ -860,7 +856,9 @@ export function StockChart({
     crosshair, 
     annotations, 
     selectedInterval,
-    timeLabels
+    timeLabels,
+    startDate,
+    endDate
   ]);
 
   // Enhanced Plotly configuration
@@ -917,6 +915,13 @@ export function StockChart({
     setChartTheme(newTheme);
     if (onThemeChange) {
       onThemeChange(newTheme);
+    }
+  };
+
+  const handleIntervalChange = (newInterval: string) => {
+    setSelectedInterval(newInterval);
+    if (onIntervalChange) {
+      onIntervalChange(newInterval);
     }
   };
 
@@ -979,6 +984,26 @@ export function StockChart({
     );
   }
 
+  // No data available
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex justify-center items-center h-full rounded-xl" style={{ backgroundColor: '#27272a' }}>
+        <div className="text-center">
+          <BarChart3 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+          <div className="text-lg font-medium text-gray-300">No data available</div>
+          <div className="text-sm text-gray-400 mt-2">
+            {startDate && endDate ? 
+              `No data found between ${startDate.toLocaleDateString()} and ${endDate.toLocaleDateString()}` :
+              startDate ? 
+                `No data found for first 15 minutes of ${startDate.toLocaleDateString()}` :
+                'Select a date range to fetch data'
+            }
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const colors = getColorTheme();
 
   return (
@@ -1014,35 +1039,51 @@ export function StockChart({
           {/* Header with theme toggle */}
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm">Chart Controls</h3>
-            <button
-              onClick={handleThemeToggle}
-              className="p-1.5 rounded-md hover:bg-opacity-80 transition-colors"
-              style={{ backgroundColor: colors.button.bg }}
-              title={`Switch to ${chartTheme === 'dark' ? 'light' : 'dark'} theme`}
-            >
-              {chartTheme === 'dark' ? 
-                <Sun className="h-4 w-4" /> : 
-                <Moon className="h-4 w-4" />
-              }
-            </button>
-          </div>
-
-          {/* Market Hours Info */}
-          <div className="border rounded-lg p-3" style={{ borderColor: colors.grid, backgroundColor: colors.button.bg }}>
-            <h4 className="font-medium text-xs mb-2 flex items-center">
-              <TrendingUp className="h-3 w-3 mr-1" />
-              Market Hours
-            </h4>
-            <div className="text-xs text-gray-400">
-              <div>Mon-Fri: 9:15 AM - 3:30 PM</div>
-              <div className="text-green-400 mt-1">✓ Non-trading hours filtered</div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleThemeToggle}
+                className="p-1.5 rounded-md hover:bg-opacity-80 transition-colors"
+                style={{ backgroundColor: colors.button.bg }}
+                title={`Switch to ${chartTheme === 'dark' ? 'light' : 'dark'} theme`}
+              >
+                {chartTheme === 'dark' ? 
+                  <Sun className="h-4 w-4" /> : 
+                  <Moon className="h-4 w-4" />
+                }
+              </button>
+              <button
+                onClick={() => setSidebarVisible(!sidebarVisible)}
+                className="p-1.5 rounded-md hover:bg-opacity-80 transition-colors"
+                style={{ backgroundColor: colors.button.bg }}
+                title="Toggle sidebar"
+              >
+                {sidebarVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
           </div>
 
-          {/* Time Frame Panel */}
+          {/* Data Info */}
           <div className="border rounded-lg p-3" style={{ borderColor: colors.grid, backgroundColor: colors.button.bg }}>
             <h4 className="font-medium text-xs mb-2 flex items-center">
-              <ZoomIn className="h-3 w-3 mr-1" />
+              <TrendingUp className="h-3 w-3 mr-1" />
+              Data Info
+            </h4>
+            <div className="text-xs text-gray-400">
+              <div>📊 {data.length} total data points</div>
+              <div>⏰ Market hours only</div>
+              {startDate && endDate && (
+                <div>📅 {startDate.toLocaleDateString()} - {endDate.toLocaleDateString()}</div>
+              )}
+              {startDate && !endDate && (
+                <div>🕘 First 15 mins of {startDate.toLocaleDateString()}</div>
+              )}
+            </div>
+          </div>
+
+          {/* Time Frame Panel - RESTORED */}
+          <div className="border rounded-lg p-3" style={{ borderColor: colors.grid, backgroundColor: colors.button.bg }}>
+            <h4 className="font-medium text-xs mb-2 flex items-center">
+              <Clock className="h-3 w-3 mr-1" />
               Time Frame
             </h4>
             <div className="grid grid-cols-2 gap-1">
@@ -1062,7 +1103,7 @@ export function StockChart({
                       ? '#ffffff' 
                       : colors.text
                   }}
-                  onClick={() => setSelectedInterval(int.id)}
+                  onClick={() => handleIntervalChange(int.id)}
                 >
                   {int.name}
                 </button>
@@ -1184,24 +1225,11 @@ export function StockChart({
 
           {/* Drawing Tools Panel */}
           <div className="border rounded-lg p-3" style={{ borderColor: colors.grid, backgroundColor: colors.button.bg }}>
-            <div className='flex items-center justify-between mb-2'>
             <h4 className="font-medium text-xs mb-2 flex items-center">
               <MousePointer className="h-3 w-3 mr-1" />
               Drawing Tools
             </h4>
-             <button
-                className="px-2 py-1.5 text-xs rounded flex items-center justify-center col-span-2 transition-colors hover:bg-opacity-80"
-                style={{ backgroundColor: colors.button.bg, color: colors.text }}
-                onClick={() => {
-                  setAnnotations([]);
-                  setDrawingMode(null);
-                }}
-              >
-                <Eraser className="h-3 w-3 mr-1" />
-                Clear All
-              </button>
-              </div>
-            <div className="grid grid-cols-5 gap-1">
+            <div className="grid grid-cols-2 gap-1">
               {drawingTools.map(tool => {
                 const IconComponent = tool.icon;
                 return (
@@ -1215,7 +1243,7 @@ export function StockChart({
                     style={{
                       backgroundColor: drawingMode === tool.id 
                         ? colors.button.bgActive 
-                        : 'transparent',
+                        : colors.button.bg,
                       color: drawingMode === tool.id 
                         ? '#ffffff' 
                         : colors.text
@@ -1227,15 +1255,14 @@ export function StockChart({
                   </button>
                 );
               })}
-             
             </div>
           </div>
 
-          {/* Display Options Panel */}
+          {/* Chart Options Panel */}
           <div className="border rounded-lg p-3" style={{ borderColor: colors.grid, backgroundColor: colors.button.bg }}>
             <h4 className="font-medium text-xs mb-2 flex items-center">
               <Settings className="h-3 w-3 mr-1" />
-              Display Options
+              Chart Options
             </h4>
             <div className="space-y-2">
               <label className="flex items-center text-xs">
@@ -1243,74 +1270,69 @@ export function StockChart({
                   type="checkbox"
                   className="mr-2 rounded"
                   checked={showVolume}
-                  onChange={() => setShowVolume(!showVolume)}
+                  onChange={(e) => setShowVolume(e.target.checked)}
                 />
-                <span>Show Volume</span>
+                Show Volume
               </label>
               <label className="flex items-center text-xs">
                 <input
                   type="checkbox"
                   className="mr-2 rounded"
                   checked={showGridlines}
-                  onChange={() => setShowGridlines(!showGridlines)}
+                  onChange={(e) => setShowGridlines(e.target.checked)}
                 />
-                <span>Show Gridlines</span>
+                Show Gridlines
               </label>
               <label className="flex items-center text-xs">
                 <input
                   type="checkbox"
                   className="mr-2 rounded"
                   checked={logScale}
-                  onChange={() => setLogScale(!logScale)}
+                  onChange={(e) => setLogScale(e.target.checked)}
                 />
-                <span>Log Scale</span>
+                Log Scale
               </label>
               <label className="flex items-center text-xs">
                 <input
                   type="checkbox"
                   className="mr-2 rounded"
                   checked={crosshair}
-                  onChange={() => setCrosshair(!crosshair)}
+                  onChange={(e) => setCrosshair(e.target.checked)}
                 />
-                <span>Crosshair</span>
-              </label>
-              <label className="flex items-center text-xs">
-                <input
-                  type="checkbox"
-                  className="mr-2 rounded"
-                  checked={autoRefresh}
-                  onChange={() => setAutoRefresh(!autoRefresh)}
-                />
-                <span>Auto Refresh</span>
+                Crosshair
               </label>
             </div>
           </div>
 
           {/* Reset Button */}
           <button
-            className="w-full px-3 py-2 text-xs rounded font-medium transition-colors hover:bg-opacity-90"
-            style={{ backgroundColor: '#ef4444', color: '#ffffff' }}
             onClick={resetChart}
+            className="w-full px-3 py-2 text-xs rounded flex items-center justify-center transition-colors"
+            style={{
+              backgroundColor: colors.button.bg,
+              color: colors.text
+            }}
           >
-            <RotateCcw className="h-3 w-3 mr-1 inline" />
-            Reset All Settings
+            <RotateCcw className="h-3 w-3 mr-2" />
+            Reset Chart
           </button>
         </div>
       </div>
 
-      {/* Sidebar Toggle Button */}
-      <button 
-        className="absolute top-4 right-4 z-10 p-2 rounded-full shadow-lg transition-all hover:scale-105"
-        style={{ backgroundColor: colors.button.bgActive, color: '#ffffff' }}
-        onClick={() => setSidebarVisible(!sidebarVisible)}
-        title={sidebarVisible ? "Hide Controls" : "Show Controls"}
-      >
-        {sidebarVisible ? (
-          <EyeOff className="h-5 w-5" />
-        ) : (
-          <Eye className="h-5 w-5" />
-        )}
-      </button>
+      {/* Toggle Sidebar Button */}
+      {!sidebarVisible && (
+        <button
+          onClick={() => setSidebarVisible(true)}
+          className="absolute top-4 right-4 p-2 rounded-md shadow-lg transition-colors z-10"
+          style={{
+            backgroundColor: colors.button.bg,
+            color: colors.text
+          }}
+          title="Show controls"
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }
