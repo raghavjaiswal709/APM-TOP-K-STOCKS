@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { AppSidebar } from "../components/app-sidebar";
 import {
@@ -47,8 +47,15 @@ export default function Page() {
   
   const { companies, selectedWatchlist, setSelectedWatchlist, loading: watchlistLoading, error: watchlistError } = useWatchlist();
   
-  // Use the enhanced stock data hook
-  const { data: stockData, loading: stockLoading, error: stockError, fetchData, clearData } = useStockData({
+  // **ENHANCED**: Use the enhanced stock data hook with fetchAllData capability
+  const { 
+    data: stockData, 
+    loading: stockLoading, 
+    error: stockError, 
+    fetchData, 
+    fetchAllData, 
+    clearData 
+  } = useStockData({
     companyId: selectedCompany,
     interval: selectedInterval,
     indicators: selectedIndicators
@@ -56,25 +63,43 @@ export default function Page() {
 
   const pageTitle = isMarketDataRoute ? "Market Data" : "Historical Data";
 
-  // Handle date range changes
-  const handleDateRangeChange = (startDate: Date | undefined, endDate: Date | undefined) => {
+  // **ENHANCED**: Handle date range changes with useCallback for performance
+  const handleDateRangeChange = useCallback((startDate: Date | undefined, endDate: Date | undefined) => {
     setSelectedStartDate(startDate);
     setSelectedEndDate(endDate);
     // Clear existing data when dates change
     clearData();
-  };
+  }, [clearData]);
 
-  // Handle manual data fetch
-  const handleFetchData = () => {
+  // **ENHANCED**: Handle manual data fetch with date range
+  const handleFetchData = useCallback(() => {
     if (selectedCompany && selectedStartDate) {
+      console.log('Fetching data with date range:', selectedStartDate, selectedEndDate);
       fetchData(selectedStartDate, selectedEndDate);
     }
-  };
+  }, [selectedCompany, selectedStartDate, selectedEndDate, fetchData]);
+
+  // **NEW**: Handle fetch all data without date restrictions
+  const handleFetchAllData = useCallback(() => {
+    if (selectedCompany) {
+      console.log('Fetching all available data for company:', selectedCompany);
+      fetchAllData();
+    }
+  }, [selectedCompany, fetchAllData]);
 
   // Clear data when company changes
   useEffect(() => {
     clearData();
   }, [selectedCompany, clearData]);
+
+  // **NEW**: Auto-fetch all data when company is selected (optional behavior)
+  useEffect(() => {
+    if (selectedCompany && !selectedStartDate) {
+      // Automatically fetch all data when a company is selected and no date range is set
+      console.log('Auto-fetching all data for newly selected company:', selectedCompany);
+      handleFetchAllData();
+    }
+  }, [selectedCompany, selectedStartDate, handleFetchAllData]);
 
   // Fix for transparent dropdowns
   useEffect(() => {
@@ -141,7 +166,7 @@ export default function Page() {
             <MarketDataPage />
           ) : (
             <>
-              {/* Enhanced Control panel */}
+              {/* **ENHANCED**: Control panel with better layout and status */}
               <Card className="w-full">
                 <CardContent className="p-4">
                   <div className="space-y-4 flex">
@@ -154,37 +179,47 @@ export default function Page() {
                       onWatchlistChange={setSelectedWatchlist}
                     />
                     
-                    {/* Date Range Selection with Fetch Button */}
-                    <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-centerStart Date">
-                      {/* <h3 className="text-sm font-medium mb-3">📅 Date Range Selection</h3> */}
+                    {/* **ENHANCED**: Date Range Selection with Both Fetch Buttons */}
+                    <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-center">
                       <CalendarForm 
                         onDateRangeChange={handleDateRangeChange}
                         onFetchData={handleFetchData}
+                        onFetchAllData={handleFetchAllData}
                         loading={stockLoading}
                       />
                     </div>
                     
-                    {/* Status Display */}
+                    {/* **ENHANCED**: Status Display with better messaging */}
                     {stockError && (
                       <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
                         ❌ {stockError}
                       </div>
                     )}
                     
-                    {/* {stockData.length > 0 && (
+                    {/* **NEW**: Enhanced status display */}
+                    {stockData.length > 0 && (
                       <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-md text-sm">
                         ✅ Loaded {stockData.length} data points
-                        {selectedEndDate ? 
-                          ` from ${selectedStartDate?.toLocaleDateString()} to ${selectedEndDate.toLocaleDateString()}` :
-                          ` for first 15 minutes of ${selectedStartDate?.toLocaleDateString()}`
+                        {selectedStartDate && selectedEndDate ? 
+                          ` from ${selectedStartDate.toLocaleDateString()} to ${selectedEndDate.toLocaleDateString()}` :
+                          selectedStartDate ? 
+                            ` for first 15 minutes of ${selectedStartDate.toLocaleDateString()}` :
+                            ` (all available data)`
                         }
                       </div>
-                    )} */}
+                    )}
+
+                    {/* **NEW**: Company selection status */}
+                    {selectedCompany && (
+                      <div className="bg-blue-50 border border-blue-200 text-blue-700 px-3 py-2 rounded-md text-sm">
+                        📊 Selected Company: {companies.find(c => c.company_code === selectedCompany)?.tradingsymbol || selectedCompany}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
               
-              {/* Enhanced Stock chart */}
+              {/* **ENHANCED**: Stock chart with better props */}
               <div className="min-h-[500px] flex-1 rounded-xl bg-muted/50">
                 <StockChart 
                   companyId={selectedCompany}
@@ -198,14 +233,24 @@ export default function Page() {
                 />
               </div>
               
-              {/* Watchlist Companies List */}
+              {/* **ENHANCED**: Watchlist Companies List with better interaction */}
               <Card className="w-full border border-opacity-30 h-[400px] overflow-hidden">
                 <CardContent className="p-4">
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="text-lg font-medium">Watchlist {selectedWatchlist} Companies</h3>
-                    <span className="text-sm text-muted-foreground">
-                      {watchlistLoading ? 'Loading...' : `${companies.length} companies`}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        {watchlistLoading ? 'Loading...' : `${companies.length} companies`}
+                      </span>
+                      {selectedCompany && (
+                        <button
+                          onClick={() => setSelectedCompany(null)}
+                          className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200 transition-colors"
+                        >
+                          Clear Selection
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="h-[340px] overflow-y-auto pr-2">
@@ -230,12 +275,17 @@ export default function Page() {
                             key={company.company_code}
                             className={`p-2 rounded-md text-sm cursor-pointer transition-colors
                               ${selectedCompany === company.company_code 
-                                ? 'bg-primary text-primary-foreground' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
                                 : 'bg-secondary hover:bg-secondary/80'}`}
                             onClick={() => setSelectedCompany(company.company_code)}
                           >
                             <div className="font-medium truncate">{company.tradingsymbol}</div>
                             <div className="text-xs opacity-80 truncate">{company.name}</div>
+                            {selectedCompany === company.company_code && (
+                              <div className="text-xs mt-1 opacity-90">
+                                {stockData.length > 0 ? `${stockData.length} data points loaded` : 'Click "Fetch All Data" to load'}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>

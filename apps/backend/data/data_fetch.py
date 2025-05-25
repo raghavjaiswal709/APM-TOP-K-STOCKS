@@ -14,24 +14,36 @@ def main():
     parser.add_argument('--first_fifteen_minutes', type=str, default='false', 
                        choices=['true', 'false'],
                        help='Filter to first 15 minutes of trading day')
+    # **NEW**: Add fetch_all_data argument
+    parser.add_argument('--fetch_all_data', type=str, default='false',
+                       choices=['true', 'false'],
+                       help='Fetch all available data for the company (ignores date range)')
     
     args = parser.parse_args()
     
-    # Convert first_fifteen_minutes string to boolean
+    # Convert boolean strings
     first_fifteen_minutes = args.first_fifteen_minutes.lower() == 'true'
+    fetch_all_data = args.fetch_all_data.lower() == 'true'
     
-    # Parse and convert dates
-    try:
-        start_date = parse_date_string(args.start_date)
-        end_date = parse_date_string(args.end_date)
-        
-        # Adjust dates for first 15 minutes if needed
-        if first_fifteen_minutes:
-            start_date, end_date = adjust_for_first_fifteen_minutes(start_date, end_date)
+    # **MODIFIED**: Handle date parsing based on fetch_all_data flag
+    if fetch_all_data:
+        # When fetching all data, we'll determine the date range from the database
+        start_date = None
+        end_date = None
+        print(f"Fetching all available data for company_id={args.company_id}", file=sys.stderr)
+    else:
+        # Parse and convert dates normally
+        try:
+            start_date = parse_date_string(args.start_date)
+            end_date = parse_date_string(args.end_date)
             
-    except ValueError as e:
-        print(f"Date parsing error: {e}", file=sys.stderr)
-        sys.exit(1)
+            # Adjust dates for first 15 minutes if needed
+            if first_fifteen_minutes:
+                start_date, end_date = adjust_for_first_fifteen_minutes(start_date, end_date)
+                
+        except ValueError as e:
+            print(f"Date parsing error: {e}", file=sys.stderr)
+            sys.exit(1)
     
     # Convert interval string to minutes
     interval_map = {
@@ -45,15 +57,7 @@ def main():
     
     interval_minutes = interval_map.get(args.interval, 10)  # Default to 10 minutes
     
-    # Database connection parameters (update these as needed)
-    # db_params = {
-    #     'dbname': 'temp_db',
-    #     'user': 'temp_raghav',
-    #     'password': 'password',
-    #     'host': '100.93.172.21',
-    #     'port': '5432',
-    # }
-    
+    # Database connection parameters
     db_params = {
         'dbname': 'company_hist_db',
          'user': 'readonly_user',
@@ -61,8 +65,6 @@ def main():
          'host': '100.93.172.21',
          'port': '5432',
     }
-    
-    
 
     try:
         # Connect to the database
@@ -72,26 +74,45 @@ def main():
         # Set timezone to IST
         cur.execute("SET TIME ZONE 'Asia/Kolkata';")
 
-        # Query to fetch minute-wise data
-        query = """
-        SELECT timestamp, open, high, low, close, volume
-        FROM company_data
-        WHERE company_id = %s
-        AND timestamp >= %s
-        AND timestamp < %s
-        ORDER BY timestamp
-        """
+        # **MODIFIED**: Build query based on fetch_all_data flag
+        if fetch_all_data:
+            # Query to fetch ALL data for the company
+            query = """
+            SELECT timestamp, open, high, low, close, volume
+            FROM company_data
+            WHERE company_id = %s
+            ORDER BY timestamp
+            """
+            query_params = (args.company_id,)
+            print(f"Querying ALL data for company_id={args.company_id}", file=sys.stderr)
+        else:
+            # Query to fetch data within date range
+            query = """
+            SELECT timestamp, open, high, low, close, volume
+            FROM company_data
+            WHERE company_id = %s
+            AND timestamp >= %s
+            AND timestamp < %s
+            ORDER BY timestamp
+            """
+            query_params = (args.company_id, start_date, end_date)
+            print(f"Querying data for company_id={args.company_id}, start_date={start_date}, end_date={end_date}", file=sys.stderr)
         
-        # Log the query parameters for debugging
-        print(f"Querying data for company_id={args.company_id}, start_date={start_date}, end_date={end_date}", file=sys.stderr)
-        
-        cur.execute(query, (args.company_id, start_date, end_date))
+        cur.execute(query, query_params)
 
         # Fetch all rows
         rows = cur.fetchall()
         if not rows:
-            print(f"No data found for company_id = {args.company_id} in the specified date range.", file=sys.stderr)
+            if fetch_all_data:
+                print(f"No data found for company_id = {args.company_id}.", file=sys.stderr)
+            else:
+                print(f"No data found for company_id = {args.company_id} in the specified date range.", file=sys.stderr)
             sys.exit(0)
+
+        # **NEW**: If fetching all data, optionally limit to recent data to avoid overwhelming the frontend
+        if fetch_all_data and len(rows) > 10000:  # Limit to last 10k records for performance
+            print(f"Large dataset detected ({len(rows)} records). Limiting to most recent 10,000 records.", file=sys.stderr)
+            rows = rows[-10000:]
 
         # Function to get the start of an interval
         def get_interval_start(dt):
@@ -126,12 +147,27 @@ def main():
                     'volume': volume_sum
                 })
 
+        # **NEW**: Apply first_fifteen_minutes filter after aggregation if needed
+        if first_fifteen_minutes and fetch_all_data:
+            # Filter results to only include first 15 minutes of each trading day
+            filtered_results = []
+            for result in results:
+                timestamp = result['interval_start']
+                # Check if this timestamp is within first 15 minutes (9:15 AM to 9:30 AM IST)
+                if timestamp.hour == 9 and 15 <= timestamp.minute <= 30:
+                    filtered_results.append(result)
+            results = filtered_results
+            print(f"Filtered to first 15 minutes: {len(results)} data points", file=sys.stderr)
+
         # Output results in the format expected by the backend
         for result in results:
             print(f"Interval:{result['interval_start'].isoformat()},Open:{result['open']},High:{result['high']},Low:{result['low']},Close:{result['close']},Volume:{result['volume']}")
         
         # Log success message to stderr
-        print(f"Successfully fetched {len(results)} data points", file=sys.stderr)
+        if fetch_all_data:
+            print(f"Successfully fetched ALL available data: {len(results)} data points", file=sys.stderr)
+        else:
+            print(f"Successfully fetched {len(results)} data points for date range", file=sys.stderr)
 
     except psycopg2.Error as e:
         print(f"Database error: {e}", file=sys.stderr)

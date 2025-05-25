@@ -21,33 +21,46 @@ export class StockController {
   @Get(':companyId/ohlcv')
   async getStockData(
     @Param('companyId', ParseIntPipe) companyId: number,
-    @Query('startDate') startDate: string,
-    @Query('endDate') endDate: string,
-    @Query('interval') interval: string,
-    @Query('indicators') indicators: string[],
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('interval') interval?: string,
+    @Query('indicators') indicators?: string[],
     @Query('firstFifteenMinutes') firstFifteenMinutes?: string,
   ) {
-    if (!startDate) {
-      throw new Error('Start date is required');
-    }
+    // **KEY FIX**: Remove the startDate requirement check
+    // if (!startDate) {
+    //   throw new Error('Start date is required');
+    // }
 
-    const startDateTime = new Date(startDate);
-    let endDateTime = new Date(endDate);
+    let startDateTime: Date | undefined;
+    let endDateTime: Date | undefined;
 
-    // Handle first 15 minutes logic
-    if (firstFifteenMinutes === 'true') {
-      // Set start time to market opening (9:15 AM)
-      startDateTime.setHours(9, 15, 0, 0);
-      // Set end time to 15 minutes later
-      endDateTime = new Date(startDateTime);
-      endDateTime.setMinutes(endDateTime.getMinutes() + 375);
+    // Handle date parameters - if no dates provided, fetch all data
+    if (startDate) {
+      startDateTime = new Date(startDate);
+      
+      if (endDate) {
+        endDateTime = new Date(endDate);
+      } else {
+        // If only start date provided, default to first 15 minutes
+        endDateTime = new Date(startDateTime);
+        endDateTime.setMinutes(endDateTime.getMinutes() + 375);
+      }
+
+      // Handle first 15 minutes logic
+      if (firstFifteenMinutes === 'true') {
+        startDateTime.setHours(9, 15, 0, 0);
+        endDateTime = new Date(startDateTime);
+        endDateTime.setMinutes(endDateTime.getMinutes() + 375);
+      }
     }
+    // If no startDate provided, both will remain undefined for "fetch all data"
 
     const params: StockDataRequestDto = {
       companyId,
       startDate: startDateTime,
       endDate: endDateTime,
-      interval: interval || '1m', // Use 1-minute for precise 15-minute data
+      interval: interval || '1m',
       indicators: indicators || [],
       firstFifteenMinutes: firstFifteenMinutes === 'true',
     };

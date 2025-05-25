@@ -25,14 +25,16 @@ export function useStockData({
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const fetchData = useCallback(async (startDate?: Date, endDate?: Date) => {
+  // **KEY FIX**: Remove startDate requirement and add fetchAllData option
+  const fetchData = useCallback(async (startDate?: Date, endDate?: Date, fetchAllData = false) => {
     if (!companyId) {
       setError('No company selected');
       return;
     }
 
-    if (!startDate) {
-      setError('Start date is required');
+    // **NEW**: Allow fetching all data when no dates provided
+    if (!startDate && !fetchAllData) {
+      setError('Either provide a start date or set fetchAllData to true');
       return;
     }
 
@@ -48,17 +50,22 @@ export function useStockData({
       abortControllerRef.current = new AbortController();
       
       const queryParams = new URLSearchParams();
-      queryParams.append('startDate', startDate.toISOString());
       
-      if (endDate) {
-        queryParams.append('endDate', endDate.toISOString());
-      } else {
-        // If no end date, set end date to start date + 15 minutes
-        const endDateTime = new Date(startDate);
-        endDateTime.setMinutes(endDateTime.getMinutes() + 15);
-        queryParams.append('endDate', endDateTime.toISOString());
-        queryParams.append('firstFifteenMinutes', 'true');
+      // **KEY FIX**: Only add date params if they exist
+      if (startDate) {
+        queryParams.append('startDate', startDate.toISOString());
+        
+        if (endDate) {
+          queryParams.append('endDate', endDate.toISOString());
+        } else {
+          // If no end date, set end date to start date + 15 minutes
+          const endDateTime = new Date(startDate);
+          endDateTime.setMinutes(endDateTime.getMinutes() + 15);
+          queryParams.append('endDate', endDateTime.toISOString());
+          queryParams.append('firstFifteenMinutes', 'true');
+        }
       }
+      // If no startDate and fetchAllData is true, don't add any date parameters
       
       queryParams.append('interval', interval);
       
@@ -94,10 +101,15 @@ export function useStockData({
     }
   }, [companyId, interval, indicators]);
 
+  // **NEW**: Add method to fetch all data
+  const fetchAllData = useCallback(async () => {
+    return fetchData(undefined, undefined, true);
+  }, [fetchData]);
+
   const clearData = useCallback(() => {
     setData([]);
     setError(null);
   }, []);
 
-  return { data, loading, error, fetchData, clearData };
+  return { data, loading, error, fetchData, fetchAllData, clearData };
 }

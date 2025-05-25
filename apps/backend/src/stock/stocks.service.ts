@@ -35,11 +35,20 @@ export class StockService {
     return new Promise((resolve, reject) => {
       const scriptPath = path.resolve(__dirname, '../../data/data_fetch.py');
       
-      let command = `python ${scriptPath} --company_id=${params.companyId} --start_date="${params.startDate.toISOString()}" --end_date="${params.endDate.toISOString()}" --interval=${params.interval}`;
+      // **KEY FIX**: Build command based on whether dates are provided
+      let command = `python ${scriptPath} --company_id=${params.companyId} --interval=${params.interval}`;
       
-      // Add first fifteen minutes flag
-      if (params.firstFifteenMinutes) {
-        command += ' --first_fifteen_minutes=true';
+      // Only add date parameters if they exist
+      if (params.startDate && params.endDate) {
+        command += ` --start_date="${params.startDate.toISOString()}" --end_date="${params.endDate.toISOString()}"`;
+        
+        // Add first fifteen minutes flag
+        if (params.firstFifteenMinutes) {
+          command += ' --first_fifteen_minutes=true';
+        }
+      } else {
+        // **NEW**: Add flag to fetch all available data
+        command += ' --fetch_all_data=true';
       }
       
       console.log(`Executing command: ${command}`);

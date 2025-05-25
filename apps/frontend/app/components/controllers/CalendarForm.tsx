@@ -1,7 +1,7 @@
 'use client'
 import { zodResolver } from "@hookform/resolvers/zod"
 import { format } from "date-fns"
-import { CalendarIcon, Search } from "lucide-react"
+import { CalendarIcon, Search, BarChart3 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { useEffect, useCallback } from "react"
@@ -38,10 +38,16 @@ const FormSchema = z.object({
 interface CalendarFormProps {
   onDateRangeChange?: (startDate: Date | undefined, endDate: Date | undefined) => void;
   onFetchData?: () => void;
+  onFetchAllData?: () => void; // **NEW**: Add fetch all data callback
   loading?: boolean;
 }
 
-export function CalendarForm({ onDateRangeChange, onFetchData, loading = false }: CalendarFormProps) {
+export function CalendarForm({ 
+  onDateRangeChange, 
+  onFetchData, 
+  onFetchAllData, // **NEW**
+  loading = false 
+}: CalendarFormProps) {
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
@@ -92,6 +98,13 @@ export function CalendarForm({ onDateRangeChange, onFetchData, loading = false }
     }
   };
 
+  // **NEW**: Handle fetch all data
+  const handleFetchAllClick = () => {
+    if (onFetchAllData) {
+      onFetchAllData();
+    }
+  };
+
   const startDate = form.watch('startDate');
   const endDate = form.watch('endDate');
 
@@ -104,7 +117,6 @@ export function CalendarForm({ onDateRangeChange, onFetchData, loading = false }
           name="startDate"
           render={({ field }) => (
             <FormItem className="flex flex-col">
-              {/* <FormLabel className="text-sm font-medium">Start Date</FormLabel> */}
               <Popover>
                 <PopoverTrigger asChild>
                   <FormControl>
@@ -146,7 +158,6 @@ export function CalendarForm({ onDateRangeChange, onFetchData, loading = false }
           name="endDate"
           render={({ field }) => (
             <FormItem className="flex flex-col">
-              {/* <FormLabel className="text-sm font-medium">End Date (Optional)</FormLabel> */}
               <Popover>
                 <PopoverTrigger asChild>
                   <FormControl>
@@ -184,7 +195,7 @@ export function CalendarForm({ onDateRangeChange, onFetchData, loading = false }
           )}
         />
 
-        {/* Fetch Data Button */}
+        {/* Fetch Data Button - Only enabled when start date is selected */}
         <Button 
           onClick={handleFetchClick}
           disabled={loading || !startDate}
@@ -203,16 +214,25 @@ export function CalendarForm({ onDateRangeChange, onFetchData, loading = false }
           )}
         </Button>
 
-        {/* Date Range Info */}
-        {/* {startDate && (
-          <div className="text-sm text-muted-foreground bg-muted/50 px-3 py-2 rounded-md">
-            {endDate ? (
-              <span>📊 Range: {format(startDate, "MMM dd")} - {format(endDate, "MMM dd")}</span>
-            ) : (
-              <span>⏰ First 15 mins of {format(startDate, "MMM dd, yyyy")}</span>
-            )}
-          </div>
-        )} */}
+        {/* **NEW**: Fetch All Data Button - Always enabled when company is selected */}
+        <Button 
+          onClick={handleFetchAllClick}
+          disabled={loading}
+          variant="secondary"
+          className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium"
+        >
+          {loading ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              Loading...
+            </>
+          ) : (
+            <>
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Fetch All Data
+            </>
+          )}
+        </Button>
       </div>
     </Form>
   );
