@@ -28,15 +28,15 @@ const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
 
 // **PERFORMANCE OPTIMIZATION**: Pre-computed constants with enhanced configuration
 const CHART_PERFORMANCE_CONFIG = {
-  MAX_VISIBLE_POINTS: 2000, // Limit visible points for smooth performance
+  MAX_VISIBLE_POINTS: 2000,
   CHUNK_SIZE: 1000,
-  DEBOUNCE_DELAY: 16, // ~60fps
-  WEBGL_THRESHOLD: 1000, // Use WebGL for datasets larger than this
-  MARKET_OPEN_MINUTES: 9 * 60 + 15, // 9:15 AM in minutes
-  MARKET_CLOSE_MINUTES: 15 * 60 + 30, // 3:30 PM in minutes
-  IST_OFFSET: 5.5 * 60 * 60 * 1000, // IST is UTC+5:30
-  ZOOM_WINDOW_MINUTES: 15, // 15 minutes before and after for zoom
-  PRICE_PADDING_PERCENT: 0.08, // 8% padding for better visibility
+  DEBOUNCE_DELAY: 16,
+  WEBGL_THRESHOLD: 5000, // Increased threshold to avoid line rendering issues
+  MARKET_OPEN_MINUTES: 9 * 60 + 15,
+  MARKET_CLOSE_MINUTES: 15 * 60 + 30,
+  IST_OFFSET: 5.5 * 60 * 60 * 1000,
+  ZOOM_WINDOW_MINUTES: 15,
+  PRICE_PADDING_PERCENT: 0.08,
 };
 
 // Enhanced technical indicators with more options and performance optimizations
@@ -106,7 +106,7 @@ interface StockChartProps {
   onIntervalChange?: (interval: string) => void;
 }
 
-// **PERFORMANCE**: Web Worker for heavy calculations with enhanced functionality
+// **FIXED**: Web Worker for heavy calculations
 const createWebWorker = () => {
   if (typeof Worker !== 'undefined') {
     const workerCode = `
@@ -187,7 +187,7 @@ export function StockChart({
   onThemeChange,
   onIntervalChange
 }: StockChartProps) {
-  // **ENHANCED**: Chart state management with performance optimization
+  // **ENHANCED**: Chart state management with zoom state preservation
   const [selectedInterval, setSelectedInterval] = useState(interval);
   const [selectedChartType, setSelectedChartType] = useState(defaultChartType);
   const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -200,23 +200,29 @@ export function StockChart({
   const [sidebarVisible, setSidebarVisible] = useState(showControls);
   const [chartTheme, setChartTheme] = useState<'light' | 'dark'>(theme);
   
+ // **SIMPLIFIED**: Basic zoom state without auto-restoration
+const [preservedZoomState, setPreservedZoomState] = useState<any>(null);
+const [userHasZoomed, setUserHasZoomed] = useState(false);
+
+  
   // Drawing tools state
   const [drawingMode, setDrawingMode] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<any[]>([]);
   
-  // Advanced features state from 1473-line version
+  // Advanced features state
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(5000);
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
   
-  // **PERFORMANCE**: Refs for performance optimization
+  // **PERFORMANCE**: Refs for performance optimization and zoom preservation
   const plotRef = useRef<any>(null);
   const webWorkerRef = useRef<Worker | null>(null);
   const lastUpdateTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number | null>(null);
+  const isUpdatingRef = useRef<boolean>(false);
   
-  // **PERFORMANCE**: Initialize web worker for heavy calculations
+  // **FIXED**: Initialize web worker
   useEffect(() => {
     webWorkerRef.current = createWebWorker();
     return () => {
@@ -229,6 +235,14 @@ export function StockChart({
     };
   }, []);
 
+
+  useEffect(() => {
+  if (startDate || endDate) {
+    // Reset user zoom state when dates change
+    setUserHasZoomed(false);
+    setPreservedZoomState(null);
+  }
+}, [startDate, endDate]);
   // Sync interval with props
   useEffect(() => {
     setSelectedInterval(interval);
@@ -239,69 +253,98 @@ export function StockChart({
     setChartTheme(theme);
   }, [theme]);
 
-  // **PERFORMANCE**: Debounced update function
-  const debouncedUpdate = useCallback((callback: () => void) => {
-    const now = Date.now();
-    if (now - lastUpdateTimeRef.current < CHART_PERFORMANCE_CONFIG.DEBOUNCE_DELAY) {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      animationFrameRef.current = requestAnimationFrame(callback);
-    } else {
-      callback();
-      lastUpdateTimeRef.current = now;
-    }
-  }, []);
+  // **FIXED**: Zoom state preservation handler
+  // const preserveZoomState = useCallback(() => {
+  //   if (plotRef.current && plotRef.current.layout) {
+  //     const layout = plotRef.current.layout;
+  //     setPreservedZoomState({
+  //       'xaxis.range': layout.xaxis?.range,
+  //       'yaxis.range': layout.yaxis?.range,
+  //       'xaxis.autorange': layout.xaxis?.autorange,
+  //       'yaxis.autorange': layout.yaxis?.autorange
+  //     });
+  //     setIsZoomPreserved(true);
+  //   }
+  // }, []);
 
-  // **ENHANCED**: Market hours filtering function with timezone handling and performance optimization
+  // // **FIXED**: Restore zoom state handler
+  // const restoreZoomState = useCallback(() => {
+  //   if (isZoomPreserved && preservedZoomState && plotRef.current && !isUpdatingRef.current) {
+  //     isUpdatingRef.current = true;
+      
+  //     setTimeout(() => {
+  //       if (plotRef.current && plotRef.current.relayout) {
+  //         plotRef.current.relayout(preservedZoomState).then(() => {
+  //           isUpdatingRef.current = false;
+  //         }).catch(() => {
+  //           isUpdatingRef.current = false;
+  //         });
+  //       } else {
+  //         isUpdatingRef.current = false;
+  //       }
+  //     }, 100);
+  //   }
+  // }, [isZoomPreserved, preservedZoomState]);
+
+  // **PERFORMANCE**: Debounced update function with zoom preservation
+ // **FIXED**: Simple debounced update without zoom interference
+const debouncedUpdate = useCallback((callback: () => void) => {
+  const now = Date.now();
+  if (now - lastUpdateTimeRef.current < CHART_PERFORMANCE_CONFIG.DEBOUNCE_DELAY) {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    animationFrameRef.current = requestAnimationFrame(callback);
+  } else {
+    callback();
+    lastUpdateTimeRef.current = now;
+  }
+}, []);
+
+
+  // **ENHANCED**: Market hours filtering function
   const filterMarketHours = useCallback((data: StockDataPoint[]) => {
     if (!data || !data.length) return [];
     
     return data.filter(item => {
       const date = new Date(item.interval_start);
-      const day = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+      const day = date.getDay();
       const hours = date.getHours();
       const minutes = date.getMinutes();
       const timeInMinutes = hours * 60 + minutes;
       
-      // Only Monday to Friday (1-5) - exclude weekends
       if (day < 1 || day > 5) return false;
       
-      // Market hours: 9:15 AM to 3:30 PM IST (inclusive)
       return timeInMinutes >= CHART_PERFORMANCE_CONFIG.MARKET_OPEN_MINUTES && 
              timeInMinutes <= CHART_PERFORMANCE_CONFIG.MARKET_CLOSE_MINUTES;
     });
   }, []);
 
-  // **ENHANCED**: Generate comprehensive market hour breaks
+  // **ENHANCED**: Generate market hour breaks
   const generateMarketBreaks = useCallback(() => {
     const breaks = [];
     
-    // Weekend breaks (Saturday and Sunday) - more precise bounds
     breaks.push({ 
       pattern: 'day of week', 
-      bounds: [6, 1] // Saturday to Monday
+      bounds: [6, 1]
     });
     
-    // **ENHANCED**: Daily market closure breaks (3:31 PM to 9:14 AM next day)
     breaks.push({
       pattern: 'hour',
-      bounds: [15.517, 9.233] // 3:31 PM (15:31) to 9:14 AM (9:14) - more precise
+      bounds: [15.517, 9.233]
     });
     
     return breaks;
   }, []);
 
-  // **PERFORMANCE**: Optimized data chunking for smooth rendering
+  // **PERFORMANCE**: Optimized data chunking
   const optimizeDataForRendering = useCallback((filteredData: StockDataPoint[]) => {
     if (!filteredData.length) return filteredData;
     
-    // If dataset is small, return as-is
     if (filteredData.length <= CHART_PERFORMANCE_CONFIG.MAX_VISIBLE_POINTS) {
       return filteredData;
     }
     
-    // For large datasets, implement intelligent downsampling
     const ratio = Math.ceil(filteredData.length / CHART_PERFORMANCE_CONFIG.MAX_VISIBLE_POINTS);
     const optimizedData: StockDataPoint[] = [];
     
@@ -310,7 +353,6 @@ export function StockChart({
       if (chunk.length === 1) {
         optimizedData.push(chunk[0]);
       } else {
-        // For chunks, create aggregate data point preserving OHLC logic
         const open = chunk[0].open;
         const close = chunk[chunk.length - 1].close;
         const high = Math.max(...chunk.map(d => d.high));
@@ -331,64 +373,101 @@ export function StockChart({
     return optimizedData;
   }, []);
 
-  // **ENHANCED**: Calculate optimal zoom range with better market hours awareness
-  const calculateOptimalZoomRange = useCallback((filteredData: StockDataPoint[]) => {
-    // Check if no specific date range is selected (i.e., "Fetch All Data" was used)
-    const isAllDataView = !startDate && !endDate;
-    
-    if (!isAllDataView || !filteredData.length) {
-      return null; // Use default autorange behavior for date-specific queries
-    }
-
-    // **ENHANCED**: Get current date in IST timezone
-    const now = new Date();
-    const istNow = new Date(now.getTime() + CHART_PERFORMANCE_CONFIG.IST_OFFSET);
-    const todayDateString = istNow.toISOString().split('T')[0];
-    
-    // **ENHANCED**: Create today's 9:15 AM IST timestamp
-    const targetCenter = new Date(`${todayDateString}T09:15:00.000Z`);
-    
-    // Find data points for today (market hours only)
-    const todayData = filteredData.filter(item => {
-      const itemDate = new Date(item.interval_start);
-      const itemDateString = itemDate.toISOString().split('T')[0];
-      return itemDateString === todayDateString;
-    });
-
-    if (todayData.length === 0) {
-      // **ENHANCED**: If no data for today, find the most recent trading day
-      const sortedData = [...filteredData].sort((a, b) => 
-        new Date(b.interval_start).getTime() - new Date(a.interval_start).getTime()
-      );
+  // **ENHANCED**: Calculate optimal zoom range
+const calculateOptimalZoomRange = useCallback((filteredData: StockDataPoint[]) => {
+  // **FIXED**: Respect user-selected date range first
+  if (startDate || endDate) {
+    if (startDate && endDate) {
+      // User selected both start and end dates - show full range
+      return {
+        xRange: [startDate.toISOString(), endDate.toISOString()],
+        yRange: null // Let Plotly auto-calculate Y range for the selected period
+      };
+    } else if (startDate) {
+      // User selected only start date - show from start date to end of data
+      const endOfData = filteredData.length > 0 ? 
+        new Date(filteredData[filteredData.length - 1].interval_start) : 
+        new Date(startDate.getTime() + 24 * 60 * 60 * 1000); // +1 day if no data
       
-      if (sortedData.length > 0) {
-        const latestDate = new Date(sortedData[0].interval_start);
-        const latestDateString = latestDate.toISOString().split('T')[0];
-        const latestDayData = filteredData.filter(item => {
-          const itemDate = new Date(item.interval_start);
-          const itemDateString = itemDate.toISOString().split('T')[0];
-          return itemDateString === latestDateString;
-        });
-        
-        if (latestDayData.length > 0) {
-          // Use the latest trading day's 9:15 AM as center
-          const latestDayCenter = new Date(`${latestDateString}T09:15:00.000Z`);
-          return calculateZoomWindow(latestDayCenter, latestDayData, filteredData);
-        }
-      }
-      return null;
+      return {
+        xRange: [startDate.toISOString(), endOfData.toISOString()],
+        yRange: null
+      };
     }
+  }
+  
+  // **FIXED**: Only use auto-zoom for "All Data" view when no dates are selected
+  if (!filteredData.length) return null;
+  
+  // For "All Data" view, show recent trading session with smart zoom
+  const now = new Date();
+  const istNow = new Date(now.getTime() + CHART_PERFORMANCE_CONFIG.IST_OFFSET);
+  const todayDateString = istNow.toISOString().split('T')[0];
+  
+  // Try to find today's data first
+  const todayData = filteredData.filter(item => {
+    const itemDate = new Date(item.interval_start);
+    const itemDateString = itemDate.toISOString().split('T')[0];
+    return itemDateString === todayDateString;
+  });
 
-    return calculateZoomWindow(targetCenter, todayData, filteredData);
-  }, [startDate, endDate]);
+  if (todayData.length > 0) {
+    // Show today's full trading session
+    const dayStart = new Date(`${todayDateString}T09:15:00.000Z`);
+    const dayEnd = new Date(`${todayDateString}T15:30:00.000Z`);
+    
+    return {
+      xRange: [dayStart.toISOString(), dayEnd.toISOString()],
+      yRange: calculateYRangeForData(todayData)
+    };
+  } else {
+    // No today's data, show the most recent trading day
+    const sortedData = [...filteredData].sort((a, b) => 
+      new Date(b.interval_start).getTime() - new Date(a.interval_start).getTime()
+    );
+    
+    if (sortedData.length > 0) {
+      const latestDate = new Date(sortedData[0].interval_start);
+      const latestDateString = latestDate.toISOString().split('T')[0];
+      const latestDayData = filteredData.filter(item => {
+        const itemDate = new Date(item.interval_start);
+        const itemDateString = itemDate.toISOString().split('T')[0];
+        return itemDateString === latestDateString;
+      });
+      
+      if (latestDayData.length > 0) {
+        const dayStart = new Date(`${latestDateString}T09:15:00.000Z`);
+        const dayEnd = new Date(`${latestDateString}T15:30:00.000Z`);
+        
+        return {
+          xRange: [dayStart.toISOString(), dayEnd.toISOString()],
+          yRange: calculateYRangeForData(latestDayData)
+        };
+      }
+    }
+  }
+  
+  return null;
+}, [startDate, endDate]);
 
-  // **ENHANCED**: Calculate 30-minute zoom window with better data handling
+// **NEW**: Helper function to calculate Y range for given data
+const calculateYRangeForData = useCallback((data: StockDataPoint[]) => {
+  if (!data.length) return null;
+  
+  const prices = data.flatMap(item => [item.open, item.high, item.low, item.close]);
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const padding = (maxPrice - minPrice) * CHART_PERFORMANCE_CONFIG.PRICE_PADDING_PERCENT;
+  
+  return [minPrice - padding, maxPrice + padding];
+}, []);
+
+
+  // **ENHANCED**: Calculate zoom window
   const calculateZoomWindow = useCallback((centerTime: Date, dayData: StockDataPoint[], allData: StockDataPoint[]) => {
-    // **ENHANCED**: Create 30-minute window (15 minutes before and after 9:15 AM)
     const startTime = new Date(centerTime.getTime() - CHART_PERFORMANCE_CONFIG.ZOOM_WINDOW_MINUTES * 60 * 1000);
     const endTime = new Date(centerTime.getTime() + CHART_PERFORMANCE_CONFIG.ZOOM_WINDOW_MINUTES * 60 * 1000);
 
-    // **ENHANCED**: Get price data for the visible window to calculate Y-axis range
     const windowData = dayData.filter(item => {
       const itemTime = new Date(item.interval_start);
       return itemTime >= startTime && itemTime <= endTime;
@@ -402,7 +481,6 @@ export function StockChart({
       const padding = (maxPrice - minPrice) * CHART_PERFORMANCE_CONFIG.PRICE_PADDING_PERCENT;
       yRange = [minPrice - padding, maxPrice + padding];
     } else if (dayData.length > 0) {
-      // **ENHANCED**: Fallback to day's data if no data in 30-min window
       const prices = dayData.flatMap(item => [item.open, item.high, item.low, item.close]);
       const minPrice = Math.min(...prices);
       const maxPrice = Math.max(...prices);
@@ -416,7 +494,7 @@ export function StockChart({
     };
   }, []);
 
-  // **ENHANCED**: Comprehensive indicator calculations with performance optimizations
+  // **ENHANCED**: Comprehensive indicator calculations
   const calculateIndicator = useCallback((type: string, prices: number[], options = {}) => {
     switch (type) {
       case 'ma': {
@@ -447,7 +525,6 @@ export function StockChart({
           result[i] = prices[i] * k + result[i-1] * (1-k);
         }
         
-        // Fill initial nulls
         for (let i = 0; i < period - 1; i++) {
           result[i] = null;
         }
@@ -487,7 +564,6 @@ export function StockChart({
         const gains = new Array(prices.length - 1);
         const losses = new Array(prices.length - 1);
         
-        // Calculate price changes
         for (let i = 1; i < prices.length; i++) {
           const change = prices[i] - prices[i-1];
           gains[i-1] = change > 0 ? change : 0;
@@ -497,7 +573,6 @@ export function StockChart({
         const result = new Array(prices.length).fill(null);
         
         if (gains.length >= period) {
-          // Initial average
           let avgGain = gains.slice(0, period).reduce((sum, gain) => sum + gain, 0) / period;
           let avgLoss = losses.slice(0, period).reduce((sum, loss) => sum + loss, 0) / period;
           
@@ -560,11 +635,9 @@ export function StockChart({
         const atr = new Array(data.length).fill(null);
         
         if (trueRanges.length >= period) {
-          // Initial ATR
           let currentATR = trueRanges.slice(0, period).reduce((sum, tr) => sum + tr, 0) / period;
           atr[period] = currentATR;
           
-          // Subsequent ATR values using Wilder's smoothing
           for (let i = period + 1; i < data.length; i++) {
             currentATR = ((currentATR * (period - 1)) + trueRanges[i - 1]) / period;
             atr[i] = currentATR;
@@ -611,13 +684,12 @@ export function StockChart({
           const current = data[i].close;
           
           if (highest === lowest) {
-            kValues[i] = 50; // Avoid division by zero
+            kValues[i] = 50;
           } else {
             kValues[i] = ((current - lowest) / (highest - lowest)) * 100;
           }
         }
         
-        // Calculate %D (SMA of %K)
         const dValues = new Array(data.length).fill(null);
         for (let i = kPeriod + dPeriod - 2; i < data.length; i++) {
           const slice = kValues.slice(i - dPeriod + 1, i + 1).filter(v => v !== null);
@@ -633,7 +705,7 @@ export function StockChart({
         if (!data || !data.length) return [];
         
         const vwap = new Array(data.length);
-        let cumulativeTPV = 0; // Typical Price * Volume
+        let cumulativeTPV = 0;
         let cumulativeVolume = 0;
         
         for (let i = 0; i < data.length; i++) {
@@ -654,7 +726,7 @@ export function StockChart({
     }
   }, [data]);
 
-  // Enhanced Heiken Ashi calculation with performance optimization
+  // Enhanced Heiken Ashi calculation
   const convertToHeikenAshi = useCallback((data: StockDataPoint[]) => {
     const haData = [];
     
@@ -689,15 +761,15 @@ export function StockChart({
     return haData;
   }, []);
 
-  // **ENHANCED**: Color theme with #27272a base and better contrast
+  // **ENHANCED**: Color theme
   const getColorTheme = useCallback(() => {
     const baseColor = '#27272a';
     const lighterShades = {
-      100: '#3f3f46', // lighter
-      200: '#52525b', // even lighter
-      300: '#71717a', // much lighter
-      400: '#a1a1aa', // very light
-      500: '#d4d4d8'  // extremely light
+      100: '#3f3f46',
+      200: '#52525b',
+      300: '#71717a',
+      400: '#a1a1aa',
+      500: '#d4d4d8'
     };
     
     if (chartTheme === 'dark') {
@@ -765,11 +837,10 @@ export function StockChart({
     }
   }, [chartTheme]);
 
-  // **ENHANCED**: Plot data generation with consistent market hours filtering and all functionalities
+  // **FIXED**: Plot data generation with proper chart type handling for line/area
   const { plotData, timeLabels, filteredData } = useMemo(() => {
     if (!data || !data.length) return { plotData: [], timeLabels: [], filteredData: [] };
 
-    // **ALWAYS** filter data to market hours only - consistent behavior
     const marketHoursData = filterMarketHours(data);
     const optimizedData = optimizeDataForRendering(marketHoursData);
     
@@ -779,13 +850,19 @@ export function StockChart({
     const timeLabels = optimizedData.map(item => new Date(item.interval_start));
     const plotElements = [];
     
-    // **PERFORMANCE**: Determine if we should use WebGL
-    const useWebGL = optimizedData.length > CHART_PERFORMANCE_CONFIG.WEBGL_THRESHOLD;
-    const chartType = useWebGL ? 'scattergl' : 'scatter';
+    // **FIXED**: Proper chart type selection - avoid scattergl for line/area charts
+    const getChartType = (chartType: string) => {
+      // Force 'scatter' type for line and area charts to ensure proper rendering
+      if (chartType === 'line' || chartType === 'area') {
+        return 'scatter';
+      }
+      // Use WebGL optimization only for large datasets with compatible chart types
+      return optimizedData.length > CHART_PERFORMANCE_CONFIG.WEBGL_THRESHOLD ? 'scattergl' : 'scatter';
+    };
     
     const chartData = selectedChartType === 'heiken-ashi' ? convertToHeikenAshi(optimizedData) : optimizedData;
 
-    // **ENHANCED**: Main price chart with all chart types
+    // **FIXED**: Main price chart with proper type handling
     let priceChart;
     
     switch (selectedChartType) {
@@ -847,43 +924,47 @@ export function StockChart({
         break;
         
       case 'line':
+        // **FIXED**: Force scatter type for proper line rendering
         priceChart = {
           x: timeLabels,
           y: optimizedData.map(item => item.close),
-          type: chartType,
+          type: 'scatter', // Always use 'scatter' for line charts
           mode: 'lines',
           name: 'Price',
           line: { 
             color: colors.line, 
             width: 2.5,
-            shape: 'spline',
-            smoothing: 0.8
-          }
+            shape: 'linear', // Changed from 'spline' for better performance
+            smoothing: 0
+          },
+          connectgaps: true
         };
         break;
         
       case 'area':
+        // **FIXED**: Force scatter type for proper area rendering
         priceChart = {
           x: timeLabels,
           y: optimizedData.map(item => item.close),
-          type: chartType,
+          type: 'scatter', // Always use 'scatter' for area charts
           mode: 'lines',
           name: 'Price',
           fill: 'tozeroy',
-          fillcolor: `rgba(96, 165, 250, 0.2)`,
+          fillcolor: 'rgba(96, 165, 250, 0.2)',
           line: { 
             color: colors.line, 
             width: 2.5,
-            shape: 'spline',
-            smoothing: 0.8
-          }
+            shape: 'linear', // Changed from 'spline' for better performance
+            smoothing: 0
+          },
+          connectgaps: true
         };
         break;
     }
     
     plotElements.push(priceChart);
 
-    // **ENHANCED**: Volume chart with performance optimization
+    // **ENHANCED**: Volume chart
     if (showVolume) {
       const volume = {
         x: timeLabels,
@@ -907,151 +988,151 @@ export function StockChart({
 
     const prices = optimizedData.map(item => item.close);
 
-    // **ENHANCED**: Moving Averages with performance optimization
+    // **ENHANCED**: Moving Averages
     if (activeIndicators.includes('ma')) {
       selectedMAperiods.forEach((period, index) => {
         const ma = calculateIndicator('ma', prices, { period });
         plotElements.push({
           x: timeLabels,
           y: ma,
-          type: chartType,
+          type: getChartType('ma'),
           mode: 'lines',
           name: `MA(${period})`,
           line: { 
             color: colors.indicators.ma[index % colors.indicators.ma.length],
             width: 2,
-            shape: 'spline',
-            smoothing: 1.0
-          }
+            shape: 'linear'
+          },
+          connectgaps: false
         });
       });
     }
 
-    // **ENHANCED**: Exponential Moving Averages with performance optimization
+    // **ENHANCED**: Exponential Moving Averages
     if (activeIndicators.includes('ema')) {
       selectedEMAperiods.forEach((period, index) => {
         const ema = calculateIndicator('ema', prices, { period });
         plotElements.push({
           x: timeLabels,
           y: ema,
-          type: chartType,
+          type: getChartType('ema'),
           mode: 'lines',
           name: `EMA(${period})`,
           line: { 
             color: colors.indicators.ema[index % colors.indicators.ema.length],
             width: 2,
             dash: 'dash',
-            shape: 'spline',
-            smoothing: 1.0
-          }
+            shape: 'linear'
+          },
+          connectgaps: false
         });
       });
     }
 
-    // **ENHANCED**: Bollinger Bands with performance optimization
+    // **ENHANCED**: Bollinger Bands
     if (activeIndicators.includes('bollinger')) {
       const bands = calculateIndicator('bollinger', prices, { period: 20, stdDev: 2 }) as any;
       
       plotElements.push({
         x: timeLabels,
         y: bands.upper,
-        type: chartType,
+        type: getChartType('bollinger'),
         mode: 'lines',
         name: 'BB Upper',
         line: { 
           color: colors.indicators.bollinger, 
           width: 1.5, 
           dash: 'dot',
-          shape: 'spline',
-          smoothing: 0.6
+          shape: 'linear'
         },
-        showlegend: false
+        showlegend: false,
+        connectgaps: false
       });
       
       plotElements.push({
         x: timeLabels,
         y: bands.lower,
-        type: chartType,
+        type: getChartType('bollinger'),
         mode: 'lines',
         name: 'BB Lower',
         line: { 
           color: colors.indicators.bollinger, 
           width: 1.5, 
           dash: 'dot',
-          shape: 'spline',
-          smoothing: 0.6
+          shape: 'linear'
         },
         fill: 'tonexty',
-        fillcolor: `rgba(6, 182, 212, 0.1)`,
-        showlegend: false
+        fillcolor: 'rgba(6, 182, 212, 0.1)',
+        showlegend: false,
+        connectgaps: false
       });
       
       plotElements.push({
         x: timeLabels,
         y: bands.middle,
-        type: chartType,
+        type: getChartType('bollinger'),
         mode: 'lines',
         name: 'BB(20,2)',
         line: { 
           color: colors.indicators.bollinger, 
           width: 1.5,
-          shape: 'spline',
-          smoothing: 0.6
-        }
+          shape: 'linear'
+        },
+        connectgaps: false
       });
     }
 
-    // **ENHANCED**: RSI with performance optimization
+    // **ENHANCED**: RSI
     if (activeIndicators.includes('rsi')) {
       const rsi = calculateIndicator('rsi', prices) as number[];
       plotElements.push({
         x: timeLabels,
         y: rsi,
-        type: chartType,
+        type: getChartType('rsi'),
         mode: 'lines',
         name: 'RSI(14)',
         yaxis: 'y3',
         line: { 
           color: colors.indicators.rsi, 
           width: 2,
-          shape: 'spline',
-          smoothing: 0.8
-        }
+          shape: 'linear'
+        },
+        connectgaps: false
       });
     }
 
-    // **ENHANCED**: MACD with performance optimization
+    // **ENHANCED**: MACD
     if (activeIndicators.includes('macd')) {
       const macd = calculateIndicator('macd', prices) as any;
       
       plotElements.push({
         x: timeLabels,
         y: macd.macdLine,
-        type: chartType,
+        type: getChartType('macd'),
         mode: 'lines',
         name: 'MACD',
         yaxis: 'y4',
         line: { 
           color: colors.indicators.macd, 
           width: 2,
-          shape: 'spline',
-          smoothing: 0.8
-        }
+          shape: 'linear'
+        },
+        connectgaps: false
       });
       
       plotElements.push({
         x: timeLabels,
         y: macd.signalLine,
-        type: chartType,
+        type: getChartType('macd'),
         mode: 'lines',
         name: 'Signal',
         yaxis: 'y4',
         line: { 
           color: '#fbbf24', 
           width: 2,
-          shape: 'spline',
-          smoothing: 0.8
-        }
+          shape: 'linear'
+        },
+        connectgaps: false
       });
       
       plotElements.push({
@@ -1076,16 +1157,16 @@ export function StockChart({
       plotElements.push({
         x: timeLabels,
         y: atr,
-        type: chartType,
+        type: getChartType('atr'),
         mode: 'lines',
         name: 'ATR(14)',
         yaxis: 'y5',
         line: { 
           color: colors.indicators.atr, 
           width: 2,
-          shape: 'spline',
-          smoothing: 0.8
-        }
+          shape: 'linear'
+        },
+        connectgaps: false
       });
     }
 
@@ -1095,16 +1176,16 @@ export function StockChart({
       plotElements.push({
         x: timeLabels,
         y: obv,
-        type: chartType,
+        type: getChartType('obv'),
         mode: 'lines',
         name: 'OBV',
         yaxis: 'y6',
         line: { 
           color: colors.indicators.obv, 
           width: 2,
-          shape: 'spline',
-          smoothing: 0.8
-        }
+          shape: 'linear'
+        },
+        connectgaps: false
       });
     }
 
@@ -1115,22 +1196,22 @@ export function StockChart({
       plotElements.push({
         x: timeLabels,
         y: stoch.k,
-        type: chartType,
+        type: getChartType('stoch'),
         mode: 'lines',
         name: '%K(14)',
         yaxis: 'y7',
         line: { 
           color: colors.indicators.stoch, 
           width: 2,
-          shape: 'spline',
-          smoothing: 0.8
-        }
+          shape: 'linear'
+        },
+        connectgaps: false
       });
       
       plotElements.push({
         x: timeLabels,
         y: stoch.d,
-        type: chartType,
+        type: getChartType('stoch'),
         mode: 'lines',
         name: '%D(3)',
         yaxis: 'y7',
@@ -1138,9 +1219,9 @@ export function StockChart({
           color: '#fbbf24', 
           width: 2,
           dash: 'dash',
-          shape: 'spline',
-          smoothing: 0.8
-        }
+          shape: 'linear'
+        },
+        connectgaps: false
       });
     }
 
@@ -1150,16 +1231,16 @@ export function StockChart({
       plotElements.push({
         x: timeLabels,
         y: vwap,
-        type: chartType,
+        type: getChartType('vwap'),
         mode: 'lines',
         name: 'VWAP',
         line: { 
           color: colors.indicators.vwap, 
           width: 2,
           dash: 'dashdot',
-          shape: 'spline',
-          smoothing: 0.8
-        }
+          shape: 'linear'
+        },
+        connectgaps: false
       });
     }
 
@@ -1179,12 +1260,12 @@ export function StockChart({
     convertToHeikenAshi
   ]);
 
-  // **ENHANCED**: Layout configuration with consistent market hours handling and all indicators
+  // **FIXED**: Layout configuration with zoom state preservation
   const layout = useMemo(() => {
     const colors = getColorTheme();
     
-    // **ENHANCED**: Calculate optimal zoom range using filtered data
-    const zoomRange = calculateOptimalZoomRange(filteredData);
+    // **FIXED**: Use preserved zoom state if available
+const zoomRange = userHasZoomed ? null : calculateOptimalZoomRange(filteredData);
     
     // Calculate subplot domains for all indicators
     const hasRSI = activeIndicators.includes('rsi');
@@ -1207,7 +1288,7 @@ export function StockChart({
     }
 
     const baseLayout: any = {
-      // **PERFORMANCE**: Optimized drag mode
+      // **FIXED**: Preserve drag mode for zoom state
       dragmode: drawingMode || 'pan',
       showlegend: true,
       legend: {
@@ -1222,53 +1303,52 @@ export function StockChart({
       plot_bgcolor: colors.bg,
       font: { color: colors.text, family: 'Inter, system-ui, sans-serif' },
       
-      // **ENHANCED**: Main price chart with consistent market hours and optimal zoom
-      xaxis: {
-        rangeslider: { visible: false },
-        type: 'date',
-        showgrid: showGridlines,
-        gridcolor: colors.grid,
-        linecolor: colors.grid,
-        tickfont: { color: colors.text, size: 10 },
-        title: { text: '', font: { color: colors.text } },
-        // **ENHANCED**: Always apply market breaks for consistent behavior
-        rangebreaks: generateMarketBreaks(),
-        // **ENHANCED**: Apply optimal zoom range if calculated
-        ...(zoomRange?.xRange && {
-          range: zoomRange.xRange,
-          autorange: false
-        }),
-        // **ENHANCED**: Fallback to autorange if no optimal zoom
-        ...(!zoomRange?.xRange && {
-          autorange: true
-        }),
-        // **PERFORMANCE**: Smooth zooming
-        fixedrange: false
-      },
-      
-      yaxis: {
-        title: { text: 'Price (₹)', font: { color: colors.text, size: 12 } },
-        domain: priceChartDomain,
-        tickformat: ',.2f',
-        showgrid: showGridlines,
-        gridcolor: colors.grid,
-        zerolinecolor: colors.grid,
-        linecolor: colors.grid,
-        type: logScale ? 'log' : 'linear',
-        tickfont: { color: colors.text, size: 10 },
-        side: 'left',
-        // **ENHANCED**: Apply optimal Y-axis zoom if calculated
-        ...(zoomRange?.yRange && {
-          range: zoomRange.yRange,
-          autorange: false
-        }),
-        // **ENHANCED**: Fallback to autorange if no optimal zoom
-        ...(!zoomRange?.yRange && {
-          autorange: true
-        }),
-        // **PERFORMANCE**: Smooth zooming
-        fixedrange: false
-      },
+ xaxis: {
+  rangeslider: { visible: false },
+  type: 'date',
+  showgrid: showGridlines,
+  gridcolor: colors.grid,
+  linecolor: colors.grid,
+  tickfont: { color: colors.text, size: 10 },
+  title: { text: '', font: { color: colors.text } },
+  rangebreaks: generateMarketBreaks(),
+  // **FIXED**: Only set initial range, never override user interactions
+  ...((!userHasZoomed && filteredData.length > 0) ? (() => {
+    // Only apply auto-zoom on first load or when explicitly reset
+    if (startDate && endDate) {
+      return {
+        range: [startDate.toISOString(), endDate.toISOString()],
+        autorange: false
+      };
+    } else if (startDate) {
+      const endOfData = new Date(filteredData[filteredData.length - 1]?.interval_start || startDate.getTime() + 24 * 60 * 60 * 1000);
+      return {
+        range: [startDate.toISOString(), endOfData.toISOString()],
+        autorange: false
+      };
+    }
+    return {}; // Let Plotly handle auto-range
+  })() : {}),
+  fixedrange: false
+},
+
+yaxis: {
+  title: { text: 'Price (₹)', font: { color: colors.text, size: 12 } },
+  domain: priceChartDomain,
+  tickformat: ',.2f',
+  showgrid: showGridlines,
+  gridcolor: colors.grid,
+  zerolinecolor: colors.grid,
+  linecolor: colors.grid,
+  type: logScale ? 'log' : 'linear',
+  tickfont: { color: colors.text, size: 10 },
+  side: 'left',
+  // **FIXED**: Never override Y-axis after user interaction
+  autorange: !userHasZoomed,
+  fixedrange: false
+},
+
+
       
       // Enhanced volume panel
       yaxis2: {
@@ -1283,7 +1363,6 @@ export function StockChart({
         side: 'right'
       },
       
-      // **PERFORMANCE**: Optimized hover mode
       hovermode: crosshair ? 'x unified' : 'closest',
       hoverdistance: 100,
       spikedistance: 1000,
@@ -1294,25 +1373,31 @@ export function StockChart({
       },
       shapes: annotations,
       
-      // **PERFORMANCE**: Smooth transitions
+      // **FIXED**: Smooth transitions without affecting zoom
       transition: {
-        duration: 100,
-        easing: 'cubic-in-out'
+        duration: 50, // Reduced duration for smoother experience
+        easing: 'linear'
       },
       
       title: {
-        text: companyId ? 
-          `${companyId} - ${selectedInterval.toUpperCase()} Chart ${startDate && endDate ? 
-            `(${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()})` : 
-            startDate ? `(First 15 mins of ${startDate.toLocaleDateString()})` : 
-            zoomRange ? '(Auto-zoomed to 9:15 AM ± 15 mins)' : 
-            `(Market Hours Only: 9:15 AM - 3:30 PM) [Optimized: ${filteredData.length} points]`
-          }` : 
-          'Select a Company',
-        font: { color: colors.text, size: 16, family: 'Inter, system-ui, sans-serif' },
-        x: 0.5,
-        xanchor: 'center'
+  text: companyId ? 
+    `${companyId} - ${selectedInterval.toUpperCase()} Chart ${(() => {
+      if (startDate && endDate) {
+        return `(${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()})`;
+      } else if (startDate) {
+        return `(From ${startDate.toLocaleDateString()})`;
+      } else if (userHasZoomed) {
+        return '(Custom Zoom)';
+      } else {
+        return '(Latest Trading Session)';
       }
+    })()} [${filteredData.length} points]` : 
+    'Select a Company',
+  font: { color: colors.text, size: 16, family: 'Inter, system-ui, sans-serif' },
+  x: 0.5,
+  xanchor: 'center'
+}
+
     };
     
     // Add indicator subplots
@@ -1441,12 +1526,19 @@ export function StockChart({
     startDate,
     endDate,
     filteredData,
+    filteredData.length, // Only track length, not the full array
     calculateOptimalZoomRange,
     generateMarketBreaks,
-    getColorTheme
+    getColorTheme,
+//     userHasZoomed,
+//     startDate,
+// endDate,
+// calculateYRangeForData
+    // isZoomPreserved,
+    // preservedZoomState
   ]);
 
-  // **ENHANCED**: Plotly configuration with performance optimizations
+  // **FIXED**: Plotly configuration with zoom preservation
   const config = useMemo(() => ({
     responsive: true,
     scrollZoom: true,
@@ -1461,10 +1553,8 @@ export function StockChart({
     ],
     modeBarButtonsToRemove: ['autoScale2d', 'select2d', 'lasso2d'],
     displaylogo: false,
-    // **PERFORMANCE**: Optimized interactions
     doubleClick: 'reset+autosize',
     showTips: false,
-    // **PERFORMANCE**: Enable WebGL when needed
     plotGlPixelRatio: window.devicePixelRatio || 1,
     toImageButtonOptions: {
       format: 'png',
@@ -1475,7 +1565,7 @@ export function StockChart({
     }
   }), [companyId]);
 
-  // **ENHANCED**: Event handlers with debouncing and performance optimization
+  // **FIXED**: Event handlers with zoom preservation
   const toggleIndicator = useCallback((id: string) => {
     debouncedUpdate(() => {
       setActiveIndicators(prev => 
@@ -1506,22 +1596,30 @@ export function StockChart({
     });
   }, [debouncedUpdate]);
 
-    const handleThemeToggle = useCallback(() => {
+  const handleThemeToggle = useCallback(() => {
     const newTheme = chartTheme === 'dark' ? 'light' : 'dark';
-    setChartTheme(newTheme);
-    if (onThemeChange) {
-      onThemeChange(newTheme);
-    }
-  }, [chartTheme, onThemeChange]);
-
-  const handleIntervalChange = useCallback((newInterval: string) => {
     debouncedUpdate(() => {
-      setSelectedInterval(newInterval);
-      if (onIntervalChange) {
-        onIntervalChange(newInterval);
+      setChartTheme(newTheme);
+      if (onThemeChange) {
+        onThemeChange(newTheme);
       }
     });
-  }, [debouncedUpdate, onIntervalChange]);
+  }, [chartTheme, onThemeChange, debouncedUpdate]);
+
+const handleIntervalChange = useCallback((newInterval: string) => {
+  // Only reset zoom if interval actually changes
+  if (newInterval !== selectedInterval) {
+    setUserHasZoomed(false);
+    setPreservedZoomState(null);
+  }
+  
+  setSelectedInterval(newInterval);
+  if (onIntervalChange) {
+    onIntervalChange(newInterval);
+  }
+}, [selectedInterval, onIntervalChange]);
+
+
 
   const handleChartTypeChange = useCallback((type: string) => {
     debouncedUpdate(() => {
@@ -1539,7 +1637,7 @@ export function StockChart({
     }
   }, []);
 
-  // **ENHANCED**: Auto-refresh functionality from 1473-line version
+  // **ENHANCED**: Auto-refresh functionality
   useEffect(() => {
     if (!autoRefresh || !onIntervalChange) return;
 
@@ -1581,12 +1679,10 @@ export function StockChart({
         (alert.type === 'below' && currentPrice <= alert.price);
 
       if (shouldTrigger) {
-        // Update alert as triggered
         setPriceAlerts(prev => 
           prev.map(a => a.id === alert.id ? { ...a, triggered: true } : a)
         );
 
-        // Show notification
         if ('Notification' in window && Notification.permission === 'granted') {
           new Notification(`Price Alert: ${companyId}`, {
             body: `Price ${alert.type} ₹${alert.price.toFixed(2)} (Current: ₹${currentPrice.toFixed(2)})`,
@@ -1615,19 +1711,19 @@ export function StockChart({
             break;
           case 'g':
             e.preventDefault();
-            setShowGridlines(prev => !prev);
+            debouncedUpdate(() => setShowGridlines(prev => !prev));
             break;
           case 'v':
             e.preventDefault();
-            setShowVolume(prev => !prev);
+            debouncedUpdate(() => setShowVolume(prev => !prev));
             break;
           case 'c':
             e.preventDefault();
-            setCrosshair(prev => !prev);
+            debouncedUpdate(() => setCrosshair(prev => !prev));
             break;
           case 'l':
             e.preventDefault();
-            setLogScale(prev => !prev);
+            debouncedUpdate(() => setLogScale(prev => !prev));
             break;
           case 's':
             e.preventDefault();
@@ -1639,42 +1735,113 @@ export function StockChart({
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [handleThemeToggle]);
+  }, [handleThemeToggle, debouncedUpdate]);
 
-  // **ENHANCED**: Plot event handlers
+  // **FIXED**: Plot event handlers with zoom preservation
   const handlePlotUpdate = useCallback((figure: any) => {
     if (figure.layout?.shapes) {
       setAnnotations(figure.layout.shapes);
     }
   }, []);
 
+const handlePlotRelayout = useCallback((eventData: any) => {
+  // **FIXED**: Robust zoom state tracking
+  if (eventData && !isUpdatingRef.current) {
+    // Check for any range changes (zoom/pan)
+    const hasXRangeChange = eventData['xaxis.range[0]'] !== undefined || 
+                           eventData['xaxis.range[1]'] !== undefined || 
+                           eventData['xaxis.range'] !== undefined;
+    
+    const hasYRangeChange = eventData['yaxis.range[0]'] !== undefined || 
+                           eventData['yaxis.range[1]'] !== undefined || 
+                           eventData['yaxis.range'] !== undefined;
+    
+    const hasAutoRange = eventData['xaxis.autorange'] !== undefined || 
+                         eventData['yaxis.autorange'] !== undefined;
+    
+    // Mark user interaction if they manually changed ranges
+    if (hasXRangeChange || hasYRangeChange) {
+      setUserHasZoomed(true);
+      setPreservedZoomState(eventData);
+    }
+    
+    // Reset zoom flag only on explicit autorange
+    if (hasAutoRange && (eventData['xaxis.autorange'] === true || eventData['yaxis.autorange'] === true)) {
+      setUserHasZoomed(false);
+      setPreservedZoomState(null);
+    }
+  }
+}, []);
+
+
+
   const handlePlotClick = useCallback((data: any) => {
     if (drawingMode) {
-      // Handle drawing mode clicks
       console.log('Drawing mode click:', data);
     }
   }, [drawingMode]);
 
   const handlePlotHover = useCallback((data: any) => {
-    // Enhanced hover functionality
     if (data.points && data.points.length > 0) {
       const point = data.points[0];
-      // Custom hover logic can be added here
     }
   }, []);
 
   // **ENHANCED**: Reset chart function
-  const resetChart = useCallback(() => {
-    if (plotRef.current) {
-      plotRef.current.relayout({
-        'xaxis.autorange': true,
-        'yaxis.autorange': true,
-        dragmode: 'pan'
-      });
+const resetChart = useCallback(() => {
+  // **FIXED**: Explicit reset that respects current context
+  setUserHasZoomed(false);
+  setPreservedZoomState(null);
+  
+  if (plotRef.current) {
+    const resetUpdate: any = { 
+      dragmode: 'pan',
+      'xaxis.autorange': true,
+      'yaxis.autorange': true
+    };
+    
+    // If user has selected specific dates, zoom to those after reset
+    if (startDate || endDate) {
+      setTimeout(() => {
+        if (plotRef.current && startDate && endDate) {
+          plotRef.current.relayout({
+            'xaxis.range': [startDate.toISOString(), endDate.toISOString()],
+            'xaxis.autorange': false
+          });
+        }
+      }, 200);
     }
-    setAnnotations([]);
-    setDrawingMode(null);
-  }, []);
+    
+    plotRef.current.relayout(resetUpdate);
+  }
+  
+  setAnnotations([]);
+  setDrawingMode(null);
+}, [startDate, endDate]); // Minimal dependencies
+
+// **NEW**: Persist zoom state across updates
+const preserveUserInteraction = useCallback(() => {
+  if (userHasZoomed && preservedZoomState && plotRef.current) {
+    // Small delay to ensure chart is ready
+    setTimeout(() => {
+      if (plotRef.current && !isUpdatingRef.current) {
+        isUpdatingRef.current = true;
+        plotRef.current.relayout(preservedZoomState).finally(() => {
+          isUpdatingRef.current = false;
+        });
+      }
+    }, 50);
+  }
+}, [userHasZoomed, preservedZoomState]);
+
+// **NEW**: Apply preserved zoom after data updates
+useEffect(() => {
+  if (filteredData.length > 0 && userHasZoomed) {
+    preserveUserInteraction();
+  }
+}, [filteredData.length, preserveUserInteraction]);
+
+
 
   // **ENHANCED**: Export chart data
   const exportChartData = useCallback(() => {
@@ -1792,7 +1959,7 @@ export function StockChart({
         fontFamily: 'Inter, system-ui, sans-serif'
       }}
     >
-      {/* **ENHANCED**: Control Panel with all functionalities */}
+      {/* **ENHANCED**: Control Panel */}
       {sidebarVisible && (
         <div 
           className="absolute top-0 left-0 z-10 p-4 rounded-lg shadow-lg border max-h-full overflow-y-auto"
@@ -2007,7 +2174,7 @@ export function StockChart({
             </label>
             <div className="space-y-2">
               <button
-                onClick={() => setShowVolume(prev => !prev)}
+                onClick={() => debouncedUpdate(() => setShowVolume(prev => !prev))}
                 style={showVolume ? activeButtonStyle : buttonStyle}
                 className="w-full justify-start"
                 onMouseEnter={(e) => {
@@ -2026,7 +2193,7 @@ export function StockChart({
               </button>
               
               <button
-                onClick={() => setShowGridlines(prev => !prev)}
+                onClick={() => debouncedUpdate(() => setShowGridlines(prev => !prev))}
                 style={showGridlines ? activeButtonStyle : buttonStyle}
                 className="w-full justify-start"
                 onMouseEnter={(e) => {
@@ -2045,7 +2212,7 @@ export function StockChart({
               </button>
               
               <button
-                onClick={() => setCrosshair(prev => !prev)}
+                onClick={() => debouncedUpdate(() => setCrosshair(prev => !prev))}
                 style={crosshair ? activeButtonStyle : buttonStyle}
                 className="w-full justify-start"
                 onMouseEnter={(e) => {
@@ -2064,7 +2231,7 @@ export function StockChart({
               </button>
               
               <button
-                onClick={() => setLogScale(prev => !prev)}
+                onClick={() => debouncedUpdate(() => setLogScale(prev => !prev))}
                 style={logScale ? activeButtonStyle : buttonStyle}
                 className="w-full justify-start"
                 onMouseEnter={(e) => {
@@ -2222,57 +2389,377 @@ export function StockChart({
         </div>
       )}
 
-      {/* **ENHANCED**: Show/Hide Sidebar Button */}
+            {/* **ENHANCED**: Show/Hide Sidebar Button */}
       {!sidebarVisible && (
         <button
           onClick={() => setSidebarVisible(true)}
-          className="absolute top-4 left-4 z-10 rounded-lg shadow-lg"
           style={{
             ...buttonStyle,
-            backgroundColor: colors.paper,
-            borderColor: colors.grid
+            position: 'absolute',
+            top: '20px',
+            left: '20px',
+            zIndex: 1000,
+            padding: '8px'
           }}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.button.bgHover}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.paper}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.button.bg}
+          title="Show Controls (Ctrl+S)"
         >
-          <Settings size={16} />
-          <Eye size={16} />
+          <Settings size={18} />
         </button>
       )}
 
-      {/* **ENHANCED**: Performance Info */}
+      {/* **ENHANCED**: Performance Info Badge */}
       <div 
-        className="absolute top-4 right-4 z-10 px-3 py-2 rounded-lg text-xs font-mono"
         style={{
-          backgroundColor: colors.paper,
-          borderColor: colors.grid,
-          border: `1px solid ${colors.grid}`,
-          color: colors.text,
-          opacity: 0.8
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          zIndex: 1000,
+          padding: '4px 8px',
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          color: '#fff',
+          fontSize: '10px',
+          borderRadius: '4px',
+          fontFamily: 'monospace'
         }}
       >
-        <div>Points: {filteredData.length}</div>
-        <div>Optimized: {data.length > CHART_PERFORMANCE_CONFIG.MAX_VISIBLE_POINTS ? 'Yes' : 'No'}</div>
-        <div>WebGL: {filteredData.length > CHART_PERFORMANCE_CONFIG.WEBGL_THRESHOLD ? 'Yes' : 'No'}</div>
+        {filteredData.length} points | {selectedInterval} | {selectedChartType}
       </div>
 
-      {/* **ENHANCED**: Main Chart with all optimizations */}
-      <div style={{ width: '100%', height: '100%' }}>
-        <Plot
-          ref={plotRef}
-          data={plotData}
-          layout={layout}
-          config={config}
-          style={{ width: '100%', height: '100%' }}
-          onUpdate={handlePlotUpdate}
-          onClick={handlePlotClick}
-          onHover={handlePlotHover}
-          useResizeHandler={true}
-          className="plotly-chart"
-        />
+      {/* **MAIN CHART**: Plotly chart with all optimizations */}
+      <div 
+        style={{ 
+          width: sidebarVisible ? 'calc(100% - 300px)' : '100%',
+          height: '100%',
+          marginLeft: sidebarVisible ? '300px' : '0',
+          transition: 'all 0.3s ease',
+          position: 'relative'
+        }}
+      >
+        {plotData.length > 0 ? (
+          <Plot
+            ref={plotRef}
+            data={plotData}
+            layout={layout}
+            config={config}
+            style={{ width: '100%', height: '100%' }}
+            useResizeHandler={true}
+            onUpdate={handlePlotUpdate}
+            onRelayout={handlePlotRelayout}
+            onClick={handlePlotClick}
+            onHover={handlePlotHover}
+            onUnhover={() => {}}
+            onSelected={() => {}}
+            onDeselect={() => {}}
+            onRestyle={() => {}}
+
+            onAfterPlot={() => {
+              // Preserve user interaction after plot updates
+              preserveUserInteraction();
+            }}
+            
+          on revision={filteredData.length} // Only redraw when data count changes
+  onRedraw={() => {
+    // Restore zoom after redraw if user had custom zoom
+    if (userHasZoomed) {
+      preserveUserInteraction();
+    }
+  // Chart redrawn - no action needed
+}}
+            onAnimated={() => {}}
+            onFramework={() => {}}
+            onTransition={() => {}}
+            onTransitionInterrupted={() => {}}
+            onDoubleClick={() => {
+              // Custom double click behavior
+              if (drawingMode) {
+                setDrawingMode(null);
+              }
+            }}
+            onAnimatingFrame={() => {}}
+            onLegendClick={() => {}}
+            onLegendDoubleClick={() => {}}
+            onSliderChange={() => {}}
+            onSliderStart={() => {}}
+            onSliderEnd={() => {}}
+            onAutoSizeChanged={() => {}}
+            divId="stock-chart-plot"
+          />
+        ) : (
+          <div 
+            className="flex items-center justify-center w-full h-full"
+            style={{ color: colors.text }}
+          >
+            <div className="text-center">
+              <div className="text-4xl mb-4">📈</div>
+              <p className="text-lg font-medium">Chart is loading...</p>
+              <p className="text-sm opacity-70">Processing market data</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* **ENHANCED**: Floating Action Buttons */}
+      <div 
+        style={{
+          position: 'absolute',
+          bottom: '20px',
+          right: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          zIndex: 1000
+        }}
+      >
+        {/* Reset Zoom Button */}
+        <button
+          onClick={resetChart}
+          style={{
+            ...buttonStyle,
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            padding: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.button.bgHover}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.button.bg}
+          title="Reset Chart (Ctrl+R)"
+        >
+          <RotateCcw size={16} />
+        </button>
+
+        {/* Zoom In Button */}
+        <button
+          onClick={() => {
+            if (plotRef.current) {
+              const currentLayout = plotRef.current.layout;
+              const xRange = currentLayout.xaxis?.range;
+              const yRange = currentLayout.yaxis?.range;
+              
+              if (xRange && yRange) {
+                const xCenter = (xRange[0] + xRange[1]) / 2;
+                const yCenter = (yRange[0] + yRange[1]) / 2;
+                const xSpan = (xRange[1] - xRange[0]) * 0.8;
+                const ySpan = (yRange[1] - yRange[0]) * 0.8;
+                
+                plotRef.current.relayout({
+                  'xaxis.range': [xCenter - xSpan/2, xCenter + xSpan/2],
+                  'yaxis.range': [yCenter - ySpan/2, yCenter + ySpan/2]
+                });
+              }
+            }
+          }}
+          style={{
+            ...buttonStyle,
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            padding: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.button.bgHover}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.button.bg}
+          title="Zoom In"
+        >
+          <ZoomIn size={16} />
+        </button>
+
+        {/* Zoom Out Button */}
+        <button
+          onClick={() => {
+            if (plotRef.current) {
+              const currentLayout = plotRef.current.layout;
+              const xRange = currentLayout.xaxis?.range;
+              const yRange = currentLayout.yaxis?.range;
+              
+              if (xRange && yRange) {
+                const xCenter = (xRange[0] + xRange[1]) / 2;
+                const yCenter = (yRange[0] + yRange[1]) / 2;
+                const xSpan = (xRange[1] - xRange[0]) * 1.2;
+                const ySpan = (yRange[1] - yRange[0]) * 1.2;
+                
+                plotRef.current.relayout({
+                  'xaxis.range': [xCenter - xSpan/2, xCenter + xSpan/2],
+                  'yaxis.range': [yCenter - ySpan/2, yCenter + ySpan/2]
+                });
+              }
+            }
+          }}
+          style={{
+            ...buttonStyle,
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            padding: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.button.bgHover}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.button.bg}
+          title="Zoom Out"
+        >
+          <ZoomOut size={16} />
+        </button>
+
+        {/* Toggle Theme Button */}
+        <button
+          onClick={handleThemeToggle}
+          style={{
+            ...buttonStyle,
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            padding: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.button.bgHover}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.button.bg}
+          title="Toggle Theme (Ctrl+T)"
+        >
+          {chartTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
+      </div>
+
+      {/* **ENHANCED**: Status Bar */}
+      {data && data.length > 0 && (
+        <div 
+          style={{
+            position: 'absolute',
+            bottom: '0',
+            left: sidebarVisible ? '300px' : '0',
+            right: '0',
+            height: '30px',
+            backgroundColor: colors.paper,
+            borderTop: `1px solid ${colors.grid}`,
+            display: 'flex',
+            alignItems: 'center',
+            paddingLeft: '20px',
+            paddingRight: '20px',
+            fontSize: '12px',
+            color: colors.text,
+            transition: 'left 0.3s ease',
+            zIndex: 1000
+          }}
+        >
+          <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+            <span>
+              <strong>Latest:</strong> ₹{data[data.length - 1]?.close.toFixed(2)}
+            </span>
+            <span>
+              <strong>Volume:</strong> {data[data.length - 1]?.volume.toLocaleString()}
+            </span>
+            <span>
+              <strong>Time:</strong> {new Date(data[data.length - 1]?.interval_start).toLocaleTimeString()}
+            </span>
+            <span>
+              <strong>Points:</strong> {filteredData.length}/{data.length}
+            </span>
+            {userHasZoomed && (
+  <span style={{ color: colors.line }}>
+    <strong>Zoom:</strong> Custom
+  </span>
+)}
+
+            {autoRefresh && (
+              <span style={{ color: colors.upColor }}>
+                <strong>Auto-refresh:</strong> {refreshInterval}ms
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* **ENHANCED**: Keyboard Shortcuts Help Modal */}
+      <div 
+        style={{
+          position: 'absolute',
+          bottom: '40px',
+          left: sidebarVisible ? '320px' : '20px',
+          transition: 'left 0.3s ease',
+          zIndex: 1001
+        }}
+      >
+        <details style={{ color: colors.text, fontSize: '12px' }}>
+          <summary style={{ cursor: 'pointer', padding: '4px 8px', backgroundColor: colors.button.bg, borderRadius: '4px' }}>
+            Keyboard Shortcuts
+          </summary>
+          <div 
+            style={{
+              marginTop: '8px',
+              padding: '12px',
+              backgroundColor: colors.paper,
+              border: `1px solid ${colors.grid}`,
+              borderRadius: '6px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              minWidth: '200px'
+            }}
+          >
+            <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>Chart Controls:</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', fontSize: '11px' }}>
+              <span>Ctrl+T:</span><span>Toggle Theme</span>
+              <span>Ctrl+G:</span><span>Toggle Grid</span>
+              <span>Ctrl+V:</span><span>Toggle Volume</span>
+              <span>Ctrl+C:</span><span>Toggle Crosshair</span>
+              <span>Ctrl+L:</span><span>Log Scale</span>
+              <span>Ctrl+S:</span><span>Toggle Sidebar</span>
+              <span>Double Click:</span><span>Reset Zoom</span>
+              <span>Mouse Wheel:</span><span>Zoom In/Out</span>
+              <span>Click + Drag:</span><span>Pan Chart</span>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   );
 }
 
-export default StockChart;
+// **ENHANCED**: Default export with display name for debugging
+StockChart.displayName = 'StockChart';
+export default React.memo(StockChart);
+
+// **ENHANCED**: Additional utility functions that can be exported
+export const CHART_TYPES = chartTypes;
+export const TIME_INTERVALS = timeIntervals;
+export const AVAILABLE_INDICATORS = availableIndicators;
+export const DRAWING_TOOLS = drawingTools;
+
+// **ENHANCED**: Performance monitoring hook (optional export)
+export const useChartPerformance = () => {
+  const [renderTime, setRenderTime] = useState(0);
+  const [dataPoints, setDataPoints] = useState(0);
+  
+  const trackRender = useCallback((startTime: number, pointCount: number) => {
+    const endTime = performance.now();
+    setRenderTime(endTime - startTime);
+    setDataPoints(pointCount);
+  }, []);
+  
+  return { renderTime, dataPoints, trackRender };
+};
+
+// **ENHANCED**: Chart configuration presets (optional export)
+export const CHART_PRESETS = {
+  trading: {
+    chartType: 'candlestick',
+    indicators: ['ma', 'volume'],
+    theme: 'dark',
+    showGridlines: true,
+    crosshair: true
+  },
+  analysis: {
+    chartType: 'line',
+    indicators: ['ma', 'ema', 'rsi', 'macd'],
+    theme: 'light',
+    showGridlines: true,
+    crosshair: true
+  },
+  minimal: {
+    chartType: 'line',
+    indicators: [],
+    theme: 'dark',
+    showGridlines: false,
+    crosshair: false,
+    showControls: false
+  }
+};

@@ -196,8 +196,8 @@ export default function Page() {
                       </div>
                     )}
                     
-                    {/* **NEW**: Enhanced status display */}
-                    {stockData.length > 0 && (
+                    
+                    {/* {stockData.length > 0 && (
                       <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-md text-sm">
                         ✅ Loaded {stockData.length} data points
                         {selectedStartDate && selectedEndDate ? 
@@ -209,12 +209,12 @@ export default function Page() {
                       </div>
                     )}
 
-                    {/* **NEW**: Company selection status */}
+                    
                     {selectedCompany && (
                       <div className="bg-blue-50 border border-blue-200 text-blue-700 px-3 py-2 rounded-md text-sm">
                         📊 Selected Company: {companies.find(c => c.company_code === selectedCompany)?.tradingsymbol || selectedCompany}
                       </div>
-                    )}
+                    )} */}
                   </div>
                 </CardContent>
               </Card>
