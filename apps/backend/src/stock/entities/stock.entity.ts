@@ -1,14 +1,14 @@
 import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
 
-@Entity({ name: 'stock_prices' }) // Changed table name to PostgreSQL convention
+@Entity({ name: 'stock_prices' }) 
 export class StockData {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'smallint' }) // PostgreSQL equivalent for tinyint
+  @Column({ type: 'smallint' }) 
   company_code: number;
 
-  @Column('timestamp') // Changed from datetime2 to timestamp
+  @Column('timestamp') 
   date: Date;
 
   @Column('float')

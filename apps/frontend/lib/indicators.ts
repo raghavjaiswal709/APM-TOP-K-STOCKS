@@ -37,7 +37,7 @@ export const calculateRSI = (data: number[], period: number): (number | null)[] 
   let avgGain = gains.slice(0, period).reduce((sum, gain) => sum + gain, 0) / period;
   let avgLoss = losses.slice(0, period).reduce((sum, loss) => sum + loss, 0) / period;
   
-  let rs = avgGain / (avgLoss === 0 ? 0.001 : avgLoss); // Avoid division by zero
+  let rs = avgGain / (avgLoss === 0 ? 0.001 : avgLoss);
   let rsi = 100 - (100 / (1 + rs));
   rsiData.push(rsi);
   

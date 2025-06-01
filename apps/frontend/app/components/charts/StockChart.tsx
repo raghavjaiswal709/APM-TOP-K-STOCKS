@@ -31,7 +31,6 @@ import {
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
 
-// **ENHANCED PERFORMANCE CONFIG WITH RESPONSIVE SETTINGS**
 const CHART_PERFORMANCE_CONFIG = {
   MAX_VISIBLE_POINTS: 2000,
   CHUNK_SIZE: 1000,
@@ -41,7 +40,6 @@ const CHART_PERFORMANCE_CONFIG = {
   IST_OFFSET: 5.5 * 60 * 60 * 1000,
   ZOOM_WINDOW_MINUTES: 15,
   PRICE_PADDING_PERCENT: 0.08,
-  // **RESPONSIVE CONFIGURATION**
   SIDEBAR_WIDTH: 280,
   MIN_CHART_WIDTH: 400,
   MIN_CHART_HEIGHT: 300,
@@ -59,7 +57,6 @@ const CHART_PERFORMANCE_CONFIG = {
   }
 };
 
-// Enhanced technical indicators
 const availableIndicators = [
   { id: 'ma', name: 'Moving Average', periods: [5, 9, 20, 50, 100, 200], color: '#ffffff' },
   { id: 'ema', name: 'Exponential MA', periods: [5, 9, 20, 50, 100, 200], color: '#ffffff' },
@@ -144,7 +141,6 @@ export function StockChart({
   onIntervalChange
 }: StockChartProps) {
   
-  // **ENHANCED STATE WITH RESPONSIVE CAPABILITIES**
   const [selectedInterval, setSelectedInterval] = useState(interval);
   const [selectedChartType, setSelectedChartType] = useState(defaultChartType);
   const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -157,7 +153,6 @@ export function StockChart({
   const [sidebarVisible, setSidebarVisible] = useState(showControls);
   const [chartTheme, setChartTheme] = useState<'light' | 'dark'>(theme);
   
-  // **RESPONSIVE STATE MANAGEMENT**
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [autoResize, setAutoResize] = useState(CHART_PERFORMANCE_CONFIG.AUTO_RESIZE_ENABLED);
   const [responsiveMode, setResponsiveMode] = useState<'auto' | 'manual'>('auto');
@@ -167,7 +162,6 @@ export function StockChart({
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [deviceType, setDeviceType] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
   
-  // Drawing tools and other existing state
   const [drawingMode, setDrawingMode] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<any[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -175,7 +169,6 @@ export function StockChart({
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
   
-  // **ENHANCED REFS FOR RESPONSIVE HANDLING**
   const plotRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -190,21 +183,17 @@ const [yRange, setYRange] = useState(null);
 
 
 const handleRelayout = useCallback((eventData) => {
-  // Prevent auto-arrangement by capturing and maintaining user-defined ranges
   
-  // Handle X-axis range changes
   if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
     const newXRange = [eventData['xaxis.range[0]'], eventData['xaxis.range[1]']];
     setXRange(newXRange);
   }
   
-  // Handle Y-axis range changes  
   if (eventData['yaxis.range[0]'] && eventData['yaxis.range[1]']) {
     const newYRange = [eventData['yaxis.range[0]'], eventData['yaxis.range[1]']];
     setYRange(newYRange);
   }
   
-  // Handle autorange reset (double-click or reset button)
   if (eventData['xaxis.autorange']) {
     setXRange(null);
   }
@@ -212,14 +201,12 @@ const handleRelayout = useCallback((eventData) => {
     setYRange(null);
   }
   
-  // Prevent revision increment for responsive behavior
   if (eventData && autoResize) {
     plotRevisionRef.current += 1;
   }
 }, [autoResize]);
 
 
-  // **DEVICE TYPE DETECTION**
   const detectDeviceType = useCallback((width: number) => {
     if (width < CHART_PERFORMANCE_CONFIG.RESPONSIVE_BREAKPOINTS.MOBILE) {
       return 'mobile';
@@ -230,7 +217,6 @@ const handleRelayout = useCallback((eventData) => {
     }
   }, []);
 
-  // **VIEWPORT SIZE MONITORING**
   useEffect(() => {
     const updateViewportSize = () => {
       const newSize = {
@@ -259,7 +245,6 @@ const handleRelayout = useCallback((eventData) => {
     };
   }, [detectDeviceType]);
 
-  // **ADVANCED CONTAINER RESIZE OBSERVER**
   useEffect(() => {
     if (!containerRef.current || !autoResize) return;
 
@@ -285,7 +270,6 @@ const handleRelayout = useCallback((eventData) => {
         height: Math.max(availableHeight, CHART_PERFORMANCE_CONFIG.MIN_CHART_HEIGHT)
       };
 
-      // Apply aspect ratio constraints if in manual mode
       if (responsiveMode === 'manual') {
         const targetRatio = CHART_PERFORMANCE_CONFIG.ASPECT_RATIOS[aspectRatio];
         const currentRatio = newChartDims.width / newChartDims.height;
@@ -300,7 +284,6 @@ const handleRelayout = useCallback((eventData) => {
       setContainerDimensions(newContainerDims);
       setChartDimensions(newChartDims);
 
-      // Trigger Plotly resize with debouncing
       if (plotRef.current && plotRef.current.resizeHandler) {
         if (resizeTimeoutRef.current) {
           clearTimeout(resizeTimeoutRef.current);
@@ -316,7 +299,6 @@ const handleRelayout = useCallback((eventData) => {
       }
     };
 
-    // Use ResizeObserver for better performance
     if (window.ResizeObserver) {
       resizeObserverRef.current = new ResizeObserver(updateContainerDimensions);
       resizeObserverRef.current.observe(containerRef.current);
@@ -333,7 +315,6 @@ const handleRelayout = useCallback((eventData) => {
     };
   }, [autoResize, isFullscreen, sidebarVisible, responsiveMode, aspectRatio]);
 
-  // **OPTIMIZED MARKET HOURS FILTERING**
   const filteredData = useMemo(() => {
     if (!data || !data.length) return [];
     
@@ -344,16 +325,13 @@ const handleRelayout = useCallback((eventData) => {
       const minutes = date.getMinutes();
       const timeInMinutes = hours * 60 + minutes;
       
-      // Filter weekends (Sunday = 0, Saturday = 6)
       if (day === 0 || day === 6) return false;
       
-      // Filter outside market hours
       return timeInMinutes >= CHART_PERFORMANCE_CONFIG.MARKET_OPEN_MINUTES && 
              timeInMinutes <= CHART_PERFORMANCE_CONFIG.MARKET_CLOSE_MINUTES;
     });
   }, [data]);
 
-  // **OPTIMIZED DATA PROCESSING**
   const optimizedData = useMemo(() => {
     if (!filteredData.length) return filteredData;
     
@@ -385,7 +363,6 @@ const handleRelayout = useCallback((eventData) => {
     return result;
   }, [filteredData]);
 
-  // **MEMOIZED CALCULATIONS**
   const calculateIndicator = useCallback((type: string, prices: number[], options = {}) => {
     switch (type) {
       case 'ma': {
@@ -510,7 +487,6 @@ const handleRelayout = useCallback((eventData) => {
     }
   }, []);
 
-  // Enhanced Heiken Ashi calculation with market hour filtering
   const convertToHeikenAshi = useCallback((data: StockDataPoint[]) => {
     if (!data || data.length === 0) return [];
     
@@ -525,10 +501,8 @@ const handleRelayout = useCallback((eventData) => {
       const minutes = date.getMinutes();
       const timeInMinutes = hours * 60 + minutes;
 
-      // Skip weekends (Sunday = 0, Saturday = 6)
       if (day === 0 || day === 6) continue;
       
-      // Skip non-market hours (before 9:15 AM or after 3:30 PM)
       if (timeInMinutes < CHART_PERFORMANCE_CONFIG.MARKET_OPEN_MINUTES || 
           timeInMinutes > CHART_PERFORMANCE_CONFIG.MARKET_CLOSE_MINUTES) continue;
 
@@ -542,19 +516,14 @@ const handleRelayout = useCallback((eventData) => {
       let haHigh: number;
       let haLow: number;
 
-      // Calculate Heiken Ashi Close
       haClose = (currentOpen + currentHigh + currentLow + currentClose) / 4;
 
-      // Calculate Heiken Ashi Open
       if (prevHA === null) {
-        // First candle: use actual open and close
         haOpen = (currentOpen + currentClose) / 2;
       } else {
-        // Subsequent candles: use previous HA open and close
         haOpen = (prevHA.ha_open + prevHA.ha_close) / 2;
       }
 
-      // Calculate Heiken Ashi High and Low
       haHigh = Math.max(currentHigh, haOpen, haClose);
       haLow = Math.min(currentLow, haOpen, haClose);
 
@@ -565,14 +534,11 @@ const handleRelayout = useCallback((eventData) => {
         ha_low: haLow,
         ha_close: haClose,
         volume: current.volume,
-        // Preserve original values for reference
         original_open: currentOpen,
         original_high: currentHigh,
         original_low: currentLow,
         original_close: currentClose,
-        // Calculate color for styling
         color: haClose >= haOpen ? 'green' : 'red',
-        // Calculate body and wick sizes for analysis
         bodySize: Math.abs(haClose - haOpen),
         upperWick: haHigh - Math.max(haOpen, haClose),
         lowerWick: Math.min(haOpen, haClose) - haLow
@@ -585,7 +551,6 @@ const handleRelayout = useCallback((eventData) => {
     return haData;
   }, []);
 
-  // **OPTIMIZED COLOR THEME**
   const colors = useMemo(() => {
     const baseColor = '#27272a';
     const lighterShades = {
@@ -661,7 +626,6 @@ const handleRelayout = useCallback((eventData) => {
     }
   }, [chartTheme]);
 
-  // **OPTIMIZED PLOT DATA GENERATION**
   const plotData = useMemo(() => {
     if (!optimizedData.length) return [];
 
@@ -670,7 +634,6 @@ const handleRelayout = useCallback((eventData) => {
     
     const chartData = selectedChartType === 'heiken-ashi' ? convertToHeikenAshi(optimizedData) : optimizedData;
 
-    // Main price chart
     let priceChart;
     
     switch (selectedChartType) {
@@ -768,7 +731,6 @@ const handleRelayout = useCallback((eventData) => {
     
     plotElements.push(priceChart);
 
-    // Volume chart
     if (showVolume) {
       const volume = {
         x: timeLabels,
@@ -792,7 +754,6 @@ const handleRelayout = useCallback((eventData) => {
 
     const prices = optimizedData.map(item => item.close);
 
-    // Moving Averages
     if (activeIndicators.includes('ma')) {
       selectedMAperiods.forEach((period, index) => {
         const ma = calculateIndicator('ma', prices, { period });
@@ -812,7 +773,6 @@ const handleRelayout = useCallback((eventData) => {
       });
     }
 
-    // Exponential Moving Averages
     if (activeIndicators.includes('ema')) {
       selectedEMAperiods.forEach((period, index) => {
         const ema = calculateIndicator('ema', prices, { period });
@@ -833,7 +793,6 @@ const handleRelayout = useCallback((eventData) => {
       });
     }
 
-    // Bollinger Bands
     if (activeIndicators.includes('bollinger')) {
       const bands = calculateIndicator('bollinger', prices, { period: 20, stdDev: 2 }) as any;
       
@@ -886,7 +845,6 @@ const handleRelayout = useCallback((eventData) => {
       });
     }
 
-    // RSI
     if (activeIndicators.includes('rsi')) {
       const rsi = calculateIndicator('rsi', prices) as number[];
       plotElements.push({
@@ -905,7 +863,6 @@ const handleRelayout = useCallback((eventData) => {
       });
     }
 
-    // MACD
     if (activeIndicators.includes('macd')) {
       const macd = calculateIndicator('macd', prices) as any;
       
@@ -968,7 +925,6 @@ const handleRelayout = useCallback((eventData) => {
     convertToHeikenAshi
   ]);
 
-  // **ENHANCED RESPONSIVE LAYOUT**
   const layout = useMemo(() => {
     const hasRSI = activeIndicators.includes('rsi');
     const hasMACD = activeIndicators.includes('macd');
@@ -984,7 +940,6 @@ const handleRelayout = useCallback((eventData) => {
       volumeDomain = [0.15 + totalIndicatorHeight, 0.28 + totalIndicatorHeight];
     }
 
-    // **RESPONSIVE MARGIN CALCULATION**
     const getResponsiveMargin = () => {
       switch (deviceType) {
         case 'mobile':
@@ -996,7 +951,6 @@ const handleRelayout = useCallback((eventData) => {
       }
     };
 
-    // **RESPONSIVE FONT SIZES**
     const getResponsiveFontSizes = () => {
       switch (deviceType) {
         case 'mobile':
@@ -1012,7 +966,6 @@ const handleRelayout = useCallback((eventData) => {
     const responsiveFonts = getResponsiveFontSizes();
 
     const baseLayout: any = {
-      // **ENHANCED RESPONSIVE CONFIGURATION**
       autosize: true,
       responsive: true,
       dragmode: drawingMode || 'pan',
@@ -1033,7 +986,6 @@ const handleRelayout = useCallback((eventData) => {
       plot_bgcolor: colors.bg,
       font: { color: colors.text, family: 'Inter, system-ui, sans-serif' },
       
-      // **RESPONSIVE AXES CONFIGURATION**
        xaxis: {
       rangeslider: { visible: false },
       type: 'date',
@@ -1043,15 +995,14 @@ const handleRelayout = useCallback((eventData) => {
       tickfont: { color: colors.text, size: responsiveFonts.tick },
       title: { text: '', font: { color: colors.text } },
       
-      // **KEY CHANGES HERE**
       autorange: xRange ? false : true,
       range: xRange || undefined,
-      fixedrange: false, // Allow user interaction
-      constrain: 'domain', // Constrain to domain
-      constraintoward: 'center', // Constrain toward center
+      fixedrange: false, 
+      constrain: 'domain', 
+      constraintoward: 'center',
       
-      // **PREVENT AUTO-SCALING**
-      automargin: false, // Disable auto margin adjustments
+     
+      automargin: false, 
       tickmode: 'auto',
       
       rangebreaks: [
@@ -1073,32 +1024,28 @@ const handleRelayout = useCallback((eventData) => {
       tickfont: { color: colors.text, size: responsiveFonts.tick },
       side: 'left',
       
-      // **KEY CHANGES HERE**
       autorange: yRange ? false : true,
       range: yRange || undefined,
-      fixedrange: false, // Allow user interaction
+      fixedrange: false, 
       constrain: 'domain',
       constraintoward: 'center',
       
-      // **PREVENT AUTO-SCALING**
-      automargin: false, // Disable auto margin adjustments
-      scaleanchor: null, // Don't link to other axes
+      automargin: false, 
+      scaleanchor: null, 
       scaleratio: null,
       
       nticks: deviceType === 'mobile' ? 6 : deviceType === 'tablet' ? 8 : 10
     },
     
-    // **DISABLE AUTOMATIC LAYOUT ADJUSTMENTS**
     margin: {
       l: deviceType === 'mobile' ? 40 : 60,
       r: deviceType === 'mobile' ? 40 : 60,
       t: deviceType === 'mobile' ? 30 : 40,
       b: deviceType === 'mobile' ? 40 : 60,
       pad: 5,
-      autoexpand: false // Critical: prevents auto-expansion
+      autoexpand: false 
     },
 
-      // Volume panel
     yaxis2: {
   title: { 
     text: 'Volume', 
@@ -1109,15 +1056,12 @@ const handleRelayout = useCallback((eventData) => {
     },
     standoff: 20
   },
-  // domain: volumeDomain,
-  domain: [0.05, 0.35],  // Keep your desired height/position
+  domain: [0.05, 0.35], 
 
-  // --- KEY CHANGES ---
-  autorange: true,        // Allow axis to auto-adjust
-  fixedrange: false,      // Allow Plotly to adjust range (user can't drag)
-  range: undefined,       // Let Plotly compute range automatically
+  autorange: true,        
+  fixedrange: false, 
+  range: undefined,      
 
-  // --- REST OF YOUR SETTINGS ---
   showgrid: true,
   gridcolor: colors.grid,
   gridwidth: 1,
@@ -1170,11 +1114,9 @@ const handleRelayout = useCallback((eventData) => {
         xanchor: 'center'
       },
 
-      // **RESPONSIVE UI REVISION**
       uirevision: `responsive_${plotRevisionRef.current}`
     };
 
-    // Add indicator subplots with responsive configuration
     if (hasRSI) {
       baseLayout.yaxis3 = {
         title: { text: 'RSI', font: { color: colors.indicators.rsi, size: responsiveFonts.axis - 2 } },
@@ -1219,7 +1161,6 @@ const handleRelayout = useCallback((eventData) => {
     xRange, yRange
   ]);
 
-  // **ENHANCED RESPONSIVE CONFIG**
   const config = useMemo(() => ({
     responsive: true,
     useResizeHandler: true,
@@ -1250,7 +1191,6 @@ const handleRelayout = useCallback((eventData) => {
     }
   }), [companyId, chartDimensions, deviceType]);
 
-  // **RESPONSIVE HANDLERS**
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen(prev => !prev);
   }, []);
@@ -1267,7 +1207,6 @@ const handleRelayout = useCallback((eventData) => {
     setAspectRatio(ratio);
   }, []);
 
-  // **OPTIMIZED EVENT HANDLERS**
   const toggleIndicator = useCallback((id: string) => {
     setActiveIndicators(prev => 
       prev.includes(id) 
@@ -1319,7 +1258,6 @@ const handleRelayout = useCallback((eventData) => {
     }
   }, []);
 
-  // **ENHANCED PLOT EVENT HANDLERS**
   const handlePlotUpdate = useCallback((figure: any) => {
     if (figure.layout?.shapes) {
       setAnnotations(figure.layout.shapes);
@@ -1327,15 +1265,12 @@ const handleRelayout = useCallback((eventData) => {
   }, []);
 
   const handlePlotRelayout = useCallback((eventData: any) => {
-    // Enhanced relayout handling for responsive behavior
     if (eventData && autoResize) {
       plotRevisionRef.current += 1;
     }
   }, [autoResize]);
 
-  // **CLEAN RESET FUNCTION**
  const resetChart = useCallback(() => {
-  // Clear user-defined ranges
   setXRange(null);
   setYRange(null);
   
@@ -1355,7 +1290,6 @@ const handleRelayout = useCallback((eventData) => {
   plotRevisionRef.current += 1;
 }, []);
 
-  // **UTILITY FUNCTIONS**
   const exportChartData = useCallback(() => {
     if (!optimizedData.length) return;
 
@@ -1377,7 +1311,6 @@ const handleRelayout = useCallback((eventData) => {
     URL.revokeObjectURL(url);
   }, [optimizedData, companyId, selectedInterval]);
 
-  // Auto-refresh functionality
   useEffect(() => {
     if (!autoRefresh || !onIntervalChange) return;
 
@@ -1388,7 +1321,6 @@ const handleRelayout = useCallback((eventData) => {
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, selectedInterval, onIntervalChange]);
 
-  // Price alerts functionality
   const addPriceAlert = useCallback((price: number, type: 'above' | 'below') => {
     const newAlert = {
       id: Date.now(),
@@ -1404,7 +1336,6 @@ const handleRelayout = useCallback((eventData) => {
     setPriceAlerts(prev => prev.filter(alert => alert.id !== id));
   }, []);
 
-  // Check price alerts
   useEffect(() => {
     if (!alertsEnabled || !optimizedData.length || !priceAlerts.length) return;
 
@@ -1433,14 +1364,12 @@ const handleRelayout = useCallback((eventData) => {
     });
   }, [optimizedData, priceAlerts, alertsEnabled, companyId]);
 
-  // Request notification permission
   useEffect(() => {
     if (alertsEnabled && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, [alertsEnabled]);
 
-  // **ENHANCED KEYBOARD SHORTCUTS**
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) {
@@ -1489,17 +1418,14 @@ const handleRelayout = useCallback((eventData) => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [handleThemeToggle, resetChart, toggleFullscreen, toggleAutoResize]);
 
-  // Sync interval with props
   useEffect(() => {
     setSelectedInterval(interval);
   }, [interval]);
 
-  // Theme synchronization
   useEffect(() => {
     setChartTheme(theme);
   }, [theme]);
 
-  // **ENHANCED COLOR THEME STYLES**
   const buttonStyle = {
     backgroundColor: colors.button.bg,
     color: colors.button.text,
@@ -1522,7 +1448,6 @@ const handleRelayout = useCallback((eventData) => {
     borderColor: colors.button.bgActive
   };
 
-  // **RESPONSIVE CONTAINER STYLES**
   const containerStyle = useMemo(() => ({
     width: '100%',
     height: isFullscreen ? '100vh' : `${height}px`,
@@ -1549,7 +1474,6 @@ const handleRelayout = useCallback((eventData) => {
     };
   }, [sidebarVisible, deviceType]);
 
-  // Loading and error states
   if (loading) {
     return (
       <div 
@@ -1615,7 +1539,6 @@ const handleRelayout = useCallback((eventData) => {
       ref={containerRef}
       style={containerStyle}
     >
-      {/* **ENHANCED RESPONSIVE CONTROL PANEL** */}
       {sidebarVisible && deviceType !== 'mobile' && (
         <div 
           className="absolute top-0 left-0 z-10 p-4 rounded-lg shadow-lg border max-h-full overflow-y-auto"
@@ -1626,7 +1549,6 @@ const handleRelayout = useCallback((eventData) => {
             maxHeight: `${height - 20}px`
           }}
         >
-          {/* Header with responsive controls */}
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold" style={{ color: colors.text }}>
               Chart Controls
@@ -1652,7 +1574,6 @@ const handleRelayout = useCallback((eventData) => {
             </div>
           </div>
 
-          {/* **RESPONSIVE OPTIONS SECTION** */}
           <div className="mb-4">
             {/* <label className="block text-sm font-medium mb-2" style={{ color: colors.text }}>
               Responsive Options
@@ -1825,7 +1746,6 @@ const handleRelayout = useCallback((eventData) => {
             </div>
           </div>
 
-          {/* Chart Types */}
           <div className="mb-4">
             <label className="block text-sm font-medium mb-2" style={{ color: colors.text }}>
               Chart Type
@@ -1899,7 +1819,7 @@ const handleRelayout = useCallback((eventData) => {
             </button>
           </div>
 
-          {/* Technical Indicators */}
+          {/* Technicaleeeeee Indicators */}
           <div className="mb-4">
             <label className="block text-sm font-medium mb-2" style={{ color: colors.text }}>
               Technical Indicators
@@ -1930,7 +1850,7 @@ const handleRelayout = useCallback((eventData) => {
             </div>
           </div>
 
-          {/* Moving Average Periods */}
+          {/* Mving Average Periods */}
           {activeIndicators.includes('ma') && (
             <div className="mb-4">
               <label className="block text-sm font-medium mb-2" style={{ color: colors.text }}>
@@ -1960,7 +1880,7 @@ const handleRelayout = useCallback((eventData) => {
             </div>
           )}
 
-          {/* Exponential Moving Average Periods */}
+          {/* Exponentoal Moving Average Periods */}
           {activeIndicators.includes('ema') && (
             <div className="mb-4">
               <label className="block text-sm font-medium mb-2" style={{ color: colors.text }}>
@@ -2276,7 +2196,6 @@ const handleRelayout = useCallback((eventData) => {
             </div>
           </div> */}
 
-          {/* **ENHANCED KEYBOARD SHORTCUTS** */}
           {/* <div>
             <label className="block text-sm font-medium mb-2" style={{ color: colors.text }}>
               Keyboard Shortcuts
@@ -2296,7 +2215,6 @@ const handleRelayout = useCallback((eventData) => {
         </div>
       )}
 
-      {/* **MOBILE BOTTOM CONTROLS** */}
       {deviceType === 'mobile' && sidebarVisible && (
         <div 
           className="absolute bottom-0 left-0 right-0 z-10 p-3 border-t"
@@ -2319,7 +2237,6 @@ const handleRelayout = useCallback((eventData) => {
             </button>
           </div>
           
-          {/* Mobile controls - simplified version */}
           <div className="grid grid-cols-4 gap-2 mb-3">
             {timeIntervals.slice(0, 4).map(interval => (
               <button
@@ -2354,7 +2271,6 @@ const handleRelayout = useCallback((eventData) => {
         </div>
       )}
 
-      {/* Toggle Sidebar Button */}
       {!sidebarVisible && (
         <button
           onClick={() => setSidebarVisible(true)}
@@ -2371,9 +2287,7 @@ const handleRelayout = useCallback((eventData) => {
         </button>
       )}
 
-      {/* **RESPONSIVE STATUS INDICATORS** */}
       <div className="absolute top-4 right-4 z-10 flex flex-wrap gap-2">
-        {/* Responsive Status */}
         {/* {autoResize && (
           <div 
             className="px-2 py-1 rounded text-xs font-medium"
@@ -2411,7 +2325,6 @@ const handleRelayout = useCallback((eventData) => {
           {deviceType.charAt(0).toUpperCase() + deviceType.slice(1)}
         </div> */}
         
-        {/* Auto Refresh Indicator */}
         {autoRefresh && (
           <div 
             className="px-2 py-1 rounded text-xs font-medium animate-pulse"
@@ -2425,7 +2338,6 @@ const handleRelayout = useCallback((eventData) => {
           </div>
         )}
         
-        {/* Alerts Indicator */}
         {alertsEnabled && priceAlerts.length > 0 && (
           <div 
             className="px-2 py-1 rounded text-xs font-medium"
@@ -2439,7 +2351,6 @@ const handleRelayout = useCallback((eventData) => {
         )}
       </div>
 
-      {/* **ENHANCED RESPONSIVE CHART CONTAINER** */}
       <div 
         ref={chartContainerRef}
         style={chartContainerStyle}
@@ -2456,14 +2367,13 @@ const handleRelayout = useCallback((eventData) => {
     minHeight: `${CHART_PERFORMANCE_CONFIG.MIN_CHART_HEIGHT}px`
   }}
   onUpdate={handlePlotUpdate}
-  onRelayout={handleRelayout} // Make sure this is connected
+  onRelayout={handleRelayout} 
   onRestyle={(data) => {
-    // Prevent auto-restyle
     console.log('Restyle prevented:', data);
   }}
   useResizeHandler={true}
   divId="stock-chart-plot"
-  revision={plotRevisionRef.current} // Control when to re-render
+  revision={plotRevisionRef.current} 
 />
 
       </div>
@@ -2471,7 +2381,6 @@ const handleRelayout = useCallback((eventData) => {
   );
 }
 
-// Export utilities with responsive enhancements
 export const chartUtils = {
   filterMarketHours: (data: StockDataPoint[]) => {
     return data.filter(item => {
@@ -2790,12 +2699,10 @@ export const chartUtils = {
     const minutes = now.getMinutes();
     const timeInMinutes = hours * 60 + minutes;
     
-    // Weekend
     if (day === 0 || day === 6) {
       return { status: 'closed', reason: 'Weekend' };
     }
     
-    // Market hours check
     if (timeInMinutes < CHART_PERFORMANCE_CONFIG.MARKET_OPEN_MINUTES) {
       return { status: 'pre-market', reason: 'Pre-market hours' };
     } else if (timeInMinutes > CHART_PERFORMANCE_CONFIG.MARKET_CLOSE_MINUTES) {
@@ -2813,7 +2720,6 @@ export const chartUtils = {
     for (let i = 0; i < count; i++) {
       const date = new Date(now.getTime() - (count - i) * 60000);
       
-      // Skip weekends and non-market hours
       const day = date.getDay();
       const hours = date.getHours();
       const minutes = date.getMinutes();
@@ -2848,13 +2754,11 @@ export const chartUtils = {
   detectChartPatterns: (data: StockDataPoint[]) => {
     const patterns = [];
     
-    // Simple pattern detection examples
     for (let i = 2; i < data.length - 2; i++) {
       const current = data[i];
       const prev = data[i - 1];
       const next = data[i + 1];
       
-      // Doji pattern
       if (Math.abs(current.open - current.close) < (current.high - current.low) * 0.1) {
         patterns.push({
           type: 'doji',
@@ -2864,7 +2768,6 @@ export const chartUtils = {
         });
       }
       
-      // Hammer pattern
       if (current.close > current.open && 
           (current.close - current.open) < (current.high - current.low) * 0.3 &&
           (current.low - Math.min(current.open, current.close)) > (current.high - current.low) * 0.6) {
@@ -2876,7 +2779,6 @@ export const chartUtils = {
         });
       }
       
-      // Shooting star pattern
       if (current.open > current.close && 
           (current.open - current.close) < (current.high - current.low) * 0.3 &&
           (current.high - Math.max(current.open, current.close)) > (current.high - current.low) * 0.6) {
@@ -2896,7 +2798,6 @@ export const chartUtils = {
     const levels = [];
     const prices = data.map(d => d.close);
     
-    // Find local maxima and minima
     for (let i = 2; i < prices.length - 2; i++) {
       const isLocalMax = prices[i] > prices[i-1] && prices[i] > prices[i+1] && 
                          prices[i] > prices[i-2] && prices[i] > prices[i+2];
@@ -2920,7 +2821,6 @@ export const chartUtils = {
       }
     }
     
-    // Cluster similar levels
     const clusteredLevels = [];
     const threshold = (Math.max(...prices) - Math.min(...prices)) * sensitivity;
     
@@ -2941,7 +2841,6 @@ export const chartUtils = {
   }
 };
 
-// **RESPONSIVE BREAKPOINT HOOKS**
 export const useResponsiveBreakpoint = () => {
   const [breakpoint, setBreakpoint] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
   
@@ -2965,7 +2864,6 @@ export const useResponsiveBreakpoint = () => {
   return breakpoint;
 };
 
-// **CHART PERFORMANCE MONITOR**
 export const useChartPerformance = () => {
   const [metrics, setMetrics] = useState({
     renderTime: 0,
@@ -2981,13 +2879,10 @@ export const useChartPerformance = () => {
   return { metrics, updateMetrics };
 };
 
-// **EXPORT DEFAULT COMPONENT**
 export default StockChart;
 
-// **TYPE EXPORTS**
 export type { StockDataPoint, StockChartProps };
 
-// **CONSTANT EXPORTS**
 export { 
   CHART_PERFORMANCE_CONFIG,
   availableIndicators,

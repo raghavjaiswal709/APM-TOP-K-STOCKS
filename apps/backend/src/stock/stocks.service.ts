@@ -35,19 +35,15 @@ export class StockService {
     return new Promise((resolve, reject) => {
       const scriptPath = path.resolve(__dirname, '../../data/data_fetch.py');
       
-      // **KEY FIX**: Build command based on whether dates are provided
       let command = `python ${scriptPath} --company_id=${params.companyId} --interval=${params.interval}`;
       
-      // Only add date parameters if they exist
       if (params.startDate && params.endDate) {
         command += ` --start_date="${params.startDate.toISOString()}" --end_date="${params.endDate.toISOString()}"`;
         
-        // Add first fifteen minutes flag
         if (params.firstFifteenMinutes) {
           command += ' --first_fifteen_minutes=true';
         }
       } else {
-        // **NEW**: Add flag to fetch all available data
         command += ' --fetch_all_data=true';
       }
       
@@ -101,10 +97,9 @@ export class StockService {
           
           console.log(`Successfully parsed ${results.length} data points`);
           
-          // Filter to first 15 minutes if requested
           if (params.firstFifteenMinutes && results.length > 0) {
             const startTime = new Date(results[0].interval_start);
-            const endTime = new Date(startTime.getTime() + 375 * 60 * 1000); // 15 minutes later
+            const endTime = new Date(startTime.getTime() + 375 * 60 * 1000); 
             
             const filteredResults = results.filter(item => {
               const itemTime = new Date(item.interval_start);

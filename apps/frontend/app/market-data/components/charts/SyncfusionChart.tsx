@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 
-// Dynamic import to avoid SSR issues
 const ChartComponents = dynamic(
   () => import('./SyncfusionChartComponents'),
   { ssr: false, loading: () => (
@@ -32,11 +31,9 @@ const SyncfusionChart: React.FC<SyncfusionChartProps> = ({
   const [isClient, setIsClient] = useState(false);
   const [chartData, setChartData] = useState<any[]>([]);
 
-  // Set isClient to true on mount
   useEffect(() => {
     setIsClient(true);
     
-    // Initialize with dummy data
     const now = new Date();
     const initialData = Array.from({ length: 10 }, (_, i) => ({
       x: new Date(now.getTime() - (10 - i) * 60000),
@@ -49,24 +46,20 @@ const SyncfusionChart: React.FC<SyncfusionChartProps> = ({
     setChartData(initialData);
   }, [data?.ltp]);
 
-  // Update chart data when new data arrives
   useEffect(() => {
     if (!isClient || !data || typeof data.ltp !== 'number' || typeof data.timestamp !== 'number') {
       return;
     }
 
     try {
-      // Convert timestamp to Date object
       const date = new Date(data.timestamp * 1000);
       
       setChartData(prevData => {
-        // Check if we already have a point with this timestamp
         const existingIndex = prevData.findIndex(
           point => point.x.getTime() === date.getTime()
         );
         
         if (existingIndex >= 0) {
-          // Update existing point
           const newData = [...prevData];
           const prevPoint = newData[existingIndex];
           
@@ -78,7 +71,6 @@ const SyncfusionChart: React.FC<SyncfusionChartProps> = ({
           };
           return newData;
         } else {
-          // Add new point
           const prevClose = prevData.length > 0 ? prevData[prevData.length - 1].close : data.ltp;
           
           const newPoint = {
@@ -92,7 +84,6 @@ const SyncfusionChart: React.FC<SyncfusionChartProps> = ({
           
           const newData = [...prevData, newPoint];
           
-          // Keep only the last 300 points for performance
           if (newData.length > 300) {
             return newData.slice(-300);
           }
@@ -105,7 +96,6 @@ const SyncfusionChart: React.FC<SyncfusionChartProps> = ({
     }
   }, [data, isClient]);
 
-  // Show loading during SSR
   if (!isClient) {
     return (
       <div className="w-full h-[500px] bg-gray-100 flex items-center justify-center">

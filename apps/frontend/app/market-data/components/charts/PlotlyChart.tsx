@@ -86,13 +86,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     buySellVolume: true
   });
 
-  // Calculate buy/sell volume based on price action
   const calculateBuySellVolume = (dataPoint: DataPoint | OHLCPoint) => {
     let buyVolume = 0;
     let sellVolume = 0;
     const totalVolume = dataPoint.volume || 0;
     
-    // If buy/sell volumes are provided directly, use them
     if ('buyVolume' in dataPoint && 'sellVolume' in dataPoint) {
       buyVolume = dataPoint.buyVolume || 0;
       sellVolume = dataPoint.sellVolume || 0;
@@ -101,10 +99,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       let priceChange = 0;
       
       if ('open' in dataPoint && 'close' in dataPoint) {
-        // For OHLC data
         priceChange = (dataPoint.close - dataPoint.open) / dataPoint.open;
       } else if ('ltp' in dataPoint) {
-        // For LTP data, compare with previous point
         const currentIndex = historicalData.findIndex(p => p.timestamp === dataPoint.timestamp);
         if (currentIndex > 0) {
           const prevPrice = historicalData[currentIndex - 1].ltp;
@@ -112,7 +108,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         }
       }
       
-      // Distribute volume based on price movement
       const buyRatio = Math.max(0, Math.min(1, 0.5 + priceChange * 2));
       buyVolume = totalVolume * buyRatio;
       sellVolume = totalVolume * (1 - buyRatio);
@@ -121,7 +116,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return { buyVolume, sellVolume };
   };
 
-  // Prepare line chart data (LTP only)
   const prepareLineChartData = () => {
     const allData = [...historicalData];
     
@@ -152,14 +146,12 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const ema9 = allData.map(point => point.ema_9 || null);
     const rsi = allData.map(point => point.rsi_14 || null);
     
-    // Calculate buy/sell volumes for line chart
     const buyVolumes = allData.map(point => calculateBuySellVolume(point).buyVolume);
     const sellVolumes = allData.map(point => calculateBuySellVolume(point).sellVolume);
     
     return { x, y, allData, sma20, ema9, rsi, bid, ask, spread, buyVolumes, sellVolumes };
   };
   
-  // Prepare candlestick data (OHLC only)
   const prepareCandlestickData = () => {
     if (!ohlcData || ohlcData.length === 0) {
       return { x: [], open: [], high: [], low: [], close: [], volume: [], buyVolumes: [], sellVolumes: [] };
@@ -179,7 +171,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     
     const sortedData = [...validOhlcData].sort((a, b) => a.timestamp - b.timestamp);
     
-    // Calculate buy/sell volumes for candlestick chart
     const buyVolumes = sortedData.map(candle => calculateBuySellVolume(candle).buyVolume);
     const sellVolumes = sortedData.map(candle => calculateBuySellVolume(candle).sellVolume);
     
@@ -195,7 +186,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     };
   };
   
-  // Calculate y-axis range based on visible data and chart type
   const calculateYAxisRange = () => {
     const timeRange = getTimeRange();
     if (!timeRange) return undefined;
@@ -247,7 +237,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
   };
   
-  // Calculate bid-ask y-axis range
   const calculateBidAskRange = () => {
     const { bid, ask } = prepareLineChartData();
     
@@ -263,7 +252,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return [minBid - padding, maxAsk + padding];
   };
   
-  // Calculate spread y-axis range
   const calculateSpreadRange = () => {
     const { spread } = prepareLineChartData();
     
@@ -278,7 +266,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return [Math.max(0, minSpread - padding), maxSpread + padding];
   };
   
-  // Calculate buy/sell volume y-axis range
   const calculateBuySellVolumeRange = () => {
     let buyVolumes: number[] = [];
     let sellVolumes: number[] = [];
@@ -302,7 +289,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return [0, maxVolume * 1.1];
   };
   
-  // Calculate time range based on selected timeframe
   const getTimeRange = () => {
     const dataToUse = chartType === 'line' ? historicalData : ohlcData;
     if (!dataToUse || dataToUse.length === 0) return undefined;
@@ -348,7 +334,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return [startTime, now];
   };
   
-  // Get color theme (dark mode)
   const getColorTheme = () => {
     return {
       bg: '#18181b',
@@ -386,7 +371,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return lastPrice >= prevPrice ? '#22c55e' : '#ef4444';
   };
   
-  // Handle timeframe button click
   const handleTimeframeChange = (timeframe: string) => {
     setSelectedTimeframe(timeframe);
     
@@ -396,7 +380,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     if (!plotDiv) return;
     
     try {
-      // @ts-ignore - Plotly is available globally
       Plotly.relayout(plotDiv, {
         'xaxis.range': getTimeRange(),
         'xaxis.autorange': false,
@@ -406,7 +389,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       
       const spreadDiv = document.getElementById('spread-chart');
       if (spreadDiv) {
-        // @ts-ignore - Plotly is available globally
         Plotly.relayout(spreadDiv, {
           'xaxis.range': getTimeRange(),
           'xaxis.autorange': false
@@ -415,7 +397,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       
       const bidAskDiv = document.getElementById('bid-ask-chart');
       if (bidAskDiv) {
-        // @ts-ignore - Plotly is available globally
         Plotly.relayout(bidAskDiv, {
           'xaxis.range': getTimeRange(),
           'xaxis.autorange': false
@@ -424,7 +405,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       
       const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
       if (buySellVolumeDiv) {
-        // @ts-ignore - Plotly is available globally
         Plotly.relayout(buySellVolumeDiv, {
           'xaxis.range': getTimeRange(),
           'xaxis.autorange': false
@@ -435,12 +415,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
   };
   
-  // Toggle chart type between line and candlestick
   const toggleChartType = () => {
     setChartType(prev => prev === 'line' ? 'candle' : 'line');
   };
   
-  // Toggle indicators
   const toggleIndicator = (indicator: 'sma20' | 'ema9' | 'rsi' | 'bidAsk' | 'bidAskSpread' | 'buySellVolume') => {
     setShowIndicators(prev => ({
       ...prev,
@@ -448,7 +426,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }));
   };
   
-  // Handle chart relayout (zoom, pan, etc.)
   const handleRelayout = (eventData: any) => {
     if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
       const startDate = new Date(eventData['xaxis.range[0]']);
@@ -498,7 +475,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         
         const plotDiv = document.getElementById('plotly-chart');
         if (plotDiv) {
-          // @ts-ignore - Plotly is available globally
           Plotly.relayout(plotDiv, {
             'yaxis.range': yRange,
             'yaxis.autorange': false
@@ -507,7 +483,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         
         const bidAskDiv = document.getElementById('bid-ask-chart');
         if (bidAskDiv) {
-          // @ts-ignore - Plotly is available globally
           Plotly.relayout(bidAskDiv, {
             'xaxis.range': [startDate, endDate],
             'xaxis.autorange': false
@@ -516,7 +491,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         
         const spreadDiv = document.getElementById('spread-chart');
         if (spreadDiv) {
-          // @ts-ignore - Plotly is available globally
           Plotly.relayout(spreadDiv, {
             'xaxis.range': [startDate, endDate],
             'xaxis.autorange': false
@@ -525,7 +499,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         
         const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
         if (buySellVolumeDiv) {
-          // @ts-ignore - Plotly is available globally
           Plotly.relayout(buySellVolumeDiv, {
             'xaxis.range': [startDate, endDate],
             'xaxis.autorange': false
@@ -535,7 +508,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
   };
   
-  // Update chart when data changes
   useEffect(() => {
     if (!chartRef.current) return;
     
@@ -594,7 +566,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
   }, [data, historicalData, ohlcData, initialized, selectedTimeframe, chartType, showIndicators.bidAsk, showIndicators.bidAskSpread, showIndicators.buySellVolume]);
 
-  // Create plot data based on chart type
+
   const createPlotData = () => {
     const colors = getColorTheme();
     const plotData: any[] = [];
@@ -695,7 +667,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return plotData;
   };
   
-  // Create spread chart data
+
   const createSpreadData = () => {
     const colors = getColorTheme();
     const { x, spread } = prepareLineChartData();
@@ -712,7 +684,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }];
   };
 
-  // Create bid-ask chart data
+
   const createBidAskData = () => {
     const colors = getColorTheme();
     const { x, bid, ask } = prepareLineChartData();
@@ -739,7 +711,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     ];
   };
 
-  // Create buy/sell volume chart data
+
   const createBuySellVolumeData = () => {
     const colors = getColorTheme();
     let x: Date[] = [];
@@ -769,7 +741,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       },
       {
         x,
-        y: sellVolumes.map(v => -v), // Make sell volumes negative for visual separation
+        y: sellVolumes.map(v => -v), 
         type: 'bar',
         name: 'Sell Volume',
         marker: { color: colors.indicator.sellVolume, opacity: 0.8 },
@@ -778,7 +750,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     ];
   };
 
-  // Create layout based on chart type and indicators
   const createLayout = () => {
     const colors = getColorTheme();
     const timeRange = getTimeRange();
@@ -855,7 +826,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return layout;
   };
   
-  // Create spread chart layout
   const createSpreadLayout = () => {
     const colors = getColorTheme();
     const timeRange = getTimeRange();
@@ -898,7 +868,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     };
   };
 
-  // Create bid-ask chart layout
   const createBidAskLayout = () => {
     const colors = getColorTheme();
     const timeRange = getTimeRange();
@@ -947,7 +916,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     };
   };
 
-  // Create buy/sell volume chart layout
   const createBuySellVolumeLayout = () => {
     const colors = getColorTheme();
     const timeRange = getTimeRange();
@@ -1000,7 +968,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     };
   };
 
-  // Create timeframe selector buttons
   const timeframeButtons = [
     { label: '1m', value: '1m' },
     { label: '5m', value: '5m' },
@@ -1114,7 +1081,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         </div>
       </div>
       
-      {/* Main Chart */}
       <div className="flex-grow mb-2">
         <Plot
           id="plotly-chart"
@@ -1138,7 +1104,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         />
       </div>
       
-      {/* Buy/Sell Volume Chart - Only show when toggle is enabled */}
       {showIndicators.buySellVolume && (
         <div className="h-[180px] mb-2">
           <Plot
@@ -1157,7 +1122,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         </div>
       )}
       
-      {/* Bid-Ask Chart - Only show when toggle is enabled */}
       {showIndicators.bidAsk && (
         <div className="h-[200px] mb-2">
           <Plot
@@ -1176,7 +1140,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         </div>
       )}
       
-      {/* Spread Chart - Only show when toggle is enabled */}
       {showIndicators.bidAskSpread && (
         <div className="h-[150px]">
           <Plot
