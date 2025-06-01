@@ -18,7 +18,6 @@ export function SelectIndicators({ onIndicatorsChange }: SelectIndicatorsProps) 
   const [selectedIndicators, setSelectedIndicators] = React.useState<string[]>([]);
 
   const handleValueChange = (value: string) => {
-    // Toggle the indicator in the array
     const newIndicators = selectedIndicators.includes(value)
       ? selectedIndicators.filter(i => i !== value)
       : [...selectedIndicators, value];

@@ -5,13 +5,11 @@ import { MarketDataService } from './market-data.service';
 export class MarketDataController {
   constructor(private readonly marketDataService: MarketDataService) {}
 
-  // Only keep this endpoint if you want to fetch the current cached data for a symbol
   @Get(':symbol')
   getMarketData(@Param('symbol') symbol: string) {
     return this.marketDataService.getMarketData(symbol);
   }
 
-  // REMOVE or COMMENT OUT all endpoints below if you do not need them
   /*
   @Get('status')
   getMarketStatus() {

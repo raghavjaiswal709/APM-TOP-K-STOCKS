@@ -1,3 +1,13 @@
+================================================================================
+STOCK CHART ANALYSIS - SELECTED FILES
+Generated on: 01-06-2025 10:58:48.20
+================================================================================
+
+
+================================================================================
+FILE: apps/frontend/app/components/charts/StockChart.tsx
+================================================================================
+
 
 'use client'
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
@@ -2995,3 +3005,397 @@ export {
   timeIntervals,
   drawingTools
 };
+
+
+================================================================================
+FILE: apps/frontend/app/components/controllers/SelectInterval.tsx
+================================================================================
+
+'use client'
+import * as React from "react";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+interface SelectIntervalProps {
+  onIntervalChange?: (interval: string) => void;
+}
+
+export function SelectInterval({ onIntervalChange }: SelectIntervalProps) {
+  const handleValueChange = (value: string) => {
+    if (onIntervalChange) {
+      onIntervalChange(value);
+    }
+  };
+
+  return (
+    <Select defaultValue="10m" onValueChange={handleValueChange}>
+      <SelectTrigger>
+        <SelectValue placeholder="Select Interval" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          <SelectLabel>Common Intervals</SelectLabel>
+          <SelectItem value="1m">1 Minute</SelectItem>
+          <SelectItem value="5m">5 Minutes</SelectItem>
+          <SelectItem value="10m">10 Minutes</SelectItem>
+          <SelectItem value="15m">15 Minutes</SelectItem>
+          <SelectItem value="30m">30 Minutes</SelectItem>
+          <SelectItem value="1h">1 Hour</SelectItem>
+        </SelectGroup>
+        <SelectGroup>
+          <SelectLabel>Daily Intervals</SelectLabel>
+          <SelectItem value="1d">1 Day</SelectItem>
+          <SelectItem value="1w">1 Week</SelectItem>
+          <SelectItem value="1mo">1 Month</SelectItem>
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+}
+
+
+================================================================================
+FILE: apps/frontend/hooks/useStockData.ts
+================================================================================
+
+import { useState, useCallback, useRef } from 'react';
+
+interface StockDataPoint {
+  interval_start: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface UseStockDataParams {
+  companyId: string | null;
+  interval?: string;
+  indicators?: string[];
+}
+
+export function useStockData({ 
+  companyId, 
+  interval = '1m',
+  indicators = []
+}: UseStockDataParams) {
+  const [data, setData] = useState<StockDataPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // **KEY FIX**: Remove startDate requirement and add fetchAllData option
+  const fetchData = useCallback(async (startDate?: Date, endDate?: Date, fetchAllData = false) => {
+    if (!companyId) {
+      setError('No company selected');
+      return;
+    }
+
+    // **NEW**: Allow fetching all data when no dates provided
+    if (!startDate && !fetchAllData) {
+      setError('Either provide a start date or set fetchAllData to true');
+      return;
+    }
+
+    // Cancel any ongoing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      abortControllerRef.current = new AbortController();
+      
+      const queryParams = new URLSearchParams();
+      
+      // **KEY FIX**: Only add date params if they exist
+      if (startDate) {
+        queryParams.append('startDate', startDate.toISOString());
+        
+        if (endDate) {
+          queryParams.append('endDate', endDate.toISOString());
+        } else {
+          // If no end date, set end date to start date + 15 minutes
+          const endDateTime = new Date(startDate);
+          endDateTime.setMinutes(endDateTime.getMinutes() + 15);
+          queryParams.append('endDate', endDateTime.toISOString());
+          queryParams.append('firstFifteenMinutes', 'true');
+        }
+      }
+      // If no startDate and fetchAllData is true, don't add any date parameters
+      
+      queryParams.append('interval', interval);
+      
+      indicators.forEach(indicator => {
+        queryParams.append('indicators', indicator);
+      });
+
+      const url = `/api/companies/${companyId}/ohlcv?${queryParams.toString()}`;
+      console.log('Fetching stock data from:', url);
+
+      const response = await fetch(url, { 
+        signal: abortControllerRef.current.signal 
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      const jsonData = await response.json();
+      console.log('Stock data received:', jsonData);
+      
+      setData(jsonData);
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('Request was aborted');
+        return;
+      }
+      console.error('Error fetching stock data:', err);
+      setError('Failed to fetch stock data');
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, interval, indicators]);
+
+  // **NEW**: Add method to fetch all data
+  const fetchAllData = useCallback(async () => {
+    return fetchData(undefined, undefined, true);
+  }, [fetchData]);
+
+  const clearData = useCallback(() => {
+    setData([]);
+    setError(null);
+  }, []);
+
+  return { data, loading, error, fetchData, fetchAllData, clearData };
+}
+
+
+================================================================================
+FILE: apps/backend/src/stock/stocks.controller.ts
+================================================================================
+
+import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { StockService } from './stocks.service';
+import { StockDataRequestDto } from './dto/stock-data.dto';
+
+@Controller('api/companies')
+export class StockController {
+  constructor(private readonly stockService: StockService) {}
+
+  @Get('top5')
+  async getTop5Companies() {
+    return this.stockService.getTop5Companies();
+  }
+
+  @Get(':companyCode/history')
+  async getCompanyHistory(
+    @Param('companyCode') companyCode: string
+  ) {
+    return this.stockService.getCompanyHistory(companyCode);
+  }
+
+  @Get(':companyId/ohlcv')
+  async getStockData(
+    @Param('companyId', ParseIntPipe) companyId: number,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('interval') interval?: string,
+    @Query('indicators') indicators?: string[],
+    @Query('firstFifteenMinutes') firstFifteenMinutes?: string,
+  ) {
+    // **KEY FIX**: Remove the startDate requirement check
+    // if (!startDate) {
+    //   throw new Error('Start date is required');
+    // }
+
+    let startDateTime: Date | undefined;
+    let endDateTime: Date | undefined;
+
+    // Handle date parameters - if no dates provided, fetch all data
+    if (startDate) {
+      startDateTime = new Date(startDate);
+      
+      if (endDate) {
+        endDateTime = new Date(endDate);
+      } else {
+        // If only start date provided, default to first 15 minutes
+        endDateTime = new Date(startDateTime);
+        endDateTime.setMinutes(endDateTime.getMinutes() + 375);
+      }
+
+      // Handle first 15 minutes logic
+      if (firstFifteenMinutes === 'true') {
+        startDateTime.setHours(9, 15, 0, 0);
+        endDateTime = new Date(startDateTime);
+        endDateTime.setMinutes(endDateTime.getMinutes() + 375);
+      }
+    }
+    // If no startDate provided, both will remain undefined for "fetch all data"
+
+    const params: StockDataRequestDto = {
+      companyId,
+      startDate: startDateTime,
+      endDate: endDateTime,
+      interval: interval || '1m',
+      indicators: indicators || [],
+      firstFifteenMinutes: firstFifteenMinutes === 'true',
+    };
+    
+    return this.stockService.getStockDataFromPython(params);
+  }
+}
+
+
+================================================================================
+FILE: apps/backend/src/stock/stocks.service.ts
+================================================================================
+
+import { Injectable, InternalServerErrorException, RequestTimeoutException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { StockData } from './entities/stock.entity';
+import { StockDataDto, StockDataRequestDto } from './dto/stock-data.dto';
+import { exec } from 'child_process';
+import * as path from 'path';
+
+@Injectable()
+export class StockService {
+  constructor(
+    @InjectRepository(StockData)
+    private stockRepository: Repository<StockData>,
+  ) {}
+
+  async getTop5Companies() {
+    return this.stockRepository
+      .createQueryBuilder('stock')
+      .select('stock.company_code', 'companyCode')
+      .addSelect('AVG(stock.close)', 'averageClose')
+      .groupBy('stock.company_code')
+      .orderBy('"averageClose"', 'DESC')
+      .limit(5)
+      .getRawMany();
+  }
+
+  async getCompanyHistory(companyCode: any) {
+    return this.stockRepository.find({
+      where: { company_code: companyCode },
+      order: { date: 'ASC' },
+    });
+  }
+
+  async getStockDataFromPython(params: StockDataRequestDto): Promise<StockDataDto[]> {
+    return new Promise((resolve, reject) => {
+      const scriptPath = path.resolve(__dirname, '../../data/data_fetch.py');
+      
+      // **KEY FIX**: Build command based on whether dates are provided
+      let command = `python ${scriptPath} --company_id=${params.companyId} --interval=${params.interval}`;
+      
+      // Only add date parameters if they exist
+      if (params.startDate && params.endDate) {
+        command += ` --start_date="${params.startDate.toISOString()}" --end_date="${params.endDate.toISOString()}"`;
+        
+        // Add first fifteen minutes flag
+        if (params.firstFifteenMinutes) {
+          command += ' --first_fifteen_minutes=true';
+        }
+      } else {
+        // **NEW**: Add flag to fetch all available data
+        command += ' --fetch_all_data=true';
+      }
+      
+      console.log(`Executing command: ${command}`);
+      
+      const timeout = 300000;
+      
+      const timeoutId = setTimeout(() => {
+        reject(new RequestTimeoutException('Python script execution timed out after 5 minutes'));
+      }, timeout);
+      
+      const childProcess = exec(command, { 
+        maxBuffer: 1024 * 1024 * 50,
+        timeout: timeout
+      }, (error, stdout, stderr) => {
+        clearTimeout(timeoutId);
+        
+        if (error) {
+          console.error(`Error executing Python script: ${error.message}`);
+          return reject(new InternalServerErrorException(`Failed to fetch stock data: ${error.message}`));
+        }
+        
+        if (stderr) {
+          console.error(`Python script stderr: ${stderr}`);
+        }
+        
+        try {
+          const lines = stdout.trim().split('\n');
+          const results: StockDataDto[] = [];
+          
+          for (const line of lines) {
+            if (line.startsWith('Interval:')) {
+              const parts = line.split(',');
+              const intervalPart = parts[0].replace('Interval:', '').trim();
+              const openPart = parts[1].replace('Open:', '').trim();
+              const highPart = parts[2].replace('High:', '').trim();
+              const lowPart = parts[3].replace('Low:', '').trim();
+              const closePart = parts[4].replace('Close:', '').trim();
+              const volumePart = parts[5].replace('Volume:', '').trim();
+              
+              results.push({
+                interval_start: new Date(intervalPart),
+                open: parseFloat(openPart),
+                high: parseFloat(highPart),
+                low: parseFloat(lowPart),
+                close: parseFloat(closePart),
+                volume: parseFloat(volumePart),
+              });
+            }
+          }
+          
+          console.log(`Successfully parsed ${results.length} data points`);
+          
+          // Filter to first 15 minutes if requested
+          if (params.firstFifteenMinutes && results.length > 0) {
+            const startTime = new Date(results[0].interval_start);
+            const endTime = new Date(startTime.getTime() + 375 * 60 * 1000); // 15 minutes later
+            
+            const filteredResults = results.filter(item => {
+              const itemTime = new Date(item.interval_start);
+              return itemTime >= startTime && itemTime <= endTime;
+            });
+            
+            console.log(`Filtered to first 15 minutes: ${filteredResults.length} data points`);
+            resolve(filteredResults);
+          } else {
+            resolve(results);
+          }
+        } catch (parseError) {
+          console.error(`Error parsing Python script output: ${parseError}`);
+          reject(new InternalServerErrorException('Failed to parse stock data'));
+        }
+      });
+      
+      childProcess.on('error', (error) => {
+        clearTimeout(timeoutId);
+        console.error(`Child process error: ${error.message}`);
+        reject(new InternalServerErrorException(`Child process error: ${error.message}`));
+      });
+    });
+  }
+}
+
+
+================================================================================
+END OF FILES - STOCK CHART ANALYSIS COMPLETE
+================================================================================

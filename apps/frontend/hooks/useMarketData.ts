@@ -69,7 +69,6 @@ export const useMarketData = (initialSymbols: string[] = []): UseMarketDataRetur
     
     socket.on('marketData', handleMarketData);
     
-    // Subscribe to initial symbols
     initialSymbols.forEach((symbol) => {
       socket.emit('subscribe', { symbol });
     });
@@ -77,7 +76,6 @@ export const useMarketData = (initialSymbols: string[] = []): UseMarketDataRetur
     return () => {
       socket.off('marketData', handleMarketData);
       
-      // Unsubscribe from all symbols when component unmounts
       subscribedSymbols.forEach((symbol) => {
         socket.emit('unsubscribe', { symbol });
       });

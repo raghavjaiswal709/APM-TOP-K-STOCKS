@@ -79,13 +79,59 @@ export default function Page() {
     }
   }, [selectedCompany, selectedStartDate, selectedEndDate, fetchData]);
 
+  
+
   // **NEW**: Handle fetch all data without date restrictions
   const handleFetchAllData = useCallback(() => {
-    if (selectedCompany) {
-      console.log('Fetching all available data for company:', selectedCompany);
-      fetchAllData();
+  if (selectedCompany) {
+    console.log('Fetching all available data for company:', selectedCompany);
+    fetchAllData();
+  }
+}, [selectedCompany, fetchAllData]);
+
+const handleIntervalChange = useCallback(async (newInterval: string) => {
+  console.log('✅ Parent: Interval changed from', selectedInterval, 'to', newInterval);
+  setSelectedInterval(newInterval);
+  
+  // If we have a company selected, automatically fetch data with new interval
+  if (selectedCompany) {
+    console.log('✅ Parent: Auto-fetching data with new interval for company:', selectedCompany);
+    try {
+      // Use fetchAllData if no date range is set, otherwise use fetchData with date range
+      if (!selectedStartDate) {
+        await fetchAllData();
+      } else {
+        await fetchData(selectedStartDate, selectedEndDate);
+      }
+      console.log('✅ Parent: Data fetch completed for new interval');
+    } catch (error) {
+      console.error('❌ Parent: Failed to fetch data with new interval:', error);
     }
-  }, [selectedCompany, fetchAllData]);
+  }
+}, [selectedInterval, selectedCompany, selectedStartDate, selectedEndDate, fetchData, fetchAllData]);
+
+// **NEW**: Auto-fetch all data when company is selected (optional behavior)
+useEffect(() => {
+  if (selectedCompany && !selectedStartDate) {
+    // Automatically fetch all data when a company is selected and no date range is set
+    console.log('Auto-fetching all data for newly selected company:', selectedCompany);
+    handleFetchAllData();
+  }
+}, [selectedCompany, selectedStartDate, handleFetchAllData]);
+
+// **ADD THIS NEW EFFECT**: Auto-refetch when interval changes
+useEffect(() => {
+  if (selectedCompany && stockData.length > 0) {
+    console.log('✅ Parent: Interval changed, refetching data for company:', selectedCompany);
+    // Refetch data when interval changes (only if we already have data)
+    if (!selectedStartDate) {
+      handleFetchAllData();
+    } else {
+      handleFetchData();
+    }
+  }
+}, [selectedInterval]); // Only depend on selectedInterval
+
 
   // Clear data when company changes
   useEffect(() => {
@@ -220,18 +266,19 @@ export default function Page() {
               </Card>
               
               {/* **ENHANCED**: Stock chart with better props */}
-              <div className="min-h-[500px] flex-1 rounded-xl bg-muted/50">
-                <StockChart 
-                  companyId={selectedCompany}
-                  data={stockData}
-                  startDate={selectedStartDate}
-                  endDate={selectedEndDate}
-                  interval={selectedInterval}
-                  indicators={selectedIndicators}
-                  loading={stockLoading}
-                  error={stockError}
-                />
-              </div>
+             <div className="min-h-[500px] flex-1 rounded-xl bg-muted/50">
+  <StockChart 
+    companyId={selectedCompany}
+    data={stockData}
+    startDate={selectedStartDate}
+    endDate={selectedEndDate}
+    interval={selectedInterval}
+    onIntervalChange={handleIntervalChange}  // **ADD THIS LINE**
+    indicators={selectedIndicators}
+    loading={stockLoading}
+    error={stockError}
+  />
+</div>
               
               {/* **ENHANCED**: Watchlist Companies List with better interaction */}
               <Card className="w-full border border-opacity-30 h-[400px] overflow-hidden">

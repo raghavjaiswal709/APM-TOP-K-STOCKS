@@ -8,7 +8,7 @@ import { DatabaseModule } from '../database/database.module';
 
 @Module({
   imports: [
-    DatabaseModule, // <-- Import the database connection here
+    DatabaseModule, 
     TypeOrmModule.forFeature([StockData])
   ],
   controllers: [StockController],
