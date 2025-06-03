@@ -227,6 +227,8 @@ const handleRelayout = useCallback((eventData) => {
       setDeviceType(detectDeviceType(newSize.width));
     };
 
+    
+
     updateViewportSize();
     
     const handleResize = () => {
@@ -362,6 +364,18 @@ const handleRelayout = useCallback((eventData) => {
     
     return result;
   }, [filteredData]);
+
+useEffect(() => {
+  if (optimizedData && optimizedData.length > 0) {
+    setXRange(null);
+    setYRange(null);
+    
+    // Force re-render with auto-range by incrementing revision
+    plotRevisionRef.current += 1;
+  }
+}, [companyId]);
+ 
+
 
   const calculateIndicator = useCallback((type: string, prices: number[], options = {}) => {
     switch (type) {
