@@ -1,7 +1,8 @@
 export class StockDataRequestDto {
-  companyId: number;
-  startDate?: Date; // Made optional
-  endDate?: Date;   // Made optional
+  companyCode: string;  
+  exchange?: string;
+  startDate?: Date;
+  endDate?: Date;
   interval: string;
   indicators: string[];
   firstFifteenMinutes?: boolean;

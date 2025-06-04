@@ -17,25 +17,42 @@ export class StockService {
     return this.stockRepository
       .createQueryBuilder('stock')
       .select('stock.company_code', 'companyCode')
+      .addSelect('stock.exchange', 'exchange')
       .addSelect('AVG(stock.close)', 'averageClose')
-      .groupBy('stock.company_code')
+      .where('stock.exchange IN (:...exchanges)', { exchanges: ['NSE', 'BSE'] })
+      .groupBy('stock.company_code, stock.exchange')
       .orderBy('"averageClose"', 'DESC')
       .limit(5)
       .getRawMany();
   }
 
-  async getCompanyHistory(companyCode: any) {
-    return this.stockRepository.find({
-      where: { company_code: companyCode },
-      order: { date: 'ASC' },
-    });
+  async getCompanyHistory(companyCode: string, exchange?: string) {
+    const queryBuilder = this.stockRepository
+      .createQueryBuilder('stock')
+      .where('stock.company_code = :companyCode', { companyCode });
+    
+    if (exchange) {
+      queryBuilder.andWhere('stock.exchange = :exchange', { exchange });
+    } else {
+      queryBuilder.andWhere('stock.exchange IN (:...exchanges)', { exchanges: ['NSE', 'BSE'] });
+    }
+    
+    return queryBuilder
+      .orderBy('stock.date', 'ASC')
+      .getMany();
   }
 
   async getStockDataFromPython(params: StockDataRequestDto): Promise<StockDataDto[]> {
     return new Promise((resolve, reject) => {
       const scriptPath = path.resolve(__dirname, '../../data/data_fetch.py');
       
-      let command = `python ${scriptPath} --company_id=${params.companyId} --interval=${params.interval}`;
+      let command = `python ${scriptPath} --company_code=${params.companyCode} --interval=${params.interval}`;
+      
+      if (params.exchange) {
+        command += ` --exchange=${params.exchange}`;
+      } else {
+        command += ` --exchange=NSE,BSE`;  
+      }
       
       if (params.startDate && params.endDate) {
         command += ` --start_date="${params.startDate.toISOString()}" --end_date="${params.endDate.toISOString()}"`;

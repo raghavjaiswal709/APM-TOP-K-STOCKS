@@ -366,14 +366,23 @@ const handleRelayout = useCallback((eventData) => {
   }, [filteredData]);
 
 useEffect(() => {
-  if (optimizedData && optimizedData.length > 0) {
+  if (companyId) {
+    console.log('Company changed to:', companyId, '- Resetting chart ranges');
     setXRange(null);
     setYRange(null);
-    
-    // Force re-render with auto-range by incrementing revision
     plotRevisionRef.current += 1;
   }
 }, [companyId]);
+
+useEffect(() => {
+  if (data && data.length > 0) {
+    console.log('New data loaded for company:', companyId, '- Ensuring autorange');
+    setXRange(null);
+    setYRange(null);
+    plotRevisionRef.current += 1;
+  }
+}, [data, companyId]);
+
  
 
 
@@ -1028,7 +1037,8 @@ useEffect(() => {
 
       yaxis: {
       title: { text: 'Price (₹)', font: { color: colors.text, size: responsiveFonts.axis } },
-      domain: [0.50, 1.0], // Fixed domain instead of priceChartDomain
+      domain: [0.50, 1.0], 
+
       tickformat: ',.2f',
       showgrid: showGridlines,
       gridcolor: colors.grid,
@@ -1284,7 +1294,8 @@ useEffect(() => {
     }
   }, [autoResize]);
 
- const resetChart = useCallback(() => {
+const resetChart = useCallback(() => {
+  console.log('Resetting chart ranges and zoom');
   setXRange(null);
   setYRange(null);
   
@@ -1294,6 +1305,8 @@ useEffect(() => {
       'yaxis.autorange': true,
       'xaxis.range': undefined,
       'yaxis.range': undefined,
+      'yaxis2.autorange': true,  
+      'yaxis2.range': undefined,
       dragmode: 'pan'
     };
     plotRef.current.relayout(resetUpdate);
@@ -1303,6 +1316,8 @@ useEffect(() => {
   setDrawingMode(null);
   plotRevisionRef.current += 1;
 }, []);
+
+
 
   const exportChartData = useCallback(() => {
     if (!optimizedData.length) return;
