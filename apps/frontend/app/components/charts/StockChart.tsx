@@ -227,6 +227,8 @@ const handleRelayout = useCallback((eventData) => {
       setDeviceType(detectDeviceType(newSize.width));
     };
 
+    
+
     updateViewportSize();
     
     const handleResize = () => {
@@ -362,6 +364,27 @@ const handleRelayout = useCallback((eventData) => {
     
     return result;
   }, [filteredData]);
+
+useEffect(() => {
+  if (companyId) {
+    console.log('Company changed to:', companyId, '- Resetting chart ranges');
+    setXRange(null);
+    setYRange(null);
+    plotRevisionRef.current += 1;
+  }
+}, [companyId]);
+
+useEffect(() => {
+  if (data && data.length > 0) {
+    console.log('New data loaded for company:', companyId, '- Ensuring autorange');
+    setXRange(null);
+    setYRange(null);
+    plotRevisionRef.current += 1;
+  }
+}, [data, companyId]);
+
+ 
+
 
   const calculateIndicator = useCallback((type: string, prices: number[], options = {}) => {
     switch (type) {
@@ -1014,7 +1037,8 @@ const handleRelayout = useCallback((eventData) => {
 
       yaxis: {
       title: { text: 'Price (₹)', font: { color: colors.text, size: responsiveFonts.axis } },
-      domain: [0.50, 1.0], // Fixed domain instead of priceChartDomain
+      domain: [0.50, 1.0], 
+
       tickformat: ',.2f',
       showgrid: showGridlines,
       gridcolor: colors.grid,
@@ -1270,7 +1294,8 @@ const handleRelayout = useCallback((eventData) => {
     }
   }, [autoResize]);
 
- const resetChart = useCallback(() => {
+const resetChart = useCallback(() => {
+  console.log('Resetting chart ranges and zoom');
   setXRange(null);
   setYRange(null);
   
@@ -1280,6 +1305,8 @@ const handleRelayout = useCallback((eventData) => {
       'yaxis.autorange': true,
       'xaxis.range': undefined,
       'yaxis.range': undefined,
+      'yaxis2.autorange': true,  
+      'yaxis2.range': undefined,
       dragmode: 'pan'
     };
     plotRef.current.relayout(resetUpdate);
@@ -1289,6 +1316,8 @@ const handleRelayout = useCallback((eventData) => {
   setDrawingMode(null);
   plotRevisionRef.current += 1;
 }, []);
+
+
 
   const exportChartData = useCallback(() => {
     if (!optimizedData.length) return;

@@ -5,7 +5,7 @@ import { RadioGroupDemo } from "./RadioGroup";
 import { SelectScrollable } from "./SelectScrollable";
 
 interface WatchlistSelectorProps {
-  onCompanySelect?: (companyCode: string | null) => void;
+  onCompanySelect?: (companyCode: string | null, exchange?: string) => void;
   selectedWatchlist?: string;
   onWatchlistChange?: (watchlist: string) => void;
 }
@@ -22,6 +22,7 @@ export function WatchlistSelector({
     loading,
     error,
     exists,
+    availableExchanges,
   } = useWatchlist();
   
   const effectiveWatchlist = externalSelectedWatchlist || internalSelectedWatchlist;
@@ -31,6 +32,13 @@ export function WatchlistSelector({
       onWatchlistChange(value);
     } else {
       internalSetSelectedWatchlist(value);
+    }
+  };
+
+  const handleCompanySelect = (companyCode: string | null, exchange?: string) => {
+    console.log(`Selected company: ${companyCode} on exchange: ${exchange}`);
+    if (onCompanySelect) {
+      onCompanySelect(companyCode, exchange);
     }
   };
 
@@ -49,12 +57,18 @@ export function WatchlistSelector({
         </div>
       )}
       
+      {availableExchanges.length > 0 && (
+        <div className="text-xs text-muted-foreground">
+          Exchanges: {availableExchanges.join(', ')}
+        </div>
+      )}
+      
       <div>
         <SelectScrollable
           companies={companies}
           loading={loading}
           exists={exists}
-          onCompanySelect={onCompanySelect}
+          onCompanySelect={handleCompanySelect}
         />
       </div>
     </div>

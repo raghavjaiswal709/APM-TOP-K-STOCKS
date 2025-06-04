@@ -10,7 +10,7 @@ import { CalendarForm } from "./controllers/CalendarForm";
 import { WatchlistSelector } from "./controllers/WatchlistSelector";
 
 interface CardWithFormProps {
-  onCompanyChange: (companyId: string | null) => void;
+  onCompanyChange: (companyCode: string | null, exchange?: string) => void;
   onDateRangeChange: (startDate: Date | undefined, endDate: Date | undefined) => void;
   onFetchData: () => void;
   onIntervalChange: (interval: string) => void;
@@ -31,15 +31,14 @@ export function CardWithForm({
   loading = false,
 }: CardWithFormProps) {
   
-  // Memoize callbacks to prevent unnecessary re-renders
   const handleDateRangeChange = React.useCallback((startDate: Date | undefined, endDate: Date | undefined) => {
     console.log('CardWithForm received date range change:', startDate, endDate);
     onDateRangeChange(startDate, endDate);
   }, [onDateRangeChange]);
 
-  const handleCompanyChange = React.useCallback((companyId: string | null) => {
-    console.log('CardWithForm received company change:', companyId);
-    onCompanyChange(companyId);
+  const handleCompanySelect = React.useCallback((companyCode: string | null, exchange?: string) => {
+    console.log('CardWithForm received company change:', companyCode, 'on exchange:', exchange);
+    onCompanyChange(companyCode, exchange);
   }, [onCompanyChange]);
 
   const handleFetchData = React.useCallback(() => {
@@ -57,34 +56,42 @@ export function CardWithForm({
     onIndicatorsChange(indicators);
   }, [onIndicatorsChange]);
 
+  const handleWatchlistChange = React.useCallback((watchlist: string) => {
+    console.log('CardWithForm received watchlist change:', watchlist);
+    if (onWatchlistChange) {
+      onWatchlistChange(watchlist);
+    }
+  }, [onWatchlistChange]);
+
   return (
-    <Card className=" border-none w-[900px]">
-      <CardContent className="p-4 w-[900px]">
-        <div className="space-y-4">
+    <Card className="border-none w-[600px]">
+      <CardContent className="p-4 w-[600px]">
+        <div className="space-y-2">
           {/* Company and Watchlist Selection */}
           <div className="flex justify-between gap-4">
-            <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-center ">
+            <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-center">
               <WatchlistSelector 
-                onCompanySelect={handleCompanyChange}
+                onCompanySelect={handleCompanySelect}  
                 selectedWatchlist={selectedWatchlist}
-                onWatchlistChange={onWatchlistChange}
+                onWatchlistChange={handleWatchlistChange} 
               />
             </div>
-{/*             
-            <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-center">
+
+            {/* Uncomment if you want interval selection back */}
+            {/* <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-center">
               <SelectInterval 
                 onIntervalChange={handleIntervalChange}
               />
-            </div>
-             */}
-            <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-center">
+            </div> */}
+             
+            {/* <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-center">
               <SelectIndicators 
                 onIndicatorsChange={handleIndicatorsChange}
               />
-            </div>
+            </div> */}
           </div>
           
-          {/* Date Range Selection with Fetch Button - EXACTLY LIKE PAGE.TSX */}
+          {/* Uncomment if you want date range selection back */}
           {/* <div className="border-t pt-4">
             <h3 className="text-sm font-medium mb-3">📅 Date Range Selection</h3>
             <CalendarForm 
@@ -99,5 +106,4 @@ export function CardWithForm({
   );
 }
 
-// Add default export as well to ensure compatibility
 export default CardWithForm;

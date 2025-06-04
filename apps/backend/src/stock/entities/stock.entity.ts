@@ -5,8 +5,11 @@ export class StockData {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'smallint' }) 
-  company_code: number;
+  @Column({ type: 'varchar', length: 50 }) 
+  company_code: string;  
+
+  @Column({ type: 'varchar', length: 10 })
+  exchange: string;  
 
   @Column('timestamp') 
   date: Date;

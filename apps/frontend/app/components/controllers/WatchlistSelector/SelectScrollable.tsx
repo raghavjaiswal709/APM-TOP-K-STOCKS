@@ -1,23 +1,28 @@
 'use client'
 import * as React from "react";
-import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 
 interface Company {
   company_code: string;
-  avg_daily_high_low_range: number;
-  avg_daily_volume: number;
-  avg_trading_capital: number;
-  instrument_token: string;
-  tradingsymbol: string;
   name: string;
   exchange: string;
+  total_valid_days?: number;
+  avg_daily_high_low?: number;
+  median_daily_volume?: number;
+  avg_trading_ratio?: number;
+  N1_Pattern_count?: number;
+  // Legacy fields
+  avg_daily_high_low_range?: number;
+  avg_daily_volume?: number;
+  avg_trading_capital?: number;
+  instrument_token?: string;
+  tradingsymbol?: string;
 }
 
 interface SelectScrollableProps {
   companies: Company[];
   loading: boolean;
   exists: boolean;
-  onCompanySelect?: (companyCode: string | null) => void;
+  onCompanySelect?: (companyCode: string | null, exchange?: string) => void;
 }
 
 export function SelectScrollable({
@@ -30,69 +35,57 @@ export function SelectScrollable({
 
   const handleValueChange = (value: string) => {
     setSelectedValue(value);
+    
     if (onCompanySelect) {
-      onCompanySelect(value || null);
+      const selectedCompany = companies.find(c => c.company_code === value);
+      onCompanySelect(value || null, selectedCompany?.exchange);
     }
   };
 
-  // Convert companies to combobox options with enhanced search
-  const options: ComboboxOption[] = React.useMemo(() => {
+  const options = React.useMemo(() => {
     return companies.map((company) => ({
       value: company.company_code,
-      label: `${company.tradingsymbol} - ${company.name}`,
-      searchText: `${company.tradingsymbol} ${company.name} ${company.company_code} ${company.exchange}`.toLowerCase(),
+      label: `${company.company_code} - ${company.name} (${company.exchange})`,
+      searchText: `${company.company_code} ${company.name} ${company.exchange} ${company.tradingsymbol || ''}`.toLowerCase(),
     }));
   }, [companies]);
 
   if (loading) {
     return (
-      <Combobox
-        options={[]}
-        value=""
-        onSelect={() => {}}
-        placeholder="Loading companies..."
-        className="w-[280px]"
-        loading={true}
-        disabled={true}
-      />
+      <select disabled className="w-[280px] p-2 border rounded">
+        <option>Loading companies...</option>
+      </select>
     );
   }
 
   if (!exists) {
     return (
-      <Combobox
-        options={[]}
-        value=""
-        onSelect={() => {}}
-        placeholder="Watchlist not found"
-        className="w-[280px]"
-        disabled={true}
-      />
+      <select disabled className="w-[280px] p-2 border rounded">
+        <option>Watchlist not found</option>
+      </select>
     );
   }
 
   if (companies.length === 0) {
     return (
-      <Combobox
-        options={[]}
-        value=""
-        onSelect={() => {}}
-        placeholder="No companies available"
-        className="w-[280px]"
-        disabled={true}
-      />
+      <select disabled className="w-[280px] p-2 border rounded">
+        <option>No companies available</option>
+      </select>
     );
   }
 
   return (
-    <Combobox
-      options={options}
+    <select
       value={selectedValue}
-      onSelect={handleValueChange}
-      placeholder="Search & select company..."
-      searchPlaceholder="Search companies..."
-      emptyText="No companies found."
-      className="w-[280px]"
-    />
+      onChange={(e) => handleValueChange(e.target.value)}
+      className="w-[280px] p-2 border rounded"
+    >
+      <option value="">Select a company...</option>
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
   );
 }

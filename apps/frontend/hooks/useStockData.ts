@@ -10,13 +10,15 @@ interface StockDataPoint {
 }
 
 interface UseStockDataParams {
-  companyId: string | null;
+  companyCode: string | null;  
+  exchange?: string;           
   interval?: string;
   indicators?: string[];
 }
 
 export function useStockData({ 
-  companyId, 
+  companyCode,   
+  exchange,     
   interval = '1m',
   indicators = []
 }: UseStockDataParams) {
@@ -25,19 +27,16 @@ export function useStockData({
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-
   const fetchData = useCallback(async (startDate?: Date, endDate?: Date, fetchAllData = false) => {
-    if (!companyId) {
+    if (!companyCode) {  
       setError('No company selected');
       return;
     }
-
 
     if (!startDate && !fetchAllData) {
       setError('Either provide a start date or set fetchAllData to true');
       return;
     }
-
 
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -51,7 +50,9 @@ export function useStockData({
       
       const queryParams = new URLSearchParams();
       
-
+      if (exchange) {
+        queryParams.append('exchange', exchange);
+      }
 
       if (startDate) {
         queryParams.append('startDate', startDate.toISOString());
@@ -59,7 +60,6 @@ export function useStockData({
         if (endDate) {
           queryParams.append('endDate', endDate.toISOString());
         } else {
-
           const endDateTime = new Date(startDate);
           endDateTime.setMinutes(endDateTime.getMinutes() + 15);
           queryParams.append('endDate', endDateTime.toISOString());
@@ -67,14 +67,13 @@ export function useStockData({
         }
       }
 
-      
       queryParams.append('interval', interval);
       
       indicators.forEach(indicator => {
         queryParams.append('indicators', indicator);
       });
 
-      const url = `/api/companies/${companyId}/ohlcv?${queryParams.toString()}`;
+      const url = `/api/companies/${companyCode}/ohlcv?${queryParams.toString()}`;
       console.log('Fetching stock data from:', url);
 
       const response = await fetch(url, { 
@@ -100,8 +99,7 @@ export function useStockData({
     } finally {
       setLoading(false);
     }
-  }, [companyId, interval, indicators]);
-
+  }, [companyCode, exchange, interval, indicators]);  
 
   const fetchAllData = useCallback(async () => {
     return fetchData(undefined, undefined, true);

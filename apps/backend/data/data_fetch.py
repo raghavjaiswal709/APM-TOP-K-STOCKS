@@ -7,14 +7,14 @@ import sys
 def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Fetch and aggregate stock data.')
-    parser.add_argument('--company_id', type=int, default=2, help='Company ID to fetch data for')
+    parser.add_argument('--company_code', type=str, required=True, help='Company code to fetch data for')
+    parser.add_argument('--exchange', type=str, default='NSE,BSE', help='Exchange filter (NSE, BSE, or NSE,BSE)')
     parser.add_argument('--start_date', type=str, default='2024-02-22 00:00:00', help='Start date and time (ISO format or YYYY-MM-DD HH:MM:SS)')
     parser.add_argument('--end_date', type=str, default='2024-04-16 00:00:00', help='End date and time (ISO format or YYYY-MM-DD HH:MM:SS)')
     parser.add_argument('--interval', type=str, default='10m', help='Interval for aggregation (e.g., 1m, 5m, 10m, 15m, 30m, 1h)')
     parser.add_argument('--first_fifteen_minutes', type=str, default='false', 
                        choices=['true', 'false'],
                        help='Filter to first 15 minutes of trading day')
-    # **NEW**: Add fetch_all_data argument
     parser.add_argument('--fetch_all_data', type=str, default='false',
                        choices=['true', 'false'],
                        help='Fetch all available data for the company (ignores date range)')
@@ -25,22 +25,17 @@ def main():
     first_fifteen_minutes = args.first_fifteen_minutes.lower() == 'true'
     fetch_all_data = args.fetch_all_data.lower() == 'true'
     
-    # **MODIFIED**: Handle date parsing based on fetch_all_data flag
+    # Handle date parsing based on fetch_all_data flag
     if fetch_all_data:
-        # When fetching all data, we'll determine the date range from the database
         start_date = None
         end_date = None
-        print(f"Fetching all available data for company_id={args.company_id}", file=sys.stderr)
+        print(f"Fetching all available data for company_code={args.company_code} on exchanges={args.exchange}", file=sys.stderr)
     else:
-        # Parse and convert dates normally
         try:
             start_date = parse_date_string(args.start_date)
             end_date = parse_date_string(args.end_date)
-            
-            # Adjust dates for first 15 minutes if needed
             if first_fifteen_minutes:
                 start_date, end_date = adjust_for_first_fifteen_minutes(start_date, end_date)
-                
         except ValueError as e:
             print(f"Date parsing error: {e}", file=sys.stderr)
             sys.exit(1)
@@ -55,7 +50,7 @@ def main():
         '1h': 60
     }
     
-    interval_minutes = interval_map.get(args.interval, 10)  # Default to 10 minutes
+    interval_minutes = interval_map.get(args.interval, 10)
     
     # Database connection parameters
     db_params = {
@@ -74,50 +69,77 @@ def main():
         # Set timezone to IST
         cur.execute("SET TIME ZONE 'Asia/Kolkata';")
 
-        # **MODIFIED**: Build query based on fetch_all_data flag
+        # Parse exchanges
+        exchanges = args.exchange.split(',')
+        exchange_placeholders = ','.join(['%s'] * len(exchanges))
+
+        # STEP 1: Get company_id(s) from companies table
+        company_lookup_query = f"""
+        SELECT company_id, company_code, name, exchange
+        FROM companies
+        WHERE company_code = %s
+        AND exchange IN ({exchange_placeholders})
+        """
+        
+        company_params = [args.company_code] + exchanges
+        print(f"Looking up company: {args.company_code} on exchanges: {args.exchange}", file=sys.stderr)
+        
+        cur.execute(company_lookup_query, company_params)
+        company_records = cur.fetchall()
+        
+        if not company_records:
+            print(f"No company found with code '{args.company_code}' on exchanges {args.exchange}", file=sys.stderr)
+            sys.exit(1)
+        
+        # Extract company_ids for data fetching
+        company_ids = [record['company_id'] for record in company_records]
+        company_id_placeholders = ','.join(['%s'] * len(company_ids))
+        
+        print(f"Found {len(company_records)} company records:", file=sys.stderr)
+        for record in company_records:
+            print(f"  - {record['company_code']} ({record['name']}) on {record['exchange']} [ID: {record['company_id']}]", file=sys.stderr)
+
+        # STEP 2: Fetch stock price data using company_id(s)
         if fetch_all_data:
-            # Query to fetch ALL data for the company
-            query = """
-            SELECT timestamp, open, high, low, close, volume
+            stock_data_query = f"""
+            SELECT timestamp, open, high, low, close, volume, company_id
             FROM company_data
-            WHERE company_id = %s
+            WHERE company_id IN ({company_id_placeholders})
             ORDER BY timestamp
             """
-            query_params = (args.company_id,)
-            print(f"Querying ALL data for company_id={args.company_id}", file=sys.stderr)
+            query_params = company_ids
+            print(f"Querying ALL stock data for company_ids: {company_ids}", file=sys.stderr)
         else:
-            # Query to fetch data within date range
-            query = """
-            SELECT timestamp, open, high, low, close, volume
+            stock_data_query = f"""
+            SELECT timestamp, open, high, low, close, volume, company_id
             FROM company_data
-            WHERE company_id = %s
+            WHERE company_id IN ({company_id_placeholders})
             AND timestamp >= %s
             AND timestamp < %s
             ORDER BY timestamp
             """
-            query_params = (args.company_id, start_date, end_date)
-            print(f"Querying data for company_id={args.company_id}, start_date={start_date}, end_date={end_date}", file=sys.stderr)
+            query_params = company_ids + [start_date, end_date]
+            print(f"Querying stock data for company_ids: {company_ids}, date range: {start_date} to {end_date}", file=sys.stderr)
         
-        cur.execute(query, query_params)
-
-        # Fetch all rows
+        cur.execute(stock_data_query, query_params)
         rows = cur.fetchall()
+        
         if not rows:
             if fetch_all_data:
-                print(f"No data found for company_id = {args.company_id}.", file=sys.stderr)
+                print(f"No stock data found for company_code='{args.company_code}' on exchanges={args.exchange}", file=sys.stderr)
             else:
-                print(f"No data found for company_id = {args.company_id} in the specified date range.", file=sys.stderr)
+                print(f"No stock data found for company_code='{args.company_code}' on exchanges={args.exchange} in date range {start_date} to {end_date}", file=sys.stderr)
             sys.exit(0)
 
-        # **NEW**: If fetching all data, optionally limit to recent data to avoid overwhelming the frontend
-        if fetch_all_data and len(rows) > 10000:  # Limit to last 10k records for performance
+        # Limit data size for performance if fetching all data
+        if fetch_all_data and len(rows) > 10000:
             print(f"Large dataset detected ({len(rows)} records). Limiting to most recent 10,000 records.", file=sys.stderr)
             rows = rows[-10000:]
 
         # Function to get the start of an interval
         def get_interval_start(dt):
             minute = dt.minute
-            interval_minute = (minute // interval_minutes) * interval_minutes  # Floor to nearest interval
+            interval_minute = (minute // interval_minutes) * interval_minutes
             return dt.replace(minute=interval_minute, second=0, microsecond=0)
 
         # Group rows by intervals
@@ -131,13 +153,17 @@ def main():
         # Compute OHLCV aggregates for each interval
         results = []
         for interval_start in sorted(interval_data.keys()):
-            rows = interval_data[interval_start]
-            if rows:
-                open_price = rows[0]['open']               # First open
-                high_price = max(row['high'] for row in rows)  # Max high
-                low_price = min(row['low'] for row in rows)    # Min low
-                close_price = rows[-1]['close']            # Last close
-                volume_sum = sum(row['volume'] for row in rows)  # Sum volume
+            interval_rows = interval_data[interval_start]
+            if interval_rows:
+                # Sort by timestamp to ensure proper OHLC calculation
+                interval_rows.sort(key=lambda x: x['timestamp'])
+                
+                open_price = interval_rows[0]['open']
+                high_price = max(row['high'] for row in interval_rows)
+                low_price = min(row['low'] for row in interval_rows)
+                close_price = interval_rows[-1]['close']
+                volume_sum = sum(row['volume'] for row in interval_rows)
+                
                 results.append({
                     'interval_start': interval_start,
                     'open': open_price,
@@ -147,9 +173,8 @@ def main():
                     'volume': volume_sum
                 })
 
-        # **NEW**: Apply first_fifteen_minutes filter after aggregation if needed
+        # Apply first_fifteen_minutes filter after aggregation if needed
         if first_fifteen_minutes and fetch_all_data:
-            # Filter results to only include first 15 minutes of each trading day
             filtered_results = []
             for result in results:
                 timestamp = result['interval_start']
@@ -176,7 +201,6 @@ def main():
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
     finally:
-        # Clean up
         if 'cur' in locals():
             cur.close()
         if 'conn' in locals():
@@ -185,17 +209,13 @@ def main():
 def parse_date_string(date_str):
     """Parse date string in various formats"""
     try:
-        # Try ISO format first (from backend)
         if 'T' in date_str:
-            # Handle ISO format with or without 'Z'
             if date_str.endswith('Z'):
                 date_str = date_str[:-1] + '+00:00'
             return datetime.fromisoformat(date_str)
         else:
-            # Handle simple format (YYYY-MM-DD HH:MM:SS)
             return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
     except ValueError:
-        # Try other common formats
         formats = [
             '%Y-%m-%d',
             '%Y-%m-%dT%H:%M:%S',
@@ -212,13 +232,10 @@ def parse_date_string(date_str):
 
 def adjust_for_first_fifteen_minutes(start_date, end_date):
     """Adjust dates for first 15 minutes of trading day"""
-    # Convert UTC to IST if needed
     if start_date.tzinfo is not None:
-        # Convert to IST (UTC+5:30)
         ist_offset = timedelta(hours=5, minutes=30)
         start_date = start_date.replace(tzinfo=None) + ist_offset
     
-    # Set to market opening time (9:15 AM IST)
     market_start = start_date.replace(hour=9, minute=15, second=0, microsecond=0)
     market_end = market_start + timedelta(minutes=375)
     
