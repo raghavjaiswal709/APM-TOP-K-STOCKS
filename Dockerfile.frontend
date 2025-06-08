@@ -1,0 +1,36 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package.json first to leverage Docker caching
+COPY apps/frontend/package.json ./
+
+# Install dependencies with legacy-peer-deps flag and include all required packages
+RUN npm install --legacy-peer-deps && \
+    npm install --legacy-peer-deps postcss autoprefixer tailwindcss && \
+    npm install --legacy-peer-deps @hookform/resolvers zod date-fns next-themes react-hook-form react-day-picker && \
+    npm install --legacy-peer-deps lucide-react && \
+    npm install --legacy-peer-deps -D @types/node
+
+# Create PostCSS config if it doesn't exist
+COPY apps/frontend/postcss.config.js* ./
+RUN if [ ! -f "postcss.config.js" ] && [ ! -f "postcss.config.mjs" ]; then \
+    echo "module.exports = { plugins: { tailwindcss: {}, autoprefixer: {} } }" > postcss.config.js; \
+fi
+
+# Copy the rest of the frontend code
+COPY apps/frontend ./
+
+# Check if components.json exists and remove it before initialization
+RUN if [ -f "components.json" ]; then rm components.json; fi
+RUN npx shadcn@latest init --yes
+
+# Install UI components
+RUN for c in avatar breadcrumb button calendar card collapsible dropdown-menu form input label popover radio-group scroll-area select separator sheet sidebar skeleton toast toaster tooltip; do \
+      npx shadcn-ui@latest add "$c" --yes; \
+    done
+
+EXPOSE 3000
+
+# Use dev command instead of start for development
+CMD ["npm", "run", "dev"]

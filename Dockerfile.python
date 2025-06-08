@@ -1,0 +1,13 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copy Python scripts
+COPY apps/backend/data /app/data
+COPY apps/backend/fyers_data.py /app/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir eventlet python-socketio numpy pytz requests fyers-apiv3 setuptools wheel psycopg2-binary
+
+# Run the Python script
+CMD ["python", "-u", "fyers_data.py"]

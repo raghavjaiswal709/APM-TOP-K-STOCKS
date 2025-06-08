@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "5000:5000"
+    env_file:
+      - apps/backend/.env
+    volumes:
+      - ./apps/backend:/app
+      - /app/node_modules
+    depends_on:
+      database:
+        condition: service_healthy
+    command: ["npm", "run", "start"]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules
+    depends_on:
+      backend:
+        condition: service_started
+    command: ["npm", "run", "dev"]
+
+  database:
+    image: postgres:latest
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d mydb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  python-services:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    stdin_open: true
+    tty: true
+      
+    volumes:
+      - ./apps/backend/data:/app/data
+    depends_on:
+      - database
+      - backend
+
+volumes:
+  postgres_data:
