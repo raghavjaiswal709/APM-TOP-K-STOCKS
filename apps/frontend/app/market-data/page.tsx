@@ -102,71 +102,72 @@ const MarketDataPage: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    if (!isClient) return;
+ useEffect(() => {
+  if (!isClient) return;
 
-    async function fetchSymbols() {
-      setSymbolsLoading(true);
-      setSymbolsError(null);
+  async function fetchSymbols() {
+    setSymbolsLoading(true);
+    setSymbolsError(null);
+    setAvailableSymbols([]);
+    setSelectedSymbol('');
 
-      try {
-        const today = new Date().toISOString().split('T')[0];
-        const apiUrl = `/api/watchlist/${selectedWatchlist}?date=${today}`;
-        
-        console.log('Fetching symbols from watchlist:', apiUrl);
+    try {
+      const today = "2025-06-05";
+      const apiUrl = `/api/watchlist/${selectedWatchlist}?date=${today}`;
+      
+      console.log('Fetching symbols from watchlist:', apiUrl);
 
-        const response = await fetch(apiUrl);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        
-        const validCompanies = (data.companies || []).filter((company: Company) => 
-          company.company_code && company.exchange
-        );
-
-        const formattedSymbols = validCompanies.map((company: Company) => {
-          const { exchange, company_code, tradingsymbol } = company;
-          
-          const symbolToUse = tradingsymbol || company_code;
-          
-          try {
-            const formattedSymbol = validateAndFormatSymbol(symbolToUse, exchange);
-            console.log(`Formatting: ${company_code} -> ${formattedSymbol}`);
-            return formattedSymbol;
-          } catch (error) {
-            console.error(`Error formatting symbol ${symbolToUse}:`, error);
-            return null;
-          }
-        }).filter(symbol => symbol && symbol.length > 0); 
-
-        console.log('Formatted symbols for Fyers:', formattedSymbols);
-
-        if (formattedSymbols.length === 0) {
-          throw new Error('No valid symbols found after formatting');
-        }
-
-        setAvailableSymbols(formattedSymbols);
-        
-        if (!selectedSymbol && formattedSymbols.length > 0) {
-          setSelectedSymbol(formattedSymbols[0]);
-        }
-        
-        console.log(`Loaded ${formattedSymbols.length} symbols from watchlist ${selectedWatchlist}`);
-        
-      } catch (err) {
-        console.error('Error fetching symbols:', err);
-        setSymbolsError('Failed to fetch symbols');
-        setAvailableSymbols([]);
-      } finally {
-        setSymbolsLoading(false);
+      const response = await fetch(apiUrl);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
       }
-    }
 
-    fetchSymbols();
-  }, [isClient, selectedWatchlist]);
+      const data = await response.json();
+      
+      const validCompanies = (data.companies || []).filter((company: Company) => 
+        company.company_code && company.exchange
+      );
+
+      const formattedSymbols = validCompanies.map((company: Company) => {
+        const { exchange, company_code, tradingsymbol } = company;
+        const symbolToUse = tradingsymbol || company_code;
+        
+        try {
+          const formattedSymbol = validateAndFormatSymbol(symbolToUse, exchange);
+          console.log(`Formatting: ${company_code} -> ${formattedSymbol}`);
+          return formattedSymbol;
+        } catch (error) {
+          console.error(`Error formatting symbol ${symbolToUse}:`, error);
+          return null;
+        }
+      }).filter(symbol => symbol && symbol.length > 0); 
+
+      console.log('Formatted symbols for Fyers:', formattedSymbols);
+
+      if (formattedSymbols.length === 0) {
+        throw new Error('No valid symbols found after formatting');
+      }
+      
+      setAvailableSymbols(formattedSymbols);
+      // Always set the first symbol when switching watchlists
+      setSelectedSymbol(formattedSymbols[0]);
+      
+      console.log(`Loaded ${formattedSymbols.length} symbols from watchlist ${selectedWatchlist}`);
+      
+    } catch (err) {
+      console.error('Error fetching symbols:', err);
+      setSymbolsError('Failed to fetch symbols');
+      setAvailableSymbols([]);
+      setSelectedSymbol('');
+    } finally {
+      setSymbolsLoading(false);
+    }
+  }
+
+  fetchSymbols();
+}, [isClient, selectedWatchlist]); // Remove selectedSymbol dependency
+
 
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
   const [lastDataReceived, setLastDataReceived] = useState<Date | null>(null);

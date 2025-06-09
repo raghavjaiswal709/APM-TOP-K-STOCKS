@@ -574,9 +574,9 @@ const infoMessages: string[] = [];
 
   private getMaxDaysForInterval(interval: string): number {
     const maxDaysMap: { [key: string]: number } = {
-      '1m': 7,
-      '5m': 30,
-      '15m': 90,
+      '1m': 365,
+      '5m': 365,
+      '15m': 365,
       '1h': 365,
       '1d': 1825 // 5 years
     };

@@ -87,9 +87,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     macd: false,
     bb: false,
     vwap: false,
-    bidAsk: true,
-    bidAskSpread: true,
-    buySellVolume: true
+    bidAsk: false,
+    bidAskSpread: false,
+    buySellVolume: false
   });
   const [preservedAxisRanges, setPreservedAxisRanges] = useState<{
   xaxis?: [Date, Date];
@@ -633,13 +633,40 @@ const toggleChartType = () => {
   
   setChartType(prev => prev === 'line' ? 'candle' : 'line');
 };
-  
   const toggleIndicator = (indicator: 'sma20' | 'ema9' | 'rsi' | 'macd' | 'bb' | 'vwap' | 'bidAsk' | 'bidAskSpread' | 'buySellVolume') => {
-    setShowIndicators(prev => ({
-      ...prev,
-      [indicator]: !prev[indicator]
-    }));
-  };
+  // Define the mutually exclusive indicators
+  const exclusiveIndicators = ['bidAsk', 'bidAskSpread', 'buySellVolume'];
+  
+  setShowIndicators(prev => {
+    // If the indicator being toggled is one of the exclusive ones
+    if (exclusiveIndicators.includes(indicator)) {
+      // If it's currently off, turn it on and turn others off
+      if (!prev[indicator]) {
+        const newState = { ...prev };
+        // Turn off all exclusive indicators first
+        exclusiveIndicators.forEach(ind => {
+          newState[ind as keyof typeof prev] = false;
+        });
+        // Turn on the selected one
+        newState[indicator] = true;
+        return newState;
+      } else {
+        // If it's currently on, just turn it off
+        return {
+          ...prev,
+          [indicator]: false
+        };
+      }
+    } else {
+      // For non-exclusive indicators, use normal toggle behavior
+      return {
+        ...prev,
+        [indicator]: !prev[indicator]
+      };
+    }
+  });
+};
+
   
   const handleRelayout = (eventData: any) => {
     if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {

@@ -1,0 +1,1610 @@
+================================================================================
+COMPLETE WATCHLISTSELECTOR SYSTEM - ALL COMPONENTS AND DEPENDENCIES
+Generated on: 08-06-2025 11:58:19.87
+================================================================================
+
+CATEGORIES:
+1. WatchlistSelector Components (4 files)
+2. Related Market Data Components (2 files)
+3. Custom Hooks (3 files)
+4. Utilities (2 files)
+5. UI Components (2 files)
+6. Backend API (2 files)
+7. Configuration Files (1 file)
+
+TOTAL: 16 FILES
+================================================================================
+
+
+################################################################################
+SECTION 1: WATCHLISTSELECTOR COMPONENTS
+################################################################################
+
+================================================================================
+FILE: apps/frontend/app/components/controllers/WatchlistSelector/WatchlistSelector.tsx
+PURPOSE: Main WatchlistSelector component
+================================================================================
+
+'use client'
+import * as React from "react";
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { RadioGroupDemo } from "./RadioGroup";
+import { SelectScrollable } from "./SelectScrollable";
+
+interface WatchlistSelectorProps {
+  onCompanySelect?: (companyCode: string | null, exchange?: string) => void;
+  selectedWatchlist?: string;
+  onWatchlistChange?: (watchlist: string) => void;
+}
+
+export function WatchlistSelector({ 
+  onCompanySelect,
+  selectedWatchlist: externalSelectedWatchlist,
+  onWatchlistChange
+}: WatchlistSelectorProps) {
+  const {
+    selectedWatchlist: internalSelectedWatchlist,
+    setSelectedWatchlist: internalSetSelectedWatchlist,
+    companies,
+    loading,
+    error,
+    exists,
+    availableExchanges,
+  } = useWatchlist();
+  
+  const effectiveWatchlist = externalSelectedWatchlist || internalSelectedWatchlist;
+  
+  const handleWatchlistChange = (value: string) => {
+    if (onWatchlistChange) {
+      onWatchlistChange(value);
+    } else {
+      internalSetSelectedWatchlist(value);
+    }
+  };
+
+  const handleCompanySelect = (companyCode: string | null, exchange?: string) => {
+    console.log(`Selected company: ${companyCode} on exchange: ${exchange}`);
+    if (onCompanySelect) {
+      onCompanySelect(companyCode, exchange);
+    }
+  };
+
+  return (
+    <div className="flex gap-5 items-center">
+      <div>
+        <RadioGroupDemo
+          value={effectiveWatchlist} 
+          onChange={handleWatchlistChange}
+        />
+      </div>
+      
+      {error && (
+        <div className="text-destructive text-xs bg-destructive/10 px-2 py-1 rounded">
+          {error}
+        </div>
+      )}
+      
+      {availableExchanges.length > 0 && (
+        <div className="text-xs text-muted-foreground">
+          Exchanges: {availableExchanges.join(', ')}
+        </div>
+      )}
+      
+      <div>
+        <SelectScrollable
+          companies={companies}
+          loading={loading}
+          exists={exists}
+          onCompanySelect={handleCompanySelect}
+        />
+      </div>
+    </div>
+  );
+}
+
+
+================================================================================
+FILE: apps/frontend/app/components/controllers/WatchlistSelector/SelectScrollable.tsx
+PURPOSE: Scrollable select component
+================================================================================
+
+'use client'
+import * as React from "react";
+
+interface Company {
+  company_code: string;
+  name: string;
+  exchange: string;
+  total_valid_days?: number;
+  avg_daily_high_low?: number;
+  median_daily_volume?: number;
+  avg_trading_ratio?: number;
+  N1_Pattern_count?: number;
+  // Legacy fields
+  avg_daily_high_low_range?: number;
+  avg_daily_volume?: number;
+  avg_trading_capital?: number;
+  instrument_token?: string;
+  tradingsymbol?: string;
+}
+
+interface SelectScrollableProps {
+  companies: Company[];
+  loading: boolean;
+  exists: boolean;
+  onCompanySelect?: (companyCode: string | null, exchange?: string) => void;
+}
+
+export function SelectScrollable({
+  companies,
+  loading,
+  exists,
+  onCompanySelect,
+}: SelectScrollableProps) {
+  const [selectedValue, setSelectedValue] = React.useState<string>("");
+
+  const handleValueChange = (value: string) => {
+    setSelectedValue(value);
+    
+    if (onCompanySelect) {
+      const selectedCompany = companies.find(c => c.company_code === value);
+      onCompanySelect(value || null, selectedCompany?.exchange);
+    }
+  };
+
+  const options = React.useMemo(() => {
+    return companies.map((company) => ({
+      value: company.company_code,
+      label: `${company.company_code} - ${company.name} (${company.exchange})`,
+      searchText: `${company.company_code} ${company.name} ${company.exchange} ${company.tradingsymbol || ''}`.toLowerCase(),
+    }));
+  }, [companies]);
+
+  if (loading) {
+    return (
+      <select disabled className="w-[280px] p-2 border rounded">
+        <option>Loading companies...</option>
+      </select>
+    );
+  }
+
+  if (!exists) {
+    return (
+      <select disabled className="w-[280px] p-2 border rounded">
+        <option>Watchlist not found</option>
+      </select>
+    );
+  }
+
+  if (companies.length === 0) {
+    return (
+      <select disabled className="w-[280px] p-2 border rounded">
+        <option>No companies available</option>
+      </select>
+    );
+  }
+
+  return (
+    <select
+      value={selectedValue}
+      onChange={(e) => handleValueChange(e.target.value)}
+      className="w-[280px] p-2 border rounded"
+    >
+      <option value="">Select a company...</option>
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+
+================================================================================
+FILE: apps/frontend/app/components/controllers/WatchlistSelector/index.tsx
+PURPOSE: WatchlistSelector index file
+================================================================================
+
+// src/components/WatchlistSelector/index.tsx
+export { WatchlistSelector } from './WatchlistSelector';
+
+
+================================================================================
+FILE: apps/frontend/app/components/controllers/WatchlistSelector/RadioGroup.tsx
+PURPOSE: Radio group component
+================================================================================
+
+// src/components/WatchlistSelector/RadioGroup.tsx
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
+interface RadioGroupDemoProps {
+  value: string;
+  onChange: (value: string) => void;
+}
+
+export function RadioGroupDemo({ value, onChange }: RadioGroupDemoProps) {
+  return (
+    <RadioGroup className="flex" value={value} onValueChange={onChange}>
+      <div className="flex items-center space-x-2">
+        <RadioGroupItem value="A" id="r1" />
+        <Label htmlFor="r1">A</Label>
+      </div>
+      <div className="flex items-center space-x-2">
+        <RadioGroupItem value="B" id="r2" />
+        <Label htmlFor="r2">B</Label>
+      </div>
+      <div className="flex items-center space-x-2">
+        <RadioGroupItem value="C" id="r3" />
+        <Label htmlFor="r3">C</Label>
+      </div>
+    </RadioGroup>
+  );
+}
+
+
+################################################################################
+SECTION 2: RELATED MARKET DATA COMPONENTS
+################################################################################
+
+================================================================================
+FILE: apps/frontend/app/market-data/components/WatchlistManager.tsx
+PURPOSE: Watchlist management component
+================================================================================
+
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/card';
+import { Button } from '../../../components/ui/button';
+import { Input } from '../../../components/ui/input';
+
+interface WatchlistManagerProps {
+  subscribedSymbols: string[];
+  onSymbolSelect: (symbol: string) => void;
+  onAddSymbol: (symbol: string) => void;
+  onRemoveSymbol: (symbol: string) => void;
+}
+
+// Predefined watchlists
+const predefinedWatchlists = {
+  'Indices': [
+    'NSE:NIFTY50-INDEX',
+    'NSE:BANKNIFTY-INDEX',
+    'NSE:FINNIFTY-INDEX',
+    'NSE:NIFTYIT-INDEX',
+    'NSE:NIFTYPHARMA-INDEX',
+  ],
+  'Large Cap': [
+    'NSE:RELIANCE-EQ',
+    'NSE:TCS-EQ',
+    'NSE:HDFCBANK-EQ',
+    'NSE:INFY-EQ',
+    'NSE:ICICIBANK-EQ',
+  ],
+  'IT Stocks': [
+    'NSE:TCS-EQ',
+    'NSE:INFY-EQ',
+    'NSE:WIPRO-EQ',
+    'NSE:HCLTECH-EQ',
+    'NSE:TECHM-EQ',
+  ],
+};
+
+const WatchlistManager: React.FC<WatchlistManagerProps> = ({
+  subscribedSymbols,
+  onSymbolSelect,
+  onAddSymbol,
+  onRemoveSymbol,
+}) => {
+  const [newSymbol, setNewSymbol] = useState('');
+  const [savedWatchlists, setSavedWatchlists] = useState<Record<string, string[]>>({});
+  const [newWatchlistName, setNewWatchlistName] = useState('');
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+
+  // Load saved watchlists from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('marketDataWatchlists');
+    if (saved) {
+      setSavedWatchlists(JSON.parse(saved));
+    }
+  }, []);
+
+  const handleAddSymbol = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newSymbol && !subscribedSymbols.includes(newSymbol)) {
+      onAddSymbol(newSymbol);
+      setNewSymbol('');
+    }
+  };
+
+  const handleSaveWatchlist = () => {
+    if (newWatchlistName) {
+      const updatedWatchlists = {
+        ...savedWatchlists,
+        [newWatchlistName]: [...subscribedSymbols],
+      };
+      
+      setSavedWatchlists(updatedWatchlists);
+      localStorage.setItem('marketDataWatchlists', JSON.stringify(updatedWatchlists));
+      setNewWatchlistName('');
+      setShowSaveDialog(false);
+    }
+  };
+
+  const handleLoadWatchlist = (watchlist: string[]) => {
+    // Remove all current symbols
+    subscribedSymbols.forEach(symbol => onRemoveSymbol(symbol));
+    
+    // Add all symbols from the selected watchlist
+    watchlist.forEach(symbol => onAddSymbol(symbol));
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Add Symbol</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleAddSymbol} className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                placeholder="NSE:SYMBOL-EQ"
+                value={newSymbol}
+                onChange={(e) => setNewSymbol(e.target.value)}
+                className="flex-1"
+              />
+              <Button type="submit">Add</Button>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Format: Exchange:Symbol-Type (e.g., NSE:RELIANCE-EQ)
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Predefined Watchlists</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {Object.entries(predefinedWatchlists).map(([name, symbols]) => (
+            <div key={name} className="flex justify-between items-center">
+              <div>
+                <div className="font-medium">{name}</div>
+                <div className="text-sm text-muted-foreground">
+                  {symbols.length} symbols
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handleLoadWatchlist(symbols)}
+              >
+                Load
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {Object.keys(savedWatchlists).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Your Watchlists</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {Object.entries(savedWatchlists).map(([name, symbols]) => (
+              <div key={name} className="flex justify-between items-center">
+                <div>
+                  <div className="font-medium">{name}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {symbols.length} symbols
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleLoadWatchlist(symbols)}
+                  >
+                    Load
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="text-red-500"
+                    onClick={() => {
+                      const { [name]: _, ...rest } = savedWatchlists;
+                      setSavedWatchlists(rest);
+                      localStorage.setItem('marketDataWatchlists', JSON.stringify(rest));
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Manage Watchlist</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button 
+            variant="outline" 
+            className="w-full"
+            onClick={() => setShowSaveDialog(!showSaveDialog)}
+          >
+            Save Current Watchlist
+          </Button>
+          
+          {showSaveDialog && (
+            <div className="space-y-2">
+              <Input
+                type="text"
+                placeholder="Watchlist name"
+                value={newWatchlistName}
+                onChange={(e) => setNewWatchlistName(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <Button 
+                  variant="default" 
+                  className="flex-1"
+                  onClick={handleSaveWatchlist}
+                >
+                  Save
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowSaveDialog(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default WatchlistManager;
+
+
+================================================================================
+FILE: apps/frontend/app/market-data/components/SymbolSearch.tsx
+PURPOSE: Symbol search component
+================================================================================
+
+'use client';
+
+import React, { useState } from 'react';
+import { Input } from '../../../components/ui/input';
+import { Button } from '../../../components/ui/button';
+
+interface SymbolSearchProps {
+  onSymbolSelect: (symbol: string) => void;
+}
+
+// Common Indian stock symbols
+const commonSymbols = [
+  { symbol: 'NSE:NIFTY50-INDEX', name: 'Nifty 50' },
+  { symbol: 'NSE:BANKNIFTY-INDEX', name: 'Bank Nifty' },
+  { symbol: 'NSE:RELIANCE-EQ', name: 'Reliance Industries' },
+  { symbol: 'NSE:TCS-EQ', name: 'Tata Consultancy Services' },
+  { symbol: 'NSE:INFY-EQ', name: 'Infosys' },
+  { symbol: 'NSE:HDFCBANK-EQ', name: 'HDFC Bank' },
+  { symbol: 'NSE:ICICIBANK-EQ', name: 'ICICI Bank' },
+  { symbol: 'NSE:HINDUNILVR-EQ', name: 'Hindustan Unilever' },
+  { symbol: 'NSE:ITC-EQ', name: 'ITC' },
+  { symbol: 'NSE:SBIN-EQ', name: 'State Bank of India' },
+];
+
+const SymbolSearch: React.FC<SymbolSearchProps> = ({ onSymbolSelect }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [customSymbol, setCustomSymbol] = useState('');
+
+  const filteredSymbols = searchTerm
+    ? commonSymbols.filter(
+        (item) =>
+          item.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.name.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : commonSymbols;
+
+  const handleSymbolSelect = (symbol: string) => {
+    onSymbolSelect(symbol);
+    setSearchTerm('');
+    setShowDropdown(false);
+  };
+
+  const handleCustomSymbolSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (customSymbol) {
+      onSymbolSelect(customSymbol);
+      setCustomSymbol('');
+    }
+  };
+
+  return (
+    <div className="relative">
+      <div className="flex">
+        <Input
+          type="text"
+          placeholder="Search symbol..."
+          value={searchTerm}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setShowDropdown(true);
+          }}
+          onFocus={() => setShowDropdown(true)}
+          className="w-64"
+        />
+      </div>
+
+      {showDropdown && (
+        <div className="absolute z-10 mt-1 w-full bg-popover rounded-md shadow-lg">
+          <ul className="py-1 max-h-60 overflow-auto">
+            {filteredSymbols.map((item) => (
+              <li
+                key={item.symbol}
+                className="px-4 py-2 hover:bg-muted cursor-pointer"
+                onClick={() => handleSymbolSelect(item.symbol)}
+              >
+                <div className="font-medium">{item.name}</div>
+                <div className="text-sm text-muted-foreground">{item.symbol}</div>
+              </li>
+            ))}
+            {filteredSymbols.length === 0 && (
+              <li className="px-4 py-2 text-muted-foreground">
+                No results found. Try adding a custom symbol.
+              </li>
+            )}
+          </ul>
+          
+          <div className="border-t p-2">
+            <form onSubmit={handleCustomSymbolSubmit} className="flex gap-2">
+              <Input
+                type="text"
+                placeholder="Add custom symbol (e.g., NSE:SYMBOL-EQ)"
+                value={customSymbol}
+                onChange={(e) => setCustomSymbol(e.target.value)}
+                className="flex-1"
+              />
+              <Button type="submit" size="sm">Add</Button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default SymbolSearch;
+
+
+################################################################################
+SECTION 3: CUSTOM HOOKS
+################################################################################
+
+================================================================================
+FILE: apps/frontend/hooks/useWatchlist.ts
+PURPOSE: Watchlist management hook
+================================================================================
+
+import { useState, useEffect } from 'react';
+
+interface Company {
+  company_code: string;          
+  name: string;                   
+  exchange: string;              
+  total_valid_days?: number;     
+  avg_daily_high_low?: number;
+  median_daily_volume?: number;
+  avg_trading_ratio?: number;
+  N1_Pattern_count?: number;
+  avg_daily_high_low_range?: number;
+  avg_daily_volume?: number;
+  avg_trading_capital?: number;
+  instrument_token?: string;
+  tradingsymbol?: string;
+}
+
+export function useWatchlist() {
+  const [selectedWatchlist, setSelectedWatchlist] = useState('A');
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [exists, setExists] = useState(true);
+  const [availableExchanges, setAvailableExchanges] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function fetchWatchlist() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const today = '2025-06-05'; 
+        
+        const apiUrl = `/api/watchlist/${selectedWatchlist}?date=${today}`;
+        
+        console.log('Fetching watchlist data from:', apiUrl);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); 
+
+        const response = await fetch(apiUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Watchlist data received:', data);
+
+        const validCompanies = (data.companies || []).filter((company: Company) => 
+          company.company_code && 
+          company.name && 
+          company.exchange
+        );
+
+        setCompanies(validCompanies);
+        setExists(data.exists);
+        
+        const exchanges = [...new Set(validCompanies.map((c: Company) => c.exchange))];
+        setAvailableExchanges(exchanges);
+        
+        console.log(`Loaded ${validCompanies.length} companies from watchlist ${selectedWatchlist}`);
+        
+      } catch (err) {
+        console.error('Error fetching watchlist data:', err);
+        setError('Failed to fetch watchlist data');
+        setCompanies([]);
+        setExists(false);
+        setAvailableExchanges([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchWatchlist();
+  }, [selectedWatchlist]);
+
+  return { 
+    selectedWatchlist, 
+    setSelectedWatchlist, 
+    companies, 
+    loading, 
+    error, 
+    exists,
+    availableExchanges
+  };
+}
+
+
+================================================================================
+FILE: apps/frontend/hooks/useStockData.ts
+PURPOSE: Stock data management hook
+================================================================================
+
+// Enhanced useStockData.ts with incremental loading support
+import { useState, useCallback, useRef, useEffect } from 'react';
+
+interface StockDataPoint {
+  interval_start: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface DataCache {
+  [key: string]: StockDataPoint[];
+}
+
+interface UseStockDataParams {
+  companyCode: string | null;
+  exchange?: string;
+  interval?: string;
+  indicators?: string[];
+  enableIncrementalLoading?: boolean;
+}
+
+export function useStockData({ 
+  companyCode,
+  exchange = 'NSE',
+  interval = '1m',
+  indicators = [],
+  enableIncrementalLoading = true
+}: UseStockDataParams) {
+  const [data, setData] = useState<StockDataPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dataRange, setDataRange] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });
+  
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const cacheRef = useRef<DataCache>({});
+  const loadingQueueRef = useRef<Set<string>>(new Set());
+
+  // Generate cache key
+  const getCacheKey = useCallback((company: string, start: Date, end: Date, interval: string) => {
+    return `${company}_${interval}_${start.getTime()}_${end.getTime()}`;
+  }, []);
+
+  // Check if data exists in cache
+  const getCachedData = useCallback((start: Date, end: Date) => {
+    const key = getCacheKey(companyCode || '', start, end, interval);
+    return cacheRef.current[key] || null;
+  }, [getCacheKey, companyCode, interval]);
+
+  // Store data in cache
+  const setCachedData = useCallback((start: Date, end: Date, data: StockDataPoint[]) => {
+    const key = getCacheKey(companyCode || '', start, end, interval);
+    cacheRef.current[key] = data;
+  }, [getCacheKey, companyCode, interval]);
+
+  // Enhanced fetch with caching and queue management
+  const fetchData = useCallback(async (
+    startDate?: Date, 
+    endDate?: Date, 
+    options: { 
+      fetchAllData?: boolean;
+      merge?: boolean;
+      priority?: 'high' | 'normal';
+    } = {}
+  ) => {
+    if (!companyCode) {
+      setError('No company selected');
+      return [];
+    }
+
+    const { fetchAllData = false, merge = false, priority = 'normal' } = options;
+
+    if (!startDate && !fetchAllData) {
+      setError('Either provide a start date or set fetchAllData to true');
+      return [];
+    }
+
+    // Generate request key for queue management
+    const requestKey = `${companyCode}_${startDate?.getTime()}_${endDate?.getTime()}`;
+    
+    if (loadingQueueRef.current.has(requestKey)) {
+      console.log('Request already in progress, skipping duplicate:', requestKey);
+      return [];
+    }
+
+    // Check cache first
+    if (startDate && endDate && enableIncrementalLoading) {
+      const cachedData = getCachedData(startDate, endDate);
+      if (cachedData) {
+        console.log('Returning cached data for range:', startDate, endDate);
+        if (merge) {
+          setData(prevData => mergeData(prevData, cachedData));
+        } else {
+          setData(cachedData);
+        }
+        return cachedData;
+      }
+    }
+
+    // Abort previous request if not high priority
+    if (abortControllerRef.current && priority !== 'high') {
+      abortControllerRef.current.abort();
+    }
+
+    loadingQueueRef.current.add(requestKey);
+    setLoading(true);
+    setError(null);
+
+    try {
+      abortControllerRef.current = new AbortController();
+      
+      const queryParams = new URLSearchParams({
+        exchange,
+        interval,
+        ...indicators.length > 0 && { indicators: indicators.join(',') }
+      });
+
+      if (startDate) {
+      queryParams.append('startDate', startDate.toISOString());
+if (endDate) {
+  queryParams.append('endDate', endDate.toISOString());
+} else {
+  // Set end date to start of next day for full day data
+  const nextDay = new Date(startDate);
+  nextDay.setDate(nextDay.getDate() + 1);
+  nextDay.setHours(0, 0, 0, 0); // Start of next day
+  queryParams.append('endDate', nextDay.toISOString());
+}
+
+      } else {
+        queryParams.append('fetchAllData', 'true');
+      }
+
+      const url = `/api/companies/${companyCode}/ohlcv?${queryParams.toString()}`;
+      console.log(`Fetching stock data: ${url}`);
+
+      const response = await fetch(url, { 
+        signal: abortControllerRef.current.signal,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      const jsonData = await response.json() as StockDataPoint[];
+      console.log(`Successfully fetched ${jsonData.length} data points`);
+
+      // Cache the data
+      if (startDate && endDate && enableIncrementalLoading) {
+        setCachedData(startDate, endDate, jsonData);
+      }
+
+      // Update data range
+      if (jsonData.length > 0) {
+        const newStart = new Date(jsonData[0].interval_start);
+        const newEnd = new Date(jsonData[jsonData.length - 1].interval_start);
+        
+        setDataRange(prev => ({
+          start: prev.start ? (newStart < prev.start ? newStart : prev.start) : newStart,
+          end: prev.end ? (newEnd > prev.end ? newEnd : prev.end) : newEnd
+        }));
+      }
+
+      // Merge or replace data
+      if (merge) {
+        setData(prevData => mergeData(prevData, jsonData));
+      } else {
+        setData(jsonData);
+      }
+
+      return jsonData;
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('Request was aborted');
+        return [];
+      }
+      console.error('Error fetching stock data:', err);
+      setError(`Failed to fetch stock data: ${err.message}`);
+      return [];
+    } finally {
+      loadingQueueRef.current.delete(requestKey);
+      setLoading(false);
+    }
+  }, [companyCode, exchange, interval, indicators, enableIncrementalLoading, getCachedData, setCachedData]);
+
+  // Merge data helper function
+  const mergeData = useCallback((existing: StockDataPoint[], newData: StockDataPoint[]): StockDataPoint[] => {
+    const combined = [...existing, ...newData];
+    const uniqueMap = new Map<string, StockDataPoint>();
+    
+    combined.forEach(item => {
+      uniqueMap.set(item.interval_start, item);
+    });
+    
+    return Array.from(uniqueMap.values()).sort((a, b) => 
+      new Date(a.interval_start).getTime() - new Date(b.interval_start).getTime()
+    );
+  }, []);
+
+  // Fetch incremental data
+  const fetchIncrementalData = useCallback(async (start: Date, end: Date) => {
+    return fetchData(start, end, { merge: true, priority: 'high' });
+  }, [fetchData]);
+
+  // Fetch all data
+  const fetchAllData = useCallback(async () => {
+    return fetchData(undefined, undefined, { fetchAllData: true });
+  }, [fetchData]);
+
+  // Clear data and cache
+  const clearData = useCallback(() => {
+    setData([]);
+    setError(null);
+    setDataRange({ start: null, end: null });
+    cacheRef.current = {};
+    loadingQueueRef.current.clear();
+  }, []);
+
+  // Smart data loading based on visible range
+  const loadDataForRange = useCallback(async (visibleStart: Date, visibleEnd: Date) => {
+    if (!enableIncrementalLoading) return;
+
+    const buffer = 30 * 60 * 1000; // 30 minutes buffer
+    const expandedStart = new Date(visibleStart.getTime() - buffer);
+    const expandedEnd = new Date(visibleEnd.getTime() + buffer);
+
+    const gaps = [];
+
+    // Check if we need data before current range
+    if (!dataRange.start || expandedStart < dataRange.start) {
+      gaps.push({
+        start: expandedStart,
+        end: dataRange.start || visibleStart
+      });
+    }
+
+    // Check if we need data after current range
+    if (!dataRange.end || expandedEnd > dataRange.end) {
+      gaps.push({
+        start: dataRange.end || visibleEnd,
+        end: expandedEnd
+      });
+    }
+
+    // Fetch missing data
+    for (const gap of gaps) {
+      await fetchIncrementalData(gap.start, gap.end);
+    }
+  }, [enableIncrementalLoading, dataRange, fetchIncrementalData]);
+
+  // Clear cache on company change
+  useEffect(() => {
+    clearData();
+  }, [companyCode, clearData]);
+
+  return { 
+    data, 
+    loading, 
+    error, 
+    dataRange,
+    fetchData, 
+    fetchAllData, 
+    fetchIncrementalData,
+    loadDataForRange,
+    clearData 
+  };
+}
+
+
+================================================================================
+FILE: apps/frontend/hooks/useMarketData.ts
+PURPOSE: Market data management hook
+================================================================================
+
+import { useState, useEffect, useCallback } from 'react';
+import { getSocket } from '../lib/socket';
+
+interface MarketData {
+  ltp: number;
+  change: number;
+  changePercent: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  timestamp: number;
+}
+
+interface UseMarketDataReturn {
+  data: Record<string, MarketData>;
+  isLoading: boolean;
+  error: Error | null;
+  subscribeToSymbol: (symbol: string) => void;
+  unsubscribeFromSymbol: (symbol: string) => void;
+}
+
+export const useMarketData = (initialSymbols: string[] = []): UseMarketDataReturn => {
+  const [data, setData] = useState<Record<string, MarketData>>({});
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [subscribedSymbols, setSubscribedSymbols] = useState<Set<string>>(
+    new Set(initialSymbols)
+  );
+
+  const subscribeToSymbol = useCallback((symbol: string) => {
+    setSubscribedSymbols((prev) => {
+      const newSet = new Set(prev);
+      newSet.add(symbol);
+      return newSet;
+    });
+    
+    getSocket().emit('subscribe', { symbol });
+  }, []);
+
+  const unsubscribeFromSymbol = useCallback((symbol: string) => {
+    setSubscribedSymbols((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(symbol);
+      return newSet;
+    });
+    
+    getSocket().emit('unsubscribe', { symbol });
+    
+    setData((prev) => {
+      const newData = { ...prev };
+      delete newData[symbol];
+      return newData;
+    });
+  }, []);
+
+  useEffect(() => {
+    const socket = getSocket();
+    
+    const handleMarketData = (message: { symbol: string; data: MarketData }) => {
+      setData((prev) => ({
+        ...prev,
+        [message.symbol]: message.data,
+      }));
+      
+      setIsLoading(false);
+    };
+    
+    socket.on('marketData', handleMarketData);
+    
+    initialSymbols.forEach((symbol) => {
+      socket.emit('subscribe', { symbol });
+    });
+    
+    return () => {
+      socket.off('marketData', handleMarketData);
+      
+      subscribedSymbols.forEach((symbol) => {
+        socket.emit('unsubscribe', { symbol });
+      });
+    };
+  }, [initialSymbols]);
+
+  return {
+    data,
+    isLoading,
+    error,
+    subscribeToSymbol,
+    unsubscribeFromSymbol,
+  };
+};
+
+
+################################################################################
+SECTION 4: UTILITIES
+################################################################################
+
+================================================================================
+FILE: apps/frontend/lib/socket.ts
+PURPOSE: WebSocket client connection
+================================================================================
+
+
+import { io, Socket } from 'socket.io-client';
+
+let socket: Socket | null = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+
+export const getSocket = (): Socket => {
+  if (!socket) {
+    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
+    console.log(`Connecting to WebSocket server at ${SOCKET_URL}`);
+    
+    socket = io(SOCKET_URL, {
+      reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+      reconnectionDelay: 1000,
+      timeout: 10000,
+      transports: ['websocket', 'polling']
+    });
+    
+    socket.on('connect', () => {
+      console.log(`Connected to WebSocket server with ID: ${socket?.id}`);
+      reconnectAttempts = 0;
+    });
+    
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error.message);
+      reconnectAttempts++;
+    });
+    
+    socket.on('disconnect', (reason) => {
+      console.log(`Disconnected from WebSocket server. Reason: ${reason}`);
+    });
+    
+    socket.on('error', (error) => {
+      console.error('Socket error:', error);
+    });
+    
+    socket.on('heartbeat', (data) => {
+      console.log('Heartbeat received:', data);
+    });
+  }
+  
+  return socket;
+};
+
+export const disconnectSocket = (): void => {
+  if (socket) {
+    console.log('Manually disconnecting socket');
+    socket.disconnect();
+    socket = null;
+  }
+};
+
+
+================================================================================
+FILE: apps/frontend/lib/utils.ts
+PURPOSE: Utility functions
+================================================================================
+
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+
+################################################################################
+SECTION 5: UI COMPONENTS
+################################################################################
+
+================================================================================
+FILE: apps/frontend/components/ui/select.tsx
+PURPOSE: Custom select UI component
+================================================================================
+
+// Modified apps/frontend/app/components/ui/select.tsx
+"use client"
+
+import * as React from "react"
+import * as SelectPrimitive from "@radix-ui/react-select"
+import { Check, ChevronDown, ChevronUp } from "lucide-react"
+
+import { cn } from "@/lib/utils"
+
+const Select = SelectPrimitive.Root
+
+const SelectGroup = SelectPrimitive.Group
+
+const SelectValue = SelectPrimitive.Value
+
+const SelectTrigger = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
+>(({ className, children, ...props }, ref) => (
+  <SelectPrimitive.Trigger
+    ref={ref}
+    className={cn(
+      "flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm ring-offset-background data-[placeholder]:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+      className
+    )}
+    {...props}
+  >
+    {children}
+    <SelectPrimitive.Icon asChild>
+      <ChevronDown className="h-4 w-4 opacity-50" />
+    </SelectPrimitive.Icon>
+  </SelectPrimitive.Trigger>
+))
+SelectTrigger.displayName = SelectPrimitive.Trigger.displayName
+
+const SelectScrollUpButton = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.ScrollUpButton>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollUpButton>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.ScrollUpButton
+    ref={ref}
+    className={cn(
+      "flex cursor-default items-center justify-center py-1",
+      className
+    )}
+    {...props}
+  >
+    <ChevronUp className="h-4 w-4" />
+  </SelectPrimitive.ScrollUpButton>
+))
+SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName
+
+const SelectScrollDownButton = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.ScrollDownButton>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollDownButton>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.ScrollDownButton
+    ref={ref}
+    className={cn(
+      "flex cursor-default items-center justify-center py-1",
+      className
+    )}
+    {...props}
+  >
+    <ChevronDown className="h-4 w-4" />
+  </SelectPrimitive.ScrollDownButton>
+))
+SelectScrollDownButton.displayName =
+  SelectPrimitive.ScrollDownButton.displayName
+
+const SelectContent = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
+>(({ className, children, position = "popper", ...props }, ref) => (
+  <SelectPrimitive.Portal>
+    <SelectPrimitive.Content
+      ref={ref}
+      className={cn(
+        "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        position === "popper" &&
+          "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+        className
+      )}
+      position={position}
+      {...props}
+    >
+      <SelectScrollUpButton />
+      <SelectPrimitive.Viewport
+        className={cn(
+          "p-1",
+          position === "popper" &&
+            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
+        )}
+      >
+        {children}
+      </SelectPrimitive.Viewport>
+      <SelectScrollDownButton />
+    </SelectPrimitive.Content>
+  </SelectPrimitive.Portal>
+))
+SelectContent.displayName = SelectPrimitive.Content.displayName
+
+const SelectLabel = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Label>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.Label
+    ref={ref}
+    className={cn("px-2 py-1.5 text-sm font-semibold", className)}
+    {...props}
+  />
+))
+SelectLabel.displayName = SelectPrimitive.Label.displayName
+
+const SelectItem = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
+>(({ className, children, ...props }, ref) => (
+  <SelectPrimitive.Item
+    ref={ref}
+    className={cn(
+      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      className
+    )}
+    {...props}
+  >
+    <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+      <SelectPrimitive.ItemIndicator>
+        <Check className="h-4 w-4" />
+      </SelectPrimitive.ItemIndicator>
+    </span>
+    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+  </SelectPrimitive.Item>
+))
+SelectItem.displayName = SelectPrimitive.Item.displayName
+
+const SelectSeparator = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Separator>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.Separator
+    ref={ref}
+    className={cn("-mx-1 my-1 h-px bg-muted", className)}
+    {...props}
+  />
+))
+SelectSeparator.displayName = SelectPrimitive.Separator.displayName
+
+export {
+  Select,
+  SelectGroup,
+  SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectLabel,
+  SelectItem,
+  SelectSeparator,
+  SelectScrollUpButton,
+  SelectScrollDownButton,
+}
+
+
+================================================================================
+FILE: apps/frontend/components/ui/input.tsx
+PURPOSE: Custom input UI component
+================================================================================
+
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
+  ({ className, type, ...props }, ref) => {
+    return (
+      <input
+        type={type}
+        className={cn(
+          "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+          className
+        )}
+        ref={ref}
+        {...props}
+      />
+    )
+  }
+)
+Input.displayName = "Input"
+
+export { Input }
+
+
+################################################################################
+SECTION 6: BACKEND API
+################################################################################
+
+================================================================================
+FILE: apps/backend/src/watchlist/watchlist.service.ts
+PURPOSE: Watchlist service business logic
+================================================================================
+
+import { Injectable, NotFoundException } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+import { parse } from 'csv-parse';
+import * as moment from 'moment';
+
+export interface Company {
+  company_code: string;           
+  name: string;                 
+  exchange: string;             
+  total_valid_days?: number;      
+  avg_daily_high_low?: number;
+  median_daily_volume?: number;
+  avg_trading_ratio?: number;
+  N1_Pattern_count?: number;
+  avg_daily_high_low_range?: number;
+  avg_daily_volume?: number;
+  avg_trading_capital?: number;
+  instrument_token?: string;
+  tradingsymbol?: string;
+}
+
+@Injectable()
+export class WatchlistService {
+  private readonly basePath = path.resolve(process.cwd(), 'data', 'watchlists');
+
+  async getWatchlistData(watchlist: string, date?: string): Promise<Company[]> {
+    return new Promise((resolve, reject) => {
+      const targetDate = date || moment().format('YYYY-MM-DD');
+      
+      const fileName = `watchlist_${watchlist}_${targetDate}.csv`;
+      const filePath = path.join(this.basePath, fileName);
+      
+      console.log(`Attempting to read watchlist from: ${filePath}`);
+      
+      if (!fs.existsSync(filePath)) {
+        console.error(`Watchlist file not found: ${filePath}`);
+        return reject(new NotFoundException(`Watchlist ${watchlist} not found for date ${targetDate}`));
+      }
+      
+      const results: Company[] = [];
+      
+      fs.createReadStream(filePath)
+        .pipe(parse({
+          delimiter: ',',
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+        }))
+        .on('data', (data) => {
+          const cleanData: Company = {
+            company_code: String(data.company_code).trim(),
+            name: String(data.name || data.tradingsymbol || '').trim(),
+            exchange: String(data.exchange || 'NSE').trim(),
+            // Map new CSV fields
+            total_valid_days: data.total_valid_days ? Number(data.total_valid_days) : undefined,
+            avg_daily_high_low: data.avg_daily_high_low ? Number(data.avg_daily_high_low) : undefined,
+            median_daily_volume: data.median_daily_volume ? Number(data.median_daily_volume) : undefined,
+            avg_trading_ratio: data.avg_trading_ratio ? Number(data.avg_trading_ratio) : undefined,
+            N1_Pattern_count: data.N1_Pattern_count ? Number(data.N1_Pattern_count) : undefined,
+            // Legacy fields for backward compatibility
+            avg_daily_high_low_range: data.avg_daily_high_low_range ? Number(data.avg_daily_high_low_range) : undefined,
+            avg_daily_volume: data.avg_daily_volume ? Number(data.avg_daily_volume) : undefined,
+            avg_trading_capital: data.avg_trading_capital ? Number(data.avg_trading_capital) : undefined,
+            instrument_token: data.instrument_token,
+            tradingsymbol: data.tradingsymbol,
+          };
+          
+          results.push(cleanData);
+        })
+        .on('end', () => {
+          console.log(`Successfully loaded ${results.length} companies from watchlist ${watchlist}`);
+          resolve(results);
+        })
+        .on('error', (error) => {
+          console.error(`Error reading watchlist CSV: ${error}`);
+          reject(error);
+        });
+    });
+  }
+
+  async getAllCompaniesWithExchange(watchlist: string, date?: string): Promise<Company[]> {
+    const companies = await this.getWatchlistData(watchlist, date);
+    
+    // Filter and enhance companies with exchange information
+    return companies.filter(company => 
+      company.company_code && 
+      company.name && 
+      company.exchange &&
+      ['NSE', 'BSE'].includes(company.exchange.toUpperCase())
+    );
+  }
+
+  async checkWatchlistExists(watchlist: string, date?: string): Promise<boolean> {
+    const targetDate = date || moment().format('YYYY-MM-DD');
+    const fileName = `watchlist_${watchlist}_${targetDate}.csv`;
+    const filePath = path.join(this.basePath, fileName);
+    
+    return fs.existsSync(filePath);
+  }
+}
+
+
+================================================================================
+FILE: apps/backend/src/watchlist/watchlist.controller.ts
+PURPOSE: Watchlist API endpoints
+================================================================================
+
+import { Controller, Get, Param, Query } from '@nestjs/common';
+import { WatchlistService, Company } from './watchlist.service';
+
+@Controller('api/watchlist')
+export class WatchlistController {
+  constructor(private readonly watchlistService: WatchlistService) {}
+
+  @Get(':watchlist')
+  async getWatchlist(
+    @Param('watchlist') watchlist: string,
+    @Query('date') date?: string,
+    @Query('exchange') exchange?: string,
+  ): Promise<{ companies: Company[], exists: boolean }> {
+    try {
+      const allCompanies = await this.watchlistService.getAllCompaniesWithExchange(watchlist, date);
+      
+      // Filter by exchange if specified
+      let companies = allCompanies;
+      if (exchange) {
+        const exchanges = exchange.split(',').map(ex => ex.trim().toUpperCase());
+        companies = allCompanies.filter(company => 
+          exchanges.includes(company.exchange.toUpperCase())
+        );
+      }
+      
+      console.log(`Retrieved ${companies.length} companies from watchlist ${watchlist} for exchanges: ${exchange || 'ALL'}`);
+      return { companies, exists: true };
+    } catch (error) {
+      console.error(`Error fetching watchlist ${watchlist}:`, error);
+      return { companies: [], exists: false };
+    }
+  }
+
+  @Get(':watchlist/check')
+  async checkWatchlist(
+    @Param('watchlist') watchlist: string,
+    @Query('date') date?: string,
+  ): Promise<{ exists: boolean }> {
+    const exists = await this.watchlistService.checkWatchlistExists(watchlist, date);
+    return { exists };
+  }
+
+  @Get(':watchlist/exchanges')
+  async getWatchlistExchanges(
+    @Param('watchlist') watchlist: string,
+    @Query('date') date?: string,
+  ): Promise<{ exchanges: string[] }> {
+    try {
+      const companies = await this.watchlistService.getWatchlistData(watchlist, date);
+      const exchanges = [...new Set(companies.map(c => c.exchange).filter(Boolean))];
+      return { exchanges };
+    } catch (error) {
+      return { exchanges: [] };
+    }
+  }
+}
+
+
+################################################################################
+SECTION 7: CONFIGURATION FILES
+################################################################################
+
+================================================================================
+FILE: apps/frontend/package.json
+PURPOSE: Frontend package configuration and dependencies
+================================================================================
+
+{
+  "name": "frontned",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@hookform/resolvers": "^5.0.1",
+    "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-scroll-area": "^1.2.6",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-toast": "^1.2.11",
+    "@syncfusion/ej2-react-charts": "^29.1.41",
+    "@types/react-plotly.js": "^2.6.3",
+    "apexcharts": "^4.7.0",
+    "autoprefixer": "^10.4.21",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "d3-format": "^3.1.0",
+    "d3-time-format": "^4.1.0",
+    "date-fns": "^4.1.0",
+    "lightweight-charts": "^5.0.6",
+    "lucide-react": "^0.479.0",
+    "next": "^15.1.8",
+    "next-themes": "^0.4.6",
+    "plotly.js": "^3.0.1",
+    "plotly.js-dist": "^3.0.1",
+    "radix-ui": "^1.1.3",
+    "react": "^19.1.0",
+    "react-apexcharts": "^1.7.0",
+    "react-day-picker": "^8.10.1",
+    "react-dom": "^19.1.0",
+    "react-financial-charts": "^2.0.1",
+    "react-hook-form": "^7.56.4",
+    "react-plotly.js": "^2.6.0",
+    "socket.io-client": "^4.8.1",
+    "swr": "^2.3.2",
+    "tailwind-merge": "^3.3.0",
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^3.25.16"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20.17.50",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.1.7",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5"
+  }
+}
+
+
+################################################################################
+END OF COMPLETE WATCHLISTSELECTOR SYSTEM EXTRACTION
+################################################################################
+
+EXTRACTION SUMMARY:
+===================
+WatchlistSelector Components: 4 files
+Related Market Data Components: 2 files
+Custom Hooks: 3 files
+Utilities: 2 files
+UI Components: 2 files
+Backend API: 2 files
+Configuration Files: 1 file
+
+TOTAL FILES PROCESSED: 16
+################################################################################

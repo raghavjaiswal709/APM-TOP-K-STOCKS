@@ -1020,10 +1020,11 @@ export function StockChart({
         const low = Math.min(...chunk.map(d => d.low));
         const volume = chunk.reduce((sum, d) => sum + d.volume, 0);
         
-        result.push({
-          interval_start: chunk[0].interval_start,
-          open, high, low, close, volume
-        });
+       result.push({
+  interval_start: chunk[chunk.length - 1].interval_start,  // ✅ Use LAST timestamp
+  open, high, low, close, volume
+});
+
       }
     }
     
@@ -1637,7 +1638,7 @@ export function StockChart({
         case 'tablet':
           return { r: 50, l: 50, b: 15, t: 70, pad: 3 };
         default:
-          return { r: 60, l: 60, b: 20, t: 80, pad: 4 };
+          return { r: 60, l: 60, b: 40, t: 80, pad: 4 };
       }
     };
 
