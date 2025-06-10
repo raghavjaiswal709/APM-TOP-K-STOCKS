@@ -1,0 +1,2269 @@
+================================================================================
+CORE WATCHLIST COMPLETE SYSTEM - ALL FILES
+Generated on: 10-06-2025 10:09:07.55
+================================================================================
+
+CATEGORIES:
+1. Core Watchlist Page and Components (4 files)
+2. State Management and Hooks (3 files)
+3. Data Components (2 files)
+4. Backend Services (2 files)
+
+TOTAL: 11 FILES
+================================================================================
+
+
+################################################################################
+SECTION 1: CORE WATCHLIST PAGE AND COMPONENTS
+################################################################################
+
+================================================================================
+FILE: apps/frontend/app/watchlist/page.tsx
+PURPOSE: Core Watchlist Page
+================================================================================
+
+'use client'
+import React, { useState } from 'react';
+import { WatchlistSelector } from '@/app/components/controllers/WatchlistSelector';
+import { useWatchlist } from '@/hooks/useWatchlist';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { AppSidebar } from "@/app/components/app-sidebar";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { Separator } from "@/components/ui/separator";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { ModeToggle } from "@/app/components/toggleButton";
+
+interface Company {
+  company_code: string;
+  name: string;
+  exchange: string;
+  total_valid_days?: number;
+  avg_daily_high_low?: number;
+  median_daily_volume?: number;
+  avg_trading_ratio?: number;
+  N1_Pattern_count?: number;
+  avg_daily_high_low_range?: number;
+  avg_daily_volume?: number;
+  avg_trading_capital?: number;
+  instrument_token?: string;
+  tradingsymbol?: string;
+}
+
+export default function WatchlistPage() {
+  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [selectedExchange, setSelectedExchange] = useState<string | undefined>(undefined);
+  const [selectedWatchlist, setSelectedWatchlist] = useState<string>('A');
+
+  const {
+    companies,
+    loading,
+    error,
+    exists,
+    availableExchanges,
+  } = useWatchlist();
+
+  const handleCompanySelect = (companyCode: string | null, exchange?: string) => {
+    setSelectedCompany(companyCode);
+    setSelectedExchange(exchange);
+  };
+
+  const handleWatchlistChange = (watchlist: string) => {
+    setSelectedWatchlist(watchlist);
+    setSelectedCompany(null); // Reset company selection when watchlist changes
+    setSelectedExchange(undefined);
+  };
+
+  const selectedCompanyData = selectedCompany 
+    ? companies.find(c => c.company_code === selectedCompany)
+    : null;
+
+  const formatNumber = (value: number | undefined) => {
+    if (value === undefined) return 'N/A';
+    return new Intl.NumberFormat('en-IN').format(value);
+  };
+
+  const formatCurrency = (value: number | undefined) => {
+    if (value === undefined) return 'N/A';
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2
+    }).format(value);
+  };
+
+  const formatDecimal = (value: number | undefined) => {
+    if (value === undefined) return 'N/A';
+    return value.toFixed(4);
+  };
+
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>
+        {/* Header Section */}
+        <header className="flex h-16 shrink-0 items-center gap-2 w-full">
+          <div className="flex items-center gap-2 px-4 w-full">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <Breadcrumb className="flex items-center justify-between w-full">
+              <BreadcrumbList>
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink href="/dashboard">
+                    Portfolio Management
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden md:block" />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Watchlist Management</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+              <ModeToggle />
+            </Breadcrumb>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+          <div className="container mx-auto space-y-6">
+            
+            {/* Page Header */}
+            <div className="flex flex-col space-y-2">
+              <h1 className="text-3xl font-bold tracking-tight">Watchlist Management</h1>
+              <p className="text-muted-foreground">
+                Select and analyze companies from your watchlists
+              </p>
+            </div>
+
+            {/* Watchlist Selector Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <span>Select Watchlist & Company</span>
+                  <div className="flex items-center gap-2 ml-auto">
+                    <span className={`inline-block w-2 h-2 rounded-full ${
+                      loading ? 'bg-yellow-500' : exists ? 'bg-green-500' : 'bg-red-500'
+                    }`}></span>
+                    <span className="text-sm text-muted-foreground">
+                      {loading ? 'Loading...' : exists ? 'Connected' : 'No Data'}
+                    </span>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <WatchlistSelector
+                  selectedWatchlist={selectedWatchlist}
+                  onWatchlistChange={handleWatchlistChange}
+                  onCompanySelect={handleCompanySelect}
+                />
+                
+                {error && (
+                  <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                    <p className="text-destructive text-sm font-medium">Error: {error}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Watchlist Overview Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Selected Watchlist</p>
+                      <p className="text-2xl font-bold">Watchlist {selectedWatchlist}</p>
+                    </div>
+                    <Badge variant="secondary" className="text-lg px-3 py-1">
+                      {selectedWatchlist}
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Total Companies</p>
+                      {loading ? (
+                        <Skeleton className="h-8 w-16" />
+                      ) : (
+                        <p className="text-2xl font-bold">{companies.length}</p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Available Exchanges</p>
+                      <p className="text-2xl font-bold">{availableExchanges.length}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Status</p>
+                      <p className={`text-lg font-semibold ${
+                        loading ? 'text-yellow-500' : exists ? 'text-green-500' : 'text-red-500'
+                      }`}>
+                        {loading ? 'Loading' : exists ? 'Active' : 'Inactive'}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {availableExchanges.slice(0, 3).map((exchange) => (
+                        <Badge key={exchange} variant="outline" className="text-xs">
+                          {exchange}
+                        </Badge>
+                      ))}
+                      {availableExchanges.length > 3 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{availableExchanges.length - 3}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Selected Company Details */}
+            {selectedCompanyData && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <span>Selected Company Details</span>
+                    <Badge variant="secondary">{selectedCompanyData.exchange}</Badge>
+                    <Badge variant="outline" className="ml-auto">
+                      {selectedCompanyData.company_code}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    
+                    {/* Basic Information */}
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide border-b pb-2">
+                        Basic Information
+                      </h4>
+                      <div className="grid gap-3">
+                        <div className="bg-muted/50 p-3 rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-1">Company Code</p>
+                          <p className="font-bold text-lg">{selectedCompanyData.company_code}</p>
+                        </div>
+                        <div className="bg-muted/50 p-3 rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-1">Company Name</p>
+                          <p className="font-medium">{selectedCompanyData.name}</p>
+                        </div>
+                        <div className="bg-muted/50 p-3 rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-1">Exchange</p>
+                          <Badge variant="outline" className="mt-1">{selectedCompanyData.exchange}</Badge>
+                        </div>
+                        {selectedCompanyData.tradingsymbol && (
+                          <div className="bg-muted/50 p-3 rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">Trading Symbol</p>
+                            <p className="font-medium font-mono">{selectedCompanyData.tradingsymbol}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Trading Metrics */}
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide border-b pb-2">
+                        Trading Metrics
+                      </h4>
+                      <div className="grid gap-3">
+                        <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Total Valid Days</p>
+                          <p className="font-bold text-xl text-blue-700 dark:text-blue-300">
+                            {formatNumber(selectedCompanyData.total_valid_days)}
+                          </p>
+                        </div>
+                        <div className="bg-green-50 dark:bg-green-950/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
+                          <p className="text-xs text-green-600 dark:text-green-400 mb-1">Avg Daily High-Low</p>
+                          <p className="font-bold text-lg text-green-700 dark:text-green-300">
+                            {formatCurrency(selectedCompanyData.avg_daily_high_low)}
+                          </p>
+                        </div>
+                        <div className="bg-purple-50 dark:bg-purple-950/20 p-3 rounded-lg border border-purple-200 dark:border-purple-800">
+                          <p className="text-xs text-purple-600 dark:text-purple-400 mb-1">Median Daily Volume</p>
+                          <p className="font-bold text-lg text-purple-700 dark:text-purple-300">
+                            {formatNumber(selectedCompanyData.median_daily_volume)}
+                          </p>
+                        </div>
+                        <div className="bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg border border-orange-200 dark:border-orange-800">
+                          <p className="text-xs text-orange-600 dark:text-orange-400 mb-1">Avg Trading Ratio</p>
+                          <p className="font-bold text-lg text-orange-700 dark:text-orange-300">
+                            {formatDecimal(selectedCompanyData.avg_trading_ratio)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Pattern Analysis */}
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide border-b pb-2">
+                        Pattern Analysis
+                      </h4>
+                      <div className="grid gap-3">
+                        <div className="bg-cyan-50 dark:bg-cyan-950/20 p-3 rounded-lg border border-cyan-200 dark:border-cyan-800">
+                          <p className="text-xs text-cyan-600 dark:text-cyan-400 mb-1">N1 Pattern Count</p>
+                          <p className="font-bold text-xl text-cyan-700 dark:text-cyan-300">
+                            {formatNumber(selectedCompanyData.N1_Pattern_count)}
+                          </p>
+                        </div>
+                        {selectedCompanyData.avg_daily_high_low_range && (
+                          <div className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800">
+                            <p className="text-xs text-indigo-600 dark:text-indigo-400 mb-1">Avg High-Low Range</p>
+                            <p className="font-bold text-lg text-indigo-700 dark:text-indigo-300">
+                              {formatCurrency(selectedCompanyData.avg_daily_high_low_range)}
+                            </p>
+                          </div>
+                        )}
+                        {selectedCompanyData.avg_trading_capital && (
+                          <div className="bg-pink-50 dark:bg-pink-950/20 p-3 rounded-lg border border-pink-200 dark:border-pink-800">
+                            <p className="text-xs text-pink-600 dark:text-pink-400 mb-1">Avg Trading Capital</p>
+                            <p className="font-bold text-lg text-pink-700 dark:text-pink-300">
+                              {formatCurrency(selectedCompanyData.avg_trading_capital)}
+                            </p>
+                          </div>
+                        )}
+                        {selectedCompanyData.instrument_token && (
+                          <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border">
+                            <p className="text-xs text-muted-foreground mb-1">Instrument Token</p>
+                            <p className="font-mono text-sm break-all">{selectedCompanyData.instrument_token}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Companies Data Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Companies in Watchlist {selectedWatchlist}</span>
+                  <div className="flex items-center gap-2">
+                    {loading && <Skeleton className="h-4 w-20" />}
+                    {!loading && (
+                      <Badge variant="secondary">
+                        {exists ? `${companies.length} companies` : 'No data'}
+                      </Badge>
+                    )}
+                  </div>
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {exists ? 'Click on any company to view detailed information' : 'Watchlist data not found or unavailable'}
+                </p>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div key={i} className="flex items-center space-x-4 p-3 border rounded-lg">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-4 w-40" />
+                        <Skeleton className="h-4 w-16" />
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-4 w-20" />
+                      </div>
+                    ))}
+                  </div>
+                ) : !exists ? (
+                  <div className="text-center py-12 border-2 border-dashed rounded-lg">
+                    <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
+                      <span className="text-muted-foreground">📊</span>
+                    </div>
+                    <h3 className="font-semibold mb-2">No Watchlist Data</h3>
+                    <p className="text-muted-foreground mb-4">
+                      The selected watchlist doesn't exist or contains no data.
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Try selecting a different watchlist or check your data source.
+                    </p>
+                  </div>
+                ) : companies.length === 0 ? (
+                  <div className="text-center py-12 border-2 border-dashed rounded-lg">
+                    <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
+                      <span className="text-muted-foreground">🏢</span>
+                    </div>
+                    <h3 className="font-semibold mb-2">No Companies Found</h3>
+                    <p className="text-muted-foreground">
+                      This watchlist exists but contains no companies.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="border-b-2">
+                          <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
+                            Company Code
+                          </th>
+                          <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
+                            Company Name
+                          </th>
+                          <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
+                            Exchange
+                          </th>
+                          <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
+                            Valid Days
+                          </th>
+                          <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
+                            Avg High-Low
+                          </th>
+                          <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
+                            Pattern Count
+                          </th>
+                          <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {companies.map((company, index) => (
+                          <tr 
+                            key={company.company_code} 
+                            className={`border-b hover:bg-muted/50 cursor-pointer transition-colors ${
+                              selectedCompany === company.company_code ? 'bg-muted shadow-sm' : ''
+                            } ${index % 2 === 0 ? 'bg-muted/20' : ''}`}
+                            onClick={() => handleCompanySelect(company.company_code, company.exchange)}
+                          >
+                            <td className="py-3 px-4">
+                              <span className="font-mono font-semibold text-primary">
+                                {company.company_code}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="font-medium">{company.name}</span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <Badge variant="outline" className="text-xs">
+                                {company.exchange}
+                              </Badge>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-sm">
+                                {formatNumber(company.total_valid_days)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="font-medium text-green-600 dark:text-green-400">
+                                {formatCurrency(company.avg_daily_high_low)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-2 py-1 rounded text-sm">
+                                {formatNumber(company.N1_Pattern_count)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCompanySelect(company.company_code, company.exchange);
+                                }}
+                                className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
+                                  selectedCompany === company.company_code
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                                }`}
+                              >
+                                {selectedCompany === company.company_code ? 'Selected' : 'Select'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
+
+
+================================================================================
+FILE: apps/frontend/app/components/controllers/WatchlistSelector/WatchlistSelector.tsx
+PURPOSE: WatchlistSelector Component
+================================================================================
+
+'use client'
+import * as React from "react";
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { RadioGroupDemo } from "./RadioGroup";
+import { SelectScrollable } from "./SelectScrollable";
+
+interface WatchlistSelectorProps {
+  onCompanySelect?: (companyCode: string | null, exchange?: string, marker?: string) => void;
+  selectedWatchlist?: string;
+  onWatchlistChange?: (watchlist: string) => void;
+  showExchangeFilter?: boolean;
+  showMarkerFilter?: boolean;
+}
+
+export const WatchlistSelector = React.memo(({ 
+  onCompanySelect,
+  selectedWatchlist: externalSelectedWatchlist,
+  onWatchlistChange,
+  showExchangeFilter = true,
+  showMarkerFilter = true
+}: WatchlistSelectorProps) => {
+  
+  // Initialize state with external value or default
+  const [currentWatchlist, setCurrentWatchlist] = React.useState(() => 
+    externalSelectedWatchlist || 'A'
+  );
+  
+  // Use ref to track previous external value to prevent unnecessary updates
+  const prevExternalWatchlist = React.useRef(externalSelectedWatchlist);
+  
+  // Update currentWatchlist only when external prop actually changes
+  React.useEffect(() => {
+    if (externalSelectedWatchlist && 
+        externalSelectedWatchlist !== prevExternalWatchlist.current && 
+        externalSelectedWatchlist !== currentWatchlist) {
+      console.log(`[WatchlistSelector] External watchlist changed to: ${externalSelectedWatchlist}`);
+      prevExternalWatchlist.current = externalSelectedWatchlist;
+      setCurrentWatchlist(externalSelectedWatchlist);
+    }
+  }, [externalSelectedWatchlist, currentWatchlist]);
+
+  const {
+    selectedWatchlist,
+    setSelectedWatchlist,
+    companies,
+    loading,
+    error,
+    exists,
+    availableExchanges,
+    availableMarkers,
+    totalCompanies,
+    getFilteredCompanies
+  } = useWatchlist({ externalWatchlist: currentWatchlist });
+  
+  const [selectedExchange, setSelectedExchange] = React.useState<string>('');
+  const [selectedMarker, setSelectedMarker] = React.useState<string>('');
+  
+  // Memoize the change handler to prevent unnecessary re-renders
+  const handleWatchlistChange = React.useCallback((value: string) => {
+    console.log(`[WatchlistSelector] Watchlist changed to: ${value}`);
+    
+    // Prevent unnecessary updates
+    if (value === currentWatchlist) {
+      return;
+    }
+    
+    // Reset filters when watchlist changes
+    setSelectedExchange('');
+    setSelectedMarker('');
+    
+    // Update current watchlist state
+    setCurrentWatchlist(value);
+    
+    // Call external callback if provided
+    if (onWatchlistChange) {
+      onWatchlistChange(value);
+    }
+  }, [currentWatchlist, onWatchlistChange]);
+
+  // Memoize company select handler
+  const handleCompanySelect = React.useCallback((companyCode: string | null) => {
+    if (!companyCode) {
+      if (onCompanySelect) {
+        onCompanySelect(null);
+      }
+      return;
+    }
+
+    // Find the selected company to get its exchange and marker
+    const selectedCompany = companies.find(c => c.company_code === companyCode);
+    
+    console.log(`[WatchlistSelector] Selected company: ${companyCode}`, selectedCompany);
+    
+    if (onCompanySelect && selectedCompany) {
+      onCompanySelect(companyCode, selectedCompany.exchange, selectedCompany.marker);
+    }
+  }, [companies, onCompanySelect]);
+
+  // Get filtered companies based on current filters
+  const filteredCompanies = React.useMemo(() => {
+    const filters: any = {};
+    if (selectedExchange) filters.exchange = selectedExchange;
+    if (selectedMarker) filters.marker = selectedMarker;
+    
+    const filtered = getFilteredCompanies(filters);
+    console.log(`[WatchlistSelector] Filtered companies: ${filtered.length} out of ${companies.length}`);
+    return filtered;
+  }, [companies, selectedExchange, selectedMarker, getFilteredCompanies]);
+
+  // Memoize exchange change handler
+  const handleExchangeChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedExchange(e.target.value);
+  }, []);
+
+  // Memoize marker change handler
+  const handleMarkerChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedMarker(e.target.value);
+  }, []);
+
+  console.log(`[WatchlistSelector] Render - currentWatchlist: ${currentWatchlist}, selectedWatchlist: ${selectedWatchlist}, companies: ${companies.length}, loading: ${loading}`);
+
+  return (
+    <div className="flex gap-4">
+      {/* Watchlist Selection */}
+      <div className="flex gap-5 items-center">
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium">Watchlist</label>
+          <RadioGroupDemo
+            value={currentWatchlist} 
+            onChange={handleWatchlistChange}
+          />
+        </div>
+        
+        {/* Status Information */}
+        <div className="flex flex-col gap-1">
+          <div className="text-xs text-muted-foreground">
+            {loading && `Loading watchlist ${currentWatchlist}...`}
+            {!loading && exists && `${totalCompanies} companies (${currentWatchlist})`}
+            {!loading && !exists && `No data available for watchlist ${currentWatchlist}`}
+          </div>
+          {availableExchanges.length > 0 && (
+            <div className="text-xs text-muted-foreground">
+              Exchanges: {availableExchanges.join(', ')}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Filters */}
+      {(showExchangeFilter || showMarkerFilter) && availableExchanges.length > 0 && (
+        <div className="flex gap-4 items-center">
+          {/* Exchange Filter */}
+          {showExchangeFilter && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium">Exchange</label>
+              <select
+                value={selectedExchange}
+                onChange={handleExchangeChange}
+                className="px-2 py-1 text-xs border rounded"
+              >
+                <option value="">All Exchanges</option>
+                {availableExchanges.map(exchange => (
+                  <option key={exchange} value={exchange}>
+                    {exchange}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Marker Filter */}
+          {showMarkerFilter && availableMarkers.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium">Marker</label>
+              <select
+                value={selectedMarker}
+                onChange={handleMarkerChange}
+                className="px-2 py-1 text-xs border rounded"
+              >
+                <option value="">All Markers</option>
+                {availableMarkers.map(marker => (
+                  <option key={marker} value={marker}>
+                    {marker}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Filter Results Count */}
+          <div className="text-xs text-muted-foreground">
+            {filteredCompanies.length !== companies.length && (
+              `${filteredCompanies.length} of ${companies.length} shown`
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {error && (
+        <div className="text-destructive text-xs bg-destructive/10 px-2 py-1 rounded">
+          {error}
+        </div>
+      )}
+      
+      {/* Company Selection */}
+      <div>
+        <SelectScrollable
+          companies={filteredCompanies}
+          loading={loading}
+          exists={exists}
+          onCompanySelect={handleCompanySelect}
+        />
+      </div>
+    </div>
+  );
+});
+
+WatchlistSelector.displayName = 'WatchlistSelector';
+
+
+================================================================================
+FILE: apps/frontend/app/components/controllers/WatchlistSelector/index.tsx
+PURPOSE: WatchlistSelector Index
+================================================================================
+
+// src/components/WatchlistSelector/index.tsx
+export { WatchlistSelector } from './WatchlistSelector';
+
+
+================================================================================
+FILE: apps/frontend/app/market-data/components/WatchlistManager.tsx
+PURPOSE: WatchlistManager Component
+================================================================================
+
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/card';
+import { Button } from '../../../components/ui/button';
+import { Input } from '../../../components/ui/input';
+
+interface WatchlistManagerProps {
+  subscribedSymbols: string[];
+  onSymbolSelect: (symbol: string) => void;
+  onAddSymbol: (symbol: string) => void;
+  onRemoveSymbol: (symbol: string) => void;
+}
+
+// Predefined watchlists
+const predefinedWatchlists = {
+  'Indices': [
+    'NSE:NIFTY50-INDEX',
+    'NSE:BANKNIFTY-INDEX',
+    'NSE:FINNIFTY-INDEX',
+    'NSE:NIFTYIT-INDEX',
+    'NSE:NIFTYPHARMA-INDEX',
+  ],
+  'Large Cap': [
+    'NSE:RELIANCE-EQ',
+    'NSE:TCS-EQ',
+    'NSE:HDFCBANK-EQ',
+    'NSE:INFY-EQ',
+    'NSE:ICICIBANK-EQ',
+  ],
+  'IT Stocks': [
+    'NSE:TCS-EQ',
+    'NSE:INFY-EQ',
+    'NSE:WIPRO-EQ',
+    'NSE:HCLTECH-EQ',
+    'NSE:TECHM-EQ',
+  ],
+};
+
+const WatchlistManager: React.FC<WatchlistManagerProps> = ({
+  subscribedSymbols,
+  onSymbolSelect,
+  onAddSymbol,
+  onRemoveSymbol,
+}) => {
+  const [newSymbol, setNewSymbol] = useState('');
+  const [savedWatchlists, setSavedWatchlists] = useState<Record<string, string[]>>({});
+  const [newWatchlistName, setNewWatchlistName] = useState('');
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+
+  // Load saved watchlists from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('marketDataWatchlists');
+    if (saved) {
+      setSavedWatchlists(JSON.parse(saved));
+    }
+  }, []);
+
+  const handleAddSymbol = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newSymbol && !subscribedSymbols.includes(newSymbol)) {
+      onAddSymbol(newSymbol);
+      setNewSymbol('');
+    }
+  };
+
+  const handleSaveWatchlist = () => {
+    if (newWatchlistName) {
+      const updatedWatchlists = {
+        ...savedWatchlists,
+        [newWatchlistName]: [...subscribedSymbols],
+      };
+      
+      setSavedWatchlists(updatedWatchlists);
+      localStorage.setItem('marketDataWatchlists', JSON.stringify(updatedWatchlists));
+      setNewWatchlistName('');
+      setShowSaveDialog(false);
+    }
+  };
+
+  const handleLoadWatchlist = (watchlist: string[]) => {
+    // Remove all current symbols
+    subscribedSymbols.forEach(symbol => onRemoveSymbol(symbol));
+    
+    // Add all symbols from the selected watchlist
+    watchlist.forEach(symbol => onAddSymbol(symbol));
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Add Symbol</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleAddSymbol} className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                placeholder="NSE:SYMBOL-EQ"
+                value={newSymbol}
+                onChange={(e) => setNewSymbol(e.target.value)}
+                className="flex-1"
+              />
+              <Button type="submit">Add</Button>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Format: Exchange:Symbol-Type (e.g., NSE:RELIANCE-EQ)
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Predefined Watchlists</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {Object.entries(predefinedWatchlists).map(([name, symbols]) => (
+            <div key={name} className="flex justify-between items-center">
+              <div>
+                <div className="font-medium">{name}</div>
+                <div className="text-sm text-muted-foreground">
+                  {symbols.length} symbols
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handleLoadWatchlist(symbols)}
+              >
+                Load
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {Object.keys(savedWatchlists).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Your Watchlists</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {Object.entries(savedWatchlists).map(([name, symbols]) => (
+              <div key={name} className="flex justify-between items-center">
+                <div>
+                  <div className="font-medium">{name}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {symbols.length} symbols
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleLoadWatchlist(symbols)}
+                  >
+                    Load
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="text-red-500"
+                    onClick={() => {
+                      const { [name]: _, ...rest } = savedWatchlists;
+                      setSavedWatchlists(rest);
+                      localStorage.setItem('marketDataWatchlists', JSON.stringify(rest));
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Manage Watchlist</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button 
+            variant="outline" 
+            className="w-full"
+            onClick={() => setShowSaveDialog(!showSaveDialog)}
+          >
+            Save Current Watchlist
+          </Button>
+          
+          {showSaveDialog && (
+            <div className="space-y-2">
+              <Input
+                type="text"
+                placeholder="Watchlist name"
+                value={newWatchlistName}
+                onChange={(e) => setNewWatchlistName(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <Button 
+                  variant="default" 
+                  className="flex-1"
+                  onClick={handleSaveWatchlist}
+                >
+                  Save
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowSaveDialog(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default WatchlistManager;
+
+
+################################################################################
+SECTION 2: STATE MANAGEMENT AND HOOKS
+################################################################################
+
+================================================================================
+FILE: apps/frontend/hooks/useWatchlist.ts
+PURPOSE: Watchlist State Management Hook
+================================================================================
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+
+interface MergedCompany {
+  company_id?: number;
+  company_code: string;
+  name: string;
+  exchange: string;
+  marker: string;
+  total_valid_days?: number;
+  avg_daily_high_low_range?: number;
+  median_daily_volume?: number;
+  avg_trading_capital?: number;
+  pe_ratio?: number;
+  N1_Pattern_count?: number;
+}
+
+interface WatchlistResponse {
+  companies: MergedCompany[];
+  exists: boolean;
+  total: number;
+}
+
+interface UseWatchlistOptions {
+  externalWatchlist?: string;
+}
+
+export function useWatchlist(options: UseWatchlistOptions = {}) {
+  const [selectedWatchlist, setSelectedWatchlist] = useState('A');
+  const [companies, setCompanies] = useState<MergedCompany[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [exists, setExists] = useState(true);
+  const [availableExchanges, setAvailableExchanges] = useState<string[]>([]);
+  const [totalCompanies, setTotalCompanies] = useState(0);
+  const [availableMarkers, setAvailableMarkers] = useState<string[]>([]);
+
+  // Use ref to track previous external watchlist to prevent unnecessary updates
+  const prevExternalWatchlist = useRef(options.externalWatchlist);
+  
+  // Use external watchlist if provided, otherwise use internal state
+  const activeWatchlist = options.externalWatchlist || selectedWatchlist;
+
+  // Update internal state only when external watchlist actually changes
+  useEffect(() => {
+    if (options.externalWatchlist && 
+        options.externalWatchlist !== prevExternalWatchlist.current && 
+        options.externalWatchlist !== selectedWatchlist) {
+      console.log(`[useWatchlist] External watchlist changed from ${prevExternalWatchlist.current} to ${options.externalWatchlist}`);
+      prevExternalWatchlist.current = options.externalWatchlist;
+      setSelectedWatchlist(options.externalWatchlist);
+    }
+  }, [options.externalWatchlist, selectedWatchlist]);
+
+  // Fetch watchlist data when activeWatchlist changes
+  useEffect(() => {
+    let isCancelled = false;
+    
+    async function fetchWatchlist() {
+      console.log(`[useWatchlist] Starting to fetch watchlist: ${activeWatchlist}`);
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Keep hardcoded date as requested
+        const today = "2025-06-05";
+        const apiUrl = `http://localhost:5000/api/watchlist/${activeWatchlist}?date=${today}`;
+        
+        console.log(`[useWatchlist] Fetching from: ${apiUrl}`);
+
+        // Test if backend is reachable first
+        try {
+          const healthCheck = await fetch('http://localhost:5000/health', {
+            method: 'GET',
+            signal: AbortSignal.timeout(5000)
+          });
+          console.log(`[useWatchlist] Backend health check: ${healthCheck.status}`);
+        } catch (healthError) {
+          console.error(`[useWatchlist] Backend health check failed:`, healthError);
+          throw new Error('Backend server is not running on localhost:3001. Please start the backend server.');
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+        const response = await fetch(apiUrl, { 
+          signal: controller.signal,
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache'
+          },
+          mode: 'cors'
+        });
+        
+        clearTimeout(timeoutId);
+
+        console.log(`[useWatchlist] Response status: ${response.status}`);
+        console.log(`[useWatchlist] Response headers:`, Object.fromEntries(response.headers.entries()));
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[useWatchlist] Error response body:`, errorText);
+          
+          if (response.status === 404) {
+            throw new Error(`Watchlist ${activeWatchlist} not found for date ${today}. Check if the endpoint exists.`);
+          } else if (response.status === 500) {
+            throw new Error(`Server error (${response.status}): ${errorText || 'Internal server error'}`);
+          } else {
+            throw new Error(`HTTP error ${response.status}: ${errorText || response.statusText}`);
+          }
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          const responseText = await response.text();
+          console.error(`[useWatchlist] Non-JSON response:`, responseText);
+          throw new Error('Server returned non-JSON response. Check API endpoint.');
+        }
+
+        const data: WatchlistResponse = await response.json();
+        
+        // Don't update state if component was unmounted or request was cancelled
+        if (isCancelled) return;
+        
+        console.log(`[useWatchlist] Raw API response for watchlist ${activeWatchlist}:`, data);
+
+        // Validate response structure
+        if (!data || typeof data !== 'object') {
+          throw new Error('Invalid response format from server');
+        }
+
+        if (!Array.isArray(data.companies)) {
+          console.warn(`[useWatchlist] No companies array in response:`, data);
+          setCompanies([]);
+          setExists(false);
+          setTotalCompanies(0);
+          setAvailableExchanges([]);
+          setAvailableMarkers([]);
+          setError(`No companies found for watchlist ${activeWatchlist} on ${today}`);
+          return;
+        }
+
+        const validCompanies = data.companies.filter((company: MergedCompany) => {
+          const isValid = company.company_code && 
+                          company.name && 
+                          company.exchange &&
+                          company.marker;
+          
+          if (!isValid) {
+            console.warn(`[useWatchlist] Invalid company filtered out:`, company);
+          }
+          return isValid;
+        });
+
+        console.log(`[useWatchlist] Valid companies after filtering for ${activeWatchlist}: ${validCompanies.length} out of ${data.companies.length}`);
+
+        setCompanies(validCompanies);
+        setExists(data.exists !== false); // Default to true if not specified
+        setTotalCompanies(data.total || validCompanies.length);
+        
+        const exchanges = [...new Set(validCompanies.map((c: MergedCompany) => c.exchange))];
+        const markers = [...new Set(validCompanies.map((c: MergedCompany) => c.marker))];
+        
+        setAvailableExchanges(exchanges);
+        setAvailableMarkers(markers);
+        
+        console.log(`[useWatchlist] Successfully loaded ${validCompanies.length} companies from watchlist ${activeWatchlist}`);
+        console.log(`[useWatchlist] Available exchanges: ${exchanges.join(', ')}`);
+        
+      } catch (err: any) {
+        if (isCancelled) return;
+        
+        console.error(`[useWatchlist] Error fetching watchlist ${activeWatchlist}:`, err);
+        console.error(`[useWatchlist] Error details:`, {
+          name: err.name,
+          message: err.message,
+          stack: err.stack
+        });
+        
+        let errorMessage = 'Failed to fetch watchlist data.';
+        
+        if (err.name === 'AbortError') {
+          errorMessage = 'Request timed out. Please try again.';
+        } else if (err.message.includes('Backend server is not running')) {
+          errorMessage = err.message;
+        } else if (err.message.includes('Failed to fetch') || err.name === 'TypeError') {
+          errorMessage = 'Cannot connect to backend server. Please ensure:\n1. Backend is running on http://localhost:3001\n2. No firewall blocking the connection\n3. CORS is properly configured';
+        } else if (err.message.includes('not found')) {
+          errorMessage = err.message;
+        } else {
+          errorMessage = `Error: ${err.message}`;
+        }
+        
+        setError(errorMessage);
+        setCompanies([]);
+        setExists(false);
+        setAvailableExchanges([]);
+        setAvailableMarkers([]);
+        setTotalCompanies(0);
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchWatchlist();
+    
+    // Cleanup function to cancel request if component unmounts or activeWatchlist changes
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeWatchlist]);
+
+  const getCompanyByCode = useCallback(async (companyCode: string, exchange?: string): Promise<MergedCompany | null> => {
+    try {
+      const queryParams = new URLSearchParams({ companyCode });
+      if (exchange) {
+        queryParams.append('exchange', exchange);
+      }
+      
+      const response = await fetch(`http://localhost:5000/api/watchlist/company/${companyCode}?${queryParams}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data.company;
+    } catch (error) {
+      console.error('[useWatchlist] Error fetching company by code:', error);
+      return null;
+    }
+  }, []);
+
+  const getFilteredCompanies = useCallback((filters: {
+    exchange?: string;
+    marker?: string;
+    minValidDays?: number;
+  }) => {
+    return companies.filter(company => {
+      if (filters.exchange && company.exchange.toUpperCase() !== filters.exchange.toUpperCase()) {
+        return false;
+      }
+      if (filters.marker && company.marker.toUpperCase() !== filters.marker.toUpperCase()) {
+        return false;
+      }
+      if (filters.minValidDays && (!company.total_valid_days || company.total_valid_days < filters.minValidDays)) {
+        return false;
+      }
+      return true;
+    });
+  }, [companies]);
+
+  return { 
+    selectedWatchlist: activeWatchlist, 
+    setSelectedWatchlist, 
+    companies, 
+    loading, 
+    error, 
+    exists,
+    availableExchanges,
+    availableMarkers,
+    totalCompanies,
+    getCompanyByCode,
+    getFilteredCompanies
+  };
+}
+
+
+================================================================================
+FILE: apps/frontend/hooks/useStockData.ts
+PURPOSE: Stock Data Management Hook
+================================================================================
+
+// Enhanced useStockData.ts with incremental loading support
+import { useState, useCallback, useRef, useEffect } from 'react';
+
+interface StockDataPoint {
+  interval_start: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface DataCache {
+  [key: string]: StockDataPoint[];
+}
+
+interface UseStockDataParams {
+  companyCode: string | null;
+  exchange?: string;
+  interval?: string;
+  indicators?: string[];
+  enableIncrementalLoading?: boolean;
+}
+
+export function useStockData({ 
+  companyCode,
+  exchange = 'NSE',
+  interval = '1m',
+  indicators = [],
+  enableIncrementalLoading = true
+}: UseStockDataParams) {
+  const [data, setData] = useState<StockDataPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dataRange, setDataRange] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });
+  
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const cacheRef = useRef<DataCache>({});
+  const loadingQueueRef = useRef<Set<string>>(new Set());
+
+  // Generate cache key
+  const getCacheKey = useCallback((company: string, start: Date, end: Date, interval: string) => {
+    return `${company}_${interval}_${start.getTime()}_${end.getTime()}`;
+  }, []);
+
+  // Check if data exists in cache
+  const getCachedData = useCallback((start: Date, end: Date) => {
+    const key = getCacheKey(companyCode || '', start, end, interval);
+    return cacheRef.current[key] || null;
+  }, [getCacheKey, companyCode, interval]);
+
+  // Store data in cache
+  const setCachedData = useCallback((start: Date, end: Date, data: StockDataPoint[]) => {
+    const key = getCacheKey(companyCode || '', start, end, interval);
+    cacheRef.current[key] = data;
+  }, [getCacheKey, companyCode, interval]);
+
+  // Enhanced fetch with caching and queue management
+  const fetchData = useCallback(async (
+    startDate?: Date, 
+    endDate?: Date, 
+    options: { 
+      fetchAllData?: boolean;
+      merge?: boolean;
+      priority?: 'high' | 'normal';
+    } = {}
+  ) => {
+    if (!companyCode) {
+      setError('No company selected');
+      return [];
+    }
+
+    const { fetchAllData = false, merge = false, priority = 'normal' } = options;
+
+    if (!startDate && !fetchAllData) {
+      setError('Either provide a start date or set fetchAllData to true');
+      return [];
+    }
+
+    // Generate request key for queue management
+    const requestKey = `${companyCode}_${startDate?.getTime()}_${endDate?.getTime()}`;
+    
+    if (loadingQueueRef.current.has(requestKey)) {
+      console.log('Request already in progress, skipping duplicate:', requestKey);
+      return [];
+    }
+
+    // Check cache first
+    if (startDate && endDate && enableIncrementalLoading) {
+      const cachedData = getCachedData(startDate, endDate);
+      if (cachedData) {
+        console.log('Returning cached data for range:', startDate, endDate);
+        if (merge) {
+          setData(prevData => mergeData(prevData, cachedData));
+        } else {
+          setData(cachedData);
+        }
+        return cachedData;
+      }
+    }
+
+    // Abort previous request if not high priority
+    if (abortControllerRef.current && priority !== 'high') {
+      abortControllerRef.current.abort();
+    }
+
+    loadingQueueRef.current.add(requestKey);
+    setLoading(true);
+    setError(null);
+
+    try {
+      abortControllerRef.current = new AbortController();
+      
+      const queryParams = new URLSearchParams({
+        exchange,
+        interval,
+        ...indicators.length > 0 && { indicators: indicators.join(',') }
+      });
+
+      if (startDate) {
+        queryParams.append('startDate', startDate.toISOString());
+        queryParams.append('endDate', endDate?.toISOString() || new Date(startDate.getTime() + 6.25 * 60 * 60 * 1000).toISOString());
+      } else {
+        queryParams.append('fetchAllData', 'true');
+      }
+
+      const url = `/api/companies/${companyCode}/ohlcv?${queryParams.toString()}`;
+      console.log(`Fetching stock data: ${url}`);
+
+      const response = await fetch(url, { 
+        signal: abortControllerRef.current.signal,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      const jsonData = await response.json() as StockDataPoint[];
+      console.log(`Successfully fetched ${jsonData.length} data points`);
+
+      // Cache the data
+      if (startDate && endDate && enableIncrementalLoading) {
+        setCachedData(startDate, endDate, jsonData);
+      }
+
+      // Update data range
+      if (jsonData.length > 0) {
+        const newStart = new Date(jsonData[0].interval_start);
+        const newEnd = new Date(jsonData[jsonData.length - 1].interval_start);
+        
+        setDataRange(prev => ({
+          start: prev.start ? (newStart < prev.start ? newStart : prev.start) : newStart,
+          end: prev.end ? (newEnd > prev.end ? newEnd : prev.end) : newEnd
+        }));
+      }
+
+      // Merge or replace data
+      if (merge) {
+        setData(prevData => mergeData(prevData, jsonData));
+      } else {
+        setData(jsonData);
+      }
+
+      return jsonData;
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('Request was aborted');
+        return [];
+      }
+      console.error('Error fetching stock data:', err);
+      setError(`Failed to fetch stock data: ${err.message}`);
+      return [];
+    } finally {
+      loadingQueueRef.current.delete(requestKey);
+      setLoading(false);
+    }
+  }, [companyCode, exchange, interval, indicators, enableIncrementalLoading, getCachedData, setCachedData]);
+
+  // Merge data helper function
+  const mergeData = useCallback((existing: StockDataPoint[], newData: StockDataPoint[]): StockDataPoint[] => {
+    const combined = [...existing, ...newData];
+    const uniqueMap = new Map<string, StockDataPoint>();
+    
+    combined.forEach(item => {
+      uniqueMap.set(item.interval_start, item);
+    });
+    
+    return Array.from(uniqueMap.values()).sort((a, b) => 
+      new Date(a.interval_start).getTime() - new Date(b.interval_start).getTime()
+    );
+  }, []);
+
+  // Fetch incremental data
+  const fetchIncrementalData = useCallback(async (start: Date, end: Date) => {
+    return fetchData(start, end, { merge: true, priority: 'high' });
+  }, [fetchData]);
+
+  // Fetch all data
+  const fetchAllData = useCallback(async () => {
+    return fetchData(undefined, undefined, { fetchAllData: true });
+  }, [fetchData]);
+
+  // Clear data and cache
+  const clearData = useCallback(() => {
+    setData([]);
+    setError(null);
+    setDataRange({ start: null, end: null });
+    cacheRef.current = {};
+    loadingQueueRef.current.clear();
+  }, []);
+
+  // Smart data loading based on visible range
+  const loadDataForRange = useCallback(async (visibleStart: Date, visibleEnd: Date) => {
+    if (!enableIncrementalLoading) return;
+
+    const buffer = 30 * 60 * 1000; // 30 minutes buffer
+    const expandedStart = new Date(visibleStart.getTime() - buffer);
+    const expandedEnd = new Date(visibleEnd.getTime() + buffer);
+
+    const gaps = [];
+
+    // Check if we need data before current range
+    if (!dataRange.start || expandedStart < dataRange.start) {
+      gaps.push({
+        start: expandedStart,
+        end: dataRange.start || visibleStart
+      });
+    }
+
+    // Check if we need data after current range
+    if (!dataRange.end || expandedEnd > dataRange.end) {
+      gaps.push({
+        start: dataRange.end || visibleEnd,
+        end: expandedEnd
+      });
+    }
+
+    // Fetch missing data
+    for (const gap of gaps) {
+      await fetchIncrementalData(gap.start, gap.end);
+    }
+  }, [enableIncrementalLoading, dataRange, fetchIncrementalData]);
+
+  // Clear cache on company change
+  useEffect(() => {
+    clearData();
+  }, [companyCode, clearData]);
+
+  return { 
+    data, 
+    loading, 
+    error, 
+    dataRange,
+    fetchData, 
+    fetchAllData, 
+    fetchIncrementalData,
+    loadDataForRange,
+    clearData 
+  };
+}
+
+
+================================================================================
+FILE: apps/frontend/hooks/useMarketData.ts
+PURPOSE: Market Data Management Hook
+================================================================================
+
+import { useState, useEffect, useCallback } from 'react';
+import { getSocket } from '../lib/socket';
+
+interface MarketData {
+  ltp: number;
+  change: number;
+  changePercent: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  timestamp: number;
+}
+
+interface UseMarketDataReturn {
+  data: Record<string, MarketData>;
+  isLoading: boolean;
+  error: Error | null;
+  subscribeToSymbol: (symbol: string) => void;
+  unsubscribeFromSymbol: (symbol: string) => void;
+}
+
+export const useMarketData = (initialSymbols: string[] = []): UseMarketDataReturn => {
+  const [data, setData] = useState<Record<string, MarketData>>({});
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [subscribedSymbols, setSubscribedSymbols] = useState<Set<string>>(
+    new Set(initialSymbols)
+  );
+
+  const subscribeToSymbol = useCallback((symbol: string) => {
+    setSubscribedSymbols((prev) => {
+      const newSet = new Set(prev);
+      newSet.add(symbol);
+      return newSet;
+    });
+    
+    getSocket().emit('subscribe', { symbol });
+  }, []);
+
+  const unsubscribeFromSymbol = useCallback((symbol: string) => {
+    setSubscribedSymbols((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(symbol);
+      return newSet;
+    });
+    
+    getSocket().emit('unsubscribe', { symbol });
+    
+    setData((prev) => {
+      const newData = { ...prev };
+      delete newData[symbol];
+      return newData;
+    });
+  }, []);
+
+  useEffect(() => {
+    const socket = getSocket();
+    
+    const handleMarketData = (message: { symbol: string; data: MarketData }) => {
+      setData((prev) => ({
+        ...prev,
+        [message.symbol]: message.data,
+      }));
+      
+      setIsLoading(false);
+    };
+    
+    socket.on('marketData', handleMarketData);
+    
+    initialSymbols.forEach((symbol) => {
+      socket.emit('subscribe', { symbol });
+    });
+    
+    return () => {
+      socket.off('marketData', handleMarketData);
+      
+      subscribedSymbols.forEach((symbol) => {
+        socket.emit('unsubscribe', { symbol });
+      });
+    };
+  }, [initialSymbols]);
+
+  return {
+    data,
+    isLoading,
+    error,
+    subscribeToSymbol,
+    unsubscribeFromSymbol,
+  };
+};
+
+
+################################################################################
+SECTION 3: DATA COMPONENTS
+################################################################################
+
+================================================================================
+FILE: apps/frontend/app/market-data/components/MarketDataTable.tsx
+PURPOSE: Market Data Table Component
+================================================================================
+
+import React from 'react';
+
+interface MarketData {
+  ltp: number;
+  change: number;
+  changePercent: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  timestamp: number;
+}
+
+interface MarketDataTableProps {
+  data: Record<string, MarketData>;
+  onSymbolSelect: (symbol: string) => void;
+  onRemoveSymbol: (symbol: string) => void;
+  selectedSymbol: string;
+}
+
+const MarketDataTable: React.FC<MarketDataTableProps> = ({
+  data,
+  onSymbolSelect,
+  onRemoveSymbol,
+  selectedSymbol,
+}) => {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b">
+            <th className="text-left py-2">Symbol</th>
+            <th className="text-right py-2">LTP</th>
+            <th className="text-right py-2">Change</th>
+            <th className="text-right py-2">%Change</th>
+            <th className="text-right py-2">Volume</th>
+            <th className="text-center py-2">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(data).map(([symbol, marketData]) => (
+            <tr 
+              key={symbol}
+              className={`border-b hover:bg-muted/50 cursor-pointer ${
+                selectedSymbol === symbol ? 'bg-muted' : ''
+              }`}
+              onClick={() => onSymbolSelect(symbol)}
+            >
+              <td className="py-3 font-medium">{symbol}</td>
+              <td className="text-right py-3">{marketData.ltp.toFixed(2)}</td>
+              <td 
+                className={`text-right py-3 ${
+                  marketData.change >= 0 ? 'text-green-500' : 'text-red-500'
+                }`}
+              >
+                {marketData.change >= 0 ? '+' : ''}
+                {marketData.change.toFixed(2)}
+              </td>
+              <td 
+                className={`text-right py-3 ${
+                  marketData.changePercent >= 0 ? 'text-green-500' : 'text-red-500'
+                }`}
+              >
+                {marketData.changePercent >= 0 ? '+' : ''}
+                {marketData.changePercent.toFixed(2)}%
+              </td>
+              <td className="text-right py-3">{marketData.volume.toLocaleString()}</td>
+              <td className="text-center py-3">
+                <button
+                  className="text-red-500 hover:text-red-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveSymbol(symbol);
+                  }}
+                >
+                  Remove
+                </button>
+              </td>
+            </tr>
+          ))}
+          
+          {Object.keys(data).length === 0 && (
+            <tr>
+              <td colSpan={6} className="py-4 text-center text-muted-foreground">
+                No symbols in watchlist. Add symbols to get started.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+export default MarketDataTable;
+
+
+================================================================================
+FILE: apps/frontend/lib/socket.ts
+PURPOSE: WebSocket Library
+================================================================================
+
+
+import { io, Socket } from 'socket.io-client';
+
+let socket: Socket | null = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+
+export const getSocket = (): Socket => {
+  if (!socket) {
+    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
+    console.log(`Connecting to WebSocket server at ${SOCKET_URL}`);
+    
+    socket = io(SOCKET_URL, {
+      reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+      reconnectionDelay: 1000,
+      timeout: 10000,
+      transports: ['websocket', 'polling']
+    });
+    
+    socket.on('connect', () => {
+      console.log(`Connected to WebSocket server with ID: ${socket?.id}`);
+      reconnectAttempts = 0;
+    });
+    
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error.message);
+      reconnectAttempts++;
+    });
+    
+    socket.on('disconnect', (reason) => {
+      console.log(`Disconnected from WebSocket server. Reason: ${reason}`);
+    });
+    
+    socket.on('error', (error) => {
+      console.error('Socket error:', error);
+    });
+    
+    socket.on('heartbeat', (data) => {
+      console.log('Heartbeat received:', data);
+    });
+  }
+  
+  return socket;
+};
+
+export const disconnectSocket = (): void => {
+  if (socket) {
+    console.log('Manually disconnecting socket');
+    socket.disconnect();
+    socket = null;
+  }
+};
+
+
+################################################################################
+SECTION 4: BACKEND SERVICES
+################################################################################
+
+================================================================================
+FILE: apps/backend/src/watchlist/watchlist.service.ts
+PURPOSE: Watchlist Service
+================================================================================
+
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+import { parse } from 'csv-parse';
+import * as moment from 'moment';
+
+export interface CompanyMaster {
+  company_id: number;
+  company_code: string;
+  name: string;
+  exchange: string;
+  marker: string;
+}
+
+export interface CompanyData {
+  company_code: string;
+  name: string;
+  exchange: string;
+  total_valid_days?: number;
+  avg_daily_high_low_range?: number;
+  median_daily_volume?: number;
+  avg_trading_capital?: number;
+  pe_ratio?: number;
+  N1_Pattern_count?: number;
+}
+
+export interface MergedCompany {
+  company_id?: number;
+  company_code: string;
+  name: string;
+  exchange: string;
+  marker: string;
+  total_valid_days?: number;
+  avg_daily_high_low_range?: number;
+  median_daily_volume?: number;
+  avg_trading_capital?: number;
+  pe_ratio?: number;
+  N1_Pattern_count?: number;
+}
+
+@Injectable()
+export class WatchlistService {
+  private readonly logger = new Logger(WatchlistService.name);
+  private readonly basePath = path.resolve(process.cwd(), 'data', 'watchlists');
+  private readonly masterDataPath = path.resolve(process.cwd(), 'data', 'company_master.csv');
+  
+  private companyMasterCache: CompanyMaster[] = [];
+  private cacheLastUpdated: number = 0;
+  private readonly cacheValidityMs = 30 * 60 * 1000;
+
+  async getWatchlistData(watchlist: string, date?: string): Promise<MergedCompany[]> {
+    const targetDate = date || moment().format('YYYY-MM-DD');
+    
+    try {
+      const companyMaster = await this.loadCompanyMaster();
+      const watchlistData = await this.loadWatchlistCSV(watchlist, targetDate);
+      const mergedData = this.mergeCompanyData(companyMaster, watchlistData);
+      
+      this.logger.log(`Merged ${mergedData.length} companies for watchlist ${watchlist}`);
+      return mergedData;
+      
+    } catch (error) {
+      this.logger.error(`Error loading watchlist ${watchlist}:`, error);
+      throw new NotFoundException(`Failed to load watchlist ${watchlist}: ${error.message}`);
+    }
+  }
+
+  private async loadCompanyMaster(): Promise<CompanyMaster[]> {
+    const now = Date.now();
+    if (this.companyMasterCache.length > 0 && (now - this.cacheLastUpdated) < this.cacheValidityMs) {
+      return this.companyMasterCache;
+    }
+
+    return new Promise((resolve, reject) => {
+      if (!fs.existsSync(this.masterDataPath)) {
+        this.logger.error(`Company master file not found: ${this.masterDataPath}`);
+        return reject(new Error('Company master data file not found'));
+      }
+
+      const results: CompanyMaster[] = [];
+
+      fs.createReadStream(this.masterDataPath)
+        .pipe(parse({
+          delimiter: ',',
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+        }))
+        .on('data', (data) => {
+          try {
+            // Handle both possible column name formats
+            const company: CompanyMaster = {
+              company_id: parseInt(data.company_id) || 0,
+              company_code: String(data.company_code || '').trim().toUpperCase(),
+              name: String(data['NAME OF COMPANY'] || data.name || '').trim(),
+              exchange: String(data.Exchange || data.exchange || 'NSE').trim().toUpperCase(),
+              marker: String(data.Marker || data.marker || 'EQ').trim().toUpperCase()
+            };
+
+            if (company.company_code && company.name) {
+              results.push(company);
+              this.logger.debug(`Loaded company: ${company.company_code} - ${company.name}`);
+            }
+          } catch (error) {
+            this.logger.warn(`Skipping invalid company master row: ${JSON.stringify(data)}`);
+          }
+        })
+        .on('end', () => {
+          this.companyMasterCache = results;
+          this.cacheLastUpdated = Date.now();
+          this.logger.log(`Loaded ${results.length} companies from master data`);
+          resolve(results);
+        })
+        .on('error', (error) => {
+          this.logger.error(`Error reading company master CSV: ${error}`);
+          reject(error);
+        });
+    });
+  }
+
+  private async loadWatchlistCSV(watchlist: string, date: string): Promise<CompanyData[]> {
+    const fileName = `watchlist_${watchlist}_${date}.csv`;
+    const filePath = path.join(this.basePath, fileName);
+
+    return new Promise((resolve, reject) => {
+      if (!fs.existsSync(filePath)) {
+        this.logger.warn(`Watchlist file not found: ${filePath}, trying fallback dates...`);
+        
+        const fallbackDates = this.generateFallbackDates(date);
+        this.tryFallbackDates(watchlist, fallbackDates)
+          .then(resolve)
+          .catch(reject);
+        return;
+      }
+
+      const results: CompanyData[] = [];
+
+      fs.createReadStream(filePath)
+        .pipe(parse({
+          delimiter: ',',
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+        }))
+        .on('data', (data) => {
+          try {
+            const company: CompanyData = {
+              company_code: String(data.company_code || '').trim().toUpperCase(),
+              name: String(data.name || '').trim(),
+              exchange: String(data.exchange || 'NSE').trim().toUpperCase(),
+              total_valid_days: data.total_valid_days ? Number(data.total_valid_days) : undefined,
+              avg_daily_high_low_range: data.avg_daily_high_low_range ? Number(data.avg_daily_high_low_range) : undefined,
+              median_daily_volume: data.median_daily_volume ? Number(data.median_daily_volume) : undefined,
+              avg_trading_capital: data.avg_trading_capital ? Number(data.avg_trading_capital) : undefined,
+              pe_ratio: data.pe_ratio ? Number(data.pe_ratio) : undefined,
+              N1_Pattern_count: data.N1_Pattern_count ? Number(data.N1_Pattern_count) : undefined
+            };
+
+            if (company.company_code) {
+              results.push(company);
+              this.logger.debug(`Loaded watchlist company: ${company.company_code} - ${company.name}`);
+            }
+          } catch (error) {
+            this.logger.warn(`Skipping invalid watchlist row: ${JSON.stringify(data)}`);
+          }
+        })
+        .on('end', () => {
+          this.logger.log(`Loaded ${results.length} companies from watchlist CSV: ${fileName}`);
+          resolve(results);
+        })
+        .on('error', (error) => {
+          this.logger.error(`Error reading watchlist CSV: ${error}`);
+          reject(error);
+        });
+    });
+  }
+
+  private async tryFallbackDates(watchlist: string, fallbackDates: string[]): Promise<CompanyData[]> {
+    for (const fallbackDate of fallbackDates) {
+      const fileName = `watchlist_${watchlist}_${fallbackDate}.csv`;
+      const filePath = path.join(this.basePath, fileName);
+      
+      if (fs.existsSync(filePath)) {
+        this.logger.log(`Using fallback date ${fallbackDate} for watchlist ${watchlist}`);
+        return this.loadWatchlistCSV(watchlist, fallbackDate);
+      }
+    }
+    
+    throw new Error(`No watchlist data found for ${watchlist} on any fallback dates`);
+  }
+
+  private generateFallbackDates(targetDate: string): string[] {
+    const date = moment(targetDate);
+    const fallbacks: string[] = [];
+    
+    for (let i = 1; i <= 10; i++) {
+      fallbacks.push(date.clone().subtract(i, 'days').format('YYYY-MM-DD'));
+    }
+    
+    return fallbacks;
+  }
+
+  private mergeCompanyData(masterData: CompanyMaster[], watchlistData: CompanyData[]): MergedCompany[] {
+    const mergedResults: MergedCompany[] = [];
+    const masterMap = new Map<string, CompanyMaster[]>();
+
+    // Create a map of master data by company_code
+    masterData.forEach(master => {
+      const key = master.company_code;
+      if (!masterMap.has(key)) {
+        masterMap.set(key, []);
+      }
+      masterMap.get(key)!.push(master);
+    });
+
+    this.logger.log(`Master data map has ${masterMap.size} unique company codes`);
+
+    // Merge watchlist data with master data
+    watchlistData.forEach(watchlistItem => {
+      const masterEntries = masterMap.get(watchlistItem.company_code) || [];
+      
+      if (masterEntries.length === 0) {
+        // No master data found, create entry with default marker
+        const merged: MergedCompany = {
+          company_code: watchlistItem.company_code,
+          name: watchlistItem.name,
+          exchange: watchlistItem.exchange,
+          marker: 'EQ', // Default marker
+          total_valid_days: watchlistItem.total_valid_days,
+          avg_daily_high_low_range: watchlistItem.avg_daily_high_low_range,
+          median_daily_volume: watchlistItem.median_daily_volume,
+          avg_trading_capital: watchlistItem.avg_trading_capital,
+          pe_ratio: watchlistItem.pe_ratio,
+          N1_Pattern_count: watchlistItem.N1_Pattern_count
+        };
+        mergedResults.push(merged);
+        this.logger.warn(`No master data found for company_code: ${watchlistItem.company_code}`);
+      } else {
+        // Find exact exchange match or use first available
+        let masterEntry = masterEntries.find(m => m.exchange === watchlistItem.exchange);
+        if (!masterEntry) {
+          masterEntry = masterEntries[0];
+        }
+
+        const merged: MergedCompany = {
+          company_id: masterEntry.company_id,
+          company_code: watchlistItem.company_code,
+          name: masterEntry.name || watchlistItem.name,
+          exchange: watchlistItem.exchange,
+          marker: masterEntry.marker,
+          total_valid_days: watchlistItem.total_valid_days,
+          avg_daily_high_low_range: watchlistItem.avg_daily_high_low_range,
+          median_daily_volume: watchlistItem.median_daily_volume,
+          avg_trading_capital: watchlistItem.avg_trading_capital,
+          pe_ratio: watchlistItem.pe_ratio,
+          N1_Pattern_count: watchlistItem.N1_Pattern_count
+        };
+        
+        mergedResults.push(merged);
+        this.logger.debug(`Merged: ${merged.company_code} with marker ${merged.marker}`);
+      }
+    });
+
+    return mergedResults.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async getAllCompaniesWithExchange(watchlist: string, date?: string): Promise<MergedCompany[]> {
+    const companies = await this.getWatchlistData(watchlist, date);
+    
+    return companies.filter(company => 
+      company.company_code && 
+      company.name && 
+      company.exchange &&
+      ['NSE', 'BSE'].includes(company.exchange.toUpperCase())
+    );
+  }
+
+  async checkWatchlistExists(watchlist: string, date?: string): Promise<boolean> {
+    const targetDate = date || moment().format('YYYY-MM-DD');
+    const fileName = `watchlist_${watchlist}_${targetDate}.csv`;
+    const filePath = path.join(this.basePath, fileName);
+    
+    if (fs.existsSync(filePath)) {
+      return true;
+    }
+    
+    const fallbackDates = this.generateFallbackDates(targetDate);
+    return fallbackDates.some(fallbackDate => {
+      const fallbackFileName = `watchlist_${watchlist}_${fallbackDate}.csv`;
+      const fallbackPath = path.join(this.basePath, fallbackFileName);
+      return fs.existsSync(fallbackPath);
+    });
+  }
+
+  async getAvailableWatchlists(): Promise<string[]> {
+    try {
+      const files = fs.readdirSync(this.basePath);
+      const watchlistPattern = /^watchlist_([A-Z])_\d{4}-\d{2}-\d{2}\.csv$/;
+      const watchlists = new Set<string>();
+      
+      files.forEach(file => {
+        const match = file.match(watchlistPattern);
+        if (match) {
+          watchlists.add(match[1]);
+        }
+      });
+      
+      return Array.from(watchlists).sort();
+    } catch (error) {
+      this.logger.error('Error reading watchlist directory:', error);
+      return [];
+    }
+  }
+
+  async refreshCompanyMasterCache(): Promise<void> {
+    this.companyMasterCache = [];
+    this.cacheLastUpdated = 0;
+    await this.loadCompanyMaster();
+  }
+
+  async getCompanyByCode(companyCode: string, exchange?: string): Promise<MergedCompany | null> {
+    const masterData = await this.loadCompanyMaster();
+    
+    let matches = masterData.filter(company => 
+      company.company_code.toUpperCase() === companyCode.toUpperCase()
+    );
+    
+    if (exchange) {
+      const exchangeMatch = matches.find(company => 
+        company.exchange.toUpperCase() === exchange.toUpperCase()
+      );
+      if (exchangeMatch) {
+        return {
+          company_id: exchangeMatch.company_id,
+          company_code: exchangeMatch.company_code,
+          name: exchangeMatch.name,
+          exchange: exchangeMatch.exchange,
+          marker: exchangeMatch.marker
+        };
+      }
+    }
+    
+    if (matches.length > 0) {
+      const match = matches[0];
+      return {
+        company_id: match.company_id,
+        company_code: match.company_code,
+        name: match.name,
+        exchange: match.exchange,
+        marker: match.marker
+      };
+    }
+    
+    return null;
+  }
+}
+
+
+================================================================================
+FILE: apps/backend/src/watchlist/watchlist.controller.ts
+PURPOSE: Watchlist Controller
+================================================================================
+
+import { Controller, Get, Param, Query, Post } from '@nestjs/common';
+import { WatchlistService, MergedCompany } from './watchlist.service';
+
+@Controller('api/watchlist')
+export class WatchlistController {
+  constructor(private readonly watchlistService: WatchlistService) {}
+
+  @Get(':watchlist')
+  async getWatchlist(
+    @Param('watchlist') watchlist: string,
+    @Query('date') date?: string,
+    @Query('exchange') exchange?: string,
+  ): Promise<{ companies: MergedCompany[], exists: boolean, total: number }> {
+    try {
+      const allCompanies = await this.watchlistService.getAllCompaniesWithExchange(watchlist, date);
+      
+      // Filter by exchange if specified
+      let companies = allCompanies;
+      if (exchange) {
+        const exchanges = exchange.split(',').map(ex => ex.trim().toUpperCase());
+        companies = allCompanies.filter(company => 
+          exchanges.includes(company.exchange.toUpperCase())
+        );
+      }
+      
+      console.log(`Retrieved ${companies.length} companies from watchlist ${watchlist} for exchanges: ${exchange || 'ALL'}`);
+      return { 
+        companies, 
+        exists: true, 
+        total: companies.length 
+      };
+    } catch (error) {
+      console.error(`Error fetching watchlist ${watchlist}:`, error);
+      return { 
+        companies: [], 
+        exists: false, 
+        total: 0 
+      };
+    }
+  }
+
+  @Get(':watchlist/check')
+  async checkWatchlist(
+    @Param('watchlist') watchlist: string,
+    @Query('date') date?: string,
+  ): Promise<{ exists: boolean }> {
+    const exists = await this.watchlistService.checkWatchlistExists(watchlist, date);
+    return { exists };
+  }
+
+  @Get(':watchlist/exchanges')
+  async getWatchlistExchanges(
+    @Param('watchlist') watchlist: string,
+    @Query('date') date?: string,
+  ): Promise<{ exchanges: string[] }> {
+    try {
+      const companies = await this.watchlistService.getWatchlistData(watchlist, date);
+      const exchanges = [...new Set(companies.map(c => c.exchange).filter(Boolean))];
+      return { exchanges };
+    } catch (error) {
+      return { exchanges: [] };
+    }
+  }
+
+  @Get()
+  async getAvailableWatchlists(): Promise<{ watchlists: string[] }> {
+    const watchlists = await this.watchlistService.getAvailableWatchlists();
+    return { watchlists };
+  }
+
+  @Get('company/:companyCode')
+  async getCompanyByCode(
+    @Param('companyCode') companyCode: string,
+    @Query('exchange') exchange?: string,
+  ): Promise<{ company: MergedCompany | null }> {
+    const company = await this.watchlistService.getCompanyByCode(companyCode, exchange);
+    return { company };
+  }
+
+  @Post('refresh-cache')
+  async refreshCache(): Promise<{ message: string }> {
+    await this.watchlistService.refreshCompanyMasterCache();
+    return { message: 'Company master cache refreshed successfully' };
+  }
+}
+
+
+################################################################################
+END OF CORE WATCHLIST COMPLETE SYSTEM EXTRACTION
+################################################################################
+
+EXTRACTION SUMMARY:
+===================
+Core Watchlist Page and Components: 4 files
+State Management and Hooks: 3 files
+Data Components: 2 files
+Backend Services: 2 files
+
+TOTAL FILES PROCESSED: 11 FILES
+################################################################################

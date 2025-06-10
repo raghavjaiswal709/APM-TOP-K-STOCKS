@@ -110,13 +110,15 @@ export function CalendarForm({
 
   return (
     <Form {...form}>
-      <div className="flex flex-wrap items-end gap-4">
+      <div className="flex items-center
+     gap-4">
         {/* Start Date */}
+        <div className=" flex flex-col gap-2" >
         <FormField
           control={form.control}
           name="startDate"
           render={({ field }) => (
-            <FormItem className="flex flex-col">
+            <FormItem className="flex flex-col ">
               <Popover>
                 <PopoverTrigger asChild>
                   <FormControl>
@@ -194,12 +196,13 @@ export function CalendarForm({
             </FormItem>
           )}
         />
-
+        </div>
+          <div className="flex flex-col gap-2">
         {/* Fetch Data Button - Only enabled when start date is selected */}
         <Button 
           onClick={handleFetchClick}
           disabled={loading || !startDate}
-          className="px-6 py-2 bg-white hover:bg-white/50 text-black font-medium"
+          className="px-6 py-1.4 bg-white hover:bg-white/50 text-black font-medium"
         >
           {loading ? (
             <>
@@ -233,6 +236,8 @@ export function CalendarForm({
             </>
           )}
         </Button>
+     
+     </div>
       </div>
     </Form>
   );

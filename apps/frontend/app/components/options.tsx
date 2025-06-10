@@ -64,8 +64,8 @@ export function CardWithForm({
   }, [onWatchlistChange]);
 
   return (
-    <Card className="border-none w-[600px]">
-      <CardContent className="p-4 w-[600px]">
+    <Card className="border-none w-[1000px]">
+      <CardContent className="p-4 w-[1000px]">
         <div className="space-y-2">
           {/* Company and Watchlist Selection */}
           <div className="flex justify-between gap-4">

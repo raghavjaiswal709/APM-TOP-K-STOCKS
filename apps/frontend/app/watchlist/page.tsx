@@ -49,14 +49,15 @@ export default function WatchlistPage() {
     error,
     exists,
     availableExchanges,
-  } = useWatchlist();
+  } = useWatchlist({ externalWatchlist: selectedWatchlist });
 
   const handleCompanySelect = (companyCode: string | null, exchange?: string) => {
     setSelectedCompany(companyCode);
     setSelectedExchange(exchange);
   };
 
-  const handleWatchlistChange = (watchlist: string) => {
+ const handleWatchlistChange = (watchlist: string) => {
+    console.log(`[WatchlistPage] Watchlist changed to: ${watchlist}`);
     setSelectedWatchlist(watchlist);
     setSelectedCompany(null); // Reset company selection when watchlist changes
     setSelectedExchange(undefined);

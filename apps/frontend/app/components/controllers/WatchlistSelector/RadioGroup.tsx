@@ -1,4 +1,4 @@
-// src/components/WatchlistSelector/RadioGroup.tsx
+import React from "react";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
@@ -7,7 +7,7 @@ interface RadioGroupDemoProps {
   onChange: (value: string) => void;
 }
 
-export function RadioGroupDemo({ value, onChange }: RadioGroupDemoProps) {
+export const RadioGroupDemo = React.memo(({ value, onChange }: RadioGroupDemoProps) => {
   return (
     <RadioGroup className="flex" value={value} onValueChange={onChange}>
       <div className="flex items-center space-x-2">
@@ -24,4 +24,6 @@ export function RadioGroupDemo({ value, onChange }: RadioGroupDemoProps) {
       </div>
     </RadioGroup>
   );
-}
+});
+
+RadioGroupDemo.displayName = 'RadioGroupDemo';

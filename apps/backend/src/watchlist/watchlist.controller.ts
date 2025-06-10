@@ -1,5 +1,5 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
-import { WatchlistService, Company } from './watchlist.service';
+import { Controller, Get, Param, Query, Post } from '@nestjs/common';
+import { WatchlistService, MergedCompany } from './watchlist.service';
 
 @Controller('api/watchlist')
 export class WatchlistController {
@@ -10,7 +10,7 @@ export class WatchlistController {
     @Param('watchlist') watchlist: string,
     @Query('date') date?: string,
     @Query('exchange') exchange?: string,
-  ): Promise<{ companies: Company[], exists: boolean }> {
+  ): Promise<{ companies: MergedCompany[], exists: boolean, total: number }> {
     try {
       const allCompanies = await this.watchlistService.getAllCompaniesWithExchange(watchlist, date);
       
@@ -24,10 +24,18 @@ export class WatchlistController {
       }
       
       console.log(`Retrieved ${companies.length} companies from watchlist ${watchlist} for exchanges: ${exchange || 'ALL'}`);
-      return { companies, exists: true };
+      return { 
+        companies, 
+        exists: true, 
+        total: companies.length 
+      };
     } catch (error) {
       console.error(`Error fetching watchlist ${watchlist}:`, error);
-      return { companies: [], exists: false };
+      return { 
+        companies: [], 
+        exists: false, 
+        total: 0 
+      };
     }
   }
 
@@ -52,5 +60,26 @@ export class WatchlistController {
     } catch (error) {
       return { exchanges: [] };
     }
+  }
+
+  @Get()
+  async getAvailableWatchlists(): Promise<{ watchlists: string[] }> {
+    const watchlists = await this.watchlistService.getAvailableWatchlists();
+    return { watchlists };
+  }
+
+  @Get('company/:companyCode')
+  async getCompanyByCode(
+    @Param('companyCode') companyCode: string,
+    @Query('exchange') exchange?: string,
+  ): Promise<{ company: MergedCompany | null }> {
+    const company = await this.watchlistService.getCompanyByCode(companyCode, exchange);
+    return { company };
+  }
+
+  @Post('refresh-cache')
+  async refreshCache(): Promise<{ message: string }> {
+    await this.watchlistService.refreshCompanyMasterCache();
+    return { message: 'Company master cache refreshed successfully' };
   }
 }

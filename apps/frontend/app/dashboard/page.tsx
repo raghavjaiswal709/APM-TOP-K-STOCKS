@@ -229,7 +229,7 @@ export default function Page() {
                       loading={stockLoading}
                     />
                     
-                    <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-center">
+                    <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-end">
                       <CalendarForm 
                         onDateRangeChange={handleDateRangeChange}
                         onFetchData={handleFetchData}

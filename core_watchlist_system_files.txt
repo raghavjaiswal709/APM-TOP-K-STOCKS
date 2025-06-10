@@ -1,3 +1,2404 @@
+================================================================================
+CORE WATCHLIST SYSTEM - COMPLETE FILE EXTRACTION
+Generated on: 09-06-2025 23:17:15.49
+================================================================================
+
+CATEGORIES:
+1. Core Watchlist Files (3 files)
+2. Data and Entity Files (4 files)
+3. Data Processing Files (2 files + CSV samples)
+4. Frontend Watchlist Management (3 files)
+5. Frontend Data Hooks (3 files)
+6. Frontend Display Components (2 files)
+
+TOTAL: 17 FILES + CSV SAMPLES
+================================================================================
+
+
+################################################################################
+SECTION 1: CORE WATCHLIST FILES
+################################################################################
+
+================================================================================
+FILE: apps/backend/src/watchlist/watchlist.service.ts
+PURPOSE: Main service for combining data from both sources
+================================================================================
+
+import { Injectable, NotFoundException } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+import { parse } from 'csv-parse';
+import * as moment from 'moment';
+
+export interface Company {
+  company_code: string;           
+  name: string;                 
+  exchange: string;             
+  total_valid_days?: number;      
+  avg_daily_high_low?: number;
+  median_daily_volume?: number;
+  avg_trading_ratio?: number;
+  N1_Pattern_count?: number;
+  avg_daily_high_low_range?: number;
+  avg_daily_volume?: number;
+  avg_trading_capital?: number;
+  instrument_token?: string;
+  tradingsymbol?: string;
+}
+
+@Injectable()
+export class WatchlistService {
+  private readonly basePath = path.resolve(process.cwd(), 'data', 'watchlists');
+
+  async getWatchlistData(watchlist: string, date?: string): Promise<Company[]> {
+    return new Promise((resolve, reject) => {
+      const targetDate = date || moment().format('YYYY-MM-DD');
+      
+      const fileName = `watchlist_${watchlist}_${targetDate}.csv`;
+      const filePath = path.join(this.basePath, fileName);
+      
+      console.log(`Attempting to read watchlist from: ${filePath}`);
+      
+      if (!fs.existsSync(filePath)) {
+        console.error(`Watchlist file not found: ${filePath}`);
+        return reject(new NotFoundException(`Watchlist ${watchlist} not found for date ${targetDate}`));
+      }
+      
+      const results: Company[] = [];
+      
+      fs.createReadStream(filePath)
+        .pipe(parse({
+          delimiter: ',',
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+        }))
+        .on('data', (data) => {
+          const cleanData: Company = {
+            company_code: String(data.company_code).trim(),
+            name: String(data.name || data.tradingsymbol || '').trim(),
+            exchange: String(data.exchange || 'NSE').trim(),
+            // Map new CSV fields
+            total_valid_days: data.total_valid_days ? Number(data.total_valid_days) : undefined,
+            avg_daily_high_low: data.avg_daily_high_low ? Number(data.avg_daily_high_low) : undefined,
+            median_daily_volume: data.median_daily_volume ? Number(data.median_daily_volume) : undefined,
+            avg_trading_ratio: data.avg_trading_ratio ? Number(data.avg_trading_ratio) : undefined,
+            N1_Pattern_count: data.N1_Pattern_count ? Number(data.N1_Pattern_count) : undefined,
+            // Legacy fields for backward compatibility
+            avg_daily_high_low_range: data.avg_daily_high_low_range ? Number(data.avg_daily_high_low_range) : undefined,
+            avg_daily_volume: data.avg_daily_volume ? Number(data.avg_daily_volume) : undefined,
+            avg_trading_capital: data.avg_trading_capital ? Number(data.avg_trading_capital) : undefined,
+            instrument_token: data.instrument_token,
+            tradingsymbol: data.tradingsymbol,
+          };
+          
+          results.push(cleanData);
+        })
+        .on('end', () => {
+          console.log(`Successfully loaded ${results.length} companies from watchlist ${watchlist}`);
+          resolve(results);
+        })
+        .on('error', (error) => {
+          console.error(`Error reading watchlist CSV: ${error}`);
+          reject(error);
+        });
+    });
+  }
+
+  async getAllCompaniesWithExchange(watchlist: string, date?: string): Promise<Company[]> {
+    const companies = await this.getWatchlistData(watchlist, date);
+    
+    // Filter and enhance companies with exchange information
+    return companies.filter(company => 
+      company.company_code && 
+      company.name && 
+      company.exchange &&
+      ['NSE', 'BSE'].includes(company.exchange.toUpperCase())
+    );
+  }
+
+  async checkWatchlistExists(watchlist: string, date?: string): Promise<boolean> {
+    const targetDate = date || moment().format('YYYY-MM-DD');
+    const fileName = `watchlist_${watchlist}_${targetDate}.csv`;
+    const filePath = path.join(this.basePath, fileName);
+    
+    return fs.existsSync(filePath);
+  }
+}
+
+
+================================================================================
+FILE: apps/backend/src/watchlist/watchlist.controller.ts
+PURPOSE: API endpoints for watchlist operations
+================================================================================
+
+import { Controller, Get, Param, Query } from '@nestjs/common';
+import { WatchlistService, Company } from './watchlist.service';
+
+@Controller('api/watchlist')
+export class WatchlistController {
+  constructor(private readonly watchlistService: WatchlistService) {}
+
+  @Get(':watchlist')
+  async getWatchlist(
+    @Param('watchlist') watchlist: string,
+    @Query('date') date?: string,
+    @Query('exchange') exchange?: string,
+  ): Promise<{ companies: Company[], exists: boolean }> {
+    try {
+      const allCompanies = await this.watchlistService.getAllCompaniesWithExchange(watchlist, date);
+      
+      // Filter by exchange if specified
+      let companies = allCompanies;
+      if (exchange) {
+        const exchanges = exchange.split(',').map(ex => ex.trim().toUpperCase());
+        companies = allCompanies.filter(company => 
+          exchanges.includes(company.exchange.toUpperCase())
+        );
+      }
+      
+      console.log(`Retrieved ${companies.length} companies from watchlist ${watchlist} for exchanges: ${exchange || 'ALL'}`);
+      return { companies, exists: true };
+    } catch (error) {
+      console.error(`Error fetching watchlist ${watchlist}:`, error);
+      return { companies: [], exists: false };
+    }
+  }
+
+  @Get(':watchlist/check')
+  async checkWatchlist(
+    @Param('watchlist') watchlist: string,
+    @Query('date') date?: string,
+  ): Promise<{ exists: boolean }> {
+    const exists = await this.watchlistService.checkWatchlistExists(watchlist, date);
+    return { exists };
+  }
+
+  @Get(':watchlist/exchanges')
+  async getWatchlistExchanges(
+    @Param('watchlist') watchlist: string,
+    @Query('date') date?: string,
+  ): Promise<{ exchanges: string[] }> {
+    try {
+      const companies = await this.watchlistService.getWatchlistData(watchlist, date);
+      const exchanges = [...new Set(companies.map(c => c.exchange).filter(Boolean))];
+      return { exchanges };
+    } catch (error) {
+      return { exchanges: [] };
+    }
+  }
+}
+
+
+================================================================================
+FILE: apps/backend/src/watchlist/watchlist.module.ts
+PURPOSE: Module configuration
+================================================================================
+
+// src/watchlist/watchlist.module.ts
+import { Module } from '@nestjs/common';
+import { WatchlistController } from './watchlist.controller';
+import { WatchlistService } from './watchlist.service';
+
+@Module({
+  controllers: [WatchlistController],
+  providers: [WatchlistService],
+})
+export class WatchlistModule {}
+
+
+################################################################################
+SECTION 2: DATA AND ENTITY FILES
+################################################################################
+
+================================================================================
+FILE: apps/backend/src/stock/entities/stock.entity.ts
+PURPOSE: Entity with marker field and company_code/exchange mapping
+================================================================================
+
+import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
+
+@Entity({ name: 'stock_prices' }) 
+export class StockData {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column({ type: 'varchar', length: 50 }) 
+  company_code: string;  
+
+  @Column({ type: 'varchar', length: 10 })
+  exchange: string;  
+
+  @Column('timestamp') 
+  date: Date;
+
+  @Column('float')
+  open: number;
+
+  @Column('float')
+  high: number;
+
+  @Column('float')
+  low: number;
+
+  @Column('float')
+  close: number;
+
+  @Column('int')
+  volume: number;
+
+  @Column('timestamp')
+  start_date: Date;
+
+  @Column('timestamp')
+  end_date: Date;
+}
+
+
+================================================================================
+FILE: apps/backend/src/stock/dto/stock-data.dto.ts
+PURPOSE: DTOs for new data structure
+================================================================================
+
+export class StockDataRequestDto {
+  companyCode: string;  
+  exchange?: string;
+  startDate?: Date;
+  endDate?: Date;
+  interval: string;
+  indicators: string[];
+  firstFifteenMinutes?: boolean;
+}
+
+export class StockDataDto {
+  interval_start: Date;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+
+================================================================================
+FILE: apps/backend/src/stock/dto/stock-filter.dto.ts
+PURPOSE: Filtering capabilities for markers
+================================================================================
+
+
+
+================================================================================
+FILE: apps/backend/src/stock/stocks.service.ts
+PURPOSE: Data merging logic
+================================================================================
+
+import { Injectable, InternalServerErrorException, RequestTimeoutException, Logger, BadRequestException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { StockData } from './entities/stock.entity';
+import { StockDataDto, StockDataRequestDto } from './dto/stock-data.dto';
+import { exec } from 'child_process';
+import * as path from 'path';
+
+interface CacheEntry {
+  data: StockDataDto[];
+  timestamp: number;
+  startDate: Date;
+  endDate: Date;
+  interval: string;
+  companyCode: string;
+}
+
+interface DataGap {
+  start: Date;
+  end: Date;
+  type: 'before' | 'after' | 'within';
+}
+
+@Injectable()
+export class StockService {
+  private readonly logger = new Logger(StockService.name);
+  private readonly dataCache = new Map<string, CacheEntry>();
+  private readonly cacheTTL = 5 * 60 * 1000; // 5 minutes cache TTL
+  private readonly maxCacheSize = 100; // Maximum cache entries
+  private readonly pendingRequests = new Map<string, Promise<StockDataDto[]>>();
+
+  constructor(
+    @InjectRepository(StockData)
+    private stockRepository: Repository<StockData>,
+  ) {
+    // Clean up cache periodically
+    setInterval(() => this.cleanupCache(), 60 * 1000); // Every minute
+  }
+
+  /**
+   * Existing method - Get top 5 companies by average close price
+   */
+  async getTop5Companies() {
+    return this.stockRepository
+      .createQueryBuilder('stock')
+      .select('stock.company_code', 'companyCode')
+      .addSelect('stock.exchange', 'exchange')
+      .addSelect('AVG(stock.close)', 'averageClose')
+      .where('stock.exchange IN (:...exchanges)', { exchanges: ['NSE', 'BSE'] })
+      .groupBy('stock.company_code, stock.exchange')
+      .orderBy('"averageClose"', 'DESC')
+      .limit(5)
+      .getRawMany();
+  }
+
+  /**
+   * Existing method - Get company historical data from database
+   */
+  async getCompanyHistory(companyCode: string, exchange?: string) {
+    const queryBuilder = this.stockRepository
+      .createQueryBuilder('stock')
+      .where('stock.company_code = :companyCode', { companyCode });
+    
+    if (exchange) {
+      queryBuilder.andWhere('stock.exchange = :exchange', { exchange });
+    } else {
+      queryBuilder.andWhere('stock.exchange IN (:...exchanges)', { exchanges: ['NSE', 'BSE'] });
+    }
+    
+    return queryBuilder
+      .orderBy('stock.date', 'ASC')
+      .getMany();
+  }
+
+  /**
+   * Enhanced method to get stock data with intelligent caching and optimization
+   */
+  async getStockDataFromPython(params: StockDataRequestDto): Promise<StockDataDto[]> {
+    try {
+      this.validateRequest(params);
+      
+      const startTime = Date.now();
+      this.logger.log(`Fetching stock data for ${params.companyCode} from ${params.startDate} to ${params.endDate}`);
+
+      // Check if we can serve from cache
+      const cachedData = this.getCachedData(params);
+      if (cachedData) {
+        this.logger.log(`Serving data from cache for ${params.companyCode}`);
+        return cachedData;
+      }
+
+      // Check for pending requests to avoid duplicates
+      const requestKey = this.generateRequestKey(params);
+      const pendingRequest = this.pendingRequests.get(requestKey);
+      if (pendingRequest) {
+        this.logger.log(`Request already pending for ${requestKey}, waiting...`);
+        return await pendingRequest;
+      }
+
+      // Create and execute the data fetch promise
+      const dataPromise = this.executeStockDataFetch(params);
+      this.pendingRequests.set(requestKey, dataPromise);
+
+      try {
+        const data = await dataPromise;
+        
+        // Cache the result
+        this.setCachedData(params, data);
+        
+        this.logger.log(`Successfully fetched ${data.length} data points for ${params.companyCode} in ${Date.now() - startTime}ms`);
+        return data;
+        
+      } finally {
+        this.pendingRequests.delete(requestKey);
+      }
+
+    } catch (error) {
+      this.logger.error(`Error fetching stock data for ${params.companyCode}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Core method to execute stock data fetch from Python - FIXED stderr handling
+   */
+  private async executeStockDataFetch(params: StockDataRequestDto): Promise<StockDataDto[]> {
+    return new Promise((resolve, reject) => {
+      const scriptPath = path.resolve(__dirname, '../../data/data_fetch.py');
+      
+      let command = `python ${scriptPath} --company_code=${params.companyCode} --interval=${params.interval}`;
+      
+      // Exchange handling
+      if (params.exchange) {
+        command += ` --exchange=${params.exchange}`;
+      } else {
+        command += ` --exchange=NSE,BSE`;
+      }
+      
+      // Enhanced date range handling
+      if (params.startDate && params.endDate) {
+        // Convert to IST for better compatibility
+        const startIST = new Date(params.startDate.getTime() + 5.5 * 60 * 60 * 1000);
+        const endIST = new Date(params.endDate.getTime() + 5.5 * 60 * 60 * 1000);
+        
+        command += ` --start_date="${startIST.toISOString()}" --end_date="${endIST.toISOString()}"`;
+        command += ' --optimize_for_range=true'; // Range optimization flag
+        
+        // Add buffer for smooth scrolling
+        const bufferMinutes = this.getBufferMinutes(params.interval);
+        command += ` --buffer_minutes=${bufferMinutes}`;
+        
+        if (params.firstFifteenMinutes) {
+          command += ' --first_fifteen_minutes=true';
+        }
+      } else {
+        command += ' --fetch_all_data=true';
+        command += ' --limit=10000'; // Prevent excessive data
+      }
+      
+      // Performance optimizations
+      command += ' --enable_cache=true';
+      command += ' --compression=true';
+      command += ' --validate_data=true';
+      
+      // Add indicators support
+      if (params.indicators && params.indicators.length > 0) {
+        command += ` --indicators="${params.indicators.join(',')}"`;
+      }
+      
+      this.logger.debug(`Executing optimized command: ${command}`);
+      
+      const timeout = this.getTimeoutForRange(params);
+      
+      const timeoutId = setTimeout(() => {
+        this.logger.error(`Python script execution timed out after ${timeout}ms`);
+        reject(new RequestTimeoutException('Data fetch request timed out. Please try a smaller date range.'));
+      }, timeout);
+      
+      const childProcess = exec(command, { 
+        maxBuffer: 1024 * 1024 * 100, // 100MB buffer for large datasets
+        timeout: timeout,
+        cwd: path.resolve(__dirname, '../../data')
+      }, (error, stdout, stderr) => {
+        clearTimeout(timeoutId);
+        
+        if (error) {
+          this.logger.error(`Python script execution failed: ${error.message}`);
+          
+          // Fix #2: Proper type handling for error.code
+          if (typeof error.code === 'string' && error.code === 'ENOENT') {
+            return reject(new InternalServerErrorException('Python environment not configured properly'));
+          }
+          
+          if (error.signal === 'SIGTERM') {
+            return reject(new RequestTimeoutException('Request was cancelled due to timeout'));
+          }
+          
+          return reject(new InternalServerErrorException(`Failed to fetch stock data: ${error.message}`));
+        }
+        
+        // ENHANCED stderr handling - properly categorize messages
+        if (stderr) {
+          const lines = stderr.split('\n').filter(line => line.trim());
+          
+          // Categorize stderr output intelligently
+        const actualErrors: string[] = [];
+const warnings: string[] = [];
+const infoMessages: string[] = [];
+
+          
+          for (const line of lines) {
+            const lowerLine = line.toLowerCase();
+            
+            // Actual error patterns that should fail the request
+            if (lowerLine.includes('error:') || 
+                lowerLine.includes('traceback') || 
+                lowerLine.includes('exception:') ||
+                lowerLine.includes('failed:') ||
+                lowerLine.includes('critical:') ||
+                lowerLine.includes('database connection failed') ||
+                lowerLine.includes('no company found') ||
+                lowerLine.startsWith('error ')) {
+              actualErrors.push(line);
+            }
+            // Warning patterns
+            else if (lowerLine.includes('warning') || 
+                     lowerLine.includes('userwarning') ||
+                     lowerLine.includes('deprecation') ||
+                     lowerLine.includes('skipped') && lowerLine.includes('invalid')) {
+              warnings.push(line);
+            }
+            // Informational messages (should NOT cause failures)
+            else if (lowerLine.includes('fetching') ||
+                     lowerLine.includes('data range:') ||
+                     lowerLine.includes('successfully') ||
+                     lowerLine.includes('query executed') ||
+                     lowerLine.includes('found') && lowerLine.includes('company') ||
+                     lowerLine.includes('looking up') ||
+                     lowerLine.includes('applied') && lowerLine.includes('buffer') ||
+                     lowerLine.includes('processing') ||
+                     lowerLine.includes('completed') ||
+                     lowerLine.includes('data points') ||
+                     lowerLine.includes('querying') ||
+                     lowerLine.includes('filtered to') ||
+                     lowerLine.includes('adjusted for') ||
+                     lowerLine.includes('records for company') ||
+                     lowerLine.includes('in ') && lowerLine.includes('s')) {
+              infoMessages.push(line);
+            }
+            // Default: treat unknown stderr as potential warning, not error
+            else if (line.trim()) {
+              warnings.push(line);
+            }
+          }
+          
+          // Log different types appropriately
+          if (infoMessages.length > 0) {
+            this.logger.log(`Python script info: ${infoMessages.join('; ')}`);
+          }
+          
+          if (warnings.length > 0) {
+            this.logger.warn(`Python script warnings: ${warnings.join('; ')}`);
+          }
+          
+          // ONLY fail on ACTUAL errors, not informational messages or warnings
+          if (actualErrors.length > 0) {
+            this.logger.error(`Python script errors: ${actualErrors.join('; ')}`);
+            return reject(new InternalServerErrorException('Data processing failed with errors'));
+          }
+        }
+        
+        try {
+          const results = this.parseOptimizedOutput(stdout, params);
+          
+          if (results.length === 0) {
+            this.logger.warn(`No data found for ${params.companyCode} in the specified range`);
+            return resolve([]);
+          }
+          
+          // Validate and process data
+          const processedResults = this.processAndValidateData(results, params);
+          
+          this.logger.log(`Successfully processed ${processedResults.length} data points for ${params.companyCode}`);
+          resolve(processedResults);
+          
+        } catch (parseError) {
+          this.logger.error(`Error parsing Python script output:`, parseError);
+          this.logger.debug(`Raw stdout: ${stdout.substring(0, 1000)}...`);
+          reject(new InternalServerErrorException('Failed to parse stock data. Data format may be invalid.'));
+        }
+      });
+      
+      // Handle process errors
+      childProcess.on('error', (error) => {
+        clearTimeout(timeoutId);
+        this.logger.error(`Child process error: ${error.message}`);
+        reject(new InternalServerErrorException(`Data fetch process failed: ${error.message}`));
+      });
+      
+      // Handle process exit codes
+      childProcess.on('exit', (code, signal) => {
+        if (code !== 0 && code !== null) {
+          this.logger.error(`Python script exited with code ${code}`);
+        }
+        if (signal) {
+          this.logger.warn(`Python script terminated by signal ${signal}`);
+        }
+      });
+    });
+  }
+
+  /**
+   * Enhanced parsing with comprehensive error handling
+   */
+  private parseOptimizedOutput(stdout: string, params: StockDataRequestDto): StockDataDto[] {
+    const lines = stdout.trim().split('\n');
+    const results: StockDataDto[] = [];
+    let errorCount = 0;
+    const maxErrors = 10; // Maximum parsing errors to tolerate
+    
+    for (const line of lines) {
+      if (line.startsWith('Interval:')) {
+        try {
+          const parts = line.split(',');
+          
+          if (parts.length < 6) {
+            throw new Error(`Insufficient data fields: expected 6, got ${parts.length}`);
+          }
+          
+          const intervalPart = parts[0].replace('Interval:', '').trim();
+          const openPart = parseFloat(parts[1].replace('Open:', '').trim());
+          const highPart = parseFloat(parts[2].replace('High:', '').trim());
+          const lowPart = parseFloat(parts[3].replace('Low:', '').trim());
+          const closePart = parseFloat(parts[4].replace('Close:', '').trim());
+          const volumePart = parts[5] ? parseFloat(parts[5].replace('Volume:', '').trim()) : 0;
+          
+          // Comprehensive data validation
+          if (isNaN(openPart) || isNaN(highPart) || isNaN(lowPart) || isNaN(closePart)) {
+            throw new Error('Invalid numeric values detected');
+          }
+          
+          // Business logic validation
+          if (highPart < Math.max(openPart, closePart) || lowPart > Math.min(openPart, closePart)) {
+            throw new Error('Invalid OHLC relationship');
+          }
+          
+          // Validate timestamp
+          const timestamp = new Date(intervalPart);
+          if (isNaN(timestamp.getTime())) {
+            throw new Error('Invalid timestamp format');
+          }
+          
+          // Check if timestamp is within expected range
+          if (params.startDate && params.endDate) {
+            if (timestamp < params.startDate || timestamp > params.endDate) {
+              continue; // Skip data outside requested range
+            }
+          }
+          
+          results.push({
+            interval_start: timestamp,
+            open: this.roundToDecimalPlaces(openPart, 2),
+            high: this.roundToDecimalPlaces(highPart, 2),
+            low: this.roundToDecimalPlaces(lowPart, 2),
+            close: this.roundToDecimalPlaces(closePart, 2),
+            volume: Math.max(0, Math.round(volumePart)), // Ensure non-negative integer
+          });
+          
+        } catch (err) {
+          errorCount++;
+          this.logger.warn(`Skipping invalid data line (${errorCount}/${maxErrors}): ${line.substring(0, 100)} - Error: ${(err as Error).message}`);
+          
+          if (errorCount >= maxErrors) {
+            throw new Error(`Too many parsing errors (${errorCount}). Data quality may be poor.`);
+          }
+        }
+      } else if (line.startsWith('ERROR:') || line.startsWith('FATAL:')) {
+        throw new Error(`Python script error: ${line}`);
+      }
+    }
+    
+    if (errorCount > 0) {
+      this.logger.warn(`Parsed data with ${errorCount} errors for ${params.companyCode}`);
+    }
+    
+    return results;
+  }
+
+  /**
+   * Process and validate data with first fifteen minutes filter
+   */
+  private processAndValidateData(data: StockDataDto[], params: StockDataRequestDto): StockDataDto[] {
+    if (data.length === 0) return data;
+    
+    // Sort by timestamp
+    data.sort((a, b) => a.interval_start.getTime() - b.interval_start.getTime());
+    
+    // Remove duplicates
+    const uniqueData = data.filter((item, index, array) => 
+      index === 0 || item.interval_start.getTime() !== array[index - 1].interval_start.getTime()
+    );
+    
+    // Apply first fifteen minutes filter if requested
+    if (params.firstFifteenMinutes && uniqueData.length > 0) {
+      const startTime = new Date(uniqueData[0].interval_start);
+      const endTime = new Date(startTime.getTime() + 15 * 60 * 1000); // 15 minutes
+      
+      const filteredResults = uniqueData.filter(item => {
+        const itemTime = new Date(item.interval_start);
+        return itemTime >= startTime && itemTime <= endTime;
+      });
+      
+      this.logger.log(`Filtered to first 15 minutes: ${filteredResults.length} data points`);
+      return filteredResults;
+    }
+    
+    // Detect and log data gaps
+    const gaps = this.detectDataGaps(uniqueData, params.interval);
+    if (gaps.length > 0) {
+      this.logger.warn(`Detected ${gaps.length} data gaps for ${params.companyCode}`);
+    }
+    
+    return uniqueData;
+  }
+
+  /**
+   * Cache management methods
+   */
+  private generateRequestKey(params: StockDataRequestDto): string {
+    const dateKey = params.startDate && params.endDate 
+      ? `${params.startDate.getTime()}-${params.endDate.getTime()}`
+      : 'all';
+    
+    const firstFifteenKey = params.firstFifteenMinutes ? '_first15' : '';
+    const indicatorsKey = params.indicators?.length > 0 ? `_${params.indicators.join(',')}` : '';
+    
+    return `${params.companyCode}_${params.interval}_${params.exchange || 'NSE-BSE'}_${dateKey}${firstFifteenKey}${indicatorsKey}`;
+  }
+
+  private getCachedData(params: StockDataRequestDto): StockDataDto[] | null {
+    const key = this.generateRequestKey(params);
+    const cached = this.dataCache.get(key);
+    
+    if (!cached) return null;
+    
+    // Check if cache is still valid
+    if (Date.now() - cached.timestamp > this.cacheTTL) {
+      this.dataCache.delete(key);
+      return null;
+    }
+    
+    // Check if cached data covers the requested range
+    if (params.startDate && params.endDate) {
+      if (cached.startDate > params.startDate || cached.endDate < params.endDate) {
+        return null; // Cache doesn't cover full range
+      }
+    }
+    
+    return cached.data;
+  }
+
+  private setCachedData(params: StockDataRequestDto, data: StockDataDto[]): void {
+    if (data.length === 0) return;
+    
+    const key = this.generateRequestKey(params);
+    
+    // Implement LRU cache eviction
+    if (this.dataCache.size >= this.maxCacheSize) {
+      const oldestKey = this.dataCache.keys().next().value;
+      this.dataCache.delete(oldestKey);
+    }
+    
+    const cacheEntry: CacheEntry = {
+      data,
+      timestamp: Date.now(),
+      startDate: params.startDate || data[0].interval_start,
+      endDate: params.endDate || data[data.length - 1].interval_start,
+      interval: params.interval,
+      companyCode: params.companyCode
+    };
+    
+    this.dataCache.set(key, cacheEntry);
+  }
+
+  private cleanupCache(): void {
+    const now = Date.now();
+    const keysToDelete: string[] = [];
+    
+    for (const [key, entry] of this.dataCache.entries()) {
+      if (now - entry.timestamp > this.cacheTTL) {
+        keysToDelete.push(key);
+      }
+    }
+    
+    keysToDelete.forEach(key => this.dataCache.delete(key));
+    
+    if (keysToDelete.length > 0) {
+      this.logger.debug(`Cleaned up ${keysToDelete.length} expired cache entries`);
+    }
+  }
+
+  /**
+   * Data analysis and validation methods
+   */
+  private detectDataGaps(data: StockDataDto[], interval: string): DataGap[] {
+    if (data.length < 2) return [];
+    
+    const gaps: DataGap[] = [];
+    const expectedInterval = this.getIntervalInMs(interval);
+    
+    for (let i = 1; i < data.length; i++) {
+      const timeDiff = data[i].interval_start.getTime() - data[i-1].interval_start.getTime();
+      
+      if (timeDiff > expectedInterval * 1.5) { // Allow 50% tolerance
+        gaps.push({
+          start: data[i-1].interval_start,
+          end: data[i].interval_start,
+          type: 'within'
+        });
+      }
+    }
+    
+    return gaps;
+  }
+
+  /**
+   * Utility methods
+   */
+  private validateRequest(params: StockDataRequestDto): void {
+    if (!params.companyCode) {
+      throw new BadRequestException('Company code is required');
+    }
+    
+    if (!params.interval) {
+      throw new BadRequestException('Interval is required');
+    }
+    
+    if (params.startDate && params.endDate && params.startDate >= params.endDate) {
+      throw new BadRequestException('Start date must be before end date');
+    }
+    
+    // Validate date range is not too large
+    if (params.startDate && params.endDate) {
+      const daysDiff = (params.endDate.getTime() - params.startDate.getTime()) / (1000 * 60 * 60 * 24);
+      const maxDays = this.getMaxDaysForInterval(params.interval);
+      
+      if (daysDiff > maxDays) {
+        throw new BadRequestException(`Date range too large for interval ${params.interval}. Maximum ${maxDays} days allowed.`);
+      }
+    }
+  }
+
+  private getBufferMinutes(interval: string): number {
+    const bufferMap: { [key: string]: number } = {
+      '1m': 15,
+      '5m': 60,
+      '15m': 180,
+      '1h': 720,
+      '1d': 1440
+    };
+    return bufferMap[interval] || 30;
+  }
+
+  private getTimeoutForRange(params: StockDataRequestDto): number {
+    const baseTimeout = 60000; // 60 seconds (reduced from original 300 seconds)
+    
+    if (!params.startDate || !params.endDate) {
+      return 300000; // 5 minutes for full data (keeping original timeout)
+    }
+    
+    const daysDiff = (params.endDate.getTime() - params.startDate.getTime()) / (1000 * 60 * 60 * 24);
+    return Math.round(Math.min(baseTimeout + (daysDiff * 2000), 300000));
+  }
+
+  private getMaxDaysForInterval(interval: string): number {
+    const maxDaysMap: { [key: string]: number } = {
+      '1m': 365,
+      '5m': 365,
+      '15m': 365,
+      '1h': 365,
+      '1d': 1825 // 5 years
+    };
+    return maxDaysMap[interval] || 30;
+  }
+
+  private getIntervalInMs(interval: string): number {
+    const intervalMap: { [key: string]: number } = {
+      '1m': 60 * 1000,
+      '5m': 5 * 60 * 1000,
+      '15m': 15 * 60 * 1000,
+      '1h': 60 * 60 * 1000,
+      '1d': 24 * 60 * 60 * 1000
+    };
+    return intervalMap[interval] || 60 * 1000;
+  }
+
+  private roundToDecimalPlaces(value: number, places: number): number {
+    return Math.round(value * Math.pow(10, places)) / Math.pow(10, places);
+  }
+
+  /**
+   * Public utility methods for cache management and monitoring
+   */
+  public clearCache(): void {
+    this.dataCache.clear();
+    this.pendingRequests.clear();
+    this.logger.log('Stock data cache and pending requests cleared');
+  }
+
+  public getCacheStats(): any {
+    return {
+      size: this.dataCache.size,
+      maxSize: this.maxCacheSize,
+      ttl: this.cacheTTL,
+      pendingRequests: this.pendingRequests.size,
+      entries: Array.from(this.dataCache.entries()).map(([key, entry]) => ({
+        key,
+        companyCode: entry.companyCode,
+        interval: entry.interval,
+        dataPoints: entry.data.length,
+        age: Date.now() - entry.timestamp,
+        dateRange: `${entry.startDate.toISOString()} - ${entry.endDate.toISOString()}`
+      }))
+    };
+  }
+
+  /**
+   * Method to support incremental data loading for chart scrolling
+   */
+  async getIncrementalData(
+    companyCode: string,
+    startDate: Date,
+    endDate: Date,
+    interval: string,
+    exchange?: string,
+    indicators: string[] = []
+  ): Promise<StockDataDto[]> {
+    const params: StockDataRequestDto = {
+      companyCode,
+      startDate,
+      endDate,
+      interval,
+      exchange,
+      firstFifteenMinutes: false,
+      indicators
+    };
+
+    return this.getStockDataFromPython(params);
+  }
+}
+
+
+################################################################################
+SECTION 3: DATA PROCESSING FILES
+################################################################################
+
+================================================================================
+FILE: apps/backend/data/data_fetch.py
+PURPOSE: Merging two data sources
+================================================================================
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from datetime import datetime, timedelta
+import argparse
+import sys
+import json
+import time
+import logging
+
+# Configure logging with proper levels
+logging.basicConfig(
+    level=logging.INFO,
+    format='INFO: %(message)s',
+    stream=sys.stderr
+)
+
+logger = logging.getLogger(__name__)
+
+def main():
+    parser = argparse.ArgumentParser(description='Fetch and aggregate stock data.')
+    parser.add_argument('--company_code', type=str, required=True, help='Company code to fetch data for')
+    parser.add_argument('--exchange', type=str, default='NSE,BSE', help='Exchange filter (NSE, BSE, or NSE,BSE)')
+    parser.add_argument('--start_date', type=str, default='2024-02-22 00:00:00', help='Start date and time (ISO format or YYYY-MM-DD HH:MM:SS)')
+    parser.add_argument('--end_date', type=str, default='2024-04-16 00:00:00', help='End date and time (ISO format or YYYY-MM-DD HH:MM:SS)')
+    parser.add_argument('--interval', type=str, default='10m', help='Interval for aggregation (e.g., 1m, 5m, 10m, 15m, 30m, 1h)')
+    parser.add_argument('--first_fifteen_minutes', type=str, default='false', 
+                       choices=['true', 'false'],
+                       help='Filter to first 15 minutes of trading day')
+    parser.add_argument('--fetch_all_data', type=str, default='false',
+                       choices=['true', 'false'],
+                       help='Fetch all available data for the company (ignores date range)')
+    
+    # Enhanced arguments for the new StockService
+    parser.add_argument('--limit', type=int, default=10000, help='Maximum number of records to return')
+    parser.add_argument('--enable_cache', type=str, default='false', 
+                       choices=['true', 'false'],
+                       help='Enable caching (future feature)')
+    parser.add_argument('--compression', type=str, default='false',
+                       choices=['true', 'false'], 
+                       help='Enable compression (future feature)')
+    parser.add_argument('--validate_data', type=str, default='true',
+                       choices=['true', 'false'],
+                       help='Enable data validation')
+    parser.add_argument('--optimize_for_range', type=str, default='false',
+                       choices=['true', 'false'],
+                       help='Optimize query for date range requests')
+    parser.add_argument('--buffer_minutes', type=int, default=30,
+                       help='Buffer minutes to add around date range')
+    parser.add_argument('--indicators', type=str, default='',
+                       help='Comma-separated list of indicators (future feature)')
+    parser.add_argument('--parallel_processing', type=str, default='false',
+                       choices=['true', 'false'],
+                       help='Enable parallel processing (future feature)')
+    
+    args = parser.parse_args()
+    
+    # Parse boolean arguments
+    first_fifteen_minutes = args.first_fifteen_minutes.lower() == 'true'
+    fetch_all_data = args.fetch_all_data.lower() == 'true'
+    enable_cache = args.enable_cache.lower() == 'true'
+    compression = args.compression.lower() == 'true'
+    validate_data = args.validate_data.lower() == 'true'
+    optimize_for_range = args.optimize_for_range.lower() == 'true'
+    parallel_processing = args.parallel_processing.lower() == 'true'
+    
+    # Parse indicators
+    indicators = [ind.strip() for ind in args.indicators.split(',') if ind.strip()] if args.indicators else []
+    
+    if fetch_all_data:
+        start_date = None
+        end_date = None
+        logger.info(f"Fetching all available data for company_code={args.company_code} on exchanges={args.exchange} (limit={args.limit})")
+    else:
+        try:
+            start_date = parse_date_string(args.start_date)
+            end_date = parse_date_string(args.end_date)
+            
+            # Apply buffer for range optimization
+            if optimize_for_range and args.buffer_minutes > 0:
+                buffer_delta = timedelta(minutes=args.buffer_minutes)
+                start_date = start_date - buffer_delta
+                end_date = end_date + buffer_delta
+                logger.info(f"Applied {args.buffer_minutes}min buffer: {start_date} to {end_date}")
+            
+            if first_fifteen_minutes:
+                start_date, end_date = adjust_for_first_fifteen_minutes(start_date, end_date)
+                
+        except ValueError as e:
+            logger.error(f"Date parsing error: {e}")
+            sys.exit(1)
+    
+    # Interval mapping with enhanced support
+    interval_map = {
+        '1m': 1,
+        '5m': 5,
+        '10m': 10,
+        '15m': 15,
+        '30m': 30,
+        '1h': 60,
+        '2h': 120,
+        '4h': 240,
+        '1d': 1440
+    }
+    
+    interval_minutes = interval_map.get(args.interval, 10)
+    
+    # Database connection parameters
+    db_params = {
+        'dbname': 'company_hist_db',
+        'user': 'readonly_user',
+        'password': 'db_read_5432',
+        'host': '100.93.172.21',
+        'port': '5432',
+    }
+
+    start_time = time.time()
+    
+    try:
+        # Connect to database with improved error handling
+        try:
+            conn = psycopg2.connect(**db_params)
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+        except psycopg2.Error as e:
+            logger.error(f"Database connection failed: {e}")
+            sys.exit(1)
+
+        # Set timezone
+        cur.execute("SET TIME ZONE 'Asia/Kolkata';")
+
+        # Parse exchanges
+        exchanges = [ex.strip() for ex in args.exchange.split(',') if ex.strip()]
+        exchange_placeholders = ','.join(['%s'] * len(exchanges))
+
+        # Company lookup with enhanced error handling
+        company_lookup_query = f"""
+        SELECT company_id, company_code, name, exchange
+        FROM companies
+        WHERE company_code = %s
+        AND exchange IN ({exchange_placeholders})
+        """
+        
+        company_params = [args.company_code] + exchanges
+        logger.info(f"Looking up company: {args.company_code} on exchanges: {args.exchange}")
+        
+        cur.execute(company_lookup_query, company_params)
+        company_records = cur.fetchall()
+        
+        if not company_records:
+            logger.error(f"No company found with code '{args.company_code}' on exchanges {args.exchange}")
+            sys.exit(1)
+        
+        company_ids = [record['company_id'] for record in company_records]
+        company_id_placeholders = ','.join(['%s'] * len(company_ids))
+        
+        logger.info(f"Found {len(company_records)} company records")
+        for record in company_records:
+            logger.info(f"  - {record['company_code']} ({record['name']}) on {record['exchange']} [ID: {record['company_id']}]")
+
+        # Build optimized query based on request type
+        if fetch_all_data:
+            if optimize_for_range:
+                # Optimized query for large datasets
+                stock_data_query = f"""
+                SELECT timestamp, open, high, low, close, volume, company_id
+                FROM company_data
+                WHERE company_id IN ({company_id_placeholders})
+                ORDER BY timestamp DESC
+                LIMIT %s
+                """
+                query_params = company_ids + [args.limit]
+                logger.info(f"Querying RECENT {args.limit} records for company_ids: {company_ids}")
+            else:
+                stock_data_query = f"""
+                SELECT timestamp, open, high, low, close, volume, company_id
+                FROM company_data
+                WHERE company_id IN ({company_id_placeholders})
+                ORDER BY timestamp
+                """
+                query_params = company_ids
+                logger.info(f"Querying ALL stock data for company_ids: {company_ids}")
+        else:
+            if optimize_for_range:
+                # Optimized range query with indexes
+                stock_data_query = f"""
+                SELECT timestamp, open, high, low, close, volume, company_id
+                FROM company_data
+                WHERE company_id IN ({company_id_placeholders})
+                AND timestamp >= %s
+                AND timestamp < %s
+                ORDER BY timestamp
+                LIMIT %s
+                """
+                query_params = company_ids + [start_date, end_date, args.limit]
+            else:
+                stock_data_query = f"""
+                SELECT timestamp, open, high, low, close, volume, company_id
+                FROM company_data
+                WHERE company_id IN ({company_id_placeholders})
+                AND timestamp >= %s
+                AND timestamp < %s
+                ORDER BY timestamp
+                """
+                query_params = company_ids + [start_date, end_date]
+            
+            logger.info(f"Querying stock data for company_ids: {company_ids}, date range: {start_date} to {end_date}")
+        
+        # Execute query with timing
+        query_start = time.time()
+        cur.execute(stock_data_query, query_params)
+        rows = cur.fetchall()
+        query_time = time.time() - query_start
+        
+        logger.info(f"Query executed in {query_time:.2f}s, fetched {len(rows)} raw records")
+        
+        if not rows:
+            if fetch_all_data:
+                logger.info(f"No stock data found for company_code='{args.company_code}' on exchanges={args.exchange}")
+            else:
+                logger.info(f"No stock data found for company_code='{args.company_code}' on exchanges={args.exchange} in date range {start_date} to {end_date}")
+            sys.exit(0)
+
+        # Apply limit for all data requests (if not already limited in query)
+        if fetch_all_data and not optimize_for_range and len(rows) > args.limit:
+            logger.info(f"Large dataset detected ({len(rows)} records). Limiting to most recent {args.limit} records.")
+            rows = rows[-args.limit:]
+
+        # Data aggregation with enhanced error handling
+        def get_interval_start(dt):
+            minute = dt.minute
+            interval_minute = (minute // interval_minutes) * interval_minutes
+            return dt.replace(minute=interval_minute, second=0, microsecond=0)
+
+        # Process data into intervals
+        processing_start = time.time()
+        interval_data = {}
+        invalid_records = 0
+        
+        for row in rows:
+            # Data validation if enabled
+            if validate_data:
+                if not validate_ohlcv_data(row):
+                    invalid_records += 1
+                    continue
+            
+            interval_start = get_interval_start(row['timestamp'])
+            if interval_start not in interval_data:
+                interval_data[interval_start] = []
+            interval_data[interval_start].append(row)
+
+        if invalid_records > 0:
+            logging.warning(f"Skipped {invalid_records} invalid records during validation")
+
+        # Aggregate intervals
+        results = []
+        for interval_start in sorted(interval_data.keys()):
+            interval_rows = interval_data[interval_start]
+            if interval_rows:
+                interval_rows.sort(key=lambda x: x['timestamp'])
+                
+                try:
+                    open_price = float(interval_rows[0]['open'])
+                    high_price = max(float(row['high']) for row in interval_rows)
+                    low_price = min(float(row['low']) for row in interval_rows)
+                    close_price = float(interval_rows[-1]['close'])
+                    volume_sum = sum(int(row['volume']) for row in interval_rows)
+                    
+                    # Additional validation for aggregated data
+                    if validate_data and not validate_aggregated_ohlc(open_price, high_price, low_price, close_price):
+                        logging.warning(f"Invalid OHLC relationship at {interval_start}, skipping")
+                        continue
+                    
+                    results.append({
+                        'interval_start': interval_start,
+                        'open': round(open_price, 2),
+                        'high': round(high_price, 2),
+                        'low': round(low_price, 2),
+                        'close': round(close_price, 2),
+                        'volume': volume_sum
+                    })
+                except (ValueError, TypeError) as e:
+                    logging.warning(f"Error processing interval {interval_start}: {e}")
+                    continue
+
+        processing_time = time.time() - processing_start
+        logger.info(f"Data processing completed in {processing_time:.2f}s")
+
+        # Apply first fifteen minutes filter for all data requests
+        if first_fifteen_minutes and fetch_all_data:
+            filtered_results = []
+            for result in results:
+                timestamp = result['interval_start']
+                if timestamp.hour == 9 and 15 <= timestamp.minute <= 30:
+                    filtered_results.append(result)
+            results = filtered_results
+            logger.info(f"Filtered to first 15 minutes: {len(results)} data points")
+
+        # Sort results by timestamp (important for chart rendering)
+        results.sort(key=lambda x: x['interval_start'])
+
+        # Output results in the expected format
+        for result in results:
+            print(f"Interval:{result['interval_start'].isoformat()},Open:{result['open']},High:{result['high']},Low:{result['low']},Close:{result['close']},Volume:{result['volume']}")
+        
+        total_time = time.time() - start_time
+        
+        if fetch_all_data:
+            logger.info(f"Successfully fetched ALL available data: {len(results)} data points in {total_time:.2f}s")
+        else:
+            logger.info(f"Successfully fetched {len(results)} data points for date range in {total_time:.2f}s")
+
+        # Performance statistics
+        if len(results) > 0:
+            logger.info(f"Data range: {results[0]['interval_start']} to {results[-1]['interval_start']}")
+            
+        # Future: Indicator calculations
+        if indicators:
+            logger.info(f"Note: Indicators requested but not yet implemented: {indicators}")
+
+    except psycopg2.Error as e:
+        logger.error(f"Database error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if 'conn' in locals():
+            conn.close()
+
+def parse_date_string(date_str):
+    """Parse date string in various formats with enhanced support"""
+    try:
+        # Handle ISO format with timezone
+        if 'T' in date_str:
+            if date_str.endswith('Z'):
+                date_str = date_str[:-1] + '+00:00'
+            # Try to parse with timezone info
+            try:
+                dt = datetime.fromisoformat(date_str)
+                # Convert to naive datetime in IST
+                if dt.tzinfo is not None:
+                    import pytz
+                    ist = pytz.timezone('Asia/Kolkata')
+                    dt = dt.astimezone(ist).replace(tzinfo=None)
+                return dt
+            except:
+                # Fallback to naive parsing
+                return datetime.fromisoformat(date_str.replace('+00:00', '').replace('Z', ''))
+        else:
+            return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+    except ValueError:
+        # Try multiple formats
+        formats = [
+            '%Y-%m-%d',
+            '%Y-%m-%dT%H:%M:%S',
+            '%Y-%m-%dT%H:%M:%S.%f',
+            '%Y-%m-%d %H:%M',
+            '%d/%m/%Y %H:%M:%S',
+            '%d-%m-%Y %H:%M:%S'
+        ]
+        
+        for fmt in formats:
+            try:
+                return datetime.strptime(date_str, fmt)
+            except ValueError:
+                continue
+        
+        raise ValueError(f"Unable to parse date string: {date_str}")
+
+def adjust_for_first_fifteen_minutes(start_date, end_date):
+    """Adjust dates for first 15 minutes of trading day with enhanced logic"""
+    # Handle timezone conversion
+    if start_date.tzinfo is not None:
+        ist_offset = timedelta(hours=5, minutes=30)
+        start_date = start_date.replace(tzinfo=None) + ist_offset
+    
+    # Market opens at 9:15 AM, so first 15 minutes is 9:15 to 9:30
+    market_start = start_date.replace(hour=9, minute=15, second=0, microsecond=0)
+    market_end = market_start + timedelta(minutes=15)  # Corrected: 15 minutes, not 375
+    
+    logger.info(f"Adjusted for first 15 minutes: {market_start} to {market_end}")
+    
+    return market_start, market_end
+
+def validate_ohlcv_data(row):
+    """Validate individual OHLCV data record"""
+    try:
+        open_price = float(row['open'])
+        high_price = float(row['high'])
+        low_price = float(row['low'])
+        close_price = float(row['close'])
+        volume = int(row['volume'])
+        
+        # Basic validation rules
+        if any(x <= 0 for x in [open_price, high_price, low_price, close_price]):
+            return False
+        
+        if volume < 0:
+            return False
+            
+        if high_price < max(open_price, close_price) or low_price > min(open_price, close_price):
+            return False
+            
+        # Check for extreme values (possible data errors)
+        if high_price / low_price > 2.0:  # More than 100% intraday move
+            return False
+            
+        return True
+    except (ValueError, TypeError, KeyError):
+        return False
+
+def validate_aggregated_ohlc(open_price, high_price, low_price, close_price):
+    """Validate aggregated OHLC data"""
+    try:
+        # High must be >= max(open, close)
+        if high_price < max(open_price, close_price):
+            return False
+            
+        # Low must be <= min(open, close)
+        if low_price > min(open_price, close_price):
+            return False
+            
+        # All prices must be positive
+        if any(x <= 0 for x in [open_price, high_price, low_price, close_price]):
+            return False
+            
+        return True
+    except (ValueError, TypeError):
+        return False
+
+if __name__ == "__main__":
+    main()
+
+
+================================================================================
+FILE: apps/backend/data/2.py
+PURPOSE: Data processing modifications
+================================================================================
+
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from datetime import datetime
+
+db_params = {
+    'dbname': 'temp_db',
+    'user': 'temp_raghav',
+    'password': 'password',
+    'host': '100.93.172.21',
+    'port': '5432'
+}
+
+
+try:
+    conn = psycopg2.connect(**db_params)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("SET TIME ZONE 'Asia/Kolkata';")
+
+    query = """
+    SELECT timestamp, open, high, low, close, volume
+    FROM company_data
+    WHERE company_id = %s
+    AND timestamp >= %s
+    AND timestamp < %s
+    ORDER BY timestamp
+    """
+    cur.execute(query, (2, '2024-02-22 00:00:00', '2024-04-16 00:00:00'))
+
+    rows = cur.fetchall()
+    if not rows:
+        print("No data found for company_id = 2 in the specified date range.")
+        exit()
+
+    def get_interval_start(dt):
+        minute = dt.minute
+        interval_minute = (minute // 10) * 10  # Floor to nearest 10
+        return dt.replace(minute=interval_minute, second=0, microsecond=0)
+
+    interval_data = {}
+    for row in rows:
+        interval_start = get_interval_start(row['timestamp'])
+        if interval_start not in interval_data:
+            interval_data[interval_start] = []
+        interval_data[interval_start].append(row)
+
+    results = []
+    for interval_start in sorted(interval_data.keys()):
+        rows = interval_data[interval_start]
+        if rows:
+            open_price = rows[0]['open']               # First open
+            high_price = max(row['high'] for row in rows)  # Max high
+            low_price = min(row['low'] for row in rows)    # Min low
+            close_price = rows[-1]['close']            # Last close
+            volume_sum = sum(row['volume'] for row in rows)  # Sum volume
+            results.append({
+                'interval_start': interval_start,
+                'open': open_price,
+                'high': high_price,
+                'low': low_price,
+                'close': close_price,
+                'volume': volume_sum
+            })
+
+    for result in results:
+        print(f"Interval: {result['interval_start']}, "
+              f"Open: {result['open']}, High: {result['high']}, "
+              f"Low: {result['low']}, Close: {result['close']}, "
+              f"Volume: {result['volume']}")
+
+except psycopg2.Error as e:
+    print(f"Database error: {e}")
+
+finally:
+    # Clean up
+    if 'cur' in locals():
+        cur.close()
+    if 'conn' in locals():
+        conn.close()
+
+================================================================================
+FILE: apps/backend/data/watchlists/watchlist_A_2025-02-16.csv (HEADER + 5 LINES)
+PURPOSE: Sample CSV format with marker data
+================================================================================
+
+[CSV HEADER AND SAMPLE DATA] 
+1:company_code,avg_daily_high_low_range,avg_daily_volume,avg_trading_capital,instrument_token,tradingsymbol,name,exchange
+2:2955,6.96127308680475724790,22353730.800000000000,12111357243.77500000,756481,KALYANKJIL,KALYAN JEWELLERS IND,NSE
+3:19585,5.24230377747259599650,2147206.500000000000,11693857868.80500000,5013761,BSE,BSE,NSE
+4:10604,3.01386922348941073060,6911231.200000000000,11476234362.46000000,2714625,BHARTIARTL,BHARTI AIRTEL,NSE
+5:5097,4.15256276148238892340,50692164.700000000000,11437428969.97700000,1304833,ZOMATO,ZOMATO,NSE
+6:509,5.70257852059927256650,5117698.200000000000,11259823337.91000000,130305,MAZDOCK,MAZAGON DOCK SHIPBUIL,NSE
+
+
+################################################################################
+SECTION 4: FRONTEND WATCHLIST MANAGEMENT
+################################################################################
+
+================================================================================
+FILE: apps/frontend/app/market-data/components/WatchlistManager.tsx
+PURPOSE: UI for new data structure management
+================================================================================
+
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/card';
+import { Button } from '../../../components/ui/button';
+import { Input } from '../../../components/ui/input';
+
+interface WatchlistManagerProps {
+  subscribedSymbols: string[];
+  onSymbolSelect: (symbol: string) => void;
+  onAddSymbol: (symbol: string) => void;
+  onRemoveSymbol: (symbol: string) => void;
+}
+
+// Predefined watchlists
+const predefinedWatchlists = {
+  'Indices': [
+    'NSE:NIFTY50-INDEX',
+    'NSE:BANKNIFTY-INDEX',
+    'NSE:FINNIFTY-INDEX',
+    'NSE:NIFTYIT-INDEX',
+    'NSE:NIFTYPHARMA-INDEX',
+  ],
+  'Large Cap': [
+    'NSE:RELIANCE-EQ',
+    'NSE:TCS-EQ',
+    'NSE:HDFCBANK-EQ',
+    'NSE:INFY-EQ',
+    'NSE:ICICIBANK-EQ',
+  ],
+  'IT Stocks': [
+    'NSE:TCS-EQ',
+    'NSE:INFY-EQ',
+    'NSE:WIPRO-EQ',
+    'NSE:HCLTECH-EQ',
+    'NSE:TECHM-EQ',
+  ],
+};
+
+const WatchlistManager: React.FC<WatchlistManagerProps> = ({
+  subscribedSymbols,
+  onSymbolSelect,
+  onAddSymbol,
+  onRemoveSymbol,
+}) => {
+  const [newSymbol, setNewSymbol] = useState('');
+  const [savedWatchlists, setSavedWatchlists] = useState<Record<string, string[]>>({});
+  const [newWatchlistName, setNewWatchlistName] = useState('');
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+
+  // Load saved watchlists from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('marketDataWatchlists');
+    if (saved) {
+      setSavedWatchlists(JSON.parse(saved));
+    }
+  }, []);
+
+  const handleAddSymbol = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newSymbol && !subscribedSymbols.includes(newSymbol)) {
+      onAddSymbol(newSymbol);
+      setNewSymbol('');
+    }
+  };
+
+  const handleSaveWatchlist = () => {
+    if (newWatchlistName) {
+      const updatedWatchlists = {
+        ...savedWatchlists,
+        [newWatchlistName]: [...subscribedSymbols],
+      };
+      
+      setSavedWatchlists(updatedWatchlists);
+      localStorage.setItem('marketDataWatchlists', JSON.stringify(updatedWatchlists));
+      setNewWatchlistName('');
+      setShowSaveDialog(false);
+    }
+  };
+
+  const handleLoadWatchlist = (watchlist: string[]) => {
+    // Remove all current symbols
+    subscribedSymbols.forEach(symbol => onRemoveSymbol(symbol));
+    
+    // Add all symbols from the selected watchlist
+    watchlist.forEach(symbol => onAddSymbol(symbol));
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Add Symbol</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleAddSymbol} className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                placeholder="NSE:SYMBOL-EQ"
+                value={newSymbol}
+                onChange={(e) => setNewSymbol(e.target.value)}
+                className="flex-1"
+              />
+              <Button type="submit">Add</Button>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Format: Exchange:Symbol-Type (e.g., NSE:RELIANCE-EQ)
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Predefined Watchlists</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {Object.entries(predefinedWatchlists).map(([name, symbols]) => (
+            <div key={name} className="flex justify-between items-center">
+              <div>
+                <div className="font-medium">{name}</div>
+                <div className="text-sm text-muted-foreground">
+                  {symbols.length} symbols
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handleLoadWatchlist(symbols)}
+              >
+                Load
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {Object.keys(savedWatchlists).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Your Watchlists</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {Object.entries(savedWatchlists).map(([name, symbols]) => (
+              <div key={name} className="flex justify-between items-center">
+                <div>
+                  <div className="font-medium">{name}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {symbols.length} symbols
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleLoadWatchlist(symbols)}
+                  >
+                    Load
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="text-red-500"
+                    onClick={() => {
+                      const { [name]: _, ...rest } = savedWatchlists;
+                      setSavedWatchlists(rest);
+                      localStorage.setItem('marketDataWatchlists', JSON.stringify(rest));
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Manage Watchlist</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button 
+            variant="outline" 
+            className="w-full"
+            onClick={() => setShowSaveDialog(!showSaveDialog)}
+          >
+            Save Current Watchlist
+          </Button>
+          
+          {showSaveDialog && (
+            <div className="space-y-2">
+              <Input
+                type="text"
+                placeholder="Watchlist name"
+                value={newWatchlistName}
+                onChange={(e) => setNewWatchlistName(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <Button 
+                  variant="default" 
+                  className="flex-1"
+                  onClick={handleSaveWatchlist}
+                >
+                  Save
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowSaveDialog(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default WatchlistManager;
+
+
+================================================================================
+FILE: apps/frontend/app/components/controllers/WatchlistSelector/WatchlistSelector.tsx
+PURPOSE: Selector for new format
+================================================================================
+
+'use client'
+import * as React from "react";
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { RadioGroupDemo } from "./RadioGroup";
+import { SelectScrollable } from "./SelectScrollable";
+
+interface WatchlistSelectorProps {
+  onCompanySelect?: (companyCode: string | null, exchange?: string) => void;
+  selectedWatchlist?: string;
+  onWatchlistChange?: (watchlist: string) => void;
+}
+
+export function WatchlistSelector({ 
+  onCompanySelect,
+  selectedWatchlist: externalSelectedWatchlist,
+  onWatchlistChange
+}: WatchlistSelectorProps) {
+  const {
+    selectedWatchlist: internalSelectedWatchlist,
+    setSelectedWatchlist: internalSetSelectedWatchlist,
+    companies,
+    loading,
+    error,
+    exists,
+    availableExchanges,
+  } = useWatchlist();
+  
+  const effectiveWatchlist = externalSelectedWatchlist || internalSelectedWatchlist;
+  
+  const handleWatchlistChange = (value: string) => {
+    if (onWatchlistChange) {
+      onWatchlistChange(value);
+    } else {
+      internalSetSelectedWatchlist(value);
+    }
+  };
+
+  const handleCompanySelect = (companyCode: string | null, exchange?: string) => {
+    console.log(`Selected company: ${companyCode} on exchange: ${exchange}`);
+    if (onCompanySelect) {
+      onCompanySelect(companyCode, exchange);
+    }
+  };
+
+  return (
+    <div className="flex gap-5 items-center">
+      <div>
+        <RadioGroupDemo
+          value={effectiveWatchlist} 
+          onChange={handleWatchlistChange}
+        />
+      </div>
+      
+      {error && (
+        <div className="text-destructive text-xs bg-destructive/10 px-2 py-1 rounded">
+          {error}
+        </div>
+      )}
+      
+      {availableExchanges.length > 0 && (
+        <div className="text-xs text-muted-foreground">
+          Exchanges: {availableExchanges.join(', ')}
+        </div>
+      )}
+      
+      <div>
+        <SelectScrollable
+          companies={companies}
+          loading={loading}
+          exists={exists}
+          onCompanySelect={handleCompanySelect}
+        />
+      </div>
+    </div>
+  );
+}
+
+
+================================================================================
+FILE: apps/frontend/app/components/controllers/WatchlistSelector/index.tsx
+PURPOSE: Main component wrapper
+================================================================================
+
+// src/components/WatchlistSelector/index.tsx
+export { WatchlistSelector } from './WatchlistSelector';
+
+
+################################################################################
+SECTION 5: FRONTEND DATA HOOKS
+################################################################################
+
+================================================================================
+FILE: apps/frontend/hooks/useWatchlist.ts
+PURPOSE: New data structure and API calls
+================================================================================
+
+import { useState, useEffect } from 'react';
+
+interface Company {
+  company_code: string;          
+  name: string;                   
+  exchange: string;              
+  total_valid_days?: number;     
+  avg_daily_high_low?: number;
+  median_daily_volume?: number;
+  avg_trading_ratio?: number;
+  N1_Pattern_count?: number;
+  avg_daily_high_low_range?: number;
+  avg_daily_volume?: number;
+  avg_trading_capital?: number;
+  instrument_token?: string;
+  tradingsymbol?: string;
+}
+
+export function useWatchlist() {
+  const [selectedWatchlist, setSelectedWatchlist] = useState('A');
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [exists, setExists] = useState(true);
+  const [availableExchanges, setAvailableExchanges] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function fetchWatchlist() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const today = '2025-06-05'; 
+        
+        const apiUrl = `/api/watchlist/${selectedWatchlist}?date=${today}`;
+        
+        console.log('Fetching watchlist data from:', apiUrl);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); 
+
+        const response = await fetch(apiUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Watchlist data received:', data);
+
+        const validCompanies = (data.companies || []).filter((company: Company) => 
+          company.company_code && 
+          company.name && 
+          company.exchange
+        );
+
+        setCompanies(validCompanies);
+        setExists(data.exists);
+        
+        const exchanges = [...new Set(validCompanies.map((c: Company) => c.exchange))];
+        setAvailableExchanges(exchanges);
+        
+        console.log(`Loaded ${validCompanies.length} companies from watchlist ${selectedWatchlist}`);
+        
+      } catch (err) {
+        console.error('Error fetching watchlist data:', err);
+        setError('Failed to fetch watchlist data');
+        setCompanies([]);
+        setExists(false);
+        setAvailableExchanges([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchWatchlist();
+  }, [selectedWatchlist]);
+
+  return { 
+    selectedWatchlist, 
+    setSelectedWatchlist, 
+    companies, 
+    loading, 
+    error, 
+    exists,
+    availableExchanges
+  };
+}
+
+
+================================================================================
+FILE: apps/frontend/hooks/useStockData.ts
+PURPOSE: company_code and marker fields support
+================================================================================
+
+// Enhanced useStockData.ts with incremental loading support
+import { useState, useCallback, useRef, useEffect } from 'react';
+
+interface StockDataPoint {
+  interval_start: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface DataCache {
+  [key: string]: StockDataPoint[];
+}
+
+interface UseStockDataParams {
+  companyCode: string | null;
+  exchange?: string;
+  interval?: string;
+  indicators?: string[];
+  enableIncrementalLoading?: boolean;
+}
+
+export function useStockData({ 
+  companyCode,
+  exchange = 'NSE',
+  interval = '1m',
+  indicators = [],
+  enableIncrementalLoading = true
+}: UseStockDataParams) {
+  const [data, setData] = useState<StockDataPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dataRange, setDataRange] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });
+  
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const cacheRef = useRef<DataCache>({});
+  const loadingQueueRef = useRef<Set<string>>(new Set());
+
+  // Generate cache key
+  const getCacheKey = useCallback((company: string, start: Date, end: Date, interval: string) => {
+    return `${company}_${interval}_${start.getTime()}_${end.getTime()}`;
+  }, []);
+
+  // Check if data exists in cache
+  const getCachedData = useCallback((start: Date, end: Date) => {
+    const key = getCacheKey(companyCode || '', start, end, interval);
+    return cacheRef.current[key] || null;
+  }, [getCacheKey, companyCode, interval]);
+
+  // Store data in cache
+  const setCachedData = useCallback((start: Date, end: Date, data: StockDataPoint[]) => {
+    const key = getCacheKey(companyCode || '', start, end, interval);
+    cacheRef.current[key] = data;
+  }, [getCacheKey, companyCode, interval]);
+
+  // Enhanced fetch with caching and queue management
+  const fetchData = useCallback(async (
+    startDate?: Date, 
+    endDate?: Date, 
+    options: { 
+      fetchAllData?: boolean;
+      merge?: boolean;
+      priority?: 'high' | 'normal';
+    } = {}
+  ) => {
+    if (!companyCode) {
+      setError('No company selected');
+      return [];
+    }
+
+    const { fetchAllData = false, merge = false, priority = 'normal' } = options;
+
+    if (!startDate && !fetchAllData) {
+      setError('Either provide a start date or set fetchAllData to true');
+      return [];
+    }
+
+    // Generate request key for queue management
+    const requestKey = `${companyCode}_${startDate?.getTime()}_${endDate?.getTime()}`;
+    
+    if (loadingQueueRef.current.has(requestKey)) {
+      console.log('Request already in progress, skipping duplicate:', requestKey);
+      return [];
+    }
+
+    // Check cache first
+    if (startDate && endDate && enableIncrementalLoading) {
+      const cachedData = getCachedData(startDate, endDate);
+      if (cachedData) {
+        console.log('Returning cached data for range:', startDate, endDate);
+        if (merge) {
+          setData(prevData => mergeData(prevData, cachedData));
+        } else {
+          setData(cachedData);
+        }
+        return cachedData;
+      }
+    }
+
+    // Abort previous request if not high priority
+    if (abortControllerRef.current && priority !== 'high') {
+      abortControllerRef.current.abort();
+    }
+
+    loadingQueueRef.current.add(requestKey);
+    setLoading(true);
+    setError(null);
+
+    try {
+      abortControllerRef.current = new AbortController();
+      
+      const queryParams = new URLSearchParams({
+        exchange,
+        interval,
+        ...indicators.length > 0 && { indicators: indicators.join(',') }
+      });
+
+      if (startDate) {
+        queryParams.append('startDate', startDate.toISOString());
+        queryParams.append('endDate', endDate?.toISOString() || new Date(startDate.getTime() + 6.25 * 60 * 60 * 1000).toISOString());
+      } else {
+        queryParams.append('fetchAllData', 'true');
+      }
+
+      const url = `/api/companies/${companyCode}/ohlcv?${queryParams.toString()}`;
+      console.log(`Fetching stock data: ${url}`);
+
+      const response = await fetch(url, { 
+        signal: abortControllerRef.current.signal,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      const jsonData = await response.json() as StockDataPoint[];
+      console.log(`Successfully fetched ${jsonData.length} data points`);
+
+      // Cache the data
+      if (startDate && endDate && enableIncrementalLoading) {
+        setCachedData(startDate, endDate, jsonData);
+      }
+
+      // Update data range
+      if (jsonData.length > 0) {
+        const newStart = new Date(jsonData[0].interval_start);
+        const newEnd = new Date(jsonData[jsonData.length - 1].interval_start);
+        
+        setDataRange(prev => ({
+          start: prev.start ? (newStart < prev.start ? newStart : prev.start) : newStart,
+          end: prev.end ? (newEnd > prev.end ? newEnd : prev.end) : newEnd
+        }));
+      }
+
+      // Merge or replace data
+      if (merge) {
+        setData(prevData => mergeData(prevData, jsonData));
+      } else {
+        setData(jsonData);
+      }
+
+      return jsonData;
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('Request was aborted');
+        return [];
+      }
+      console.error('Error fetching stock data:', err);
+      setError(`Failed to fetch stock data: ${err.message}`);
+      return [];
+    } finally {
+      loadingQueueRef.current.delete(requestKey);
+      setLoading(false);
+    }
+  }, [companyCode, exchange, interval, indicators, enableIncrementalLoading, getCachedData, setCachedData]);
+
+  // Merge data helper function
+  const mergeData = useCallback((existing: StockDataPoint[], newData: StockDataPoint[]): StockDataPoint[] => {
+    const combined = [...existing, ...newData];
+    const uniqueMap = new Map<string, StockDataPoint>();
+    
+    combined.forEach(item => {
+      uniqueMap.set(item.interval_start, item);
+    });
+    
+    return Array.from(uniqueMap.values()).sort((a, b) => 
+      new Date(a.interval_start).getTime() - new Date(b.interval_start).getTime()
+    );
+  }, []);
+
+  // Fetch incremental data
+  const fetchIncrementalData = useCallback(async (start: Date, end: Date) => {
+    return fetchData(start, end, { merge: true, priority: 'high' });
+  }, [fetchData]);
+
+  // Fetch all data
+  const fetchAllData = useCallback(async () => {
+    return fetchData(undefined, undefined, { fetchAllData: true });
+  }, [fetchData]);
+
+  // Clear data and cache
+  const clearData = useCallback(() => {
+    setData([]);
+    setError(null);
+    setDataRange({ start: null, end: null });
+    cacheRef.current = {};
+    loadingQueueRef.current.clear();
+  }, []);
+
+  // Smart data loading based on visible range
+  const loadDataForRange = useCallback(async (visibleStart: Date, visibleEnd: Date) => {
+    if (!enableIncrementalLoading) return;
+
+    const buffer = 30 * 60 * 1000; // 30 minutes buffer
+    const expandedStart = new Date(visibleStart.getTime() - buffer);
+    const expandedEnd = new Date(visibleEnd.getTime() + buffer);
+
+    const gaps = [];
+
+    // Check if we need data before current range
+    if (!dataRange.start || expandedStart < dataRange.start) {
+      gaps.push({
+        start: expandedStart,
+        end: dataRange.start || visibleStart
+      });
+    }
+
+    // Check if we need data after current range
+    if (!dataRange.end || expandedEnd > dataRange.end) {
+      gaps.push({
+        start: dataRange.end || visibleEnd,
+        end: expandedEnd
+      });
+    }
+
+    // Fetch missing data
+    for (const gap of gaps) {
+      await fetchIncrementalData(gap.start, gap.end);
+    }
+  }, [enableIncrementalLoading, dataRange, fetchIncrementalData]);
+
+  // Clear cache on company change
+  useEffect(() => {
+    clearData();
+  }, [companyCode, clearData]);
+
+  return { 
+    data, 
+    loading, 
+    error, 
+    dataRange,
+    fetchData, 
+    fetchAllData, 
+    fetchIncrementalData,
+    loadDataForRange,
+    clearData 
+  };
+}
+
+
+================================================================================
+FILE: apps/frontend/hooks/useMarketData.ts
+PURPOSE: New data format support
+================================================================================
+
+import { useState, useEffect, useCallback } from 'react';
+import { getSocket } from '../lib/socket';
+
+interface MarketData {
+  ltp: number;
+  change: number;
+  changePercent: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  timestamp: number;
+}
+
+interface UseMarketDataReturn {
+  data: Record<string, MarketData>;
+  isLoading: boolean;
+  error: Error | null;
+  subscribeToSymbol: (symbol: string) => void;
+  unsubscribeFromSymbol: (symbol: string) => void;
+}
+
+export const useMarketData = (initialSymbols: string[] = []): UseMarketDataReturn => {
+  const [data, setData] = useState<Record<string, MarketData>>({});
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [subscribedSymbols, setSubscribedSymbols] = useState<Set<string>>(
+    new Set(initialSymbols)
+  );
+
+  const subscribeToSymbol = useCallback((symbol: string) => {
+    setSubscribedSymbols((prev) => {
+      const newSet = new Set(prev);
+      newSet.add(symbol);
+      return newSet;
+    });
+    
+    getSocket().emit('subscribe', { symbol });
+  }, []);
+
+  const unsubscribeFromSymbol = useCallback((symbol: string) => {
+    setSubscribedSymbols((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(symbol);
+      return newSet;
+    });
+    
+    getSocket().emit('unsubscribe', { symbol });
+    
+    setData((prev) => {
+      const newData = { ...prev };
+      delete newData[symbol];
+      return newData;
+    });
+  }, []);
+
+  useEffect(() => {
+    const socket = getSocket();
+    
+    const handleMarketData = (message: { symbol: string; data: MarketData }) => {
+      setData((prev) => ({
+        ...prev,
+        [message.symbol]: message.data,
+      }));
+      
+      setIsLoading(false);
+    };
+    
+    socket.on('marketData', handleMarketData);
+    
+    initialSymbols.forEach((symbol) => {
+      socket.emit('subscribe', { symbol });
+    });
+    
+    return () => {
+      socket.off('marketData', handleMarketData);
+      
+      subscribedSymbols.forEach((symbol) => {
+        socket.emit('unsubscribe', { symbol });
+      });
+    };
+  }, [initialSymbols]);
+
+  return {
+    data,
+    isLoading,
+    error,
+    subscribeToSymbol,
+    unsubscribeFromSymbol,
+  };
+};
+
+
+################################################################################
+SECTION 6: FRONTEND DISPLAY COMPONENTS
+################################################################################
+
+================================================================================
+FILE: apps/frontend/app/market-data/components/MarketDataTable.tsx
+PURPOSE: Table with marker and company information
+================================================================================
+
+import React from 'react';
+
+interface MarketData {
+  ltp: number;
+  change: number;
+  changePercent: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  timestamp: number;
+}
+
+interface MarketDataTableProps {
+  data: Record<string, MarketData>;
+  onSymbolSelect: (symbol: string) => void;
+  onRemoveSymbol: (symbol: string) => void;
+  selectedSymbol: string;
+}
+
+const MarketDataTable: React.FC<MarketDataTableProps> = ({
+  data,
+  onSymbolSelect,
+  onRemoveSymbol,
+  selectedSymbol,
+}) => {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b">
+            <th className="text-left py-2">Symbol</th>
+            <th className="text-right py-2">LTP</th>
+            <th className="text-right py-2">Change</th>
+            <th className="text-right py-2">%Change</th>
+            <th className="text-right py-2">Volume</th>
+            <th className="text-center py-2">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(data).map(([symbol, marketData]) => (
+            <tr 
+              key={symbol}
+              className={`border-b hover:bg-muted/50 cursor-pointer ${
+                selectedSymbol === symbol ? 'bg-muted' : ''
+              }`}
+              onClick={() => onSymbolSelect(symbol)}
+            >
+              <td className="py-3 font-medium">{symbol}</td>
+              <td className="text-right py-3">{marketData.ltp.toFixed(2)}</td>
+              <td 
+                className={`text-right py-3 ${
+                  marketData.change >= 0 ? 'text-green-500' : 'text-red-500'
+                }`}
+              >
+                {marketData.change >= 0 ? '+' : ''}
+                {marketData.change.toFixed(2)}
+              </td>
+              <td 
+                className={`text-right py-3 ${
+                  marketData.changePercent >= 0 ? 'text-green-500' : 'text-red-500'
+                }`}
+              >
+                {marketData.changePercent >= 0 ? '+' : ''}
+                {marketData.changePercent.toFixed(2)}%
+              </td>
+              <td className="text-right py-3">{marketData.volume.toLocaleString()}</td>
+              <td className="text-center py-3">
+                <button
+                  className="text-red-500 hover:text-red-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveSymbol(symbol);
+                  }}
+                >
+                  Remove
+                </button>
+              </td>
+            </tr>
+          ))}
+          
+          {Object.keys(data).length === 0 && (
+            <tr>
+              <td colSpan={6} className="py-4 text-center text-muted-foreground">
+                No symbols in watchlist. Add symbols to get started.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+export default MarketDataTable;
+
+
+================================================================================
+FILE: apps/frontend/app/components/charts/StockChart.tsx
+PURPOSE: Chart with new data structure support
+================================================================================
+
 'use client'
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
@@ -2041,8 +4442,7 @@ export function StockChart({
     displaylogo: false,
     doubleClick: 'reset+autosize',
     showTips: false,
-    // plotGlPixelRatio: window.devicePixelRatio || 1,
-    plotGlPixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
+    plotGlPixelRatio: window.devicePixelRatio || 1,
     toImageButtonOptions: {
       format: 'png',
       filename: `${companyId || 'chart'}_${new Date().toISOString().split('T')[0]}`,
@@ -2943,3 +5343,20 @@ export function StockChart({
 }
 
 export default StockChart;
+
+
+################################################################################
+END OF CORE WATCHLIST SYSTEM EXTRACTION
+################################################################################
+
+EXTRACTION SUMMARY:
+===================
+Core Watchlist Files: 3 files
+Data and Entity Files: 4 files
+Data Processing Files: 2 files + CSV samples
+Frontend Watchlist Management: 3 files
+Frontend Data Hooks: 3 files
+Frontend Display Components: 2 files
+
+TOTAL FILES PROCESSED: 17 FILES + CSV SAMPLES
+################################################################################
