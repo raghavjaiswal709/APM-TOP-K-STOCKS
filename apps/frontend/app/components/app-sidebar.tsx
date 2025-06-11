@@ -95,7 +95,7 @@ const data = {
     },
     {
       title: "Watchlist",
-      url: "#",
+      url: "/watchlist",
       icon: BookOpen,
       items: [
         {
