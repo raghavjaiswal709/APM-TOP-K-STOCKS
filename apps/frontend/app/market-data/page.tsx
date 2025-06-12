@@ -86,7 +86,6 @@ const MarketDataPage: React.FC = () => {
     isActive: false
   });
 
-  // Use the same watchlist hook as dashboard
   const { 
     companies, 
     loading: watchlistLoading, 
@@ -96,7 +95,6 @@ const MarketDataPage: React.FC = () => {
     exists: watchlistExists
   } = useWatchlist();
 
-  // Symbol formatting function - converts company code to Fyers format
   const validateAndFormatSymbol = useCallback((companyCode: string, exchange: string, marker: string = 'EQ'): string => {
     const cleanSymbol = companyCode.replace(/[^A-Z0-9]/g, '').toUpperCase();
     
@@ -114,7 +112,6 @@ const MarketDataPage: React.FC = () => {
     }
   }, []);
 
-  // Handle company selection from WatchlistSelector
   const handleCompanyChange = useCallback((companyCode: string | null, exchange?: string, marker?: string) => {
     console.log(`[MarketData] Company selected: ${companyCode} (${exchange}, ${marker})`);
     
@@ -130,7 +127,6 @@ const MarketDataPage: React.FC = () => {
     }
   }, [validateAndFormatSymbol]);
 
-  // Handle watchlist change
   const handleWatchlistChange = useCallback((watchlist: string) => {
     console.log(`[MarketData] Watchlist changed to: ${watchlist}`);
     setSelectedWatchlist(watchlist);
@@ -139,7 +135,6 @@ const MarketDataPage: React.FC = () => {
     setSelectedSymbol('');
   }, [setWatchlist]);
 
-  // Auto-select first company when companies load
   useEffect(() => {
     if (companies.length > 0 && !selectedCompany) {
       const firstCompany = companies[0];
@@ -153,7 +148,6 @@ const MarketDataPage: React.FC = () => {
     console.log('Component mounted, isClient set to true');
   }, []);
 
-  // Socket connection and market data handling (existing logic)
   useEffect(() => {
     if (!isClient) return;
 
@@ -301,7 +295,6 @@ const MarketDataPage: React.FC = () => {
     };
   }, [isClient, lastDataReceived, selectedSymbol]);
 
-  // Symbol subscription management
   useEffect(() => {
     if (!isClient) return;
     
@@ -313,7 +306,6 @@ const MarketDataPage: React.FC = () => {
       return;
     }
 
-    // Unsubscribe from all previous symbols
     Object.keys(marketData).forEach(symbol => {
       if (symbol !== selectedSymbol) {
         console.log('🔕 Unsubscribing from:', symbol);
@@ -321,7 +313,6 @@ const MarketDataPage: React.FC = () => {
       }
     });
     
-    // Subscribe to new symbol
     if (selectedSymbol) {
       socket.emit('subscribe', { symbol: selectedSymbol });
       console.log('🔔 Subscribed to:', selectedSymbol);

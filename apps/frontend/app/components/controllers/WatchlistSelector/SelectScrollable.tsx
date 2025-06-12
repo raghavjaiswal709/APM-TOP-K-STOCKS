@@ -38,7 +38,6 @@ export function SelectScrollable({
   const [selectedCompany, setSelectedCompany] = React.useState<MergedCompany | null>(null)
   const [searchTerm, setSearchTerm] = React.useState("")
 
-  // Reset selection when companies change (watchlist change)
   React.useEffect(() => {
     console.log(`[SelectScrollable] Companies changed, resetting selection. New count: ${companies.length}`);
     setValue("")
@@ -48,7 +47,6 @@ export function SelectScrollable({
     onCompanySelect(null)
   }, [companies, onCompanySelect]);
 
-  // Close dropdown when clicking outside
   React.useEffect(() => {
     const handleClickOutside = () => {
       if (open) {
@@ -87,7 +85,6 @@ export function SelectScrollable({
     e.stopPropagation()
     setOpen(!open)
     if (!open) {
-      // Clear search when opening
       setSearchTerm("")
     }
   }
@@ -104,7 +101,6 @@ export function SelectScrollable({
     return details.join(' • ');
   };
 
-  // Filter companies based on search term
   const filteredCompanies = React.useMemo(() => {
     if (!searchTerm) return companies;
     const searchLower = searchTerm.toLowerCase();
@@ -183,7 +179,6 @@ export function SelectScrollable({
               </div>
             </div>
 
-            {/* Companies List */}
             <div className="overflow-y-auto max-h-[250px]">
               {filteredCompanies.length === 0 ? (
                 <div className="p-3 text-sm text-muted-foreground text-center">

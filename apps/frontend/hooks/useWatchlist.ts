@@ -34,13 +34,10 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
   const [totalCompanies, setTotalCompanies] = useState(0);
   const [availableMarkers, setAvailableMarkers] = useState<string[]>([]);
 
-  // Use ref to track previous external watchlist to prevent unnecessary updates
   const prevExternalWatchlist = useRef(options.externalWatchlist);
   
-  // Use external watchlist if provided, otherwise use internal state
   const activeWatchlist = options.externalWatchlist || selectedWatchlist;
 
-  // Update internal state only when external watchlist actually changes
   useEffect(() => {
     if (options.externalWatchlist && 
         options.externalWatchlist !== prevExternalWatchlist.current && 
@@ -51,7 +48,6 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
     }
   }, [options.externalWatchlist, selectedWatchlist]);
 
-  // Fetch watchlist data when activeWatchlist changes
   useEffect(() => {
     let isCancelled = false;
     
@@ -61,13 +57,11 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
       setError(null);
 
       try {
-        // Keep hardcoded date as requested
         const today = "2025-06-05";
         const apiUrl = `http://localhost:5000/api/watchlist/${activeWatchlist}?date=${today}`;
         
         console.log(`[useWatchlist] Fetching from: ${apiUrl}`);
 
-        // Test if backend is reachable first
         try {
           const healthCheck = await fetch('http://localhost:5000/health', {
             method: 'GET',
@@ -120,12 +114,10 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
 
         const data: WatchlistResponse = await response.json();
         
-        // Don't update state if component was unmounted or request was cancelled
         if (isCancelled) return;
         
         console.log(`[useWatchlist] Raw API response for watchlist ${activeWatchlist}:`, data);
 
-        // Validate response structure
         if (!data || typeof data !== 'object') {
           throw new Error('Invalid response format from server');
         }
@@ -207,7 +199,6 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
 
     fetchWatchlist();
     
-    // Cleanup function to cancel request if component unmounts or activeWatchlist changes
     return () => {
       isCancelled = true;
     };

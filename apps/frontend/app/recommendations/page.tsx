@@ -22,7 +22,7 @@ import { DateSelector } from "../components/controllers/DateSelector";
 import { RecordedCompanySelector } from "../components/controllers/RecordedCompanySelector";
 import { useRecordedData } from "@/hooks/useRecordedData";
 
-const PlotlyChart = dynamic(() => import('../market-data/components/charts/PlotlyChart'), { 
+const PlotlyChart = dynamic(() => import('./components/PlotlyChart'), { 
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-zinc-900">
@@ -111,31 +111,61 @@ const RecommendationsPage: React.FC = () => {
   }, [setSelectedCompany, loadCompanyData]);
 
   // Update chart data when recorded data changes
-  useEffect(() => {
-    if (recordedData.length > 0) {
-      // Set current data to the latest data point
-      const latest = recordedData[recordedData.length - 1];
-      setCurrentData(latest);
+// Update chart data when recorded data changes
+useEffect(() => {
+  if (recordedData.length > 0) {
+    console.log('🔍 Processing recorded data:', recordedData.length, 'points');
+    
+    // Set current data to the latest data point
+    const latest = recordedData[recordedData.length - 1];
+    setCurrentData(latest);
+    
+    // Set historical data
+    setHistoricalData(recordedData);
+    
+    // ✅ ENHANCED: Create proper OHLC data with validation
+    const ohlc: OHLCData[] = recordedData.map((point, index) => {
+      // Use the already-processed data from transformRecordedData
+      const open = point.open || point.ltp;
+      const close = point.close || point.ltp;
+      let high = point.high || 0;
+      let low = point.low || 0;
       
-      // Set historical data
-      setHistoricalData(recordedData);
+      // Additional safety check (should not be needed with new transform function)
+      if (high <= 0 || low <= 0 || high < low) {
+        const prices = [open, close, point.ltp].filter(p => p > 0);
+        if (prices.length > 0) {
+          high = high <= 0 ? Math.max(...prices) : high;
+          low = low <= 0 ? Math.min(...prices) : low;
+        }
+      }
       
-      // Convert to OHLC format for candlestick charts
-      const ohlc: OHLCData[] = recordedData.map(point => ({
+      // Ensure OHLC relationships are valid
+      const finalHigh = Math.max(high, open, close, point.ltp);
+      const finalLow = Math.min(low, open, close, point.ltp);
+      
+      const ohlcPoint = {
         timestamp: point.timestamp,
-        open: point.open || point.ltp,
-        high: point.high || point.ltp,
-        low: point.low || point.ltp,
-        close: point.close || point.ltp,
+        open: open,
+        high: finalHigh,
+        low: finalLow,
+        close: close,
         volume: point.volume || 0
-      }));
-      setOhlcData(ohlc);
-    } else {
-      setCurrentData(null);
-      setHistoricalData([]);
-      setOhlcData([]);
-    }
-  }, [recordedData]);
+      };
+      
+      return ohlcPoint;
+    });
+    
+    console.log('✅ OHLC Data created:', ohlc.length, 'points');
+    console.log('📊 Sample OHLC:', ohlc[0]);
+    setOhlcData(ohlc);
+  } else {
+    setCurrentData(null);
+    setHistoricalData([]);
+    setOhlcData([]);
+  }
+}, [recordedData]);
+
 
   const formatPrice = (price?: number) => {
     return price?.toFixed(2) || '0.00';

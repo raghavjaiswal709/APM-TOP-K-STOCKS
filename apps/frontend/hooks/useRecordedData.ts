@@ -393,50 +393,82 @@ const loadCompanyData = useCallback(async (symbol: string) => {
 
 
 const transformRecordedData = (rawData: any, symbol: string): RecordedDataPoint[] => {
-  console.log('✅ Raw JSON data received:', rawData); // Debug log
+  console.log('🔍 Processing raw data:', rawData);
   
-  if (Array.isArray(rawData)) {
-    return rawData.map((item, index) => ({
+  const processDataPoint = (item: any, index: number = 0) => {
+    // Extract base values
+    const ltp = Number(item.ltp) || 0;
+    const openPrice = Number(item.open_price) || Number(item.open) || ltp;
+    const closePrice = Number(item.prev_close_price) || Number(item.close) || ltp;
+    
+    // Handle invalid high/low values (common in your data)
+    let highPrice = Number(item.high_price) || Number(item.high) || 0;
+    let lowPrice = Number(item.low_price) || Number(item.low) || 0;
+    
+    // ✅ CRITICAL FIX: Create valid OHLC when high/low are missing or 0
+    if (highPrice <= 0 || lowPrice <= 0 || highPrice < lowPrice) {
+      const validPrices = [openPrice, closePrice, ltp].filter(p => p > 0);
+      if (validPrices.length > 0) {
+        const minPrice = Math.min(...validPrices);
+        const maxPrice = Math.max(...validPrices);
+        
+        // Add small spread for realistic candlestick
+        const spread = Math.max(maxPrice * 0.001, 0.05); // 0.1% or minimum 0.05
+        
+        highPrice = highPrice <= 0 ? maxPrice + spread : Math.max(highPrice, maxPrice);
+        lowPrice = lowPrice <= 0 ? minPrice - spread : Math.min(lowPrice, minPrice);
+        
+        // Ensure OHLC logic is maintained
+        highPrice = Math.max(highPrice, openPrice, closePrice, ltp);
+        lowPrice = Math.min(lowPrice, openPrice, closePrice, ltp);
+      }
+    }
+    
+    // Final validation and cleanup
+    if (highPrice <= lowPrice) {
+      const midPrice = (highPrice + lowPrice) / 2 || ltp || openPrice || closePrice;
+      const spread = Math.max(midPrice * 0.001, 0.05);
+      highPrice = midPrice + spread;
+      lowPrice = midPrice - spread;
+    }
+    
+    return {
       symbol,
-      ltp: item.ltp || 0,
-      change: item.change || 0,
-      changePercent: item.changePercent || 0,
-      open: item.open_price || item.open || 0, // ✅ FIXED: Map open_price
-      high: item.high_price || item.high || 0, // ✅ FIXED: Map high_price  
-      low: item.low_price || item.low || 0,    // ✅ FIXED: Map low_price
-      close: item.prev_close_price || item.close || item.ltp || 0, // ✅ FIXED: Map prev_close_price
-      volume: item.vol_traded_today || item.volume || 0, // ✅ FIXED: Map vol_traded_today
-      bid: item.bid_price || item.bid || 0,    // ✅ FIXED: Map bid_price
-      ask: item.ask_price || item.ask || 0,    // ✅ FIXED: Map ask_price
-      timestamp: item.timestamp || item.last_traded_time || Date.now() / 1000 + index,
-      sma_20: item.sma_20,
-      ema_9: item.ema_9,
-      rsi_14: item.rsi_14
-    }));
-  } else if (rawData && typeof rawData === 'object') {
-    // ✅ FIXED: Handle single object (your JSON format)
-    return [{
-      symbol,
-      ltp: rawData.ltp || 0,
-      change: rawData.change || 0,
-      changePercent: rawData.changePercent || 0,
-      open: rawData.open_price || rawData.open || 0,
-      high: rawData.high_price || rawData.high || 0,
-      low: rawData.low_price || rawData.low || 0,
-      close: rawData.prev_close_price || rawData.close || rawData.ltp || 0,
-      volume: rawData.vol_traded_today || rawData.volume || 0,
-      bid: rawData.bid_price || rawData.bid || 0,
-      ask: rawData.ask_price || rawData.ask || 0,
-      timestamp: rawData.timestamp || rawData.last_traded_time || Date.now() / 1000,
-      sma_20: rawData.sma_20,
-      ema_9: rawData.ema_9,
-      rsi_14: rawData.rsi_14
-    }];
+      ltp: ltp,
+      change: Number(item.change) || 0,
+      changePercent: Number(item.changePercent) || 0,
+      open: openPrice,
+      high: highPrice,
+      low: lowPrice,
+      close: closePrice,
+      volume: Number(item.vol_traded_today) || Number(item.volume) || 0,
+      bid: Number(item.bid_price) || Number(item.bid) || 0,
+      ask: Number(item.ask_price) || Number(item.ask) || 0,
+      timestamp: Number(item.timestamp) || Number(item.last_traded_time) || (Date.now() / 1000 + index),
+      sma_20: item.sma_20 ? Number(item.sma_20) : undefined,
+      ema_9: item.ema_9 ? Number(item.ema_9) : undefined,
+      rsi_14: item.rsi_14 ? Number(item.rsi_14) : undefined
+    };
+  };
+
+  try {
+    if (Array.isArray(rawData)) {
+      const processed = rawData.map(processDataPoint);
+      console.log('✅ Processed array data:', processed.length, 'points');
+      return processed;
+    } else if (rawData && typeof rawData === 'object') {
+      const processed = [processDataPoint(rawData)];
+      console.log('✅ Processed single object:', processed);
+      return processed;
+    }
+  } catch (error) {
+    console.error('❌ Error in data transformation:', error);
   }
   
   console.log('❌ Invalid data format:', rawData);
   return [];
 };
+
 
   return {
     availableDates,

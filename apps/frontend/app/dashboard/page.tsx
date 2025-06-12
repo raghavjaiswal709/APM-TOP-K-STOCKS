@@ -111,7 +111,6 @@ export default function Page() {
   }, []);
   const handleRangeChange = async (startDate: Date, endDate: Date) => {
   try {
-    // Fetch additional data from your API
     const response = await fetch(`/api/companies/${selectedCompany}/ohlcv?` + new URLSearchParams({
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
@@ -120,7 +119,6 @@ export default function Page() {
     }));
     
     const newData = await response.json();
-    // The chart will automatically merge this data
   } catch (error) {
     console.error('Error fetching range data:', error);
   }

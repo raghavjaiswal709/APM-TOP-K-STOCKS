@@ -32,16 +32,14 @@ export const DateSelector: React.FC<DateSelectorProps> = ({
 }) => {
   const [isOpen, setIsOpen] = React.useState(false);
 
-  // ✅ FIXED: Proper date handling without timezone issues
   const handleDateSelect = (date: Date | undefined) => {
     if (date) {
-      // Use local date components to avoid timezone conversion
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
       
-      console.log('✅ Selected date (local):', dateStr); // Debug log
+      console.log('✅ Selected date (local):', dateStr); 
       onDateSelect(dateStr);
       setIsOpen(false);
     }
@@ -52,10 +50,9 @@ export const DateSelector: React.FC<DateSelectorProps> = ({
     return availableDates.find(d => d.date === selectedDate);
   };
 
-  // ✅ FIXED: Create Date objects from date strings properly
   const createDateFromString = (dateStr: string): Date => {
     const [year, month, day] = dateStr.split('-').map(Number);
-    return new Date(year, month - 1, day); // month is 0-indexed
+    return new Date(year, month - 1, day); 
   };
 
   const selectedDateInfo = getSelectedDateInfo();
