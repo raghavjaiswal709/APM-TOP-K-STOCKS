@@ -213,9 +213,9 @@ export default function Page() {
             <MarketDataPage />
           ) : (
             <>
-              <Card className="w-full">
+              <Card className="w-full ">
                 <CardContent className="p-4">
-                  <div className="space-y-4 flex">
+                  <div className="flex gap-4 items-center justify-between w-full">
                     <CardWithForm 
                       onCompanyChange={handleCompanyChange} 
                       onDateRangeChange={handleDateRangeChange}
@@ -227,7 +227,7 @@ export default function Page() {
                       loading={stockLoading}
                     />
                     
-                    <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-end">
+                    <div className="p-3 border border-opacity-30 rounded-md h-24 flex items-center justify-end w-fit mr-4">
                       <CalendarForm 
                         onDateRangeChange={handleDateRangeChange}
                         onFetchData={handleFetchData}
@@ -261,7 +261,7 @@ onRangeChange={handleRangeChange}
                 />
               </div>
               
-              <Card className="w-full border border-opacity-30 h-[400px] overflow-hidden">
+              {/* <Card className="w-full border border-opacity-30 h-[400px] overflow-hidden">
                 <CardContent className="p-4">
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="text-lg font-medium">Watchlist {selectedWatchlist} Companies</h3>
@@ -321,7 +321,7 @@ onRangeChange={handleRangeChange}
                     )}
                   </div>
                 </CardContent>
-              </Card>
+              </Card> */}
             </>
           )}
         </div>

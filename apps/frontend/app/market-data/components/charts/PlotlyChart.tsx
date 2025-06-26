@@ -69,13 +69,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const buySellVolumeChartRef = useRef<any>(null);
   const buySellLineChartRef = useRef<any>(null);
   const buySellSpreadChartRef = useRef<any>(null);
+  const volumeChartRef = useRef<any>(null);
   const [initialized, setInitialized] = useState(false);
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1D');
   const [chartType, setChartType] = useState<'line' | 'candle'>('candle');
   
   // New state structure for the main/secondary button system
   const [mainMode, setMainMode] = useState<'none' | 'bidAsk' | 'buySell'>('none');
-  const [secondaryView, setSecondaryView] = useState<'line' | 'spread'>('line');
+  const [secondaryView, setSecondaryView] = useState<'line' | 'spread' | 'std'>('line');
   
   const [showIndicators, setShowIndicators] = useState<{
     sma20: boolean;
@@ -84,7 +85,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     macd: boolean;
     bb: boolean;
     vwap: boolean;
-    buySellVolume: boolean;
+    volume: boolean;
   }>({
     sma20: false,
     ema9: false,
@@ -92,7 +93,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     macd: false,
     bb: false,
     vwap: false,
-    buySellVolume: false
+    volume: false,
   });
   
   const [preservedAxisRanges, setPreservedAxisRanges] = useState<{
@@ -233,6 +234,62 @@ const calculateVolumeStandardDeviation = (dataPoint: DataPoint | OHLCPoint, inde
   }
   
   return volumes.length > 1 ? calculateStandardDeviation(volumes) : 0;
+};
+
+// Add function to calculate standard deviation for bid-ask
+const calculateBidAskStandardDeviation = () => {
+  const { bid, ask, x } = prepareLineChartData();
+  const windowSize = 20;
+  
+  const bidStdDev = [];
+  const askStdDev = [];
+  
+  for (let i = 0; i < bid.length; i++) {
+    const startIndex = Math.max(0, i - windowSize + 1);
+    
+    const bidWindow = bid.slice(startIndex, i + 1).filter(b => b !== null && b !== undefined) as number[];
+    const askWindow = ask.slice(startIndex, i + 1).filter(a => a !== null && a !== undefined) as number[];
+    
+    bidStdDev.push(bidWindow.length > 1 ? calculateStandardDeviation(bidWindow) : 0);
+    askStdDev.push(askWindow.length > 1 ? calculateStandardDeviation(askWindow) : 0);
+  }
+  
+  return { x, bidStdDev, askStdDev };
+};
+
+// Add function to calculate standard deviation for buy-sell
+const calculateBuySellStandardDeviation = () => {
+  let x: Date[] = [];
+  let buyPrices: number[] = [];
+  let sellPrices: number[] = [];
+  
+  if (chartType === 'line') {
+    const data = prepareLineChartData();
+    x = data.x;
+    buyPrices = data.buyPrices;
+    sellPrices = data.sellPrices;
+  } else {
+    const data = prepareCandlestickData();
+    x = data.x;
+    buyPrices = data.buyPrices;
+    sellPrices = data.sellPrices;
+  }
+  
+  const windowSize = 20;
+  const buyStdDev = [];
+  const sellStdDev = [];
+  
+  for (let i = 0; i < buyPrices.length; i++) {
+    const startIndex = Math.max(0, i - windowSize + 1);
+    
+    const buyWindow = buyPrices.slice(startIndex, i + 1).filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
+    const sellWindow = sellPrices.slice(startIndex, i + 1).filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
+    
+    buyStdDev.push(buyWindow.length > 1 ? calculateStandardDeviation(buyWindow) : 0);
+    sellStdDev.push(sellWindow.length > 1 ? calculateStandardDeviation(sellWindow) : 0);
+  }
+  
+  return { x, buyStdDev, sellStdDev };
 };
 
 const calculateSMA = (prices: number[], period: number) => {
@@ -537,6 +594,22 @@ const calculateBuySellSpreadRange = () => {
     return [Math.max(0, minSpread - padding), maxSpread + padding];
   };
   
+  const calculateVolumeRange = () => {
+    let volumes: number[] = [];
+    
+    if (chartType === 'line') {
+      volumes = historicalData.map(point => point.volume || 0).filter(v => v > 0);
+    } else {
+      const { volume } = prepareCandlestickData();
+      volumes = volume.filter(v => v > 0);
+    }
+    
+    if (volumes.length === 0) return [0, 1000];
+    
+    const maxVolume = Math.max(...volumes);
+    return [0, maxVolume * 1.1];
+  };
+  
   const calculateBuySellVolumeRange = () => {
     let buyVolumes: number[] = [];
     let sellVolumes: number[] = [];
@@ -633,7 +706,9 @@ const calculateBuySellSpreadRange = () => {
         sellVolume: '#ef4444',
         buyPrice: '#10b981',
         sellPrice: '#f59e0b',
-        buySellSpread: '#8b5cf6'
+        buySellSpread: '#8b5cf6',
+        volume: '#64748b',
+        std: '#f97316'
       }
     };
   };
@@ -658,7 +733,8 @@ const calculateBuySellSpreadRange = () => {
     }
   };
 
-  const toggleSecondaryView = (view: 'line' | 'spread') => {
+  // FIXED: Updated to handle 'std' parameter
+  const toggleSecondaryView = (view: 'line' | 'spread' | 'std') => {
     setSecondaryView(view);
   };
   
@@ -708,9 +784,20 @@ const calculateBuySellSpreadRange = () => {
       });
     }
     
-    // Update buy-sell volume chart if visible
+    // Update volume chart if visible
+    const volumeDiv = document.getElementById('volume-chart');
+    if (volumeDiv && showIndicators.volume) {
+      Plotly.relayout(volumeDiv, {
+        'xaxis.range': newTimeRange,
+        'xaxis.autorange': false,
+        'yaxis.range': calculateVolumeRange(),
+        'yaxis.autorange': false
+      });
+    }
+    
+    // FIXED: Updated condition for STD chart
     const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
-    if (buySellVolumeDiv && showIndicators.buySellVolume) {
+    if (buySellVolumeDiv && mainMode !== 'none' && secondaryView === 'std') {
       Plotly.relayout(buySellVolumeDiv, {
         'xaxis.range': newTimeRange,
         'xaxis.autorange': false,
@@ -730,7 +817,7 @@ const calculateBuySellSpreadRange = () => {
       });
     }
 
-// Update buy-sell spread chart if visible
+    // Update buy-sell spread chart if visible
     const buySellSpreadDiv = document.getElementById('buy-sell-spread-chart');
     if (buySellSpreadDiv && mainMode === 'buySell' && secondaryView === 'spread') {
       Plotly.relayout(buySellSpreadDiv, {
@@ -779,7 +866,8 @@ const toggleChartType = () => {
   setChartType(prev => prev === 'line' ? 'candle' : 'line');
 };
 
-const toggleIndicator = (indicator: 'sma20' | 'ema9' | 'rsi' | 'macd' | 'bb' | 'vwap' | 'buySellVolume') => {
+// FIXED: Removed 'std' from toggleIndicator function
+const toggleIndicator = (indicator: 'sma20' | 'ema9' | 'rsi' | 'macd' | 'bb' | 'vwap' | 'volume') => {
   setShowIndicators(prev => ({
     ...prev,
     [indicator]: !prev[indicator]
@@ -858,6 +946,14 @@ const toggleIndicator = (indicator: 'sma20' | 'ema9' | 'rsi' | 'macd' | 'bb' | '
           });
         }
         
+        const volumeDiv = document.getElementById('volume-chart');
+        if (volumeDiv) {
+          Plotly.relayout(volumeDiv, {
+            'xaxis.range': [startDate, endDate],
+            'xaxis.autorange': false
+          });
+        }
+        
         const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
         if (buySellVolumeDiv) {
           Plotly.relayout(buySellVolumeDiv, {
@@ -866,7 +962,7 @@ const toggleIndicator = (indicator: 'sma20' | 'ema9' | 'rsi' | 'macd' | 'bb' | '
           });
         }
 
-const buySellLineDiv = document.getElementById('buy-sell-line-chart');
+        const buySellLineDiv = document.getElementById('buy-sell-line-chart');
         if (buySellLineDiv) {
           Plotly.relayout(buySellLineDiv, {
             'xaxis.range': [startDate, endDate],
@@ -931,11 +1027,20 @@ const buySellLineDiv = document.getElementById('buy-sell-line-chart');
         }
       }
       
-      if (showIndicators.buySellVolume) {
+      if (showIndicators.volume) {
+        const volumeDiv = document.getElementById('volume-chart');
+        if (volumeDiv) {
+          // @ts-ignore - Plotly is available globally
+          Plotly.react(volumeDiv, createVolumeData(), createVolumeLayout());
+        }
+      }
+      
+      // FIXED: Updated condition for STD chart
+      if (mainMode !== 'none' && secondaryView === 'std') {
         const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
         if (buySellVolumeDiv) {
           // @ts-ignore - Plotly is available globally
-          Plotly.react(buySellVolumeDiv, createBuySellVolumeData(), createBuySellVolumeLayout());
+          Plotly.react(buySellVolumeDiv, createStdData(), createStdLayout());
         }
       }
 
@@ -947,7 +1052,7 @@ const buySellLineDiv = document.getElementById('buy-sell-line-chart');
         }
       }
 
-if (mainMode === 'buySell' && secondaryView === 'spread') {
+      if (mainMode === 'buySell' && secondaryView === 'spread') {
         const buySellSpreadDiv = document.getElementById('buy-sell-spread-chart');
         if (buySellSpreadDiv) {
           // @ts-ignore - Plotly is available globally
@@ -975,7 +1080,7 @@ const createPlotData = () => {
         point.timestamp !== undefined
       );
 
-if (validData.length === 0) return plotData;
+      if (validData.length === 0) return plotData;
 
       const sortedData = [...validData].sort((a, b) => a.timestamp - b.timestamp);
       const timeValues = sortedData.map(point => new Date(point.timestamp * 1000));
@@ -1016,33 +1121,33 @@ if (validData.length === 0) return plotData;
       }
 
       if (volumeValues.some(v => v > 0)) {
-  plotData.push({
-    x: timeValues,
-    y: volumeValues,
-    type: 'histogram',
-    histfunc: 'sum',
-    name: 'Volume',
-    marker: {
-      color: volumeColors,
-      opacity: 0.9,
-      line: {
-        width: 0.5,
-        color: 'rgba(255,255,255,0.1)'
+        plotData.push({
+          x: timeValues,
+          y: volumeValues,
+          type: 'histogram',
+          histfunc: 'sum',
+          name: 'Volume',
+          marker: {
+            color: volumeColors,
+            opacity: 0.9,
+            line: {
+              width: 0.5,
+              color: 'rgba(255,255,255,0.1)'
+            }
+          },
+          xbins: {
+            size: 60000 // Adjust based on your time interval (60000ms = 1 minute)
+          },
+          yaxis: 'y3',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Volume: %{y:,.0f}<br>' +
+                        '<extra></extra>',
+          showlegend: true
+        });
       }
-    },
-    xbins: {
-      size: 60000 // Adjust based on your time interval (60000ms = 1 minute)
-    },
-    yaxis: 'y3',
-    hovertemplate: '<b>%{fullData.name}</b><br>' +
-                  'Time: %{x|%H:%M:%S}<br>' +
-                  'Volume: %{y:,.0f}<br>' +
-                  '<extra></extra>',
-    showlegend: true
-  });
-}
 
-// SMA 20 for line chart
+      // SMA 20 for line chart
       if (showIndicators.sma20 && priceValues.length >= 20) {
         const sma20Values = calculateSMA(priceValues, 20);
         if (sma20Values && sma20Values.length > 0) {
@@ -1166,38 +1271,38 @@ if (validData.length === 0) return plotData;
     if (x.length === 0) return plotData;
 
     // Main candlestick chart
-// Create hover text array
-const hoverText = x.map((date, i) => 
-  `${date.toLocaleDateString()} ${date.toLocaleTimeString()}<br>` +
-  `Open: ${open[i]?.toFixed(2) || 'N/A'}<br>` +
-  `High: ${high[i]?.toFixed(2) || 'N/A'}<br>` +
-  `Low: ${low[i]?.toFixed(2) || 'N/A'}<br>` +
-  `Close: ${close[i]?.toFixed(2) || 'N/A'}<br>` +
-  `Volume: ${(volume[i] || 0).toLocaleString()}`
-);
+    // Create hover text array
+    const hoverText = x.map((date, i) => 
+      `${date.toLocaleDateString()} ${date.toLocaleTimeString()}<br>` +
+      `Open: ${open[i]?.toFixed(2) || 'N/A'}<br>` +
+      `High: ${high[i]?.toFixed(2) || 'N/A'}<br>` +
+      `Low: ${low[i]?.toFixed(2) || 'N/A'}<br>` +
+      `Close: ${close[i]?.toFixed(2) || 'N/A'}<br>` +
+      `Volume: ${(volume[i] || 0).toLocaleString()}`
+    );
 
-plotData.push({
-  x: x,
-  open: open,
-  high: high,
-  low: low,
-  close: close,
-  type: 'candlestick',
-  name: 'OHLC',
-  text: hoverText,
-  hoverinfo: 'text',
-  increasing: {
-    line: { color: colors.upColor || '#10b981', width: 1 },
-    fillcolor: colors.upColor || '#10b981'
-  },
-  decreasing: {
-    line: { color: colors.downColor || '#ef4444', width: 1 },
-    fillcolor: colors.downColor || '#ef4444'
-  },
-  showlegend: true
-});
+    plotData.push({
+      x: x,
+      open: open,
+      high: high,
+      low: low,
+      close: close,
+      type: 'candlestick',
+      name: 'OHLC',
+      text: hoverText,
+      hoverinfo: 'text',
+      increasing: {
+        line: { color: colors.upColor || '#10b981', width: 1 },
+        fillcolor: colors.upColor || '#10b981'
+      },
+      decreasing: {
+        line: { color: colors.downColor || '#ef4444', width: 1 },
+        fillcolor: colors.downColor || '#ef4444'
+      },
+      showlegend: true
+    });
 
-// SMA 20 for candlestick chart
+    // SMA 20 for candlestick chart
     if (showIndicators.sma20 && close.length >= 20) {
       const sma20Values = calculateSMA(close, 20);
       if (sma20Values && sma20Values.length > 0) {
@@ -1271,7 +1376,7 @@ plotData.push({
           showlegend: true
         });
 
-// Middle band
+        // Middle band
         plotData.push({
           x: x.slice(19),
           y: bbData.middle,
@@ -1473,7 +1578,7 @@ plotData.push({
       }
     }
 
-if (priceData.length >= 35) { // Need at least 26 + 9 for MACD signal
+    if (priceData.length >= 35) { // Need at least 26 + 9 for MACD signal
       const macdData = calculateMACD(priceData, 12, 26, 9);
 
       if (macdData && macdData.macdLine && macdData.signalLine && macdData.histogram && 
@@ -1563,74 +1668,142 @@ const createSpreadData = () => {
 
 const createBidAskData = () => {
     const colors = getColorTheme();
-    const { x, bid, ask } = prepareLineChartData();
     
-    return [
-      {
-        x,
-        y: bid,
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: colors.indicator.bid, width: 2 },
-        name: 'Bid Price',
-        hoverinfo: 'y+name',
-      },
-      {
-        x,
-        y: ask,
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: colors.indicator.ask, width: 2 },
-        name: 'Ask Price',
-        hoverinfo: 'y+name',
-      }
-    ];
+    if (secondaryView === 'std') {
+      // Show standard deviation of bid-ask when STD is enabled
+      const { x, bidStdDev, askStdDev } = calculateBidAskStandardDeviation();
+      
+      return [
+        {
+          x,
+          y: bidStdDev,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.bid, width: 2 },
+          name: 'Bid Std Dev',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Std Dev: %{y:.4f}<br>' +
+                        '<extra></extra>',
+        },
+        {
+          x,
+          y: askStdDev,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.ask, width: 2 },
+          name: 'Ask Std Dev',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Std Dev: %{y:.4f}<br>' +
+                        '<extra></extra>',
+        }
+      ];
+    } else {
+      // Show regular bid-ask when STD is disabled
+      const { x, bid, ask } = prepareLineChartData();
+      
+      return [
+        {
+          x,
+          y: bid,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.bid, width: 2 },
+          name: 'Bid Price',
+          hoverinfo: 'y+name',
+        },
+        {
+          x,
+          y: ask,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.ask, width: 2 },
+          name: 'Ask Price',
+          hoverinfo: 'y+name',
+        }
+      ];
+    }
   };
 
-  const createBuySellLineData = () => {
+const createBuySellLineData = () => {
     const colors = getColorTheme();
-    let x: Date[] = [];
-    let buyPrices: number[] = [];
-    let sellPrices: number[] = [];
     
-    if (chartType === 'line') {
-      const data = prepareLineChartData();
-      x = data.x;
-      buyPrices = data.buyPrices;
-      sellPrices = data.sellPrices;
+    if (secondaryView === 'std') {
+      // Show standard deviation of buy-sell when STD is enabled
+      const { x, buyStdDev, sellStdDev } = calculateBuySellStandardDeviation();
+      
+      return [
+        {
+          x,
+          y: buyStdDev,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.buyPrice, width: 2 },
+          name: 'Buy Price Std Dev',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Std Dev: %{y:.4f}<br>' +
+                        '<extra></extra>',
+        },
+        {
+          x,
+          y: sellStdDev,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.sellPrice, width: 2 },
+          name: 'Sell Price Std Dev',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Std Dev: %{y:.4f}<br>' +
+                        '<extra></extra>',
+        }
+      ];
     } else {
-      const data = prepareCandlestickData();
-      x = data.x;
-      buyPrices = data.buyPrices;
-      sellPrices = data.sellPrices;
-    }
-    
-    return [
-      {
-        x,
-        y: buyPrices,
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: colors.indicator.buyPrice, width: 2 },
-        name: 'Buy Price',
-        hovertemplate: '<b>%{fullData.name}</b><br>' +
-                      'Time: %{x|%H:%M:%S}<br>' +
-                      'Price: ₹%{y:.2f}<br>' +
-                      '<extra></extra>',
-      },
-      {
-        x,
-        y: sellPrices,
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: colors.indicator.sellPrice, width: 2 },
-        name: 'Sell Price',
-        hovertemplate: '<b>%{fullData.name}</b><br>' +
-                      'Time: %{x|%H:%M:%S}<br>' +
-                      'Price: ₹%{y:.2f}<br>' +
-                      '<extra></extra>',
+      // Show regular buy-sell when STD is disabled
+      let x: Date[] = [];
+      let buyPrices: number[] = [];
+      let sellPrices: number[] = [];
+      
+      if (chartType === 'line') {
+        const data = prepareLineChartData();
+        x = data.x;
+        buyPrices = data.buyPrices;
+        sellPrices = data.sellPrices;
+      } else {
+        const data = prepareCandlestickData();
+        x = data.x;
+        buyPrices = data.buyPrices;
+        sellPrices = data.sellPrices;
       }
-    ];
+      
+      return [
+        {
+          x,
+          y: buyPrices,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.buyPrice, width: 2 },
+          name: 'Buy Price',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Price: ₹%{y:.2f}<br>' +
+                        '<extra></extra>',
+        },
+        {
+          x,
+          y: sellPrices,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.sellPrice, width: 2 },
+          name: 'Sell Price',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Price: ₹%{y:.2f}<br>' +
+                        '<extra></extra>',
+        }
+      ];
+    }
   };
 
   const createBuySellSpreadData = () => {
@@ -1663,53 +1836,159 @@ const createBidAskData = () => {
     }];
   };
 
- const createBuySellVolumeData = () => {
+ // New Volume Data function
+ const createVolumeData = () => {
   const colors = getColorTheme();
   let x: Date[] = [];
-  let volumeStdDev: number[] = [];
+  let volumes: number[] = [];
+  let volumeColors: string[] = [];
   
   if (chartType === 'line') {
     const data = prepareLineChartData();
     x = data.x;
-    // Calculate volume standard deviation for line chart
-    volumeStdDev = data.allData.map((point, index) => 
-      calculateVolumeStandardDeviation(point, index)
-    );
+    volumes = data.allData.map(point => point.volume || 0);
+    
+    // Calculate colors based on price change
+    for (let i = 0; i < data.allData.length; i++) {
+      if (i === 0) {
+        volumeColors.push(colors.upColor);
+      } else {
+        const currentPrice = data.allData[i].ltp;
+        const prevPrice = data.allData[i - 1].ltp;
+        volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
+      }
+    }
   } else {
     const data = prepareCandlestickData();
     x = data.x;
-    volumeStdDev = data.volumeStdDev;
+    volumes = data.volume;
+    
+    // Calculate colors based on candle color
+    for (let i = 0; i < data.close.length; i++) {
+      volumeColors.push(data.close[i] >= data.open[i] ? colors.upColor : colors.downColor);
+    }
   }
   
-  return [
-    {
+  return [{
+    x,
+    y: volumes,
+    type: 'bar',
+    name: 'Volume',
+    marker: { 
+      color: volumeColors,
+      opacity: 0.8 
+    },
+    hovertemplate: '<b>%{fullData.name}</b><br>' +
+                  'Time: %{x|%H:%M:%S}<br>' +
+                  'Volume: %{y:,.0f}<br>' +
+                  '<extra></extra>',
+  }];
+};
+
+// Modified STD Data function
+const createStdData = () => {
+  const colors = getColorTheme();
+  
+  if (mainMode === 'bidAsk') {
+    // Show bid-ask volume standard deviation when bid-ask mode is active
+    const { x, bidStdDev, askStdDev } = calculateBidAskStandardDeviation();
+    
+    return [
+      {
+        x,
+        y: bidStdDev,
+        type: 'bar',
+        name: 'Bid Volume Std Dev',
+        marker: { 
+          color: colors.indicator.bid,
+          opacity: 0.8 
+        },
+        hovertemplate: '<b>%{fullData.name}</b><br>' +
+                      'Time: %{x|%H:%M:%S}<br>' +
+                      'Bid Std Dev: %{y:.4f}<br>' +
+                      '<extra></extra>',
+      },
+      {
+        x,
+        y: askStdDev,
+        type: 'bar',
+        name: 'Ask Volume Std Dev',
+        marker: { 
+          color: colors.indicator.ask,
+          opacity: 0.8 
+        },
+        hovertemplate: '<b>%{fullData.name}</b><br>' +
+                      'Time: %{x|%H:%M:%S}<br>' +
+                      'Ask Std Dev: %{y:.4f}<br>' +
+                      '<extra></extra>',
+      }
+    ];
+  } else if (mainMode === 'buySell') {
+    // Show buy-sell volume standard deviation when buy-sell mode is active
+    const { x, buyStdDev, sellStdDev } = calculateBuySellStandardDeviation();
+    
+    return [
+      {
+        x,
+        y: buyStdDev,
+        type: 'bar',
+        name: 'Buy Volume Std Dev',
+        marker: { 
+          color: colors.indicator.buyPrice,
+          opacity: 0.8 
+        },
+        hovertemplate: '<b>%{fullData.name}</b><br>' +
+                      'Time: %{x|%H:%M:%S}<br>' +
+                      'Buy Std Dev: %{y:.4f}<br>' +
+                      '<extra></extra>',
+      },
+      {
+        x,
+        y: sellStdDev,
+        type: 'bar',
+        name: 'Sell Volume Std Dev',
+        marker: { 
+          color: colors.indicator.sellPrice,
+          opacity: 0.8 
+        },
+        hovertemplate: '<b>%{fullData.name}</b><br>' +
+                      'Time: %{x|%H:%M:%S}<br>' +
+                      'Sell Std Dev: %{y:.4f}<br>' +
+                      '<extra></extra>',
+      }
+    ];
+  } else {
+    // Show regular volume standard deviation when no specific mode is active
+    let x: Date[] = [];
+    let volumeStdDev: number[] = [];
+    
+    if (chartType === 'line') {
+      const data = prepareLineChartData();
+      x = data.x;
+      volumeStdDev = data.allData.map((point, index) => 
+        calculateVolumeStandardDeviation(point, index)
+      );
+    } else {
+      const data = prepareCandlestickData();
+      x = data.x;
+      volumeStdDev = data.volumeStdDev;
+    }
+    
+    return [{
       x,
       y: volumeStdDev,
       type: 'bar',
       name: 'Volume Std Dev',
       marker: { 
-        color: volumeStdDev.map((val, i) => {
-          if (chartType === 'candle') {
-            const { close, open } = prepareCandlestickData();
-            if (close[i] && open[i]) {
-              return close[i] >= open[i] ? colors.upColor : colors.downColor;
-            }
-          } else {
-            // For line chart, use a gradient based on std dev value
-            const maxStdDev = Math.max(...volumeStdDev);
-            const intensity = val / maxStdDev;
-            return `rgba(59, 130, 246, ${0.3 + intensity * 0.7})`;
-          }
-          return colors.grid;
-        }),
+        color: colors.indicator.std,
         opacity: 0.8 
       },
       hovertemplate: '<b>%{fullData.name}</b><br>' +
                     'Time: %{x|%H:%M:%S}<br>' +
                     'Std Dev: %{y:.4f}<br>' +
                     '<extra></extra>',
-    }
-  ];
+    }];
+  }
 };
 
 const createLayout = () => {
@@ -1878,14 +2157,26 @@ const createLayout = () => {
 const createBidAskLayout = () => {
     const colors = getColorTheme();
     const timeRange = getTimeRange();
-    const bidAskRange = calculateBidAskRange();
+    let yRange, title;
+    
+    if (secondaryView === 'std') {
+      // Different range and title for standard deviation
+      const { bidStdDev, askStdDev } = calculateBidAskStandardDeviation();
+      const allStdDev = [...bidStdDev, ...askStdDev].filter(v => v !== null && v !== undefined && !isNaN(v));
+      const maxStdDev = allStdDev.length > 0 ? Math.max(...allStdDev) : 1;
+      yRange = [0, maxStdDev * 1.1];
+      title = 'Bid-Ask Standard Deviation';
+    } else {
+      yRange = calculateBidAskRange();
+      title = 'Bid-Ask Prices';
+    }
     
     return {
       autosize: true,
       height: 200,
       margin: { l: 50, r: 50, t: 30, b: 30 },
       title: {
-        text: 'Bid-Ask Prices',
+        text: title,
         font: { size: 14, color: colors.text },
       },
       xaxis: {
@@ -1900,8 +2191,8 @@ const createBidAskLayout = () => {
         fixedrange: false,
       },
       yaxis: {
-        title: 'Price (₹)',
-        range: bidAskRange,
+        title: secondaryView === 'std' ? 'Std Deviation' : 'Price (₹)',
+        range: yRange,
         autorange: false,
         fixedrange: false,
         gridcolor: colors.grid,
@@ -1923,17 +2214,29 @@ const createBidAskLayout = () => {
     };
   };
 
-  const createBuySellLineLayout = () => {
+const createBuySellLineLayout = () => {
     const colors = getColorTheme();
     const timeRange = getTimeRange();
-    const buySellRange = calculateBuySellRange();
+    let yRange, title;
+    
+    if (secondaryView === 'std') {
+      // Different range and title for standard deviation
+      const { buyStdDev, sellStdDev } = calculateBuySellStandardDeviation();
+      const allStdDev = [...buyStdDev, ...sellStdDev].filter(v => v !== null && v !== undefined && !isNaN(v));
+      const maxStdDev = allStdDev.length > 0 ? Math.max(...allStdDev) : 1;
+      yRange = [0, maxStdDev * 1.1];
+      title = 'Buy-Sell Standard Deviation';
+    } else {
+      yRange = calculateBuySellRange();
+      title = 'Buy-Sell Prices';
+    }
     
     return {
       autosize: true,
       height: 200,
       margin: { l: 50, r: 50, t: 30, b: 30 },
       title: {
-        text: 'Buy-Sell Prices',
+        text: title,
         font: { size: 14, color: colors.text },
       },
       xaxis: {
@@ -1948,8 +2251,8 @@ const createBidAskLayout = () => {
         fixedrange: false,
       },
       yaxis: {
-        title: 'Price (₹)',
-        range: buySellRange,
+        title: secondaryView === 'std' ? 'Std Deviation' : 'Price (₹)',
+        range: yRange,
         autorange: false,
         fixedrange: false,
         gridcolor: colors.grid,
@@ -2013,31 +2316,97 @@ const createBuySellSpreadLayout = () => {
     };
   };
 
-const createBuySellVolumeLayout = () => {
+// New Volume Layout function
+const createVolumeLayout = () => {
   const colors = getColorTheme();
   const timeRange = getTimeRange();
-  
-  // Calculate volume std dev range
-  let volumeStdDev: number[] = [];
-  if (chartType === 'line') {
-    volumeStdDev = historicalData.map((point, index) => 
-      calculateVolumeStandardDeviation(point, index)
-    );
-  } else {
-    const { volumeStdDev: stdDev } = prepareCandlestickData();
-    volumeStdDev = stdDev;
-  }
-  
-  const validStdDev = volumeStdDev.filter(v => v !== null && v !== undefined && !isNaN(v));
-  const maxStdDev = validStdDev.length > 0 ? Math.max(...validStdDev) : 1;
-  const volumeRange = [0, maxStdDev * 1.1];
+  const volumeRange = calculateVolumeRange();
   
   return {
     autosize: true,
     height: 180,
     margin: { l: 50, r: 50, t: 30, b: 30 },
     title: {
-      text: 'Volume Standard Deviation',
+      text: 'Volume',
+      font: { size: 14, color: colors.text },
+    },
+    xaxis: {
+      title: '',
+      type: 'date',
+      range: timeRange,
+      gridcolor: colors.grid,
+      linecolor: colors.grid,
+      tickfont: { color: colors.text },
+      titlefont: { color: colors.text },
+      rangeslider: { visible: false },
+      fixedrange: false,
+    },
+    yaxis: {
+      title: 'Volume',
+      range: volumeRange,
+      autorange: false,
+      fixedrange: false,
+      gridcolor: colors.grid,
+      linecolor: colors.grid,
+      tickfont: { color: colors.text },
+      titlefont: { color: colors.text },
+    },
+    hovermode: 'closest',
+    showlegend: true,
+    legend: {
+      orientation: 'h',
+      y: 1.1,
+      font: { color: colors.text },
+      bgcolor: 'rgba(0,0,0,0)',
+    },
+    plot_bgcolor: colors.bg,
+    paper_bgcolor: colors.paper,
+    font: { family: 'Arial, sans-serif', color: colors.text },
+  };
+};
+
+// Modified STD Layout function
+const createStdLayout = () => {
+  const colors = getColorTheme();
+  const timeRange = getTimeRange();
+  let yRange, title;
+  
+  if (mainMode === 'bidAsk') {
+    const { bidStdDev, askStdDev } = calculateBidAskStandardDeviation();
+    const allStdDev = [...bidStdDev, ...askStdDev].filter(v => v !== null && v !== undefined && !isNaN(v));
+    const maxStdDev = allStdDev.length > 0 ? Math.max(...allStdDev) : 1;
+    yRange = [0, maxStdDev * 1.1];
+    title = 'Bid-Ask Volume Standard Deviation';
+  } else if (mainMode === 'buySell') {
+    const { buyStdDev, sellStdDev } = calculateBuySellStandardDeviation();
+    const allStdDev = [...buyStdDev, ...sellStdDev].filter(v => v !== null && v !== undefined && !isNaN(v));
+    const maxStdDev = allStdDev.length > 0 ? Math.max(...allStdDev) : 1;
+    yRange = [0, maxStdDev * 1.1];
+    title = 'Buy-Sell Volume Standard Deviation';
+  } else {
+    // Default volume std deviation
+    let volumeStdDev: number[] = [];
+    if (chartType === 'line') {
+      volumeStdDev = historicalData.map((point, index) => 
+        calculateVolumeStandardDeviation(point, index)
+      );
+    } else {
+      const { volumeStdDev: stdDev } = prepareCandlestickData();
+      volumeStdDev = stdDev;
+    }
+    
+    const validStdDev = volumeStdDev.filter(v => v !== null && v !== undefined && !isNaN(v));
+    const maxStdDev = validStdDev.length > 0 ? Math.max(...validStdDev) : 1;
+    yRange = [0, maxStdDev * 1.1];
+    title = 'Volume Standard Deviation';
+  }
+  
+  return {
+    autosize: true,
+    height: 180,
+    margin: { l: 50, r: 50, t: 30, b: 30 },
+    title: {
+      text: title,
       font: { size: 14, color: colors.text },
     },
     xaxis: {
@@ -2053,7 +2422,7 @@ const createBuySellVolumeLayout = () => {
     },
     yaxis: {
       title: 'Std Deviation',
-      range: volumeRange,
+      range: yRange,
       autorange: false,
       fixedrange: false,
       gridcolor: colors.grid,
@@ -2088,8 +2457,10 @@ const timeframeButtons = [
   
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="flex justify-between mb-2">
-        <div className="flex space-x-1">
+      <div className="flex justify-between mb-2 space-x-2">
+        
+        {/* Timeframe Section */}
+        <div className="flex space-x-1 bg-zinc-900 p-1 rounded-md border border-zinc-700">
           {timeframeButtons.map((button) => (
             <button
               key={button.value}
@@ -2104,11 +2475,12 @@ const timeframeButtons = [
             </button>
           ))}
         </div>
-        
-        <div className="flex space-x-2">
+        <div className="flex space-x-4">
+        {/* Chart Type Section */}
+        <div className="flex space-x-1 bg-zinc-800 p-1 rounded-md border border-zinc-600">
           <button
             className={`p-1 rounded ${
-              chartType === 'line' ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+              chartType === 'line' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
             }`}
             onClick={() => setChartType('line')}
             title="Line Chart (LTP)"
@@ -2118,17 +2490,20 @@ const timeframeButtons = [
           
           <button
             className={`p-1 rounded ${
-              chartType === 'candle' ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+              chartType === 'candle' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
             }`}
-            onClick={() => setChartType('candle')}
+                        onClick={() => setChartType('candle')}
             title="Candlestick Chart (OHLC)"
           >
             <CandlestickChart className="h-5 w-5" />
           </button>
-          
+        </div>
+        
+        {/* Technical Indicators Section */}
+        <div className="flex space-x-1 bg-slate-800 p-1 rounded-md border border-slate-600">
           <button
             className={`p-1 rounded ${
-              showIndicators.sma20 ? 'bg-orange-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+              showIndicators.sma20 ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
             }`}
             onClick={() => toggleIndicator('sma20')}
             title="SMA 20"
@@ -2136,9 +2511,9 @@ const timeframeButtons = [
             <span className="text-xs font-bold">SMA</span>
           </button>
           
-                      <button
+          <button
             className={`p-1 rounded ${
-              showIndicators.ema9 ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+              showIndicators.ema9 ? 'bg-purple-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
             }`}
             onClick={() => toggleIndicator('ema9')}
             title="EMA 9"
@@ -2148,7 +2523,7 @@ const timeframeButtons = [
           
           <button
             className={`p-1 rounded ${
-              showIndicators.rsi ? 'bg-pink-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+              showIndicators.rsi ? 'bg-pink-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
             }`}
             onClick={() => toggleIndicator('rsi')}
             title="RSI"
@@ -2158,7 +2533,7 @@ const timeframeButtons = [
           
           <button
             className={`p-1 rounded ${
-              showIndicators.macd ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+              showIndicators.macd ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
             }`}
             onClick={() => toggleIndicator('macd')}
             title="MACD"
@@ -2168,7 +2543,7 @@ const timeframeButtons = [
           
           <button
             className={`p-1 rounded ${
-              showIndicators.bb ? 'bg-slate-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+              showIndicators.bb ? 'bg-slate-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
             }`}
             onClick={() => toggleIndicator('bb')}
             title="Bollinger Bands"
@@ -2179,7 +2554,7 @@ const timeframeButtons = [
           {chartType === 'candle' && (
             <button
               className={`p-1 rounded ${
-                showIndicators.vwap ? 'bg-cyan-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                showIndicators.vwap ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
               }`}
               onClick={() => toggleIndicator('vwap')}
               title="VWAP"
@@ -2187,34 +2562,37 @@ const timeframeButtons = [
               <span className="text-xs font-bold">VWAP</span>
             </button>
           )}
-          
-          {/* New Main Toggle Buttons */}
+        </div>
+        
+        {/* Analysis & Spreads Section */}
+        <div className="flex space-x-1 bg-emerald-900 p-1 rounded-md border border-emerald-700">
           <button
             className={`p-1 rounded ${
-              mainMode === 'bidAsk' ? 'bg-green-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+              mainMode === 'bidAsk' ? 'bg-green-600 text-white' : 'bg-emerald-800 text-emerald-300 hover:bg-emerald-700'
             }`}
             onClick={() => toggleMainMode('bidAsk')}
             title="Bid/Ask Analysis"
           >
-            B/A
+            <span className="text-xs font-bold">B/A</span>
           </button>
           
           <button
             className={`p-1 rounded ${
-              mainMode === 'buySell' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+              mainMode === 'buySell' ? 'bg-emerald-600 text-white' : 'bg-emerald-800 text-emerald-300 hover:bg-emerald-700'
             }`}
             onClick={() => toggleMainMode('buySell')}
             title="Buy/Sell Analysis"
           >
-            B/S
+            <span className="text-xs font-bold">B/S</span>
           </button>
           
           {/* Secondary View Toggle Buttons - only show when a main mode is active */}
           {mainMode !== 'none' && (
             <>
+              <div className="w-px h-6 bg-emerald-600 mx-1"></div>
               <button
                 className={`p-1 rounded ${
-                  secondaryView === 'line' ? 'bg-blue-500 text-white' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'
+                  secondaryView === 'line' ? 'bg-blue-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
                 }`}
                 onClick={() => toggleSecondaryView('line')}
                 title="Line View"
@@ -2224,28 +2602,45 @@ const timeframeButtons = [
               
               <button
                 className={`p-1 rounded ${
-                  secondaryView === 'spread' ? 'bg-purple-500 text-white' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'
+                  secondaryView === 'spread' ? 'bg-purple-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
                 }`}
                 onClick={() => toggleSecondaryView('spread')}
                 title="Spread View"
               >
                 <span className="text-xs font-bold">Spread</span>
               </button>
+              
+              <button
+                className={`p-1 rounded ${
+                  secondaryView === 'std' ? 'bg-orange-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
+                }`}
+                onClick={() => toggleSecondaryView('std')}
+                title="Standard Deviation View"
+              >
+                <span className="text-xs font-bold">STD</span>
+              </button>
             </>
           )}
-          
+        </div>
+        
+        {/* Volume Section - Now standalone */}
+        <div className="flex space-x-1 bg-amber-900 p-1 rounded-md border border-amber-700">
           <button
             className={`p-1 rounded ${
-              showIndicators.buySellVolume ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+              showIndicators.volume ? 'bg-amber-600 text-white' : 'bg-amber-800 text-amber-300 hover:bg-amber-700'
             }`}
-            onClick={() => toggleIndicator('buySellVolume')}
-            title="Buy-Sell Volume Analysis"
+            onClick={() => toggleIndicator('volume')}
+            title="Volume Chart"
           >
-            STD
+            {/* <BarChart3 className="h-4 w-4" /> */}
+            VOL
           </button>
+        </div>
         </div>
       </div>
       
+      
+      {/* Main Chart */}
       <div className="flex-1">
         <Plot
           ref={chartRef}
@@ -2254,16 +2649,17 @@ const timeframeButtons = [
           layout={createLayout()}
           config={{
             responsive: true,
-            displayModeBar: true,
-            modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d', 'autoScale2d'],
-            displaylogo: false,
+            displayModeBar: false,
+            scrollZoom: true,
+            doubleClick: 'reset',
           }}
-          onRelayout={handleRelayout}
+          useResizeHandler={true}
           style={{ width: '100%', height: '100%' }}
+          onRelayout={handleRelayout}
         />
       </div>
       
-      {/* Bid/Ask Line Chart */}
+      {/* Bid-Ask Charts */}
       {mainMode === 'bidAsk' && secondaryView === 'line' && (
         <div className="mt-2">
           <Plot
@@ -2274,14 +2670,15 @@ const timeframeButtons = [
             config={{
               responsive: true,
               displayModeBar: false,
-              displaylogo: false,
+              scrollZoom: true,
+              doubleClick: 'reset',
             }}
+            useResizeHandler={true}
             style={{ width: '100%', height: '200px' }}
           />
         </div>
       )}
       
-      {/* Bid/Ask Spread Chart */}
       {mainMode === 'bidAsk' && secondaryView === 'spread' && (
         <div className="mt-2">
           <Plot
@@ -2292,14 +2689,16 @@ const timeframeButtons = [
             config={{
               responsive: true,
               displayModeBar: false,
-              displaylogo: false,
+              scrollZoom: true,
+              doubleClick: 'reset',
             }}
+            useResizeHandler={true}
             style={{ width: '100%', height: '150px' }}
           />
         </div>
       )}
-
-      {/* Buy/Sell Line Chart */}
+      
+      {/* Buy-Sell Charts */}
       {mainMode === 'buySell' && secondaryView === 'line' && (
         <div className="mt-2">
           <Plot
@@ -2310,14 +2709,15 @@ const timeframeButtons = [
             config={{
               responsive: true,
               displayModeBar: false,
-              displaylogo: false,
+              scrollZoom: true,
+              doubleClick: 'reset',
             }}
+            useResizeHandler={true}
             style={{ width: '100%', height: '200px' }}
           />
         </div>
       )}
-
-      {/* Buy/Sell Spread Chart */}
+      
       {mainMode === 'buySell' && secondaryView === 'spread' && (
         <div className="mt-2">
           <Plot
@@ -2328,44 +2728,116 @@ const timeframeButtons = [
             config={{
               responsive: true,
               displayModeBar: false,
-              displaylogo: false,
+              scrollZoom: true,
+              doubleClick: 'reset',
             }}
+            useResizeHandler={true}
             style={{ width: '100%', height: '150px' }}
           />
         </div>
       )}
       
-      {/* Buy/Sell Volume Chart (independent) */}
-      {showIndicators.buySellVolume && (
+      {/* Volume Chart */}
+      {showIndicators.volume && (
         <div className="mt-2">
           <Plot
-            ref={buySellVolumeChartRef}
-            divId="buy-sell-volume-chart"
-            data={createBuySellVolumeData()}
-            layout={createBuySellVolumeLayout()}
+            ref={volumeChartRef}
+            divId="volume-chart"
+            data={createVolumeData()}
+            layout={createVolumeLayout()}
             config={{
               responsive: true,
               displayModeBar: false,
-              displaylogo: false,
+              scrollZoom: true,
+              doubleClick: 'reset',
             }}
+            useResizeHandler={true}
             style={{ width: '100%', height: '180px' }}
           />
         </div>
       )}
       
-      <div className="text-xs text-zinc-400 mt-2 flex justify-between">
-        <span>
+      {/* Standard Deviation Chart - FIXED: Updated condition */}
+      {mainMode !== 'none' && secondaryView === 'std' && (
+        <div className="mt-2">
+          <Plot
+            ref={buySellVolumeChartRef}
+            divId="buy-sell-volume-chart"
+            data={createStdData()}
+            layout={createStdLayout()}
+            config={{
+              responsive: true,
+              displayModeBar: false,
+              scrollZoom: true,
+              doubleClick: 'reset',
+            }}
+            useResizeHandler={true}
+            style={{ width: '100%', height: '180px' }}
+          />
+        </div>
+      )}
+      
+      {/* Trading Status */}
+      <div className="mt-2 flex items-center space-x-4 text-sm">
+        <div className={`flex items-center space-x-2 ${
+          tradingHours.isActive ? 'text-green-400' : 'text-red-400'
+        }`}>
+          <div className={`w-2 h-2 rounded-full ${
+            tradingHours.isActive ? 'bg-green-400' : 'bg-red-400'
+          }`}></div>
+          <span>
+            {tradingHours.isActive ? 'Market Open' : 'Market Closed'}
+          </span>
+        </div>
+        
+        <div className="text-zinc-400">
           Trading Hours: {tradingHours.start} - {tradingHours.end}
-          {tradingHours.isActive && (
-            <span className="ml-2 text-green-400">● LIVE</span>
-          )}
-        </span>
-        <span>
-          Last Updated: {data?.timestamp ? new Date(data.timestamp * 1000).toLocaleTimeString() : 'N/A'}
-        </span>
+        </div>
+        
+        <div className="text-zinc-400">
+          Current Time: {tradingHours.current}
+        </div>
+        
+        {data && (
+          <div className="flex items-center space-x-4">
+            <div className="text-zinc-400">
+              LTP: ₹{data.ltp?.toFixed(2) || 'N/A'}
+            </div>
+            
+            {data.change !== undefined && (
+              <div className={`flex items-center space-x-1 ${
+                data.change >= 0 ? 'text-green-400' : 'text-red-400'
+              }`}>
+                {data.change >= 0 ? (
+                  <TrendingUp className="h-4 w-4" />
+                ) : (
+                  <TrendingDown className="h-4 w-4" />
+                )}
+                <span>
+                  {data.change >= 0 ? '+' : ''}{data.change.toFixed(2)} 
+                  ({data.changePercent !== undefined ? 
+                    `${data.changePercent >= 0 ? '+' : ''}${data.changePercent.toFixed(2)}%` : 'N/A'})
+                </span>
+              </div>
+            )}
+            
+            {data.volume !== undefined && (
+              <div className="text-zinc-400">
+                Vol: {data.volume.toLocaleString()}
+              </div>
+            )}
+            
+            {data.bid !== undefined && data.ask !== undefined && (
+              <div className="text-zinc-400">
+                Bid: ₹{data.bid.toFixed(2)} | Ask: ₹{data.ask.toFixed(2)}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 export default PlotlyChart;
+

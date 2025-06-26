@@ -64,12 +64,12 @@ export function CardWithForm({
   }, [onWatchlistChange]);
 
   return (
-    <Card className="border-none w-[1000px]">
-      <CardContent className="p-4 w-[1000px]">
+    <Card className="border-none w-full">
+      <CardContent className="p-4 w-full">
         <div className="space-y-2">
           {/* Company and Watchlist Selection */}
           <div className="flex justify-between gap-4">
-            <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-center">
+            <div className="p-3 border border-opacity-30 rounded-md flex-1 gap-4 h-24 flex items-center">
               <WatchlistSelector 
                 onCompanySelect={handleCompanySelect}  
                 selectedWatchlist={selectedWatchlist}

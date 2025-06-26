@@ -20,15 +20,12 @@ export const WatchlistSelector = React.memo(({
   showMarkerFilter = true
 }: WatchlistSelectorProps) => {
   
-  // Initialize state with external value or default
   const [currentWatchlist, setCurrentWatchlist] = React.useState(() => 
     externalSelectedWatchlist || 'A'
   );
   
-  // Use ref to track previous external value to prevent unnecessary updates
   const prevExternalWatchlist = React.useRef(externalSelectedWatchlist);
   
-  // Update currentWatchlist only when external prop actually changes
   React.useEffect(() => {
     if (externalSelectedWatchlist && 
         externalSelectedWatchlist !== prevExternalWatchlist.current && 
@@ -55,29 +52,23 @@ export const WatchlistSelector = React.memo(({
   const [selectedExchange, setSelectedExchange] = React.useState<string>('');
   const [selectedMarker, setSelectedMarker] = React.useState<string>('');
   
-  // Memoize the change handler to prevent unnecessary re-renders
   const handleWatchlistChange = React.useCallback((value: string) => {
     console.log(`[WatchlistSelector] Watchlist changed to: ${value}`);
     
-    // Prevent unnecessary updates
     if (value === currentWatchlist) {
       return;
     }
     
-    // Reset filters when watchlist changes
     setSelectedExchange('');
     setSelectedMarker('');
     
-    // Update current watchlist state
     setCurrentWatchlist(value);
     
-    // Call external callback if provided
     if (onWatchlistChange) {
       onWatchlistChange(value);
     }
   }, [currentWatchlist, onWatchlistChange]);
 
-  // Memoize company select handler
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
     if (!companyCode) {
       if (onCompanySelect) {
@@ -86,7 +77,6 @@ export const WatchlistSelector = React.memo(({
       return;
     }
 
-    // Find the selected company to get its exchange and marker
     const selectedCompany = companies.find(c => c.company_code === companyCode);
     
     console.log(`[WatchlistSelector] Selected company: ${companyCode}`, selectedCompany);
@@ -96,7 +86,6 @@ export const WatchlistSelector = React.memo(({
     }
   }, [companies, onCompanySelect]);
 
-  // Get filtered companies based on current filters
   const filteredCompanies = React.useMemo(() => {
     const filters: any = {};
     if (selectedExchange) filters.exchange = selectedExchange;
@@ -107,12 +96,11 @@ export const WatchlistSelector = React.memo(({
     return filtered;
   }, [companies, selectedExchange, selectedMarker, getFilteredCompanies]);
 
-  // Memoize exchange change handler
   const handleExchangeChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedExchange(e.target.value);
+    setSelectedMarker('');
   }, []);
 
-  // Memoize marker change handler
   const handleMarkerChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedMarker(e.target.value);
   }, []);
@@ -129,72 +117,77 @@ export const WatchlistSelector = React.memo(({
             value={currentWatchlist} 
             onChange={handleWatchlistChange}
           />
+          <div className="flex flex-col gap-2">
+         <div className="flex gap-4 text-xs text-muted-foreground">
+  <div>
+    {loading && `Loading watchlist ${currentWatchlist}...`}
+    {!loading && exists && `${totalCompanies} companies (${currentWatchlist})`}
+    {!loading && !exists && `No data available for watchlist ${currentWatchlist}`}
+  </div>
+  {/* {availableExchanges.length > 0 && (
+    <div>
+      Exchanges: {availableExchanges.join(', ')}
+    </div>
+  )} */}
+</div>
+
+         
+        </div>
         </div>
         
         {/* Status Information */}
-        <div className="flex flex-col gap-1">
-          <div className="text-xs text-muted-foreground">
-            {loading && `Loading watchlist ${currentWatchlist}...`}
-            {!loading && exists && `${totalCompanies} companies (${currentWatchlist})`}
-            {!loading && !exists && `No data available for watchlist ${currentWatchlist}`}
-          </div>
-          {availableExchanges.length > 0 && (
-            <div className="text-xs text-muted-foreground">
-              Exchanges: {availableExchanges.join(', ')}
-            </div>
-          )}
-        </div>
+        
       </div>
 
       {/* Filters */}
-      {(showExchangeFilter || showMarkerFilter) && availableExchanges.length > 0 && (
-        <div className="flex gap-4 items-center">
-          {/* Exchange Filter */}
-          {showExchangeFilter && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium">Exchange</label>
-              <select
-                value={selectedExchange}
-                onChange={handleExchangeChange}
-                className="px-2 py-1 text-xs border rounded"
-              >
-                <option value="">All Exchanges</option>
-                {availableExchanges.map(exchange => (
-                  <option key={exchange} value={exchange}>
-                    {exchange}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+      {/* Filters */}
+{(showExchangeFilter || showMarkerFilter) && availableExchanges.length > 0 && (
+  <div className="flex flex-col gap-2 justify-center">
+    {/* Exchange Filter */}
+    {showExchangeFilter && (
+      <div className="flex flex-col">
+        <select
+          value={selectedExchange}
+          onChange={handleExchangeChange}
+          className="px-2 py-1 text-xs border rounded m-0"
+        >
+          <option value="">All Exchanges</option>
+          {availableExchanges.map(exchange => (
+            <option key={exchange} value={exchange}>
+              {exchange}
+            </option>
+          ))}
+        </select>
+      </div>
+    )}
 
-          {/* Marker Filter */}
-          {showMarkerFilter && availableMarkers.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium">Marker</label>
-              <select
-                value={selectedMarker}
-                onChange={handleMarkerChange}
-                className="px-2 py-1 text-xs border rounded"
-              >
-                <option value="">All Markers</option>
-                {availableMarkers.map(marker => (
-                  <option key={marker} value={marker}>
-                    {marker}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+    {/* Marker Filter */}
+    {showMarkerFilter && availableMarkers.length > 0 && (
+      <div className="flex flex-col">
+        <select
+          value={selectedMarker}
+          onChange={handleMarkerChange}
+          className="px-2 py-1 text-xs border rounded m-0"
+        >
+          <option value="">All Markers</option>
+          {availableMarkers.map(marker => (
+            <option key={marker} value={marker}>
+              {marker}
+            </option>
+          ))}
+        </select>
+      </div>
+    )}
 
-          {/* Filter Results Count */}
-          <div className="text-xs text-muted-foreground">
-            {filteredCompanies.length !== companies.length && (
-              `${filteredCompanies.length} of ${companies.length} shown`
-            )}
-          </div>
-        </div>
-      )}
+    {/* Filter Results Count - Only render when there's content */}
+    {filteredCompanies.length !== companies.length && (
+      <div className="text-xs text-muted-foreground">
+        {`${filteredCompanies.length} of ${companies.length} shown`}
+      </div>
+    )}
+  </div>
+)}
+
 
       {/* Error Display */}
       {error && (

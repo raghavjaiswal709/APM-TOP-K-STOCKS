@@ -81,24 +81,21 @@ const RecommendationsPage: React.FC = () => {
     loadCompanyData
   } = useRecordedData();
 
-  // Convert recorded data to market data format
   const [currentData, setCurrentData] = useState<MarketData | null>(null);
   const [historicalData, setHistoricalData] = useState<MarketData[]>([]);
   const [ohlcData, setOhlcData] = useState<OHLCData[]>([]);
 
-  // Mock trading hours for recorded data
   const [tradingHours] = useState<TradingHours>({
     start: selectedDate ? `${selectedDate}T09:15:00.000Z` : new Date().toISOString(),
     end: selectedDate ? `${selectedDate}T15:30:00.000Z` : new Date().toISOString(),
     current: new Date().toISOString(),
-    isActive: false // Always false for recorded data
+    isActive: false 
   });
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  // Handle company selection
   const handleCompanySelect = useCallback(async (symbol: string | null) => {
     setSelectedCompany(symbol);
     if (symbol) {
@@ -110,28 +107,22 @@ const RecommendationsPage: React.FC = () => {
     }
   }, [setSelectedCompany, loadCompanyData]);
 
-  // Update chart data when recorded data changes
-// Update chart data when recorded data changes
+
 useEffect(() => {
   if (recordedData.length > 0) {
     console.log('🔍 Processing recorded data:', recordedData.length, 'points');
     
-    // Set current data to the latest data point
     const latest = recordedData[recordedData.length - 1];
     setCurrentData(latest);
     
-    // Set historical data
     setHistoricalData(recordedData);
     
-    // ✅ ENHANCED: Create proper OHLC data with validation
     const ohlc: OHLCData[] = recordedData.map((point, index) => {
-      // Use the already-processed data from transformRecordedData
       const open = point.open || point.ltp;
       const close = point.close || point.ltp;
       let high = point.high || 0;
       let low = point.low || 0;
       
-      // Additional safety check (should not be needed with new transform function)
       if (high <= 0 || low <= 0 || high < low) {
         const prices = [open, close, point.ltp].filter(p => p > 0);
         if (prices.length > 0) {
@@ -140,7 +131,6 @@ useEffect(() => {
         }
       }
       
-      // Ensure OHLC relationships are valid
       const finalHigh = Math.max(high, open, close, point.ltp);
       const finalLow = Math.min(low, open, close, point.ltp);
       
@@ -181,6 +171,11 @@ useEffect(() => {
     if (!change && change !== 0) return '';
     return change >= 0 ? 'text-green-500' : 'text-red-500';
   };
+  const calculateAverage = (data: MarketData[]) => {
+  if (!data || data.length === 0) return 0;
+  const sum = data.reduce((acc, item) => acc + item.ltp, 0);
+  return sum / data.length;
+};
 
   if (!isClient) {
     return (
@@ -243,7 +238,6 @@ useEffect(() => {
         </header>
         
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          {/* Date Selection */}
           <DateSelector
             availableDates={availableDates}
             selectedDate={selectedDate}
@@ -251,7 +245,6 @@ useEffect(() => {
             loading={loading}
           />
 
-          {/* Company Selection - Only show if date is selected */}
           {selectedDate && (
             <RecordedCompanySelector
               availableCompanies={availableCompanies}
@@ -280,12 +273,14 @@ useEffect(() => {
                   <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-[600px]">
                     {historicalData.length > 0 && selectedCompany ? (
                       <PlotlyChart 
-                        symbol={selectedCompany} 
-                        data={currentData} 
-                        historicalData={historicalData}
-                        ohlcData={ohlcData}
-                        tradingHours={tradingHours}
-                      />
+  symbol={selectedCompany} 
+  data={currentData} 
+  historicalData={historicalData}
+  rawOhlcData={recordedData}  // ✅ Use your actual data
+  ohlcData={ohlcData}
+  tradingHours={tradingHours}
+/>
+
                     ) : (
                       <div className="h-full flex items-center justify-center">
                         <p className="text-zinc-400">
@@ -309,9 +304,14 @@ useEffect(() => {
                         📊 Recorded Data - {selectedDate}
                       </div>
                       <div className="text-3xl font-bold mb-2 text-white">₹{formatPrice(currentData.ltp)}</div>
-                      <div className={`text-lg ${getChangeClass(currentData.change)}`}>
-                        {formatChange(currentData.change, currentData.changePercent)}
-                      </div>
+                       <div className="text-lg text-blue-400">
+      Avg: ₹{formatPrice(calculateAverage(historicalData))}
+    </div>
+    
+    {/* Add data points count for reference */}
+    <div className="text-sm text-zinc-400 mt-1">
+      Based on {historicalData.length} data points
+    </div>
                       
                       <div className="grid grid-cols-2 gap-4 mt-6">
                         <div className="bg-zinc-700 p-3 rounded">
