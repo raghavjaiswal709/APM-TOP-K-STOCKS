@@ -38,7 +38,6 @@ export function SelectScrollable({
   const [selectedCompany, setSelectedCompany] = React.useState<MergedCompany | null>(null)
   const [searchTerm, setSearchTerm] = React.useState("")
 
-  // Reset selection when companies change (watchlist change)
   React.useEffect(() => {
     console.log(`[SelectScrollable] Companies changed, resetting selection. New count: ${companies.length}`);
     setValue("")
@@ -48,7 +47,6 @@ export function SelectScrollable({
     onCompanySelect(null)
   }, [companies, onCompanySelect]);
 
-  // Close dropdown when clicking outside
   React.useEffect(() => {
     const handleClickOutside = () => {
       if (open) {
@@ -67,13 +65,11 @@ export function SelectScrollable({
     console.log(`[SelectScrollable] handleSelect called with company:`, company);
     
     if (value === company.company_code) {
-      // Deselect if clicking the same company
       console.log(`[SelectScrollable] Deselecting company: ${company.company_code}`);
       setValue("")
       setSelectedCompany(null)
       onCompanySelect(null)
     } else {
-      // Select new company
       console.log(`[SelectScrollable] Selecting company: ${company.company_code}`);
       setValue(company.company_code)
       setSelectedCompany(company)
@@ -87,7 +83,6 @@ export function SelectScrollable({
     e.stopPropagation()
     setOpen(!open)
     if (!open) {
-      // Clear search when opening
       setSearchTerm("")
     }
   }
@@ -104,7 +99,6 @@ export function SelectScrollable({
     return details.join(' • ');
   };
 
-  // Filter companies based on search term
   const filteredCompanies = React.useMemo(() => {
     if (!searchTerm) return companies;
     const searchLower = searchTerm.toLowerCase();
@@ -116,9 +110,9 @@ export function SelectScrollable({
     );
   }, [companies, searchTerm]);
 
-  if (loading) {
+   if (loading) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground min-h-[40px]">
         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
         Loading companies...
       </div>
@@ -127,7 +121,7 @@ export function SelectScrollable({
 
   if (!exists || companies.length === 0) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground min-h-[40px]">
         <Building2 className="h-4 w-4" />
         {!exists ? 'Watchlist not available' : 'No companies found'}
       </div>
@@ -135,16 +129,17 @@ export function SelectScrollable({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex gap-3 items-center w-full">
+
       <div className="relative">
         <Button
           variant="outline"
           onClick={handleButtonClick}
-          className="w-[400px] justify-between"
+          className="w-[500px] justify-between h-20" 
         >
           {selectedCompany ? (
-            <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4" />
+            <div className="flex items-center gap-2 min-w-0">
+              <Building2 className="h-4 w-4 flex-shrink-0" />
               <span className="truncate">
                 {formatCompanyDisplay(selectedCompany)}
               </span>
@@ -159,10 +154,10 @@ export function SelectScrollable({
 
         {open && (
           <div 
-            className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-[300px] overflow-hidden"
+            className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-[500px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Search Input */}
+            {/* Your existing dropdown content */}
             <div className="p-2 border-b border-border">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -175,16 +170,15 @@ export function SelectScrollable({
                   onClick={(e) => e.stopPropagation()}
                 />
               </div>
-              {/* Search Results Count */}
-              <div className="text-xs text-muted-foreground mt-1">
-                {filteredCompanies.length !== companies.length && (
-                  `Showing ${filteredCompanies.length} of ${companies.length} companies`
-                )}
-              </div>
+              {filteredCompanies.length !== companies.length && (
+                <div className="text-xs text-muted-foreground mt-1">
+                  {`Showing ${filteredCompanies.length} of ${companies.length} companies`}
+                </div>
+              )}
             </div>
 
-            {/* Companies List */}
             <div className="overflow-y-auto max-h-[250px]">
+              {/* Your existing company list */}
               {filteredCompanies.length === 0 ? (
                 <div className="p-3 text-sm text-muted-foreground text-center">
                   {searchTerm ? 'No companies match your search' : 'No companies found'}
@@ -207,20 +201,20 @@ export function SelectScrollable({
                       )}
                     >
                       <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           <Check
                             className={cn(
-                              "h-4 w-4",
+                              "h-4 w-4 flex-shrink-0",
                               isSelected ? "opacity-100 text-primary" : "opacity-0"
                             )}
                           />
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
+                          <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           <span className="font-medium">
                             {company.company_code}
                           </span>
                         </div>
                         {company.N1_Pattern_count !== undefined && company.N1_Pattern_count > 0 && (
-                          <div className="flex items-center gap-1 text-xs text-green-600">
+                          <div className="flex items-center gap-1 text-xs text-green-600 flex-shrink-0">
                             <TrendingUp className="h-3 w-3" />
                             {company.N1_Pattern_count}
                           </div>
@@ -241,55 +235,67 @@ export function SelectScrollable({
         )}
       </div>
 
-      {/* Selected Company Details */}
-      {selectedCompany && (
-        <div className="p-3 bg-muted/50 rounded-md">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-medium">{selectedCompany.company_code}</h4>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                {selectedCompany.exchange}
-              </span>
-              <span className="bg-green-100 text-green-800 px-2 py-1 rounded">
-                {selectedCompany.marker}
-              </span>
-            </div>
+      {/* Company Details Section - Separate and consistent positioning */}
+      {/* Company Details Section - Separate and consistent positioning */}
+<div className="min-h-[96px] flex items-center"> {/* Reserve space to prevent layout shift */}
+  {selectedCompany && (
+    <div className="p-3 bg-muted/50 rounded-md h-20 border border-border w-[250px] overflow-hidden"> {/* Increased width and reduced padding */}
+      <div className="h-full flex flex-col justify-center ">
+        {/* Header Section */}
+        <div className="flex items-center justify-between mb-1">
+          <h4 className="font-medium text-sm truncate flex-1 mr-2">{selectedCompany.company_code}</h4>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-xs font-medium">
+              {selectedCompany.exchange}
+            </span>
+            <span className="bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-xs font-medium">
+              {selectedCompany.marker}
+            </span>
           </div>
-          <p className="text-sm text-muted-foreground mb-2">
-            {selectedCompany.name}
-          </p>
-          
-          {/* Trading Metrics */}
-          {(selectedCompany.total_valid_days || selectedCompany.median_daily_volume || selectedCompany.pe_ratio) && (
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {selectedCompany.total_valid_days && (
-                <div>
-                  <span className="text-muted-foreground">Valid Days:</span>
-                  <span className="ml-1 font-medium">{selectedCompany.total_valid_days}</span>
-                </div>
-              )}
-              {selectedCompany.median_daily_volume && (
-                <div>
-                  <span className="text-muted-foreground">Volume:</span>
-                  <span className="ml-1 font-medium">{selectedCompany.median_daily_volume.toLocaleString()}</span>
-                </div>
-              )}
-              {selectedCompany.pe_ratio && (
-                <div>
-                  <span className="text-muted-foreground">P/E Ratio:</span>
-                  <span className="ml-1 font-medium">{selectedCompany.pe_ratio.toFixed(2)}</span>
-                </div>
-              )}
-              {selectedCompany.N1_Pattern_count !== undefined && (
-                <div>
-                  <span className="text-muted-foreground">N1 Patterns:</span>
-                  <span className="ml-1 font-medium">{selectedCompany.N1_Pattern_count}</span>
-                </div>
-              )}
-            </div>
-          )}
         </div>
-      )}
+        
+        {/* Company Name */}
+        <p className="text-xs text-muted-foreground mb-2 truncate">
+          {selectedCompany.name}
+        </p>
+        
+        {/* Trading Metrics - Compact Grid */}
+        {(selectedCompany.total_valid_days || selectedCompany.median_daily_volume || selectedCompany.pe_ratio) && (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            {selectedCompany.total_valid_days && (
+              <div className="flex  items-center gap-2">
+                <span className="text-muted-foreground text-xs">Days:</span>
+                <span className="font-medium text-xs">{selectedCompany.total_valid_days}</span>
+              </div>
+            )}
+            {selectedCompany.median_daily_volume && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-xs">Vol:</span>
+                <span className="font-medium text-xs">{(selectedCompany.median_daily_volume / 1000).toFixed(0)}K</span>
+              </div>
+            )}
+            {selectedCompany.pe_ratio && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-xs">P/E:</span>
+                <span className="font-medium text-xs">{selectedCompany.pe_ratio.toFixed(1)}</span>
+              </div>
+            )}
+            {selectedCompany.N1_Pattern_count !== undefined && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-xs">N1:</span>
+                <span className="font-medium text-xs flex items-center gap-1">
+                  {selectedCompany.N1_Pattern_count}
+                  {selectedCompany.N1_Pattern_count > 0 && <TrendingUp className="h-3 w-3 text-green-600" />}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )}
+</div>
+
     </div>
   );
 }

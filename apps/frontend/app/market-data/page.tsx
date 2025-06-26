@@ -2,7 +2,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { getSocket } from '@/lib/socket';
 import dynamic from 'next/dynamic';
-import { MoonIcon, SunIcon } from '@heroicons/react/24/outline';
 import { AppSidebar } from "../components/app-sidebar";
 import {
   Breadcrumb,
@@ -19,6 +18,9 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ModeToggle } from "../components/toggleButton";
+import { Card, CardContent } from "@/components/ui/card";
+import { WatchlistSelector } from "../components/controllers/WatchlistSelector";
+import { useWatchlist } from "@/hooks/useWatchlist";
 
 const PlotlyChart = dynamic(() => import('./components/charts/PlotlyChart'), { 
   ssr: false,
@@ -63,112 +65,17 @@ interface TradingHours {
   isActive: boolean;
 }
 
-interface Company {
-  company_code: string;
-  name: string;
-  exchange: string;
-  instrument_token?: string;
-  tradingsymbol?: string;
-}
-
 const MarketDataPage: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string>('');
+  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [selectedExchange, setSelectedExchange] = useState<string | null>(null);
+  const [selectedWatchlist, setSelectedWatchlist] = useState('A');
+  
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
   const [historicalData, setHistoricalData] = useState<Record<string, MarketData[]>>({});
   const [ohlcData, setOhlcData] = useState<Record<string, OHLCData[]>>({});
-
-  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
-  const [symbolsLoading, setSymbolsLoading] = useState(false);
-  const [symbolsError, setSymbolsError] = useState<string | null>(null);
-  const [selectedWatchlist, setSelectedWatchlist] = useState('A');
-
-  const validateAndFormatSymbol = (symbol: string, exchange: string): string => {
-    const cleanSymbol = symbol.replace(/[^A-Z0-9]/g, '').toUpperCase();
-    
-    if (!cleanSymbol || cleanSymbol.length === 0) {
-      return '';
-    }
-    
-    switch (exchange.toUpperCase()) {
-      case 'NSE':
-        return `NSE:${cleanSymbol}-EQ`;
-      
-      case 'BSE':
-        return `BSE:${cleanSymbol}-EQ`;
-      
-      default:
-        return `${exchange}:${cleanSymbol}`;
-    }
-  };
-
- useEffect(() => {
-  if (!isClient) return;
-
-  async function fetchSymbols() {
-    setSymbolsLoading(true);
-    setSymbolsError(null);
-    setAvailableSymbols([]);
-    setSelectedSymbol('');
-
-    try {
-      const today = "2025-06-05";
-      const apiUrl = `/api/watchlist/${selectedWatchlist}?date=${today}`;
-      
-      console.log('Fetching symbols from watchlist:', apiUrl);
-
-      const response = await fetch(apiUrl);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      const validCompanies = (data.companies || []).filter((company: Company) => 
-        company.company_code && company.exchange
-      );
-
-      const formattedSymbols = validCompanies.map((company: Company) => {
-        const { exchange, company_code, tradingsymbol } = company;
-        const symbolToUse = tradingsymbol || company_code;
-        
-        try {
-          const formattedSymbol = validateAndFormatSymbol(symbolToUse, exchange);
-          console.log(`Formatting: ${company_code} -> ${formattedSymbol}`);
-          return formattedSymbol;
-        } catch (error) {
-          console.error(`Error formatting symbol ${symbolToUse}:`, error);
-          return null;
-        }
-      }).filter(symbol => symbol && symbol.length > 0); 
-
-      console.log('Formatted symbols for Fyers:', formattedSymbols);
-
-      if (formattedSymbols.length === 0) {
-        throw new Error('No valid symbols found after formatting');
-      }
-      
-      setAvailableSymbols(formattedSymbols);
-      // Always set the first symbol when switching watchlists
-      setSelectedSymbol(formattedSymbols[0]);
-      
-      console.log(`Loaded ${formattedSymbols.length} symbols from watchlist ${selectedWatchlist}`);
-      
-    } catch (err) {
-      console.error('Error fetching symbols:', err);
-      setSymbolsError('Failed to fetch symbols');
-      setAvailableSymbols([]);
-      setSelectedSymbol('');
-    } finally {
-      setSymbolsLoading(false);
-    }
-  }
-
-  fetchSymbols();
-}, [isClient, selectedWatchlist]); // Remove selectedSymbol dependency
-
-
+  
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
   const [lastDataReceived, setLastDataReceived] = useState<Date | null>(null);
   const [dataCount, setDataCount] = useState<number>(0);
@@ -178,6 +85,63 @@ const MarketDataPage: React.FC = () => {
     current: '',
     isActive: false
   });
+
+  const { 
+    companies, 
+    loading: watchlistLoading, 
+    error: watchlistError,
+    selectedWatchlist: currentWatchlist,
+    setSelectedWatchlist: setWatchlist,
+    exists: watchlistExists
+  } = useWatchlist();
+
+  const validateAndFormatSymbol = useCallback((companyCode: string, exchange: string, marker: string = 'EQ'): string => {
+    const cleanSymbol = companyCode.replace(/[^A-Z0-9]/g, '').toUpperCase();
+    
+    if (!cleanSymbol || cleanSymbol.length === 0) {
+      return '';
+    }
+    
+    switch (exchange.toUpperCase()) {
+      case 'NSE':
+        return `NSE:${cleanSymbol}-${marker}`;
+      case 'BSE':
+        return `BSE:${cleanSymbol}-${marker}`;
+      default:
+        return `${exchange}:${cleanSymbol}-${marker}`;
+    }
+  }, []);
+
+  const handleCompanyChange = useCallback((companyCode: string | null, exchange?: string, marker?: string) => {
+    console.log(`[MarketData] Company selected: ${companyCode} (${exchange}, ${marker})`);
+    
+    setSelectedCompany(companyCode);
+    setSelectedExchange(exchange || null);
+    
+    if (companyCode && exchange) {
+      const formattedSymbol = validateAndFormatSymbol(companyCode, exchange, marker);
+      console.log(`[MarketData] Formatted symbol: ${formattedSymbol}`);
+      setSelectedSymbol(formattedSymbol);
+    } else {
+      setSelectedSymbol('');
+    }
+  }, [validateAndFormatSymbol]);
+
+  const handleWatchlistChange = useCallback((watchlist: string) => {
+    console.log(`[MarketData] Watchlist changed to: ${watchlist}`);
+    setSelectedWatchlist(watchlist);
+    setWatchlist(watchlist);
+    setSelectedCompany(null);
+    setSelectedSymbol('');
+  }, [setWatchlist]);
+
+  useEffect(() => {
+    if (companies.length > 0 && !selectedCompany) {
+      const firstCompany = companies[0];
+      console.log(`[MarketData] Auto-selecting first company: ${firstCompany.company_code}`);
+      handleCompanyChange(firstCompany.company_code, firstCompany.exchange, firstCompany.marker);
+    }
+  }, [companies, selectedCompany, handleCompanyChange]);
 
   useEffect(() => {
     setIsClient(true);
@@ -206,13 +170,9 @@ const MarketDataPage: React.FC = () => {
         });
       });
       
-      console.log('🔔 Subscribing to symbol after connection:', selectedSymbol);
       if (selectedSymbol && selectedSymbol.includes(':') && selectedSymbol.includes('-')) {
         console.log('Subscribing to validated symbol:', selectedSymbol);
         socket.emit('subscribe', { symbol: selectedSymbol });
-      } else {
-        console.error('Invalid symbol format for subscription:', selectedSymbol);
-        setSymbolsError('Invalid symbol format');
       }
     });
 
@@ -245,7 +205,6 @@ const MarketDataPage: React.FC = () => {
           if (exists) return prev;
           
           const newHistory = [...existingHistory, data];
-          
           newHistory.sort((a, b) => a.timestamp - b.timestamp);
           
           return {
@@ -318,7 +277,7 @@ const MarketDataPage: React.FC = () => {
       if (!lastReceived || now.getTime() - lastReceived.getTime() > 10000) {
         console.warn('⚠️ No market data received in the last 10 seconds');
         
-        if (socket.connected) {
+        if (socket.connected && selectedSymbol) {
           console.log('🔄 Attempting to resubscribe to:', selectedSymbol);
           socket.emit('subscribe', { symbol: selectedSymbol });
         }
@@ -334,7 +293,7 @@ const MarketDataPage: React.FC = () => {
         socket.emit('unsubscribe', { symbol });
       });
     };
-  }, [isClient]);
+  }, [isClient, lastDataReceived, selectedSymbol]);
 
   useEffect(() => {
     if (!isClient) return;
@@ -346,16 +305,18 @@ const MarketDataPage: React.FC = () => {
       console.log('Socket not connected, waiting for connection...');
       return;
     }
-    
-    socket.emit('subscribe', { symbol: selectedSymbol });
-    console.log('🔔 Subscribed to:', selectedSymbol);
-    
+
     Object.keys(marketData).forEach(symbol => {
       if (symbol !== selectedSymbol) {
         console.log('🔕 Unsubscribing from:', symbol);
         socket.emit('unsubscribe', { symbol });
       }
     });
+    
+    if (selectedSymbol) {
+      socket.emit('subscribe', { symbol: selectedSymbol });
+      console.log('🔔 Subscribed to:', selectedSymbol);
+    }
   }, [selectedSymbol, isClient]);
 
   const formatPrice = (price?: number) => {
@@ -436,79 +397,66 @@ const MarketDataPage: React.FC = () => {
             </Breadcrumb>
           </div>
         </header>
+        
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <div className="min-h-screen bg-zinc-900 text-zinc-100">
-            <div className="container mx-auto p-4">
-              <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-white">Live Market Data</h1>
-                <div className="flex items-center space-x-2">
-                  <span className={`inline-block w-2 h-2 rounded-full ${
-                    socketStatus.includes('Connected') ? 'bg-green-500' : 'bg-red-500'
-                  }`}></span>
-                  <span className="text-sm text-zinc-400">{socketStatus}</span>
-                </div>
-              </div>
-              
-              <div className="mb-6 p-4 bg-zinc-800 rounded-lg shadow-lg">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-sm text-zinc-400">Watchlist</p>
-                    <select
-                      value={selectedWatchlist}
-                      onChange={(e) => setSelectedWatchlist(e.target.value)}
-                      className="mt-1 w-full bg-zinc-700 text-white border border-zinc-600 rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
-                    >
-                      <option value="A">Watchlist A</option>
-                      <option value="B">Watchlist B</option>
-                      <option value="C">Watchlist C</option>
-                    </select>
-                    <p className="text-sm text-zinc-400">Symbol</p>
-                    <select
-                      value={selectedSymbol}
-                      onChange={(e) => setSelectedSymbol(e.target.value)}
-                      disabled={symbolsLoading}
-                      className="mt-1 w-full bg-zinc-700 text-white border border-zinc-600 rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                    >
-                      {symbolsLoading ? (
-                        <option>Loading symbols...</option>
-                      ) : symbolsError ? (
-                        <option>Error loading symbols</option>
-                      ) : availableSymbols.length === 0 ? (
-                        <option>No symbols available</option>
-                      ) : (
-                        availableSymbols.map(symbol => (
-                          <option key={symbol} value={symbol}>{symbol}</option>
-                        ))
-                      )}
-                    </select>
-                    {symbolsError && (
-                      <p className="text-xs text-red-400 mt-1">{symbolsError}</p>
-                    )}
+          {/* Watchlist Selector Card - Same pattern as dashboard */}
+          <Card className="w-full">
+            <CardContent className="p-4">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-medium">Market Data Watchlist</h3>
+                  <div className="flex items-center space-x-2">
+                    <span className={`inline-block w-2 h-2 rounded-full ${
+                      socketStatus.includes('Connected') ? 'bg-green-500' : 'bg-red-500'
+                    }`}></span>
+                    <span className="text-sm text-muted-foreground">{socketStatus}</span>
                   </div>
+                </div>
+                
+                <WatchlistSelector
+                  onCompanySelect={handleCompanyChange}
+                  selectedWatchlist={selectedWatchlist}
+                  onWatchlistChange={handleWatchlistChange}
+                  showExchangeFilter={true}
+                  showMarkerFilter={true}
+                />
+                
+                {/* Status Information */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Selected:</span>
+                    <div className="font-medium">
+                      {selectedCompany ? `${selectedCompany} (${selectedExchange})` : 'None'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Fyers Symbol:</span>
+                    <div className="font-medium">{selectedSymbol || 'None'}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Market Status:</span>
+                    <div className={`font-medium ${tradingHours.isActive ? 'text-green-500' : 'text-red-500'}`}>
+                      {tradingHours.isActive ? 'Open' : 'Closed'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Data Points:</span>
+                    <div className="font-medium">{symbolHistory.length} historical / {dataCount} updates</div>
+                  </div>
+                </div>
 
-                  <div>
-                    <p className="text-sm text-zinc-400">Last Update</p>
-                    <p className="mt-1 font-medium">{lastDataReceived ? lastDataReceived.toLocaleTimeString() : 'No data yet'}</p>
+                {watchlistError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
+                    ❌ {watchlistError}
                   </div>
-                  <div>
-                    <p className="text-sm text-zinc-400">Available Symbols</p>
-                    <p className="mt-1 font-medium">
-                      {symbolsLoading ? 'Loading...' : `${availableSymbols.length} symbols`}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-zinc-400">Data Points</p>
-                    <p className="mt-1 font-medium">{symbolHistory.length} historical / {dataCount} updates</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-zinc-400">Market Status</p>
-                    <p className={`mt-1 font-medium ${tradingHours.isActive ? 'text-green-500' : 'text-red-500'}`}>
-                      {tradingHours.isActive ? 'Market Open' : 'Market Closed'}
-                    </p>
-                  </div>
-                </div>
+                )}
               </div>
-              
+            </CardContent>
+          </Card>
+
+          {/* Market Data Display */}
+          <div className="min-h-screen bg-zinc-900 text-zinc-100 rounded-lg">
+            <div className="container mx-auto p-4">
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
                 <div className="lg:col-span-3">
                   <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-[600px]">
@@ -522,12 +470,15 @@ const MarketDataPage: React.FC = () => {
                       />
                     ) : (
                       <div className="h-full flex items-center justify-center">
-                        <p className="text-zinc-400">Loading historical data for {selectedSymbol}...</p>
+                        <p className="text-zinc-400">
+                          {selectedSymbol ? `Loading historical data for ${selectedSymbol}...` : 'Select a company to view market data'}
+                        </p>
                       </div>
                     )}
                   </div>
                 </div>
                 
+                {/* Market Data Panel */}
                 <div className="bg-zinc-800 p-4 rounded-lg shadow-lg">
                   {currentData ? (
                     <>
@@ -606,7 +557,9 @@ const MarketDataPage: React.FC = () => {
                     </>
                   ) : (
                     <div className="text-center py-8">
-                      <p className="text-zinc-400">No data available</p>
+                      <p className="text-zinc-400">
+                        {selectedSymbol ? 'Waiting for market data...' : 'Select a company to view data'}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -617,7 +570,7 @@ const MarketDataPage: React.FC = () => {
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-lg font-semibold text-white">Raw Market Data</h3>
                   <div className="text-xs text-zinc-400">
-                    {symbolHistory.length > 0 && (
+                    {symbolHistory.length > 0 && tradingHours.start && (
                       <>
                         Trading Hours: {new Date(tradingHours.start).toLocaleTimeString()} - {new Date(tradingHours.end).toLocaleTimeString()}
                       </>

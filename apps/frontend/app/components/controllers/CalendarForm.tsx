@@ -38,7 +38,7 @@ const FormSchema = z.object({
 interface CalendarFormProps {
   onDateRangeChange?: (startDate: Date | undefined, endDate: Date | undefined) => void;
   onFetchData?: () => void;
-  onFetchAllData?: () => void; // **NEW**: Add fetch all data callback
+  onFetchAllData?: () => void; 
   loading?: boolean;
 }
 
@@ -58,7 +58,6 @@ export function CalendarForm({
 
   const memoizedOnDateRangeChange = useCallback(onDateRangeChange, [onDateRangeChange]);
 
-  // Watch for form changes and trigger callback
   useEffect(() => {
     const subscription = form.watch((value) => {
       if (memoizedOnDateRangeChange) {
@@ -77,7 +76,6 @@ export function CalendarForm({
       shouldTouch: true 
     });
     
-    // Clear end date if it's before the new start date
     const currentEndDate = form.getValues('endDate');
     if (date && currentEndDate && date > currentEndDate) {
       form.setValue('endDate', undefined);
@@ -98,7 +96,6 @@ export function CalendarForm({
     }
   };
 
-  // **NEW**: Handle fetch all data
   const handleFetchAllClick = () => {
     if (onFetchAllData) {
       onFetchAllData();

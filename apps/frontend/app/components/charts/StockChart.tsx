@@ -2309,18 +2309,20 @@ export function StockChart({
   };
 
   const containerStyle = useMemo(() => ({
-    width: '100%',
-    height: isFullscreen ? '100vh' : `${height}px`,
-    backgroundColor: colors.bg,
-    fontFamily: 'Inter, system-ui, sans-serif',
-    position: isFullscreen ? 'fixed' as const : 'relative' as const,
-    top: isFullscreen ? 0 : 'auto',
-    left: isFullscreen ? 0 : 'auto',
-    zIndex: isFullscreen ? 9999 : 'auto',
-    overflow: 'hidden',
-    minWidth: `${CHART_PERFORMANCE_CONFIG.MIN_CHART_WIDTH}px`,
-    minHeight: `${CHART_PERFORMANCE_CONFIG.MIN_CHART_HEIGHT}px`
-  }), [colors.bg, height, isFullscreen]);
+  width: '100%',
+  height: isFullscreen ? '100vh' : `${height}px`,
+  backgroundColor: colors.bg,
+  fontFamily: 'Inter, system-ui, sans-serif',
+  position: isFullscreen ? 'fixed' as const : 'relative' as const,
+  top: isFullscreen ? 0 : 'auto',
+  left: isFullscreen ? 0 : 'auto',
+  zIndex: isFullscreen ? 9999 : 'auto',
+  // ✅ MINIMAL FIX - Allow horizontal scrolling
+  overflowX: isFullscreen ? 'auto' : 'hidden',
+  overflowY: isFullscreen ? 'auto' : 'hidden',
+  // ✅ Enable smooth scrolling
+  scrollBehavior: 'smooth'
+}), [colors.bg, height, isFullscreen]);
 
   const chartContainerStyle = useMemo(() => {
     const sidebarWidth = sidebarVisible && deviceType !== 'mobile' ? CHART_PERFORMANCE_CONFIG.SIDEBAR_WIDTH : 0;
