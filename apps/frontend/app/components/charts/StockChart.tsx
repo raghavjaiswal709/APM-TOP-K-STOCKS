@@ -1021,7 +1021,7 @@ export function StockChart({
         const volume = chunk.reduce((sum, d) => sum + d.volume, 0);
         
        result.push({
-  interval_start: chunk[chunk.length - 1].interval_start,  // ✅ Use LAST timestamp
+  interval_start: chunk[chunk.length - 1].interval_start,  
   open, high, low, close, volume
 });
 
@@ -2041,7 +2041,6 @@ export function StockChart({
     displaylogo: false,
     doubleClick: 'reset+autosize',
     showTips: false,
-    // plotGlPixelRatio: window.devicePixelRatio || 1,
     plotGlPixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
     toImageButtonOptions: {
       format: 'png',
@@ -2317,10 +2316,8 @@ export function StockChart({
   top: isFullscreen ? 0 : 'auto',
   left: isFullscreen ? 0 : 'auto',
   zIndex: isFullscreen ? 9999 : 'auto',
-  // ✅ MINIMAL FIX - Allow horizontal scrolling
   overflowX: isFullscreen ? 'auto' : 'hidden',
   overflowY: isFullscreen ? 'auto' : 'hidden',
-  // ✅ Enable smooth scrolling
   scrollBehavior: 'smooth'
 }), [colors.bg, height, isFullscreen]);
 
@@ -2452,7 +2449,7 @@ export function StockChart({
 
       {sidebarVisible && deviceType !== 'mobile' && (
         <div 
-          className="absolute top-0 left-0 z-10 p-4 rounded-lg shadow-lg border max-h-full overflow-y-auto"
+          className="absolute top-0 left-0 z-8 p-4 rounded-lg shadow-lg border max-h-full overflow-y-auto"
           style={{ 
             backgroundColor: colors.paper,
             borderColor: colors.grid,

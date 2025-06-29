@@ -31,7 +31,7 @@ def main():
                        help='Fetch all available data for the company (ignores date range)')
     
     # Enhanced arguments for the new StockService
-    parser.add_argument('--limit', type=int, default=10000, help='Maximum number of records to return')
+    parser.add_argument('--limit', type=int, default=2500, help='Maximum number of records to return')
     parser.add_argument('--enable_cache', type=str, default='false', 
                        choices=['true', 'false'],
                        help='Enable caching (future feature)')
@@ -112,6 +112,9 @@ def main():
         'host': '100.93.172.21',
         'port': '5432',
     }
+    
+
+
 
     start_time = time.time()
     

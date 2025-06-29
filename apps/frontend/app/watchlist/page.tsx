@@ -1,5 +1,5 @@
 'use client'
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { WatchlistSelector } from '@/app/components/controllers/WatchlistSelector';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -44,28 +44,55 @@ export default function WatchlistPage() {
   const [selectedWatchlist, setSelectedWatchlist] = useState<string>('A');
 
   const {
-    companies,
+    companies: rawCompanies,
     loading,
     error,
     exists,
     availableExchanges,
   } = useWatchlist({ externalWatchlist: selectedWatchlist });
 
-  const handleCompanySelect = (companyCode: string | null, exchange?: string) => {
+  // Memoize companies array to prevent SelectScrollable from resetting
+  const companies = useMemo(() => {
+    return rawCompanies || [];
+  }, [rawCompanies]);
+
+  // Memoize the company select handler to prevent unnecessary re-renders
+  const handleCompanySelect = useCallback((companyCode: string | null, exchange?: string) => {
+    console.log(`[WatchlistPage] Company selected: ${companyCode}, Exchange: ${exchange}`);
     setSelectedCompany(companyCode);
     setSelectedExchange(exchange);
-  };
+  }, []);
 
- const handleWatchlistChange = (watchlist: string) => {
+  const handleWatchlistChange = useCallback((watchlist: string) => {
     console.log(`[WatchlistPage] Watchlist changed to: ${watchlist}`);
     setSelectedWatchlist(watchlist);
     setSelectedCompany(null); // Reset company selection when watchlist changes
     setSelectedExchange(undefined);
-  };
+  }, []);
 
-  const selectedCompanyData = selectedCompany 
-    ? companies.find(c => c.company_code === selectedCompany)
-    : null;
+  // Improved selectedCompanyData logic to handle duplicates across exchanges
+  const selectedCompanyData = useMemo(() => {
+    if (!selectedCompany) return null;
+    
+    // If we have both company code and exchange, find exact match
+    if (selectedCompany && selectedExchange) {
+      return companies.find(c => 
+        c.company_code === selectedCompany && c.exchange === selectedExchange
+      ) || null;
+    }
+    
+    // If we only have company code, find the first match
+    // (this handles cases where SelectScrollable only passes company code)
+    if (selectedCompany) {
+      const matches = companies.filter(c => c.company_code === selectedCompany);
+      
+      // If multiple matches across exchanges, prefer the first one
+      // or you could add logic to prefer a specific exchange
+      return matches.length > 0 ? matches[0] : null;
+    }
+    
+    return null;
+  }, [selectedCompany, selectedExchange, companies]);
 
   const formatNumber = (value: number | undefined) => {
     if (value === undefined) return 'N/A';
@@ -85,6 +112,17 @@ export default function WatchlistPage() {
     if (value === undefined) return 'N/A';
     return value.toFixed(4);
   };
+
+  // Memoize the table click handler
+  const handleTableRowClick = useCallback((companyCode: string, exchange: string) => {
+    handleCompanySelect(companyCode, exchange);
+  }, [handleCompanySelect]);
+
+  // Memoize the button click handler
+  const handleSelectButtonClick = useCallback((e: React.MouseEvent, companyCode: string, exchange: string) => {
+    e.stopPropagation();
+    handleCompanySelect(companyCode, exchange);
+  }, [handleCompanySelect]);
 
   return (
     <SidebarProvider>
@@ -229,7 +267,7 @@ export default function WatchlistPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <span>Selected Company Details</span>
+                    <span>Company Details</span>
                     <Badge variant="secondary">{selectedCompanyData.exchange}</Badge>
                     <Badge variant="outline" className="ml-auto">
                       {selectedCompanyData.company_code}
@@ -423,59 +461,61 @@ export default function WatchlistPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {companies.map((company, index) => (
-                          <tr 
-                            key={company.company_code} 
-                            className={`border-b hover:bg-muted/50 cursor-pointer transition-colors ${
-                              selectedCompany === company.company_code ? 'bg-muted shadow-sm' : ''
-                            } ${index % 2 === 0 ? 'bg-muted/20' : ''}`}
-                            onClick={() => handleCompanySelect(company.company_code, company.exchange)}
-                          >
-                            <td className="py-3 px-4">
-                              <span className="font-mono font-semibold text-primary">
-                                {company.company_code}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className="font-medium">{company.name}</span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <Badge variant="outline" className="text-xs">
-                                {company.exchange}
-                              </Badge>
-                            </td>
-                            <td className="py-3 px-4 text-center">
-                              <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-sm">
-                                {formatNumber(company.total_valid_days)}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className="font-medium text-green-600 dark:text-green-400">
-                                {formatCurrency(company.avg_daily_high_low)}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-center">
-                              <span className="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-2 py-1 rounded text-sm">
-                                {formatNumber(company.N1_Pattern_count)}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCompanySelect(company.company_code, company.exchange);
-                                }}
-                                className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
-                                  selectedCompany === company.company_code
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                                }`}
-                              >
-                                {selectedCompany === company.company_code ? 'Selected' : 'Select'}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        {companies.map((company, index) => {
+                          const isSelected = selectedCompany === company.company_code && 
+                                           (selectedExchange === company.exchange || !selectedExchange);
+                          
+                          return (
+                            <tr 
+                              key={`${company.company_code}-${company.exchange}`}
+                              className={`border-b hover:bg-muted/50 cursor-pointer transition-colors ${
+                                isSelected ? 'bg-muted shadow-sm' : ''
+                              } ${index % 2 === 0 ? 'bg-muted/20' : ''}`}
+                              onClick={() => handleTableRowClick(company.company_code, company.exchange)}
+                            >
+                              <td className="py-3 px-4">
+                                <span className="font-mono font-semibold text-primary">
+                                  {company.company_code}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="font-medium">{company.name}</span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <Badge variant="outline" className="text-xs">
+                                  {company.exchange}
+                                </Badge>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-sm">
+                                  {formatNumber(company.total_valid_days)}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="font-medium text-green-600 dark:text-green-400">
+                                  {formatCurrency(company.avg_daily_high_low)}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <span className="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-2 py-1 rounded text-sm">
+                                  {formatNumber(company.N1_Pattern_count)}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <button
+                                  onClick={(e) => handleSelectButtonClick(e, company.company_code, company.exchange)}
+                                  className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
+                                    isSelected
+                                      ? 'bg-primary text-primary-foreground'
+                                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                                  }`}
+                                >
+                                  {isSelected ? 'Selected' : 'Select'}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

@@ -58,18 +58,16 @@ export const useRecordedData = (): UseRecordedDataReturn => {
   const KNOWN_COMPANIES = [
     'GPIL-NSE',
     'IDBI-NSE',
-    'KIRIINDUS-NSE',
-    'NORTHARC-NSE',
-    'RPOWER-NSE',
-    'SCI-NSE'
+    // 'KIRIINDUS-NSE',
+    // 'NORTHARC-NSE',
+    // 'RPOWER-NSE',
+    // 'SCI-NSE'
   ];
 
-  // Load available dates on mount
   useEffect(() => {
     loadAvailableDates();
   }, []);
 
-  // Load companies when date changes
   useEffect(() => {
     if (selectedDate) {
       loadAvailableCompanies(selectedDate);
@@ -80,7 +78,6 @@ export const useRecordedData = (): UseRecordedDataReturn => {
     }
   }, [selectedDate]);
 
-//   const loadAvailableDates = async () => {
 //     try {
 //       setLoading(true);
 //       setError(null);
@@ -125,8 +122,7 @@ const loadAvailableDates = async () => {
     setLoading(true);
     setError(null);
 
-    // Only check for the date you actually have
-    const possibleDates = ['2025-06-10']; // ✅ FIXED: Only real dates
+    const possibleDates = ['2025-06-10','2025-06-09']; // ✅ FIXED: Only real dates
     const dates: AvailableDate[] = [];
 
     for (const date of possibleDates) {
@@ -142,7 +138,7 @@ const loadAvailableDates = async () => {
       if (companiesCount > 0) {
         dates.push({
           date,
-          displayDate: date, // ✅ FIXED: Use string directly, no Date conversion
+          displayDate: date, 
           companiesCount
         });
       }
@@ -158,7 +154,6 @@ const loadAvailableDates = async () => {
   }
 };
 
-//   const loadAvailableCompanies = async (date: string) => {
 //     try {
 //       setLoading(true);
 //       setError(null);
@@ -198,7 +193,6 @@ const loadAvailableCompanies = async (date: string) => {
     const companies: AvailableCompany[] = [];
     for (const companyFile of KNOWN_COMPANIES) {
       try {
-        // ✅ FIXED: Add .json extension for the fetch
         const response = await fetch(`/recorded_data/${date}/${companyFile}.json`, { method: 'HEAD' });
         if (response.ok) {
           const [company, exchange] = companyFile.split('-');

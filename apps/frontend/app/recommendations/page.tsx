@@ -270,13 +270,13 @@ useEffect(() => {
             <div className="container mx-auto p-4">
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
                 <div className="lg:col-span-3">
-                  <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-[600px]">
+                  <div className="bg-zinc-800 p-4 rounded-lg shadow-lg min-h-[400px] h-auto">
                     {historicalData.length > 0 && selectedCompany ? (
                       <PlotlyChart 
   symbol={selectedCompany} 
   data={currentData} 
   historicalData={historicalData}
-  rawOhlcData={recordedData}  // ✅ Use your actual data
+  rawOhlcData={recordedData} 
   ohlcData={ohlcData}
   tradingHours={tradingHours}
 />
