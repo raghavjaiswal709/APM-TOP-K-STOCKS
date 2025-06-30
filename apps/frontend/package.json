@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "generate-manifest": "node scripts/generate-manifest.js",
+    "dev": "npm run generate-manifest && next dev",
+    "build": "npm run generate-manifest && next build",
     "start": "next start",
     "lint": "next lint"
   },

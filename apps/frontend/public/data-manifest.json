@@ -1,0 +1,103 @@
+{
+  "dates": [
+    {
+      "date": "2025-06-17",
+      "displayDate": "2025-06-17",
+      "companiesCount": 6,
+      "companies": [
+        {
+          "symbol": "NSE:GPIL-EQ",
+          "company": "GPIL",
+          "exchange": "NSE",
+          "fileName": "GPIL-NSE.json",
+          "fileNameWithoutExt": "GPIL-NSE"
+        },
+        {
+          "symbol": "NSE:IDBI-EQ",
+          "company": "IDBI",
+          "exchange": "NSE",
+          "fileName": "IDBI-NSE.json",
+          "fileNameWithoutExt": "IDBI-NSE"
+        },
+        {
+          "symbol": "NSE:KIRIINDUS-EQ",
+          "company": "KIRIINDUS",
+          "exchange": "NSE",
+          "fileName": "KIRIINDUS-NSE.json",
+          "fileNameWithoutExt": "KIRIINDUS-NSE"
+        },
+        {
+          "symbol": "NSE:NORTHARC-EQ",
+          "company": "NORTHARC",
+          "exchange": "NSE",
+          "fileName": "NORTHARC-NSE.json",
+          "fileNameWithoutExt": "NORTHARC-NSE"
+        },
+        {
+          "symbol": "NSE:RPOWER-EQ",
+          "company": "RPOWER",
+          "exchange": "NSE",
+          "fileName": "RPOWER-NSE.json",
+          "fileNameWithoutExt": "RPOWER-NSE"
+        },
+        {
+          "symbol": "NSE:SCI-EQ",
+          "company": "SCI",
+          "exchange": "NSE",
+          "fileName": "SCI-NSE.json",
+          "fileNameWithoutExt": "SCI-NSE"
+        }
+      ]
+    },
+    {
+      "date": "2025-06-10",
+      "displayDate": "2025-06-10",
+      "companiesCount": 6,
+      "companies": [
+        {
+          "symbol": "NSE:GPIL-EQ",
+          "company": "GPIL",
+          "exchange": "NSE",
+          "fileName": "GPIL-NSE.json",
+          "fileNameWithoutExt": "GPIL-NSE"
+        },
+        {
+          "symbol": "NSE:IDBI-EQ",
+          "company": "IDBI",
+          "exchange": "NSE",
+          "fileName": "IDBI-NSE.json",
+          "fileNameWithoutExt": "IDBI-NSE"
+        },
+        {
+          "symbol": "NSE:KIRIINDUS-EQ",
+          "company": "KIRIINDUS",
+          "exchange": "NSE",
+          "fileName": "KIRIINDUS-NSE.json",
+          "fileNameWithoutExt": "KIRIINDUS-NSE"
+        },
+        {
+          "symbol": "NSE:NORTHARC-EQ",
+          "company": "NORTHARC",
+          "exchange": "NSE",
+          "fileName": "NORTHARC-NSE.json",
+          "fileNameWithoutExt": "NORTHARC-NSE"
+        },
+        {
+          "symbol": "NSE:RPOWER-EQ",
+          "company": "RPOWER",
+          "exchange": "NSE",
+          "fileName": "RPOWER-NSE.json",
+          "fileNameWithoutExt": "RPOWER-NSE"
+        },
+        {
+          "symbol": "NSE:SCI-EQ",
+          "company": "SCI",
+          "exchange": "NSE",
+          "fileName": "SCI-NSE.json",
+          "fileNameWithoutExt": "SCI-NSE"
+        }
+      ]
+    }
+  ],
+  "lastUpdated": "2025-06-29T15:23:18.306Z"
+}
