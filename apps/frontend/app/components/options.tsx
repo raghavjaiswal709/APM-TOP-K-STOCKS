@@ -4,10 +4,13 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { SelectInterval } from "./controllers/SelectInterval";
 import { SelectIndicators } from "./controllers/SelectIndicators";
 import { CalendarForm } from "./controllers/CalendarForm";
 import { WatchlistSelector } from "./controllers/WatchlistSelector";
+import { ImageCarousel } from "./ImageCarousel";
+import { BarChart3 } from "lucide-react";
 
 interface CardWithFormProps {
   onCompanyChange: (companyCode: string | null, exchange?: string) => void;
@@ -31,6 +34,13 @@ export function CardWithForm({
   loading = false,
 }: CardWithFormProps) {
   
+  // State for selected company and carousel
+  const [selectedCompany, setSelectedCompany] = React.useState<{
+    companyCode: string;
+    exchange: string;
+  } | null>(null);
+  const [isCarouselOpen, setIsCarouselOpen] = React.useState(false);
+
   const handleDateRangeChange = React.useCallback((startDate: Date | undefined, endDate: Date | undefined) => {
     console.log('CardWithForm received date range change:', startDate, endDate);
     onDateRangeChange(startDate, endDate);
@@ -38,6 +48,14 @@ export function CardWithForm({
 
   const handleCompanySelect = React.useCallback((companyCode: string | null, exchange?: string) => {
     console.log('CardWithForm received company change:', companyCode, 'on exchange:', exchange);
+    
+    // Update selected company state
+    if (companyCode && exchange) {
+      setSelectedCompany({ companyCode, exchange });
+    } else {
+      setSelectedCompany(null);
+    }
+    
     onCompanyChange(companyCode, exchange);
   }, [onCompanyChange]);
 
@@ -58,51 +76,62 @@ export function CardWithForm({
 
   const handleWatchlistChange = React.useCallback((watchlist: string) => {
     console.log('CardWithForm received watchlist change:', watchlist);
+    // Reset selected company when watchlist changes
+    setSelectedCompany(null);
     if (onWatchlistChange) {
       onWatchlistChange(watchlist);
     }
   }, [onWatchlistChange]);
 
-  return (
-    <Card className="border-none w-full">
-      <CardContent className="p-4 w-full">
-        <div className="space-y-2">
-          {/* Company and Watchlist Selection */}
-          <div className="flex justify-between gap-4">
-            <div className="p-3 border border-opacity-30 rounded-md flex-1 gap-4 h-24 flex items-center">
-              <WatchlistSelector 
-                onCompanySelect={handleCompanySelect}  
-                selectedWatchlist={selectedWatchlist}
-                onWatchlistChange={handleWatchlistChange} 
-              />
-            </div>
+  const handleOpenCarousel = React.useCallback(() => {
+    if (selectedCompany) {
+      setIsCarouselOpen(true);
+    }
+  }, [selectedCompany]);
 
-            {/* Uncomment if you want interval selection back */}
-            {/* <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-center">
-              <SelectInterval 
-                onIntervalChange={handleIntervalChange}
-              />
-            </div> */}
+  return (
+    <>
+      <Card className="border-none w-full">
+        <CardContent className="p-4 w-full">
+          <div className="space-y-2">
+            {/* Company and Watchlist Selection */}
+            <div className="flex justify-between gap-4">
+              <div className="p-3 border border-opacity-30 rounded-md flex-1 gap-4 h-24 flex items-center">
+                <WatchlistSelector 
+                  onCompanySelect={handleCompanySelect}  
+                  selectedWatchlist={selectedWatchlist}
+                  onWatchlistChange={handleWatchlistChange} 
+                />
+                 {/* Graph Analysis Button */}
+              <div className=" flex items-center justify-center min-w-[120px]">
+                <Button
+                  onClick={handleOpenCarousel}
+                  disabled={!selectedCompany}
+                  variant="outline"
+                  className="flex items-center gap-2 h-20"
+                >
+                  {/* <BarChart3 className="h-4 w-4" /> */}
+                  <span className="text-sm">View Graphs</span>
+                </Button>
+              </div>
+              </div>
+
              
-            {/* <div className="p-3 border border-opacity-30 rounded-md flex-1 h-24 flex items-center justify-center">
-              <SelectIndicators 
-                onIndicatorsChange={handleIndicatorsChange}
-              />
-            </div> */}
+            </div>
           </div>
-          
-          {/* Uncomment if you want date range selection back */}
-          {/* <div className="border-t pt-4">
-            <h3 className="text-sm font-medium mb-3">📅 Date Range Selection</h3>
-            <CalendarForm 
-              onDateRangeChange={handleDateRangeChange}
-              onFetchData={handleFetchData}
-              loading={loading}
-            />
-          </div> */}
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      {/* Image Carousel */}
+      {selectedCompany && (
+        <ImageCarousel
+          isOpen={isCarouselOpen}
+          onClose={() => setIsCarouselOpen(false)}
+          companyCode={selectedCompany.companyCode}
+          exchange={selectedCompany.exchange}
+        />
+      )}
+    </>
   );
 }
 

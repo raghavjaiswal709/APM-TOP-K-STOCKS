@@ -41,7 +41,7 @@ export default function Page() {
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [selectedExchange, setSelectedExchange] = useState<string | null>(null);
   const [selectedWatchlist, setSelectedWatchlist] = useState('A');
-  const [selectedInterval, setSelectedInterval] = useState('1m');
+  const [selectedInterval, setSelectedInterval] = useState('1h');
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
   const [selectedStartDate, setSelectedStartDate] = useState<Date | undefined>();
   const [selectedEndDate, setSelectedEndDate] = useState<Date | undefined>();

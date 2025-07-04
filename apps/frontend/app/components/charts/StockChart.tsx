@@ -64,12 +64,55 @@ const CHART_PERFORMANCE_CONFIG = {
 };
 
 const MARKET_HOLIDAYS_2025 = [
-  '2025-01-26',
-  '2025-03-14',
-  '2025-08-15',
-  '2025-10-02',
-  '2025-11-01',
-  '2025-12-25'
+  // 2023 Holidays
+  '2023-01-26',   // Republic Day
+  '2023-03-07',   // Holi
+  '2023-03-30',   // Ram Navami
+  '2023-04-04',   // Mahavir Jayanti
+  '2023-04-07',   // Good Friday
+  '2023-04-14',   // Dr. Baba Saheb Ambedkar Jayanti
+  '2023-04-22',   // Id-Ul-Fitr (Ramzan Id)
+  '2023-05-01',   // Maharashtra Day
+  '2023-06-28',   // Bakri Id
+  '2023-08-15',   // Independence Day
+  '2023-09-19',   // Ganesh Chaturthi
+  '2023-10-02',   // Mahatma Gandhi Jayanti
+  '2023-10-24',   // Dussehra
+  '2023-11-12',   // Diwali Laxmi Pujan
+  '2023-11-27',   // Gurunanak Jayanti
+  '2023-12-25',   // Christmas
+
+  // 2024 Holidays
+  '2024-01-26',   // Republic Day
+  '2024-03-08',   // Maha Shivaratri
+  '2024-03-25',   // Holi
+  '2024-03-29',   // Good Friday
+  '2024-04-11',   // Id-Ul-Fitr (Ramzan Id)
+  '2024-04-17',   // Ram Navami
+  '2024-05-01',   // Maharashtra Day
+  '2024-06-17',   // Bakri Id
+  '2024-07-17',   // Muharram
+  '2024-08-15',   // Independence Day
+  '2024-10-02',   // Mahatma Gandhi Jayanti
+  '2024-11-01',   // Diwali Laxmi Pujan
+  '2024-11-15',   // Gurunanak Jayanti
+  '2024-12-25',   // Christmas
+
+  // 2025 Holidays
+  '2025-02-26',   // Mahashivratri
+  '2025-03-14',   // Holi
+  '2025-03-31',   // Id-Ul-Fitra (Ramzan Id)
+  '2025-04-10',   // Shri Mahavir Jayanti
+  '2025-04-14',   // Dr. Baba Saheb Ambedkar Jayanti
+  '2025-04-18',   // Good Friday
+  '2025-05-01',   // Maharashtra Day
+  '2025-08-15',   // Independence Day
+  '2025-08-27',   // Ganesh Chaturthi
+  '2025-10-02',   // Mahatma Gandhi Jayanti/Dussehra
+  '2025-10-21',   // Diwali Laxmi Pujan
+  '2025-10-22',   // Diwali Balipratipada
+  '2025-11-05',   // Prakash Gurpurb Sri Guru Nanak Dev Jayanti
+  '2025-12-25'    // Christmas
 ];
 
 const STABLE_RANGEBREAKS = [

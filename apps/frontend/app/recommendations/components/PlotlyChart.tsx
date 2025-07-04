@@ -441,26 +441,31 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return vwapValues;
   };
 
-  const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
-    if (!rawData || rawData.length === 0) return [];
+const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
+  if (!rawData || rawData.length === 0) return [];
+  
+  return rawData.map(item => {
+    const high = item.high_price > 0 ? item.high_price : item.ltp;
+    const low = item.low_price > 0 ? item.low_price : item.ltp;
+    const open = item.open_price > 0 ? item.open_price : item.ltp;
     
-    return rawData.map(item => {
-      const high = item.high_price > 0 ? item.high_price : item.ltp;
-      const low = item.low_price > 0 ? item.low_price : item.ltp;
-      const open = item.open_price > 0 ? item.open_price : item.ltp;
-      
-      return {
-        timestamp: item.timestamp,
-        open: open,
-        high: Math.max(high, item.ltp, open),
-        low: Math.min(low, item.ltp, open),
-        close: item.ltp,
-        volume: item.vol_traded_today || 0,
-        buyVolume: 0,
-        sellVolume: 0  
-      };
-    });
-  };
+    // Debug volume mapping
+    const volumeValue = item.vol_traded_today || 0;
+    console.log('📊 Volume mapping:', { timestamp: item.timestamp, vol_traded_today: item.vol_traded_today, mapped_volume: volumeValue });
+    
+    return {
+      timestamp: item.timestamp,
+      open: open,
+      high: Math.max(high, item.ltp, open),
+      low: Math.min(low, item.ltp, open),
+      close: item.ltp,
+      volume: volumeValue,  // <- CONFIRMED CORRECT MAPPING
+      buyVolume: 0,
+      sellVolume: 0  
+    };
+  });
+};
+
 
   const prepareCandlestickData = () => {
     let transformedOhlcData: OHLCPoint[] = [];
@@ -511,39 +516,45 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const sortedData = [...validOhlcData].sort((a, b) => a.timestamp - b.timestamp);
     
     sortedData.forEach(candle => {
-      const intervalKey = Math.floor(candle.timestamp / aggregationInterval) * aggregationInterval;
-      const intervalDate = new Date(intervalKey * 1000);
-      
-      const key = `${intervalDate.getFullYear()}-${intervalDate.getMonth()}-${intervalDate.getDate()}-${intervalDate.getHours()}-${intervalDate.getMinutes()}-${Math.floor(intervalDate.getSeconds() / aggregationInterval)}`;
-      
-      if (!minuteMap.has(key)) {
-        minuteMap.set(key, {
-          timestamp: intervalKey,
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: candle.volume || 0,
-          buyVolume: candle.buyVolume || 0,
-          sellVolume: candle.sellVolume || 0,
-          count: 1
-        });
-      } else {
-        const existing = minuteMap.get(key);
-        existing.high = Math.max(existing.high, candle.high);
-        existing.low = Math.min(existing.low, candle.low);
-        existing.close = candle.close;
-        existing.volume += (candle.volume || 0);
-        existing.buyVolume += (candle.buyVolume || 0);
-        existing.sellVolume += (candle.sellVolume || 0);
-        existing.count += 1;
-      }
+  const intervalKey = Math.floor(candle.timestamp / aggregationInterval) * aggregationInterval;
+  const intervalDate = new Date(intervalKey * 1000);
+  
+  const key = `${intervalDate.getFullYear()}-${intervalDate.getMonth()}-${intervalDate.getDate()}-${intervalDate.getHours()}-${intervalDate.getMinutes()}-${Math.floor(intervalDate.getSeconds() / aggregationInterval)}`;
+  
+  // Ensure we're getting the volume correctly
+  const volumeValue = candle.volume || 0;
+  
+  if (!minuteMap.has(key)) {
+    minuteMap.set(key, {
+      timestamp: intervalKey,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: volumeValue,  // <- FIXED
+      buyVolume: candle.buyVolume || 0,
+      sellVolume: candle.sellVolume || 0,
+      count: 1
     });
+  } else {
+    const existing = minuteMap.get(key);
+    existing.high = Math.max(existing.high, candle.high);
+    existing.low = Math.min(existing.low, candle.low);
+    existing.close = candle.close;
+    existing.volume = Math.max(existing.volume, volumeValue); // <- CHANGED: Use max instead of sum for cumulative volume
+    existing.buyVolume += (candle.buyVolume || 0);
+    existing.sellVolume += (candle.sellVolume || 0);
+    existing.count += 1;
+  }
+});
+
     
     const aggregatedData = Array.from(minuteMap.values())
       .sort((a, b) => a.timestamp - b.timestamp);
     
     console.log('✅ Aggregated OHLC data points:', aggregatedData.length);
+
+    
     
     const buyPrices = aggregatedData.map((candle, index) => calculateBuySellPrices(candle, index).buyPrice);
     const sellPrices = aggregatedData.map((candle, index) => calculateBuySellPrices(candle, index).sellPrice);
@@ -566,6 +577,24 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       sellPrices,
       buySellSpreads
     };
+
+    console.log('📊 Final candlestick data sample:', {
+  points: result.x.length,
+  firstCandle: result.x.length > 0 ? {
+    time: result.x[0],
+    open: result.open[0],
+    high: result.high[0],
+    low: result.low[0],
+    close: result.close[0],
+    volume: result.volume[0]  // <- ADD VOLUME TO DEBUG
+  } : null,
+  volumeStats: {
+    totalVolume: result.volume.reduce((sum, v) => sum + v, 0),
+    maxVolume: Math.max(...result.volume),
+    nonZeroVolumes: result.volume.filter(v => v > 0).length
+  }
+});
+
     
     console.log('📊 Final candlestick data sample:', {
       points: result.x.length,
@@ -1216,42 +1245,46 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           showlegend: true
         });
 
-        const volumeValues = sortedData.map(point => point.volume || 0);
-        const volumeColors = [];
+      // Use consistent volume data like separate volume chart
+  const lineData = prepareLineChartData();
+  const volumeValues = lineData.allData.map(point => point.volume || 0);
+  
+  if (volumeValues.some(v => v > 0)) {
+    const volumeColors = [];
+    
+    for (let i = 0; i < lineData.allData.length; i++) {
+      if (i === 0) {
+        volumeColors.push(colors.upColor);
+      } else {
+        const currentPrice = lineData.allData[i].ltp;
+        const prevPrice = lineData.allData[i - 1].ltp;
+        volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
+      }
+    }
 
-        for (let i = 0; i < sortedData.length; i++) {
-          if (i === 0) {
-            volumeColors.push(colors.upColor);
-          } else {
-            const currentPrice = priceValues[i];
-            const prevPrice = priceValues[i - 1];
-            volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
-          }
+    plotData.push({
+      x: lineData.x,  // Use consistent x-axis data
+      y: volumeValues,
+      type: 'histogram',
+      histfunc: 'sum',
+      name: 'Volume',
+      marker: {
+        color: volumeColors,
+        opacity: 0.9,
+        line: {
+          width: 0.5,
+          color: 'rgba(255,255,255,0.1)'
         }
+      },
+      yaxis: 'y3',
+      hovertemplate: '<b>%{fullData.name}</b><br>' +
+                    'Time: %{x|%H:%M:%S}<br>' +
+                    'Volume: %{y:,.0f}<br>' +
+                    '<extra></extra>',
+      showlegend: true
+    });
+  }
 
-        if (volumeValues.some(v => v > 0)) {
-          plotData.push({
-            x: timeValues,
-            y: volumeValues,
-            type: 'histogram',
-            histfunc: 'sum',
-            name: 'Volume',
-            marker: {
-              color: volumeColors,
-              opacity: 0.9,
-              line: {
-                width: 0.5,
-                color: 'rgba(255,255,255,0.1)'
-              }
-            },
-            yaxis: 'y3',
-            hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'Volume: %{y:,.0f}<br>' +
-                          '<extra></extra>',
-            showlegend: true
-          });
-        }
 
         if (showIndicators.sma20 && priceValues.length >= 20) {
           const sma20Values = calculateSMA(priceValues, 20);
@@ -1364,212 +1397,85 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           }
         }
       }
-    } else {
-      const { x, open, high, low, close, volume } = prepareCandlestickData();
-      
-      if (x.length === 0) {
-        console.log('❌ No candlestick data available');
-        return plotData;
-      }
+   } else {
+  const { x, open, high, low, close, volume } = prepareCandlestickData();
+  
+  // Create candlestick plot
+  plotData.push({
+    x: x,
+    open: open,
+    high: high,
+    low: low,
+    close: close,
+    type: 'candlestick',
+    name: 'Price',
+    increasing: {
+      fillcolor: colors.upColor,
+      line: { color: colors.upColor, width: 1 }
+    },
+    decreasing: {
+      fillcolor: colors.downColor,
+      line: { color: colors.downColor, width: 1 }
+    },
+    hovertemplate: '<b>%{fullData.name}</b><br>' +
+                  'Time: %{x|%H:%M:%S}<br>' +
+                  'Open: ₹%{open:.2f}<br>' +
+                  'High: ₹%{high:.2f}<br>' +
+                  'Low: ₹%{low:.2f}<br>' +
+                  'Close: ₹%{close:.2f}<br>' +
+                  '<extra></extra>',
+    showlegend: true,
+    yaxis: 'y'
+  });
 
-      console.log('📊 Candlestick raw data:', { 
-        points: x.length, 
-        sampleOHLC: { 
-          open: open[0], 
-          high: high[0], 
-          low: low[0], 
-          close: close[0] 
-        } 
-      });
+  // Use consistent volume data like separate volume chart
+  const lineData = prepareLineChartData();
+  const volumeValues = lineData.allData.map(point => point.volume || 0);
+  
+  if (volumeValues.some(v => v > 0)) {
+    console.log('🔍 Volume data check:', {
+      volumeLength: volumeValues.length,
+      hasNonZeroVolume: volumeValues.some(v => v > 0),
+      maxVolume: Math.max(...volumeValues),
+      minVolume: Math.min(...volumeValues)
+    });
 
-      const validData = [];
-      for (let i = 0; i < x.length; i++) {
-        if (open[i] > 0 && high[i] > 0 && low[i] > 0 && close[i] > 0 && 
-            !isNaN(open[i]) && !isNaN(high[i]) && !isNaN(low[i]) && !isNaN(close[i])) {
-          validData.push({
-            x: x[i],
-            open: Number(open[i]),
-            high: Number(high[i]),
-            low: Number(low[i]),
-            close: Number(close[i]),
-            volume: Number(volume[i]) || 0
-          });
-        }
-      }
-      
-      if (validData.length === 0) {
-        console.log('❌ No valid candlestick data after filtering');
-        return plotData;
-      }
-      
-      console.log('✅ Valid candlesticks:', validData.length, 'out of', x.length);
-
-      plotData.push({
-        x: validData.map(d => d.x),
-        open: validData.map(d => d.open),
-        high: validData.map(d => d.high),
-        low: validData.map(d => d.low),
-        close: validData.map(d => d.close),
-        type: 'candlestick',
-        name: 'OHLC',
-        increasing: {
-          line: { color: colors.upColor || '#22c55e', width: 1 },
-          fillcolor: colors.upColor || '#22c55e'
-        },
-        decreasing: {
-          line: { color: colors.downColor || '#ef4444', width: 1 },
-          fillcolor: colors.downColor || '#ef4444'
-        },
-        line: { width: 1 },
-        hovertemplate: '<b>%{fullData.name}</b><br>' +
-                      'Time: %{x|%H:%M:%S}<br>' +
-                      'Open: ₹%{open:.2f}<br>' +
-                      'High: ₹%{high:.2f}<br>' +
-                      'Low: ₹%{low:.2f}<br>' +
-                      'Close: ₹%{close:.2f}<br>' +
-                      '<extra></extra>',
-        showlegend: true
-      });
-
-      if (volume.some(v => v > 0)) {
-        console.log('🔍 Volume data check:', {
-          volumeLength: volume.length,
-          xLength: x.length,
-          closeLength: close.length,
-          openLength: open.length,
-          sampleVolume: volume.slice(0, 5),
-          hasPositiveVolume: volume.some(v => v > 0)
-        });
-
-        const volumeColors = [];
-        
-        for (let i = 0; i < close.length; i++) {
-          volumeColors.push(close[i] >= open[i] ? colors.upColor : colors.downColor);
-        }
-
-        plotData.push({
-          x: x,
-          y: volume,
-          type: 'bar',
-          name: 'Volume',
-          marker: {
-            color: volumeColors,
-            opacity: 0.9,
-            line: {
-              width: 0.5,
-              color: 'rgba(255,255,255,0.1)'
-            }
-          },
-          yaxis: 'y3',
-          hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Volume: %{y:,.0f}<br>' +
-                        '<extra></extra>',
-          showlegend: true
-        });
-        
-        console.log('✅ Volume bars added to plotData');
+    const volumeColors = [];
+    
+    for (let i = 0; i < lineData.allData.length; i++) {
+      if (i === 0) {
+        volumeColors.push(colors.upColor);
       } else {
-        console.log('❌ No volume data or all volumes are zero');
-      }
-
-      const validX = validData.map(d => d.x);
-      const validClose = validData.map(d => d.close);
-      const validHigh = validData.map(d => d.high);
-      const validLow = validData.map(d => d.low);
-      const validVolume = validData.map(d => d.volume);
-      
-      if (showIndicators.sma20 && validClose.length >= 20) {
-        const sma20Values = calculateSMA(validClose, 20);
-        if (sma20Values && sma20Values.length > 0) {
-          plotData.push({
-            x: validX.slice(19),
-            y: sma20Values,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'SMA 20',
-            line: { color: colors.indicator?.sma20 || '#f59e0b', width: 2, dash: 'dot' },
-            connectgaps: false,
-            hovertemplate: '<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>SMA20: ₹%{y:.2f}<br><extra></extra>',
-            showlegend: true
-          });
-        }
-      }
-
-      if (showIndicators.ema9 && validClose.length >= 9) {
-        const ema9Values = calculateEMA(validClose, 9);
-        if (ema9Values && ema9Values.length > 0) {
-          plotData.push({
-            x: validX,
-            y: ema9Values,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'EMA 9',
-            line: { color: colors.indicator?.ema9 || '#8b5cf6', width: 2, dash: 'dash' },
-            connectgaps: false,
-            hovertemplate: '<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>EMA9: ₹%{y:.2f}<br><extra></extra>',
-            showlegend: true
-          });
-        }
-      }
-
-      if (showIndicators.bb && validClose.length >= 20) {
-        const bbData = calculateBollingerBands(validClose, 20, 2);
-        if (bbData && bbData.upper && bbData.middle && bbData.lower) {
-          plotData.push({
-            x: validX.slice(19),
-            y: bbData.upper,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'BB Upper',
-            line: { color: colors.indicator?.bb || '#64748b', width: 1, dash: 'dashdot' },
-            connectgaps: false,
-            showlegend: true
-          });
-          
-          plotData.push({
-            x: validX.slice(19),
-            y: bbData.middle,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'BB Middle',
-            line: { color: colors.indicator?.bb || '#64748b', width: 1 },
-            connectgaps: false,
-            showlegend: true
-          });
-          
-          plotData.push({
-            x: validX.slice(19),
-            y: bbData.lower,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'BB Lower',
-            line: { color: colors.indicator?.bb || '#64748b', width: 1, dash: 'dashdot' },
-            fill: 'tonexty',
-            fillcolor: 'rgba(100, 116, 139, 0.1)',
-            connectgaps: false,
-            showlegend: true
-          });
-        }
-      }
-
-      if (showIndicators.vwap && validClose.length > 0 && validVolume.length > 0) {
-        const vwapValues = calculateVWAP(validClose, validHigh, validLow, validVolume);
-        if (vwapValues && vwapValues.length > 0) {
-          plotData.push({
-            x: validX,
-            y: vwapValues,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'VWAP',
-            line: { color: colors.indicator?.vwap || '#06b6d4', width: 2 },
-            connectgaps: false,
-            hovertemplate: '<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>VWAP: ₹%{y:.2f}<br><extra></extra>',
-            showlegend: true
-          });
-        }
+        const currentPrice = lineData.allData[i].ltp;
+        const prevPrice = lineData.allData[i - 1].ltp;
+        volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
       }
     }
+
+    plotData.push({
+      x: lineData.x,  // Use consistent x-axis data
+      y: volumeValues,
+      type: 'histogram',
+      histfunc: 'sum',
+      name: 'Volume',
+      marker: {
+        color: volumeColors,
+        opacity: 0.9,
+        line: {
+          width: 0.5,
+          color: 'rgba(255,255,255,0.1)'
+        }
+      },
+      yaxis: 'y3',
+      hovertemplate: '<b>%{fullData.name}</b><br>' +
+                    'Time: %{x|%H:%M:%S}<br>' +
+                    'Volume: %{y:,.0f}<br>' +
+                    '<extra></extra>',
+      showlegend: true
+    });
+  }
+}
+
 
     if (showIndicators.rsi) {
       const priceData = chartType === 'line' 
@@ -1935,29 +1841,21 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     let volumes: number[] = [];
     let volumeColors: string[] = [];
     
-    if (chartType === 'line') {
-      const data = prepareLineChartData();
-      x = data.x;
-      volumes = data.allData.map(point => point.volume || 0);
-      
-      for (let i = 0; i < data.allData.length; i++) {
-        if (i === 0) {
-          volumeColors.push(colors.upColor);
-        } else {
-          const currentPrice = data.allData[i].ltp;
-          const prevPrice = data.allData[i - 1].ltp;
-          volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
-        }
-      }
-    } else {
-      const data = prepareCandlestickData();
-      x = data.x;
-      volumes = data.volume;
-      
-      for (let i = 0; i < data.close.length; i++) {
-        volumeColors.push(data.close[i] >= data.open[i] ? colors.upColor : colors.downColor);
+    // Always use line chart data for separate volume chart to keep it consistent
+    const data = prepareLineChartData();
+    x = data.x;
+    volumes = data.allData.map(point => point.volume || 0);
+    
+    for (let i = 0; i < data.allData.length; i++) {
+      if (i === 0) {
+        volumeColors.push(colors.upColor);
+      } else {
+        const currentPrice = data.allData[i].ltp;
+        const prevPrice = data.allData[i - 1].ltp;
+        volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
       }
     }
+
     
     return [{
       x,
