@@ -106,7 +106,7 @@ def main():
     
     # Database connection parameters
     db_params = {
-        'dbname': 'company_hist_db',
+        'dbname': 'nse_hist_db',
         'user': 'readonly_user',
         'password': 'db_read_5432',
         'host': '100.93.172.21',

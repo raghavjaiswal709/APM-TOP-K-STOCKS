@@ -88,8 +88,14 @@ export class LiveMarketService {
 
       // Validate company codes exist in watchlist
       const availableCompanies = await this.getAvailableCompanies();
+
+      // Solution 1: Check the 'success' property before accessing 'companies'
+      if (!availableCompanies.success) {
+        throw new Error(`Failed to get available companies: ${availableCompanies.error}`);
+      }
+
       const validCompanyCodes = availableCompanies.companies.map(c => c.company_code);
-      
+
       const invalidCodes = companyCodes.filter(code => !validCompanyCodes.includes(code));
       if (invalidCodes.length > 0) {
         throw new Error(`Invalid company codes: ${invalidCodes.join(', ')}`);

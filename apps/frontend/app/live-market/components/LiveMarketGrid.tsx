@@ -72,7 +72,7 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
 
   const getChangeColor = (change?: number) => {
     if (change === undefined) return 'text-muted-foreground';
-    return change >= 0 ? 'text-green-600' : 'text-red-600';
+    return change >= 0 ? 'text-[#2ca499]' : 'text-[#ee5351]';
   };
 
   const getChangeIcon = (change?: number) => {
@@ -88,13 +88,13 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
         <div className="flex items-center gap-2 text-sm">
           {connectionStatus === 'Connected' ? (
             <>
-              <Wifi className="w-4 h-4 text-green-500" />
-              <span className="text-green-600">Live Data</span>
+              <Wifi className="w-4 h-4 text-[#2ca499]" />
+              <span className="text-[#2ca499]">Live Data</span>
             </>
           ) : (
             <>
-              <WifiOff className="w-4 h-4 text-red-500" />
-              <span className="text-red-600">Disconnected</span>
+              <WifiOff className="w-4 h-4 text-[#ee5351]" />
+              <span className="text-[#ee5351]">Disconnected</span>
             </>
           )}
         </div>
@@ -131,7 +131,7 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
                     </span>
                     <div className={`flex items-center gap-1 text-sm ${getChangeColor(data?.change)}`}>
                       {getChangeIcon(data?.change)}
-                      <span className="font-medium">
+                      <span className=" text-xl font-bold">
                         {formatChange(data?.change, data?.changePercent)}
                       </span>
                     </div>
@@ -146,11 +146,11 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
                       </div>
                       <div className="text-center">
                         <div className="text-muted-foreground">High</div>
-                        <div className="font-medium text-green-600">{formatPrice(data.high)}</div>
+                        <div className="font-medium text-[#2ca499]">{formatPrice(data.high)}</div>
                       </div>
                       <div className="text-center">
                         <div className="text-muted-foreground">Low</div>
-                        <div className="font-medium text-red-600">{formatPrice(data.low)}</div>
+                        <div className="font-medium text-[#ee5351]">{formatPrice(data.low)}</div>
                       </div>
                       <div className="text-center">
                         <div className="text-muted-foreground">Volume</div>
@@ -161,7 +161,7 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
                 </div>
 
                 {/* Chart */}
-                <div className="h-48 bg-muted/20 rounded border">
+                <div className="h-96 bg-muted/20 rounded border">
                   {hasData ? (
                     <GridChart
                       symbol={company.symbol}

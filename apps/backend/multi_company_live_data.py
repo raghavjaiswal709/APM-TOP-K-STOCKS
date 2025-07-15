@@ -66,7 +66,7 @@ MONITORED_FIELDS = [
 ]
 
 def load_available_symbols():
-    """Load available symbols from watchlist A."""
+    """Load available symbols from watchlist A - optional, fallback to empty."""
     global available_symbols
     try:
         csv_path = os.path.join(os.path.dirname(__file__), 'data', 'watchlists', 'watchlist_A_2025-02-16.csv')
@@ -76,15 +76,10 @@ def load_available_symbols():
             csv_path = 'apps/backend/data/watchlists/watchlist_A_2025-02-16.csv'
         
         if not os.path.exists(csv_path):
-            # Create sample data if file doesn't exist
-            sample_data = {
-                'company_code': ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'HINDUNILVR'],
-                'name': ['Reliance Industries', 'Tata Consultancy Services', 'HDFC Bank', 'Infosys', 'ICICI Bank', 'Hindustan Unilever'],
-                'Exchange': ['NSE', 'NSE', 'NSE', 'NSE', 'NSE', 'NSE'],
-                'marker': ['EQ', 'EQ', 'EQ', 'EQ', 'EQ', 'EQ']
-            }
-            df = pd.DataFrame(sample_data)
-            logger.warning("Using sample data as watchlist file not found")
+            # No hardcoded symbols - completely dynamic
+            logger.info("No watchlist file found - operating in dynamic mode")
+            available_symbols = []
+            return True
         else:
             df = pd.read_csv(csv_path)
         
@@ -99,22 +94,15 @@ def load_available_symbols():
             }
             available_symbols.append(symbol_data)
         
-        logger.info(f"Loaded {len(available_symbols)} available symbols from watchlist A")
+        logger.info(f"Loaded {len(available_symbols)} available symbols from watchlist")
         return True
         
     except Exception as e:
         logger.error(f"Error loading symbols: {e}")
-        # Fallback to hardcoded symbols
-        available_symbols = [
-            {'symbol': 'NSE:RELIANCE-EQ', 'company_code': 'RELIANCE', 'name': 'Reliance Industries', 'exchange': 'NSE', 'marker': 'EQ'},
-            {'symbol': 'NSE:TCS-EQ', 'company_code': 'TCS', 'name': 'Tata Consultancy Services', 'exchange': 'NSE', 'marker': 'EQ'},
-            {'symbol': 'NSE:HDFCBANK-EQ', 'company_code': 'HDFCBANK', 'name': 'HDFC Bank', 'exchange': 'NSE', 'marker': 'EQ'},
-            {'symbol': 'NSE:INFY-EQ', 'company_code': 'INFY', 'name': 'Infosys', 'exchange': 'NSE', 'marker': 'EQ'},
-            {'symbol': 'NSE:ICICIBANK-EQ', 'company_code': 'ICICIBANK', 'name': 'ICICI Bank', 'exchange': 'NSE', 'marker': 'EQ'},
-            {'symbol': 'NSE:HINDUNILVR-EQ', 'company_code': 'HINDUNILVR', 'name': 'Hindustan Unilever', 'exchange': 'NSE', 'marker': 'EQ'}
-        ]
-        logger.info("Using fallback symbols")
-        return False
+        # No fallback symbols - completely empty
+        available_symbols = []
+        logger.info("Operating in fully dynamic mode - no predefined symbols")
+        return True
 
 def get_trading_hours():
     """Get market trading hours in IST."""
@@ -157,6 +145,31 @@ def safe_symbol_parse(symbol):
         logger.error(f"Error parsing symbol {symbol}: {e}")
         return None, None
 
+def create_symbol_from_code(company_code, exchange='NSE', marker='EQ'):
+    """Create a full Fyers symbol from company code."""
+    return f"{exchange}:{company_code}-{marker}"
+
+def add_symbol_to_available(company_code, exchange='NSE', marker='EQ', name=None):
+    """Dynamically add a symbol to available symbols if not exists."""
+    global available_symbols
+    
+    symbol = create_symbol_from_code(company_code, exchange, marker)
+    
+    # Check if symbol already exists
+    existing = next((s for s in available_symbols if s['symbol'] == symbol), None)
+    if not existing:
+        symbol_data = {
+            'symbol': symbol,
+            'company_code': company_code,
+            'name': name or company_code,
+            'exchange': exchange,
+            'marker': marker
+        }
+        available_symbols.append(symbol_data)
+        logger.info(f"Dynamically added symbol: {symbol}")
+        return symbol_data
+    return existing
+
 @sio.event
 def connect(sid, environ):
     """Handle client connection."""
@@ -167,7 +180,7 @@ def connect(sid, environ):
         'last_activity': datetime.datetime.now(INDIA_TZ)
     }
     
-    # Send available symbols to client
+    # Send available symbols to client (may be empty initially)
     sio.emit('availableSymbols', {
         'symbols': available_symbols,
         'maxCompanies': MAX_COMPANIES,
@@ -200,85 +213,141 @@ def disconnect(sid):
 
 @sio.event
 def subscribe_companies(sid, data):
-    """Subscribe to selected companies (1-6 max)."""
+    """FIXED: Subscribe to selected companies with enhanced validation."""
     try:
-        company_codes = data.get('companyCodes', [])
+        logger.info(f"📡 Received subscription request from {sid}: {data}")
         
+        # FIXED: Extract companyCodes from data
+        company_codes = data.get('companyCodes', [])
+        logger.info(f"📡 Raw company codes: {company_codes}")
+        
+        # FIXED: Validate data structure
         if not isinstance(company_codes, list):
+            logger.error(f"❌ Invalid data type for companyCodes: {type(company_codes)}")
             sio.emit('error', {'message': 'companyCodes must be an array'}, room=sid)
             return
         
-        if len(company_codes) > MAX_COMPANIES:
+        # FIXED: Simplified validation - accept any non-empty string
+        valid_company_codes = []
+        for code in company_codes:
+            if isinstance(code, str) and code.strip():
+                valid_company_codes.append(code.strip().upper())
+            else:
+                logger.warning(f"⚠️ Skipping invalid company code: {code}")
+        
+        logger.info(f"✅ Valid company codes after filtering: {valid_company_codes}")
+        
+        # FIXED: Check limits
+        if len(valid_company_codes) > MAX_COMPANIES:
+            logger.error(f"❌ Too many companies requested: {len(valid_company_codes)}")
             sio.emit('error', {'message': f'Maximum {MAX_COMPANIES} companies allowed'}, room=sid)
             return
         
-        if len(company_codes) == 0:
-            sio.emit('error', {'message': 'At least 1 company must be selected'}, room=sid)
+        if len(valid_company_codes) == 0:
+            logger.error(f"❌ No valid company codes provided")
+            sio.emit('error', {'message': 'At least 1 valid company code must be provided'}, room=sid)
             return
         
-        # Clear existing subscriptions for this client
+        # FIXED: Clear existing subscriptions for this client
         if sid in clients:
             for symbol in clients[sid]['subscriptions']:
                 if symbol in symbol_to_clients:
                     symbol_to_clients[symbol].discard(sid)
+                    if not symbol_to_clients[symbol]:
+                        active_subscriptions.discard(symbol)
             clients[sid]['subscriptions'].clear()
         
-        # Find symbols for requested company codes
+        # FIXED: Process valid company codes and create symbols
         requested_symbols = []
-        for company_code in company_codes:
+        for company_code in valid_company_codes:
+            logger.info(f"📡 Processing company code: {company_code}")
+            
+            # Try to find in existing available symbols
             symbol_data = next(
                 (s for s in available_symbols if s['company_code'] == company_code),
                 None
             )
+            
             if symbol_data:
                 requested_symbols.append(symbol_data['symbol'])
+                logger.info(f"✅ Found existing symbol for {company_code}: {symbol_data['symbol']}")
             else:
-                logger.warning(f"Company code {company_code} not found in available symbols")
+                # Dynamically create symbol
+                new_symbol_data = add_symbol_to_available(company_code)
+                requested_symbols.append(new_symbol_data['symbol'])
+                logger.info(f"✅ Dynamically created symbol for {company_code}: {new_symbol_data['symbol']}")
         
-        if not requested_symbols:
-            sio.emit('error', {'message': 'No valid symbols found for selected companies'}, room=sid)
-            return
+        logger.info(f"📡 Final requested symbols: {requested_symbols}")
         
-        # Add to client subscriptions
-        clients[sid]['subscriptions'] = set(requested_symbols)
+        # FIXED: Update client subscriptions
+        if sid not in clients:
+            clients[sid] = {
+                'subscriptions': set(),
+                'connected_at': datetime.datetime.now(INDIA_TZ),
+                'last_activity': datetime.datetime.now(INDIA_TZ)
+            }
         
-        # Update symbol to clients mapping
+        # Add symbols to client subscriptions
         for symbol in requested_symbols:
+            clients[sid]['subscriptions'].add(symbol)
+            
+            # Add to symbol_to_clients mapping
             if symbol not in symbol_to_clients:
                 symbol_to_clients[symbol] = set()
             symbol_to_clients[symbol].add(sid)
+            
+            # Add to active subscriptions
             active_subscriptions.add(symbol)
+            logger.info(f"✅ Added {symbol} to active subscriptions")
         
-        # Send historical data for each symbol
+        # FIXED: Update Fyers subscription
+        update_fyers_subscription()
+        
+        # FIXED: Send historical data for each symbol
         for symbol in requested_symbols:
+            # Send any existing historical data
             if symbol in historical_data and historical_data[symbol]:
                 sio.emit('historicalData', {
                     'symbol': symbol,
                     'data': list(historical_data[symbol])
                 }, room=sid)
-            
-            # Send current real-time data if available
-            if symbol in real_time_data:
-                sio.emit('marketData', real_time_data[symbol], room=sid)
+            else:
+                # Fetch historical data on demand
+                logger.info(f"📊 Fetching historical data for {symbol}")
+                hist_data = fetch_historical_intraday_data(symbol)
+                if hist_data:
+                    if symbol not in historical_data:
+                        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                    
+                    for data_point in hist_data:
+                        historical_data[symbol].append(data_point)
+                    
+                    sio.emit('historicalData', {
+                        'symbol': symbol,
+                        'data': hist_data
+                    }, room=sid)
         
-        # Update Fyers subscription
-        update_fyers_subscription()
-        
-        logger.info(f"Client {sid} subscribed to {len(requested_symbols)} symbols: {requested_symbols}")
+        # FIXED: Send subscription confirmation
         sio.emit('subscriptionConfirm', {
             'success': True,
             'symbols': requested_symbols,
             'count': len(requested_symbols)
         }, room=sid)
         
+        logger.info(f"✅ Successfully subscribed client {sid} to {len(requested_symbols)} symbols")
+        
     except Exception as e:
-        logger.error(f"Error in subscribe_companies: {e}")
+        logger.error(f"❌ Error in subscribe_companies: {e}")
+        import traceback
+        traceback.print_exc()
         sio.emit('error', {'message': f'Subscription failed: {str(e)}'}, room=sid)
 
 @sio.event
 def unsubscribe_all(sid, data):
     """Unsubscribe from all companies."""
     try:
+        logger.info(f"📡 Unsubscribing all for client {sid}")
+        
         if sid in clients:
             for symbol in clients[sid]['subscriptions']:
                 if symbol in symbol_to_clients:
@@ -296,43 +365,49 @@ def unsubscribe_all(sid, data):
             'count': 0
         }, room=sid)
         
-        logger.info(f"Client {sid} unsubscribed from all symbols")
+        logger.info(f"✅ Client {sid} unsubscribed from all symbols")
         
     except Exception as e:
-        logger.error(f"Error in unsubscribe_all: {e}")
+        logger.error(f"❌ Error in unsubscribe_all: {e}")
         sio.emit('error', {'message': f'Unsubscription failed: {str(e)}'}, room=sid)
 
 @sio.event
 def get_market_status(sid, data):
     """Get current market status."""
-    start_time, end_time = get_trading_hours()
-    sio.emit('marketStatus', {
-        'trading_active': is_trading_hours(),
-        'trading_start': start_time.isoformat(),
-        'trading_end': end_time.isoformat(),
-        'current_time': datetime.datetime.now(INDIA_TZ).isoformat(),
-        'is_market_day': datetime.datetime.now(INDIA_TZ).weekday() < 5,
-        'active_subscriptions': len(active_subscriptions),
-        'connected_clients': len(clients)
-    }, room=sid)
+    try:
+        start_time, end_time = get_trading_hours()
+        sio.emit('marketStatus', {
+            'trading_active': is_trading_hours(),
+            'trading_start': start_time.isoformat(),
+            'trading_end': end_time.isoformat(),
+            'current_time': datetime.datetime.now(INDIA_TZ).isoformat(),
+            'is_market_day': datetime.datetime.now(INDIA_TZ).weekday() < 5,
+            'active_subscriptions': len(active_subscriptions),
+            'connected_clients': len(clients)
+        }, room=sid)
+    except Exception as e:
+        logger.error(f"❌ Error in get_market_status: {e}")
+        sio.emit('error', {'message': f'Failed to get market status: {str(e)}'}, room=sid)
 
 def update_fyers_subscription():
     """Update Fyers WebSocket subscription based on active subscriptions."""
     if not fyers:
+        logger.warning("Fyers not initialized, cannot update subscription")
         return
     
     try:
         current_symbols = list(active_subscriptions)
         if current_symbols:
+            logger.info(f"🔄 Updating Fyers subscription with {len(current_symbols)} symbols")
             fyers.subscribe(symbols=current_symbols, data_type="SymbolUpdate")
-            logger.info(f"Updated Fyers subscription with {len(current_symbols)} symbols")
+            logger.info(f"✅ Updated Fyers subscription: {current_symbols}")
         else:
-            logger.info("No active subscriptions, keeping minimal connection")
+            logger.info("📡 No active subscriptions, keeping minimal connection")
     except Exception as e:
-        logger.error(f"Error updating Fyers subscription: {e}")
+        logger.error(f"❌ Error updating Fyers subscription: {e}")
 
 def fetch_historical_intraday_data(symbol, date=None):
-    """Fetch historical intraday data for a symbol."""
+    """Fetch historical intraday data for a symbol on demand."""
     if not date:
         date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
     
@@ -353,7 +428,7 @@ def fetch_historical_intraday_data(symbol, date=None):
         from_date = market_open.strftime('%Y-%m-%d %H:%M:%S')
         to_date = end_time.strftime('%Y-%m-%d %H:%M:%S')
         
-        logger.info(f"Fetching historical data for {symbol} from {from_date} to {to_date}")
+        logger.info(f"📊 Fetching historical data for {symbol} from {from_date} to {to_date}")
         
         if fyers_client:
             data_args = {
@@ -369,7 +444,7 @@ def fetch_historical_intraday_data(symbol, date=None):
             
             if response and response.get('s') == 'ok' and 'candles' in response:
                 candles = response['candles']
-                logger.info(f"Received {len(candles)} candles for {symbol}")
+                logger.info(f"✅ Received {len(candles)} candles for {symbol}")
                 
                 result = []
                 
@@ -403,25 +478,27 @@ def fetch_historical_intraday_data(symbol, date=None):
                 
                 return result
             else:
-                logger.error(f"Failed to fetch historical data: {response}")
+                logger.error(f"❌ Failed to fetch historical data for {symbol}: {response}")
         
         return []
         
     except Exception as e:
-        logger.error(f"Error fetching historical data: {e}")
+        logger.error(f"❌ Error fetching historical data for {symbol}: {e}")
         return []
 
 def onmessage(message):
     """Handle incoming Fyers WebSocket messages."""
     try:
+        # Skip system messages
         if isinstance(message, dict) and message.get('type') == 'sub':
-            logger.info(f"Subscription confirmation: {message}")
+            logger.info(f"📡 Subscription confirmation: {message}")
             return
         
         if isinstance(message, dict) and message.get('type') in ['cn', 'ful']:
-            logger.info(f"Connection message: {message}")
+            logger.info(f"📡 Connection message: {message}")
             return
         
+        # Process market data
         if isinstance(message, dict) and 'symbol' in message:
             symbol = message['symbol']
             
@@ -429,7 +506,7 @@ def onmessage(message):
             if symbol not in active_subscriptions:
                 return
             
-            # Prepare enhanced market data
+            # FIXED: Prepare enhanced market data
             simplified_data = {
                 'symbol': symbol,
                 'ltp': message.get('ltp'),
@@ -454,19 +531,18 @@ def onmessage(message):
             
             historical_data[symbol].append(simplified_data)
             
-            # Emit to subscribed clients only
+            # FIXED: Emit to subscribed clients only
             if symbol in symbol_to_clients:
                 for sid in symbol_to_clients[symbol]:
                     try:
                         sio.emit('marketData', simplified_data, room=sid)
                     except Exception as e:
-                        logger.error(f"Error sending data to client {sid}: {e}")
+                        logger.error(f"❌ Error sending data to client {sid}: {e}")
             
-            # Optional: Save to file for persistence
-            save_to_file(symbol, simplified_data)
+            logger.debug(f"📈 Processed market data for {symbol}: LTP={simplified_data['ltp']}")
             
     except Exception as e:
-        logger.error(f"Error processing message: {e}")
+        logger.error(f"❌ Error processing message: {e}")
 
 def save_to_file(symbol, data):
     """Save market data to daily files."""
@@ -485,24 +561,24 @@ def save_to_file(symbol, data):
                 f.write('\n')
                 
     except Exception as e:
-        logger.error(f"Error saving to file: {e}")
+        logger.error(f"❌ Error saving to file: {e}")
 
 def onopen():
     """Handle Fyers WebSocket connection opening."""
-    logger.info("Fyers WebSocket connected")
+    logger.info("✅ Fyers WebSocket connected")
     sio.emit('fyersConnected', {'status': 'connected'})
     
-    # Initialize with empty subscription - will be updated based on client requests
-    logger.info("Fyers connection established, ready for subscriptions")
+    # No default subscriptions - wait for client requests
+    logger.info("📡 Fyers connection established, ready for dynamic subscriptions")
 
 def onerror(error):
     """Handle Fyers WebSocket errors."""
-    logger.error(f"Fyers WebSocket Error: {error}")
+    logger.error(f"❌ Fyers WebSocket Error: {error}")
     sio.emit('fyersError', {'message': str(error)})
 
 def onclose(message):
     """Handle Fyers WebSocket connection closure."""
-    logger.info(f"Fyers WebSocket Connection closed: {message}")
+    logger.info(f"❌ Fyers WebSocket Connection closed: {message}")
     sio.emit('fyersDisconnected', {'message': str(message)})
 
 def heartbeat_task():
@@ -518,26 +594,20 @@ def heartbeat_task():
                 'server_status': 'healthy'
             }
             sio.emit('heartbeat', heartbeat_data)
-            time.sleep(30)
+            time.sleep(30)  # Send heartbeat every 30 seconds
         except Exception as e:
-            logger.error(f"Error in heartbeat: {e}")
+            logger.error(f"❌ Error in heartbeat: {e}")
+            time.sleep(30)
 
 def main_process():
     """Main process to authenticate and start WebSocket connection."""
     global fyers, fyers_client, running
     
-    # Load available symbols
-    if not load_available_symbols():
-        logger.warning("Using fallback symbols due to loading issues")
+    # Load available symbols (optional, may result in empty list)
+    load_available_symbols()
     
-    # Fetch historical data for available symbols (sample for quick start)
-    logger.info("Pre-loading sample historical data...")
-    for symbol_data in available_symbols[:3]:  # Load first 3 for demo
-        symbol = symbol_data['symbol']
-        hist_data = fetch_historical_intraday_data(symbol)
-        if hist_data:
-            historical_data[symbol] = deque(hist_data, maxlen=MAX_HISTORY_POINTS)
-            logger.info(f"Pre-loaded {len(hist_data)} data points for {symbol}")
+    # No preloading of historical data - completely on-demand
+    logger.info("🚀 Backend initialized in dynamic mode - no preloading")
     
     try:
         # Fyers Authentication
@@ -559,7 +629,7 @@ def main_process():
         token_response = session.generate_token()
         
         if token_response.get('s') != 'ok':
-            logger.error(f"Authentication failed: {token_response}")
+            logger.error(f"❌ Authentication failed: {token_response}")
             return
         
         logger.info("✅ Authentication successful!")
@@ -587,14 +657,16 @@ def main_process():
         heartbeat_thread = threading.Thread(target=heartbeat_task, daemon=True)
         heartbeat_thread.start()
         
+        # Connect to Fyers
         fyers.connect()
         logger.info("✅ Connected to Fyers WebSocket")
         
+        # Start server
         logger.info("🚀 Starting Live Market Server on port 5010...")
         eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 5010)), app)
         
     except Exception as e:
-        logger.error(f"Error in main process: {e}")
+        logger.error(f"❌ Error in main process: {e}")
         import traceback
         traceback.print_exc()
 
@@ -605,12 +677,12 @@ def main():
         while running:
             time.sleep(1)
     except KeyboardInterrupt:
-        logger.info("Shutting down...")
+        logger.info("🛑 Shutting down...")
         running = False
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        logger.info("Shutting down...")
+        logger.info("🛑 Shutting down...")
         running = False

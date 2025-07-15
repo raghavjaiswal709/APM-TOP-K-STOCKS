@@ -87,10 +87,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const buySellVolumeChartRef = useRef<any>(null);
   const buySellLineChartRef = useRef<any>(null);
   const buySellSpreadChartRef = useRef<any>(null);
-  const volumeChartRef = useRef<any>(null);
+  // const volumeChartRef = useRef<any>(null);
   const [initialized, setInitialized] = useState(false);
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1D');
   const [chartType, setChartType] = useState<'line' | 'candle'>('line');
+  const volumeStdChartRef = useRef<any>(null);
+  const volumeChartRef = useRef<any>(null);
+
+
 
   const [mainMode, setMainMode] = useState<'none' | 'bidAsk' | 'buySell'>('none');
   const [secondaryView, setSecondaryView] = useState<'line' | 'spread' | 'std'>('line');
@@ -980,6 +984,27 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
           'yaxis.autorange': false
         });
       }
+
+      const volumeStdDiv = document.getElementById('volume-std-chart');
+if (volumeStdDiv && mainMode !== 'none' && secondaryView === 'std') {
+  Plotly.relayout(volumeStdDiv, {
+    'xaxis.range': newTimeRange,
+    'xaxis.autorange': false
+  });
+}
+
+// Handle volume std chart timeframe change
+if (mainMode !== 'none' && secondaryView === 'std' && showIndicators.volume) {
+  const volumeStdDiv = document.getElementById('volume-std-chart');
+  if (volumeStdDiv) {
+    Plotly.relayout(volumeStdDiv, {
+      'xaxis.range': newTimeRange,
+      'xaxis.autorange': false
+    });
+  }
+}
+
+
       
     } catch (err) {
       console.error('Error updating timeframe:', err);
@@ -1128,7 +1153,28 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
           });
         }
       }
+      const volumeStdDiv = document.getElementById('volume-std-chart');
+if (volumeStdDiv) {
+  Plotly.relayout(volumeStdDiv, {
+    'xaxis.range': [startDate, endDate],
+    'xaxis.autorange': false
+  });
+}
+
+// Handle volume std chart relayout
+if (showIndicators.volume) {
+  const volumeStdDiv = document.getElementById('volume-std-chart');
+  if (volumeStdDiv) {
+    Plotly.relayout(volumeStdDiv, {
+      'xaxis.range': [startDate, endDate],
+      'xaxis.autorange': false
+    });
+  }
+}
+
+
     }
+    
   };
   
   useEffect(() => {
@@ -1180,12 +1226,23 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
         }
       }
       
-      if (mainMode !== 'none' && secondaryView === 'std') {
-        const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
-        if (buySellVolumeDiv) {
-          Plotly.react(buySellVolumeDiv, createStdData(), createStdLayout());
-        }
-      }
+     if (mainMode !== 'none' && secondaryView === 'std') {
+  if (showIndicators.volume) {
+    // Show volume standard deviation chart
+    const volumeStdDiv = document.getElementById('volume-std-chart');
+    if (volumeStdDiv) {
+      Plotly.react(volumeStdDiv, createVolumeStdData(), createVolumeStdLayout());
+    }
+  } else {
+    // Show regular standard deviation chart
+    const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
+    if (buySellVolumeDiv) {
+      Plotly.react(buySellVolumeDiv, createStdData(), createStdLayout());
+    }
+  }
+}
+
+
 
       if (mainMode === 'buySell' && secondaryView === 'line') {
         const buySellLineDiv = document.getElementById('buy-sell-line-chart');
@@ -1206,452 +1263,465 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
   }, [data, historicalData, ohlcData, initialized, selectedTimeframe, chartType, showIndicators, mainMode, secondaryView]);
 
   const createPlotData = () => {
-    const colors = getColorTheme();
-    let plotData: any[] = [];
+  const colors = getColorTheme();
+  let plotData: any[] = [];
 
-    if (chartType === 'line') {
-      if (historicalData && historicalData.length > 0) {
-        const validData = historicalData.filter(point => 
-          point.ltp !== null && 
-          point.ltp !== undefined && 
-          point.ltp > 0 && 
-          !isNaN(point.ltp) &&
-          point.timestamp !== null &&
-          point.timestamp !== undefined
-        );
+  if (chartType === 'line') {
+    if (historicalData && historicalData.length > 0) {
+      const validData = historicalData.filter(point => 
+        point.ltp !== null && 
+        point.ltp !== undefined && 
+        point.ltp > 0 && 
+        !isNaN(point.ltp) &&
+        point.timestamp !== null &&
+        point.timestamp !== undefined
+      );
 
-        if (validData.length === 0) return plotData;
+      if (validData.length === 0) return plotData;
 
-        const sortedData = [...validData].sort((a, b) => a.timestamp - b.timestamp);
-        const timeValues = sortedData.map(point => new Date(point.timestamp * 1000));
-        const priceValues = sortedData.map(point => Number(point.ltp));
+      const sortedData = [...validData].sort((a, b) => a.timestamp - b.timestamp);
+      const timeValues = sortedData.map(point => new Date(point.timestamp * 1000));
+      const priceValues = sortedData.map(point => Number(point.ltp));
+
+      plotData.push({
+        x: timeValues,
+        y: priceValues,
+        type: 'scatter',
+        mode: 'lines',
+        name: 'LTP',
+        line: {
+          color: colors.line || '#3B82F6',
+          width: 2,
+          shape: 'linear'
+        },
+        connectgaps: false,
+        hovertemplate: '<b>%{fullData.name}</b><br>' +
+                      'Time: %{x|%H:%M:%S}<br>' +
+                      'Price: ₹%{y:.2f}<br>' +
+                      '<extra></extra>',
+        showlegend: true
+      });
+
+      // Use consistent volume data like separate volume chart
+      const lineData = prepareLineChartData();
+      const volumeValues = lineData.allData.map(point => point.volume || 0);
+      
+      if (volumeValues.some(v => v > 0)) {
+        const volumeColors = [];
+        
+        for (let i = 0; i < lineData.allData.length; i++) {
+          if (i === 0) {
+            volumeColors.push(colors.upColor);
+          } else {
+            const currentPrice = lineData.allData[i].ltp;
+            const prevPrice = lineData.allData[i - 1].ltp;
+            volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
+          }
+        }
 
         plotData.push({
-          x: timeValues,
-          y: priceValues,
+          x: lineData.x,  // Use consistent x-axis data
+          y: volumeValues,
+          type: 'histogram',
+          histfunc: 'sum',
+          name: 'Volume',
+          marker: {
+            color: volumeColors,
+            opacity: 0.9,
+            line: {
+              width: 0.5,
+              color: 'rgba(255,255,255,0.1)'
+            }
+          },
+          yaxis: 'y3',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Volume: %{y:,.0f}<br>' +
+                        '<extra></extra>',
+          showlegend: true
+        });
+      }
+
+      if (showIndicators.sma20 && priceValues.length >= 20) {
+        const sma20Values = calculateSMA(priceValues, 20);
+        if (sma20Values && sma20Values.length > 0) {
+          plotData.push({
+            x: timeValues.slice(19),
+            y: sma20Values,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'SMA 20',
+            line: {
+              color: colors.indicator?.sma20 || '#f59e0b',
+              width: 1.5,
+              dash: 'dot'
+            },
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'SMA20: ₹%{y:.2f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+        }
+      }
+
+      if (showIndicators.ema9 && priceValues.length >= 9) {
+        const ema9Values = calculateEMA(priceValues, 9);
+        if (ema9Values && ema9Values.length > 0) {
+          plotData.push({
+            x: timeValues,
+            y: ema9Values,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'EMA 9',
+            line: {
+              color: colors.indicator?.ema9 || '#8b5cf6',
+              width: 1.5,
+              dash: 'dash'
+            },
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'EMA9: ₹%{y:.2f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+        }
+      }
+
+      if (showIndicators.bb && priceValues.length >= 20) {
+        const bbData = calculateBollingerBands(priceValues, 20, 2);
+        if (bbData && bbData.upper && bbData.middle && bbData.lower) {
+          plotData.push({
+            x: timeValues.slice(19),
+            y: bbData.upper,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'BB Upper',
+            line: {
+              color: colors.indicator?.bb || '#64748b',
+              width: 1,
+              dash: 'dashdot'
+            },
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'Upper: ₹%{y:.2f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+
+          plotData.push({
+            x: timeValues.slice(19),
+            y: bbData.middle,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'BB Middle',
+            line: {
+              color: colors.indicator?.bb || '#64748b',
+              width: 1
+            },
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'Middle: ₹%{y:.2f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+
+          plotData.push({
+            x: timeValues.slice(19),
+            y: bbData.lower,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'BB Lower',
+            line: {
+              color: colors.indicator?.bb || '#64748b',
+              width: 1,
+              dash: 'dashdot'
+            },
+            fill: 'tonexty',
+            fillcolor: 'rgba(100, 116, 139, 0.1)',
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'Lower: ₹%{y:.2f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+        }
+      }
+    }
+  } else {
+    const { x, open, high, low, close, volume } = prepareCandlestickData();
+    
+    // Create candlestick plot
+    plotData.push({
+      x: x,
+      open: open,
+      high: high,
+      low: low,
+      close: close,
+      type: 'candlestick',
+      name: 'Price',
+      increasing: {
+        fillcolor: colors.upColor,
+        line: { color: colors.upColor, width: 1 }
+      },
+      decreasing: {
+        fillcolor: colors.downColor,
+        line: { color: colors.downColor, width: 1 }
+      },
+      hovertemplate: '<b>%{fullData.name}</b><br>' +
+                    'Time: %{x|%H:%M:%S}<br>' +
+                    'Open: ₹%{open:.2f}<br>' +
+                    'High: ₹%{high:.2f}<br>' +
+                    'Low: ₹%{low:.2f}<br>' +
+                    'Close: ₹%{close:.2f}<br>' +
+                    '<extra></extra>',
+      showlegend: true,
+      yaxis: 'y'
+    });
+
+    // Use consistent volume data like separate volume chart
+    const lineData = prepareLineChartData();
+    const volumeValues = lineData.allData.map(point => point.volume || 0);
+    
+    if (volumeValues.some(v => v > 0)) {
+      console.log('🔍 Volume data check:', {
+        volumeLength: volumeValues.length,
+        hasNonZeroVolume: volumeValues.some(v => v > 0),
+        maxVolume: Math.max(...volumeValues),
+        minVolume: Math.min(...volumeValues)
+      });
+
+      const volumeColors = [];
+      
+      for (let i = 0; i < lineData.allData.length; i++) {
+        if (i === 0) {
+          volumeColors.push(colors.upColor);
+        } else {
+          const currentPrice = lineData.allData[i].ltp;
+          const prevPrice = lineData.allData[i - 1].ltp;
+          volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
+        }
+      }
+
+      plotData.push({
+        x: lineData.x,  // Use consistent x-axis data
+        y: volumeValues,
+        type: 'histogram',
+        histfunc: 'sum',
+        name: 'Volume',
+        marker: {
+          color: volumeColors,
+          opacity: 0.9,
+          line: {
+            width: 0.5,
+            color: 'rgba(255,255,255,0.1)'
+          }
+        },
+        yaxis: 'y3',
+        hovertemplate: '<b>%{fullData.name}</b><br>' +
+                      'Time: %{x|%H:%M:%S}<br>' +
+                      'Volume: %{y:,.0f}<br>' +
+                      '<extra></extra>',
+        showlegend: true
+      });
+    }
+  }
+
+  // **FIX 1: RSI Calculation - Fixed close.filter error**
+  if (showIndicators.rsi) {
+    let priceData: number[] = [];
+
+    if (chartType === 'line') {
+      priceData = historicalData?.filter(point => 
+        point.ltp !== null && 
+        point.ltp !== undefined && 
+        point.ltp > 0 && 
+        !isNaN(point.ltp)
+      ).map(point => Number(point.ltp)) || [];
+    } else {
+      // Get the close prices from prepareCandlestickData
+      const candlestickData = prepareCandlestickData();
+      priceData = candlestickData.close.filter(price => price !== null && price !== undefined && !isNaN(price));
+    }
+
+    if (priceData.length >= 14) {
+      const rsiValues = calculateRSI(priceData, 14);
+      const timeData = chartType === 'line'
+        ? historicalData?.filter(point => 
+            point.ltp !== null && 
+            point.ltp !== undefined && 
+            point.ltp > 0 && 
+            !isNaN(point.ltp)
+          ).slice(13).map(point => new Date(point.timestamp * 1000)) || []
+        : prepareCandlestickData().x.slice(13); // Fixed: Use prepareCandlestickData().x instead of x
+
+      if (rsiValues && rsiValues.length > 0 && timeData.length > 0) {
+        plotData.push({
+          x: timeData,
+          y: rsiValues,
           type: 'scatter',
           mode: 'lines',
-          name: 'LTP',
+          name: 'RSI',
           line: {
-            color: colors.line || '#3B82F6',
-            width: 2,
-            shape: 'linear'
+            color: colors.indicator?.rsi || '#ec4899',
+            width: 2
           },
+          yaxis: 'y2',
           connectgaps: false,
           hovertemplate: '<b>%{fullData.name}</b><br>' +
                         'Time: %{x|%H:%M:%S}<br>' +
-                        'Price: ₹%{y:.2f}<br>' +
+                        'RSI: %{y:.2f}<br>' +
                         '<extra></extra>',
           showlegend: true
         });
 
-      // Use consistent volume data like separate volume chart
-  const lineData = prepareLineChartData();
-  const volumeValues = lineData.allData.map(point => point.volume || 0);
-  
-  if (volumeValues.some(v => v > 0)) {
-    const volumeColors = [];
-    
-    for (let i = 0; i < lineData.allData.length; i++) {
-      if (i === 0) {
-        volumeColors.push(colors.upColor);
-      } else {
-        const currentPrice = lineData.allData[i].ltp;
-        const prevPrice = lineData.allData[i - 1].ltp;
-        volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
+        plotData.push({
+          x: timeData,
+          y: Array(timeData.length).fill(70),
+          type: 'scatter',
+          mode: 'lines',
+          name: 'Overbought (70)',
+          line: {
+            color: '#ef4444',
+            width: 1,
+            dash: 'dash'
+          },
+          yaxis: 'y2',
+          showlegend: false,
+          hoverinfo: 'skip'
+        });
+
+        plotData.push({
+          x: timeData,
+          y: Array(timeData.length).fill(30),
+          type: 'scatter',
+          mode: 'lines',
+          name: 'Oversold (30)',
+          line: {
+            color: '#10b981',
+            width: 1,
+            dash: 'dash'
+          },
+          yaxis: 'y2',
+          showlegend: false,
+          hoverinfo: 'skip'
+        });
+
+        plotData.push({
+          x: timeData,
+          y: Array(timeData.length).fill(50),
+          type: 'scatter',
+          mode: 'lines',
+          name: 'Midline (50)',
+          line: {
+            color: '#64748b',
+            width: 1,
+            dash: 'dot'
+          },
+          yaxis: 'y2',
+          showlegend: false,
+          hoverinfo: 'skip'
+        });
       }
     }
-
-    plotData.push({
-      x: lineData.x,  // Use consistent x-axis data
-      y: volumeValues,
-      type: 'histogram',
-      histfunc: 'sum',
-      name: 'Volume',
-      marker: {
-        color: volumeColors,
-        opacity: 0.9,
-        line: {
-          width: 0.5,
-          color: 'rgba(255,255,255,0.1)'
-        }
-      },
-      yaxis: 'y3',
-      hovertemplate: '<b>%{fullData.name}</b><br>' +
-                    'Time: %{x|%H:%M:%S}<br>' +
-                    'Volume: %{y:,.0f}<br>' +
-                    '<extra></extra>',
-      showlegend: true
-    });
   }
 
+  // **FIX 2: MACD Calculation - Fixed x is not defined error**
+  if (showIndicators.macd) {
+    let priceData: number[] = [];
 
-        if (showIndicators.sma20 && priceValues.length >= 20) {
-          const sma20Values = calculateSMA(priceValues, 20);
-          if (sma20Values && sma20Values.length > 0) {
-            plotData.push({
-              x: timeValues.slice(19),
-              y: sma20Values,
-              type: 'scatter',
-              mode: 'lines',
-              name: 'SMA 20',
-              line: {
-                color: colors.indicator?.sma20 || '#f59e0b',
-                width: 1.5,
-                dash: 'dot'
-              },
-              connectgaps: false,
-              hovertemplate: '<b>%{fullData.name}</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'SMA20: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
-              showlegend: true
-            });
-          }
-        }
-
-        if (showIndicators.ema9 && priceValues.length >= 9) {
-          const ema9Values = calculateEMA(priceValues, 9);
-          if (ema9Values && ema9Values.length > 0) {
-            plotData.push({
-              x: timeValues,
-              y: ema9Values,
-              type: 'scatter',
-              mode: 'lines',
-              name: 'EMA 9',
-              line: {
-                color: colors.indicator?.ema9 || '#8b5cf6',
-                width: 1.5,
-                dash: 'dash'
-              },
-              connectgaps: false,
-              hovertemplate: '<b>%{fullData.name}</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'EMA9: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
-              showlegend: true
-            });
-          }
-        }
-
-        if (showIndicators.bb && priceValues.length >= 20) {
-          const bbData = calculateBollingerBands(priceValues, 20, 2);
-          if (bbData && bbData.upper && bbData.middle && bbData.lower) {
-            plotData.push({
-              x: timeValues.slice(19),
-              y: bbData.upper,
-              type: 'scatter',
-              mode: 'lines',
-              name: 'BB Upper',
-              line: {
-                color: colors.indicator?.bb || '#64748b',
-                width: 1,
-                dash: 'dashdot'
-              },
-              connectgaps: false,
-              hovertemplate: '<b>%{fullData.name}</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'Upper: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
-              showlegend: true
-            });
-
-            plotData.push({
-              x: timeValues.slice(19),
-              y: bbData.middle,
-              type: 'scatter',
-              mode: 'lines',
-              name: 'BB Middle',
-              line: {
-                color: colors.indicator?.bb || '#64748b',
-                width: 1
-              },
-              connectgaps: false,
-              hovertemplate: '<b>%{fullData.name}</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'Middle: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
-              showlegend: true
-            });
-
-            plotData.push({
-              x: timeValues.slice(19),
-              y: bbData.lower,
-              type: 'scatter',
-              mode: 'lines',
-              name: 'BB Lower',
-              line: {
-                color: colors.indicator?.bb || '#64748b',
-                width: 1,
-                dash: 'dashdot'
-              },
-              fill: 'tonexty',
-              fillcolor: 'rgba(100, 116, 139, 0.1)',
-              connectgaps: false,
-              hovertemplate: '<b>%{fullData.name}</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'Lower: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
-              showlegend: true
-            });
-          }
-        }
-      }
-   } else {
-  const { x, open, high, low, close, volume } = prepareCandlestickData();
-  
-  // Create candlestick plot
-  plotData.push({
-    x: x,
-    open: open,
-    high: high,
-    low: low,
-    close: close,
-    type: 'candlestick',
-    name: 'Price',
-    increasing: {
-      fillcolor: colors.upColor,
-      line: { color: colors.upColor, width: 1 }
-    },
-    decreasing: {
-      fillcolor: colors.downColor,
-      line: { color: colors.downColor, width: 1 }
-    },
-    hovertemplate: '<b>%{fullData.name}</b><br>' +
-                  'Time: %{x|%H:%M:%S}<br>' +
-                  'Open: ₹%{open:.2f}<br>' +
-                  'High: ₹%{high:.2f}<br>' +
-                  'Low: ₹%{low:.2f}<br>' +
-                  'Close: ₹%{close:.2f}<br>' +
-                  '<extra></extra>',
-    showlegend: true,
-    yaxis: 'y'
-  });
-
-  // Use consistent volume data like separate volume chart
-  const lineData = prepareLineChartData();
-  const volumeValues = lineData.allData.map(point => point.volume || 0);
-  
-  if (volumeValues.some(v => v > 0)) {
-    console.log('🔍 Volume data check:', {
-      volumeLength: volumeValues.length,
-      hasNonZeroVolume: volumeValues.some(v => v > 0),
-      maxVolume: Math.max(...volumeValues),
-      minVolume: Math.min(...volumeValues)
-    });
-
-    const volumeColors = [];
-    
-    for (let i = 0; i < lineData.allData.length; i++) {
-      if (i === 0) {
-        volumeColors.push(colors.upColor);
-      } else {
-        const currentPrice = lineData.allData[i].ltp;
-        const prevPrice = lineData.allData[i - 1].ltp;
-        volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
-      }
+    if (chartType === 'line') {
+      priceData = historicalData?.filter(point => 
+        point.ltp !== null && 
+        point.ltp !== undefined && 
+        point.ltp > 0 && 
+        !isNaN(point.ltp)
+      ).map(point => Number(point.ltp)) || [];
+    } else {
+      // Get the close prices from prepareCandlestickData
+      const candlestickData = prepareCandlestickData();
+      priceData = candlestickData.close.filter(price => price !== null && price !== undefined && !isNaN(price));
     }
 
-    plotData.push({
-      x: lineData.x,  // Use consistent x-axis data
-      y: volumeValues,
-      type: 'histogram',
-      histfunc: 'sum',
-      name: 'Volume',
-      marker: {
-        color: volumeColors,
-        opacity: 0.9,
-        line: {
-          width: 0.5,
-          color: 'rgba(255,255,255,0.1)'
-        }
-      },
-      yaxis: 'y3',
-      hovertemplate: '<b>%{fullData.name}</b><br>' +
-                    'Time: %{x|%H:%M:%S}<br>' +
-                    'Volume: %{y:,.0f}<br>' +
-                    '<extra></extra>',
-      showlegend: true
-    });
-  }
-}
-
-
-    if (showIndicators.rsi) {
-      const priceData = chartType === 'line' 
+    if (priceData.length >= 26) {
+      const macdData = calculateMACD(priceData, 12, 26, 9);
+      const timeData = chartType === 'line'
         ? historicalData?.filter(point => 
             point.ltp !== null && 
             point.ltp !== undefined && 
             point.ltp > 0 && 
             !isNaN(point.ltp)
-          ).map(point => Number(point.ltp)) || []
-        : close.filter(price => price !== null && price !== undefined && !isNaN(price));
+          ).slice(25).map(point => new Date(point.timestamp * 1000)) || []
+        : prepareCandlestickData().x.slice(25); // Fixed: Use prepareCandlestickData().x instead of x
 
-      if (priceData.length >= 14) {
-        const rsiValues = calculateRSI(priceData, 14);
-        const timeData = chartType === 'line'
-          ? historicalData?.filter(point => 
-              point.ltp !== null && 
-              point.ltp !== undefined && 
-              point.ltp > 0 && 
-              !isNaN(point.ltp)
-            ).slice(13).map(point => new Date(point.timestamp * 1000)) || []
-          : x.slice(13);
+      if (macdData && macdData.macdLine && macdData.signalLine && macdData.histogram && timeData.length > 0) {
+        plotData.push({
+          x: timeData,
+          y: macdData.macdLine,
+          type: 'scatter',
+          mode: 'lines',
+          name: 'MACD',
+          line: {
+            color: colors.indicator?.macd || '#3b82f6',
+            width: 2
+          },
+          yaxis: showIndicators.rsi ? 'y4' : 'y2',
+          connectgaps: false,
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'MACD: %{y:.4f}<br>' +
+                        '<extra></extra>',
+          showlegend: true
+        });
 
-        if (rsiValues && rsiValues.length > 0 && timeData.length > 0) {
-          plotData.push({
-            x: timeData,
-            y: rsiValues,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'RSI',
-            line: {
-              color: colors.indicator?.rsi || '#ec4899',
-              width: 2
-            },
-            yaxis: 'y2',
-            connectgaps: false,
-            hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'RSI: %{y:.2f}<br>' +
-                          '<extra></extra>',
-            showlegend: true
-          });
+        plotData.push({
+          x: timeData,
+          y: macdData.signalLine,
+          type: 'scatter',
+          mode: 'lines',
+          name: 'Signal',
+          line: {
+            color: '#f59e0b',
+            width: 1,
+            dash: 'dash'
+          },
+          yaxis: showIndicators.rsi ? 'y4' : 'y2',
+          connectgaps: false,
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Signal: %{y:.4f}<br>' +
+                        '<extra></extra>',
+          showlegend: true
+        });
 
-          plotData.push({
-            x: timeData,
-            y: Array(timeData.length).fill(70),
-            type: 'scatter',
-            mode: 'lines',
-            name: 'Overbought (70)',
-            line: {
-              color: '#ef4444',
-              width: 1,
-              dash: 'dash'
-            },
-            yaxis: 'y2',
-            showlegend: false,
-            hoverinfo: 'skip'
-          });
-
-          plotData.push({
-            x: timeData,
-            y: Array(timeData.length).fill(30),
-            type: 'scatter',
-            mode: 'lines',
-            name: 'Oversold (30)',
-            line: {
-              color: '#10b981',
-              width: 1,
-              dash: 'dash'
-            },
-            yaxis: 'y2',
-            showlegend: false,
-            hoverinfo: 'skip'
-          });
-
-          plotData.push({
-            x: timeData,
-            y: Array(timeData.length).fill(50),
-            type: 'scatter',
-            mode: 'lines',
-            name: 'Midline (50)',
-            line: {
-              color: '#64748b',
-              width: 1,
-              dash: 'dot'
-            },
-            yaxis: 'y2',
-            showlegend: false,
-            hoverinfo: 'skip'
-          });
-        }
+        plotData.push({
+          x: timeData,
+          y: macdData.histogram,
+          type: 'bar',
+          name: 'MACD Histogram',
+          marker: {
+            color: macdData.histogram.map(val => val >= 0 ? '#10b981' : '#ef4444'),
+            opacity: 0.7
+          },
+          yaxis: showIndicators.rsi ? 'y4' : 'y2',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Histogram: %{y:.4f}<br>' +
+                        '<extra></extra>',
+          showlegend: true
+        });
       }
     }
+  }
 
-    if (showIndicators.macd) {
-      const priceData = chartType === 'line' 
-        ? historicalData?.filter(point => 
-            point.ltp !== null && 
-            point.ltp !== undefined && 
-            point.ltp > 0 && 
-            !isNaN(point.ltp)
-          ).map(point => Number(point.ltp)) || []
-        : close.filter(price => price !== null && price !== undefined && !isNaN(price));
+  return plotData;
+};
 
-      if (priceData.length >= 26) {
-        const macdData = calculateMACD(priceData, 12, 26, 9);
-        const timeData = chartType === 'line'
-          ? historicalData?.filter(point => 
-              point.ltp !== null && 
-              point.ltp !== undefined && 
-              point.ltp > 0 && 
-              !isNaN(point.ltp)
-            ).slice(25).map(point => new Date(point.timestamp * 1000)) || []
-          : x.slice(25);
-
-        if (macdData && macdData.macdLine && macdData.signalLine && macdData.histogram && timeData.length > 0) {
-          plotData.push({
-            x: timeData,
-            y: macdData.macdLine,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'MACD',
-            line: {
-              color: colors.indicator?.macd || '#3b82f6',
-              width: 2
-            },
-            yaxis: showIndicators.rsi ? 'y4' : 'y2',
-            connectgaps: false,
-            hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'MACD: %{y:.4f}<br>' +
-                          '<extra></extra>',
-            showlegend: true
-          });
-
-          plotData.push({
-            x: timeData,
-            y: macdData.signalLine,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'Signal',
-            line: {
-              color: '#f59e0b',
-              width: 1,
-              dash: 'dash'
-            },
-            yaxis: showIndicators.rsi ? 'y4' : 'y2',
-            connectgaps: false,
-            hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'Signal: %{y:.4f}<br>' +
-                          '<extra></extra>',
-            showlegend: true
-          });
-
-          plotData.push({
-            x: timeData,
-            y: macdData.histogram,
-            type: 'bar',
-            name: 'MACD Histogram',
-            marker: {
-              color: macdData.histogram.map(val => val >= 0 ? '#10b981' : '#ef4444'),
-              opacity: 0.7
-            },
-            yaxis: showIndicators.rsi ? 'y4' : 'y2',
-            hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'Histogram: %{y:.4f}<br>' +
-                          '<extra></extra>',
-            showlegend: true
-          });
-        }
-      }
-    }
-
-    return plotData;
-  };
 
   const createSpreadData = () => {
     const colors = getColorTheme();
@@ -1942,6 +2012,57 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
     
     return [];
   };
+
+  const createVolumeStdData = () => {
+  const colors = getColorTheme();
+  
+  let x: Date[] = [];
+  let volumeStdDev: number[] = [];
+  
+  if (chartType === 'line') {
+    const data = prepareLineChartData();
+    x = data.x;
+    
+    // Calculate volume standard deviation for each point
+    volumeStdDev = data.allData.map((point, index) => {
+      const windowSize = 20;
+      const startIndex = Math.max(0, index - windowSize + 1);
+      const volumes = data.allData.slice(startIndex, index + 1)
+        .map(p => p.volume || 0)
+        .filter(v => v > 0);
+      
+      return volumes.length > 1 ? calculateStandardDeviation(volumes) : 0;
+    });
+  } else {
+    const data = prepareCandlestickData();
+    x = data.x;
+    
+    // Calculate volume standard deviation for candlestick data
+    volumeStdDev = data.volume.map((_, index) => {
+      const windowSize = 20;
+      const startIndex = Math.max(0, index - windowSize + 1);
+      const volumes = data.volume.slice(startIndex, index + 1)
+        .filter(v => v > 0);
+      
+      return volumes.length > 1 ? calculateStandardDeviation(volumes) : 0;
+    });
+  }
+  
+  return [{
+    x,
+    y: volumeStdDev,
+    type: 'scatter',
+    mode: 'lines+markers',
+    line: { color: colors.indicator.volume, width: 2 },
+    marker: { size: 4 },
+    name: 'Volume Std Dev',
+    hovertemplate: '<b>%{fullData.name}</b><br>' +
+                  'Time: %{x|%H:%M:%S}<br>' +
+                  'Volume Std Dev: %{y:,.2f}<br>' +
+                  '<extra></extra>',
+  }];
+};
+
 
   const createLayout = () => {
     const colors = getColorTheme();
@@ -2322,6 +2443,47 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
     };
   };
 
+  const createVolumeStdLayout = () => {
+  const colors = getColorTheme();
+  const timeRange = getTimeRange();
+  
+  return {
+    autosize: true,
+    height: 150,
+    margin: { l: 50, r: 50, t: 30, b: 30 },
+    title: {
+      text: 'Volume Standard Deviation',
+      font: { size: 14, color: colors.text },
+    },
+    xaxis: {
+      title: '',
+      type: 'date',
+      range: timeRange,
+      gridcolor: colors.grid,
+      linecolor: colors.grid,
+      tickfont: { color: colors.text },
+      titlefont: { color: colors.text },
+      rangeslider: { visible: false },
+      fixedrange: false,
+    },
+    yaxis: {
+      title: 'Volume Std Dev',
+      autorange: true,
+      fixedrange: false,
+      gridcolor: colors.grid,
+      linecolor: colors.grid,
+      tickfont: { color: colors.text },
+      titlefont: { color: colors.text },
+    },
+    hovermode: 'closest',
+    showlegend: false,
+    plot_bgcolor: colors.bg,
+    paper_bgcolor: colors.paper,
+    font: { family: 'Arial, sans-serif', color: colors.text },
+  };
+};
+
+
   const formatPrice = (price: number | null): string => {
     if (price === null || price === undefined) return 'N/A';
     return `₹${price.toFixed(2)}`;
@@ -2645,24 +2807,26 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
           </div>
         )}
 
-        {mainMode !== 'none' && secondaryView === 'std' && (
-          <div className="bg-zinc-900 rounded-lg p-4">
-            <Plot
-              ref={buySellVolumeChartRef}
-              divId="buy-sell-volume-chart"
-              data={createStdData()}
-              layout={createStdLayout()}
-              config={{
-                responsive: true,
-                displayModeBar: true,
-                modeBarButtonsToRemove: ['pan2d', 'select2d', 'lasso2d', 'autoScale2d', 'resetScale2d'],
-                displaylogo: false,
-              }}
-              style={{ width: '100%', height: '150px' }}
-              useResizeHandler={true}
-            />
-          </div>
-        )}
+{mainMode !== 'none' && secondaryView === 'std' && (
+  <div className="bg-zinc-900 rounded-lg p-4">
+    <Plot
+      ref={showIndicators.volume ? volumeStdChartRef : buySellVolumeChartRef}
+      divId={showIndicators.volume ? "volume-std-chart" : "buy-sell-volume-chart"}
+      data={showIndicators.volume ? createVolumeStdData() : createStdData()}
+      layout={showIndicators.volume ? createVolumeStdLayout() : createStdLayout()}
+      config={{
+        responsive: true,
+        displayModeBar: true,
+        modeBarButtonsToRemove: ['pan2d', 'select2d', 'lasso2d', 'autoScale2d', 'resetScale2d'],
+        displaylogo: false,
+      }}
+      style={{ width: '100%', height: '150px' }}
+      useResizeHandler={true}
+    />
+  </div>
+)}
+
+
 
         {showIndicators.volume && (
           <div className="bg-zinc-900 rounded-lg p-4">

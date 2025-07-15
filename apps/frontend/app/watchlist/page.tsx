@@ -353,7 +353,8 @@ export default function WatchlistPage() {
                           <div className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800">
                             <p className="text-xs text-indigo-600 dark:text-indigo-400 mb-1">Avg High-Low Range</p>
                             <p className="font-bold text-lg text-indigo-700 dark:text-indigo-300">
-                              {formatCurrency(selectedCompanyData.avg_daily_high_low_range)}
+                              {parseFloat(selectedCompanyData.avg_daily_high_low_range).toFixed(2) + ' %'}
+
                             </p>
                           </div>
                         )}

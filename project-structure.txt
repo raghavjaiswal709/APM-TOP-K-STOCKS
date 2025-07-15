@@ -1,0 +1,284 @@
+Folder PATH listing for volume OS
+Volume serial number is 781C-536F
+C:.
+|   .dockerignore
+|   .gitignore
+|   docker-compose.yml
+|   Dockerfile.backend
+|   Dockerfile.frontend
+|   Dockerfile.python
+|   implementation_analysis_files.txt
+|   no-docker.sh
+|   package-lock.json
+|   package.json
+|   project-structure.txt
+|   setup.sh
+|   
+\---apps
+    +---backend
+    |   |   .gitignore
+    |   |   .prettierrc
+    |   |   eslint.config.mjs
+    |   |   fyers_data.py
+    |   |   multi_company_live_data.py
+    |   |   new_fyers.py
+    |   |   package-lock.json
+    |   |   package.json
+    |   |   README.md
+    |   |   tsconfig.build.json
+    |   |   tsconfig.json
+    |   |   
+    |   +---data
+    |   |   |   2.py
+    |   |   |   company_master.csv
+    |   |   |   data_fetch.py
+    |   |   |   
+    |   |   \---watchlists
+    |   |           atchlist_A_2025-06-05.csv
+    |   |           watchlist_A_2025-06-05.csv
+    |   |           watchlist_B_2025-06-05.csv
+    |   |           watchlist_C_2025-06-05.csv
+    |   |           
+    |   +---recorded_data
+    |   |   \---2025-06-10
+    |   |           GPIL-NSE.json
+    |   |           IDBI-NSE.json
+    |   |           KIRIINDUS-NSE.json
+    |   |           NORTHARC-NSE.json
+    |   |           RPOWER-NSE.json
+    |   |           SCI-NSE.json
+    |   |           
+    |   +---src
+    |   |   |   app.controller.spec.ts
+    |   |   |   app.controller.ts
+    |   |   |   app.module.ts
+    |   |   |   app.service.ts
+    |   |   |   main.ts
+    |   |   |   
+    |   |   +---config
+    |   |   |       fyers.config.ts
+    |   |   |       
+    |   |   +---database
+    |   |   |       database.module.ts
+    |   |   |       
+    |   |   +---database-test
+    |   |   |       database-test.module.ts
+    |   |   |       
+    |   |   +---live-market
+    |   |   |   |   live-market.controller.ts
+    |   |   |   |   live-market.module.ts
+    |   |   |   |   live-market.service.ts
+    |   |   |   |   
+    |   |   |   +---dto
+    |   |   |   |       live-market.dto.ts
+    |   |   |   |       
+    |   |   |   \---websocket
+    |   |   |           live-market.gateway.ts
+    |   |   |           
+    |   |   +---market-data
+    |   |   |   |   market-data.controller.ts
+    |   |   |   |   market-data.module.ts
+    |   |   |   |   market-data.service.ts
+    |   |   |   |   
+    |   |   |   +---dto
+    |   |   |   |       market-data.dto.ts
+    |   |   |   |       
+    |   |   |   +---entities
+    |   |   |   |       market-data.entity.ts
+    |   |   |   |       
+    |   |   |   +---services
+    |   |   |   |       fyers-auth.service.ts
+    |   |   |   |       
+    |   |   |   \---websocket
+    |   |   |           market-data.gateway.ts
+    |   |   |           python-bridge.gateway.ts
+    |   |   |           
+    |   |   +---stock
+    |   |   |   |   stocks.controller.ts
+    |   |   |   |   stocks.module.ts
+    |   |   |   |   stocks.service.ts
+    |   |   |   |   
+    |   |   |   +---dto
+    |   |   |   |       stock-data.dto.ts
+    |   |   |   |       stock-filter.dto.ts
+    |   |   |   |       stock-response.dto.ts
+    |   |   |   |       
+    |   |   |   \---entities
+    |   |   |           stock.entity.ts
+    |   |   |           
+    |   |   \---watchlist
+    |   |           watchlist.controller.ts
+    |   |           watchlist.module.ts
+    |   |           watchlist.service.ts
+    |   |           
+    |   \---test
+    |           app.e2e-spec.ts
+    |           jest-e2e.json
+    |           
+    \---frontend
+        |   .gitignore
+        |   components.json
+        |   eslint.config.mjs
+        |   next.config.ts
+        |   package-lock.json
+        |   package.json
+        |   postcss.config.js
+        |   postcss.config.mjs
+        |   README.md
+        |   tailwind.config.js
+        |   tsconfig.json
+        |   
+        +---app
+        |   |   favicon.ico
+        |   |   globals.css
+        |   |   layout.tsx
+        |   |   page.tsx
+        |   |   
+        |   +---components
+        |   |   |   app-sidebar.tsx
+        |   |   |   ImageCarousel.tsx
+        |   |   |   nav-main.tsx
+        |   |   |   nav-projects.tsx
+        |   |   |   nav-secondary.tsx
+        |   |   |   nav-user.tsx
+        |   |   |   options.tsx
+        |   |   |   shared-layout.tsx
+        |   |   |   theme-provider.tsx
+        |   |   |   toggleButton.tsx
+        |   |   |   
+        |   |   +---charts
+        |   |   |       StockChart.tsx
+        |   |   |       
+        |   |   \---controllers
+        |   |       |   CalendarForm.tsx
+        |   |       |   DateSelector.tsx
+        |   |       |   RecordedCompanySelector.tsx
+        |   |       |   SelectIndicators.tsx
+        |   |       |   SelectInterval.tsx
+        |   |       |   
+        |   |       \---WatchlistSelector
+        |   |               index.tsx
+        |   |               RadioGroup.tsx
+        |   |               SelectScrollable.tsx
+        |   |               WatchlistSelector.tsx
+        |   |               
+        |   +---dashboard
+        |   |       page.tsx
+        |   |       
+        |   +---live-market
+        |   |   |   page.tsx
+        |   |   |   
+        |   |   \---components
+        |   |           CompanySelector.tsx
+        |   |           GridChart.tsx
+        |   |           LiveMarketGrid.tsx
+        |   |           
+        |   +---market-data
+        |   |   |   page.tsx
+        |   |   |   
+        |   |   \---components
+        |   |       |   MarketChart.tsx
+        |   |       |   MarketDataTable.tsx
+        |   |       |   SymbolSearch.tsx
+        |   |       |   WatchlistManager.tsx
+        |   |       |   
+        |   |       \---charts
+        |   |               ApexChart.tsx
+        |   |               FinancialChart.tsx
+        |   |               FinancialChartComponents.tsx
+        |   |               PlotlyChart.tsx
+        |   |               SyncfusionChart.tsx
+        |   |               SyncfusionChartComponents.tsx
+        |   |               
+        |   +---recommendations
+        |   |   |   page.tsx
+        |   |   |   
+        |   |   \---components
+        |   |       |   MarketChart.tsx
+        |   |       |   MarketDataTable.tsx
+        |   |       |   PlotlyChart.tsx
+        |   |       |   SymbolSearch.tsx
+        |   |       |   WatchlistManager.tsx
+        |   |       |   
+        |   |       \---charts
+        |   |               ApexChart.tsx
+        |   |               FinancialChart.tsx
+        |   |               FinancialChartComponents.tsx
+        |   |               PlotlyChart.tsx
+        |   |               SyncfusionChart.tsx
+        |   |               SyncfusionChartComponents.tsx
+        |   |               
+        |   \---watchlist
+        |           page.tsx
+        |           
+        +---components
+        |   \---ui
+        |           avatar.tsx
+        |           badge.tsx
+        |           breadcrumb.tsx
+        |           button.tsx
+        |           calendar.tsx
+        |           card.tsx
+        |           collapsible.tsx
+        |           combobox.tsx
+        |           command.tsx
+        |           dialog.tsx
+        |           dropdown-menu.tsx
+        |           form.tsx
+        |           input.tsx
+        |           label.tsx
+        |           popover.tsx
+        |           radio-group.tsx
+        |           scroll-area.tsx
+        |           select.tsx
+        |           separator.tsx
+        |           sheet.tsx
+        |           sidebar.tsx
+        |           skeleton.tsx
+        |           toast.tsx
+        |           toaster.tsx
+        |           tooltip.tsx
+        |           
+        +---hooks
+        |       use-mobile.tsx
+        |       use-toast.ts
+        |       useLiveMarket.ts
+        |       useMarketData.ts
+        |       useRecordedData.ts
+        |       useStockData.ts
+        |       useWatchlist.ts
+        |       
+        +---lib
+        |       indicators.ts
+        |       shadcn-preset.js
+        |       socket.ts
+        |       utils.ts
+        |       
+        +---public
+        |   |   data-manifest.json
+        |   |   file.svg
+        |   |   globe.svg
+        |   |   next.svg
+        |   |   vercel.svg
+        |   |   window.svg
+        |   |   
+        |   \---recorded_data
+        |       +---2025-06-10
+        |       |       GPIL-NSE.json
+        |       |       IDBI-NSE.json
+        |       |       KIRIINDUS-NSE.json
+        |       |       NORTHARC-NSE.json
+        |       |       RPOWER-NSE.json
+        |       |       SCI-NSE.json
+        |       |       
+        |       \---2025-06-17
+        |               GPIL-NSE.json
+        |               IDBI-NSE.json
+        |               KIRIINDUS-NSE.json
+        |               NORTHARC-NSE.json
+        |               RPOWER-NSE.json
+        |               SCI-NSE.json
+        |               
+        \---scripts
+                generate-manifest.js
+                

@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 
+
 interface Company {
   company_code: string;
   name: string;
@@ -8,6 +9,7 @@ interface Company {
   marker: string;
   symbol: string;
 }
+
 
 interface MarketData {
   symbol: string;
@@ -22,18 +24,22 @@ interface MarketData {
   timestamp: number;
 }
 
+
 interface GridChartProps {
   symbol: string;
   data: MarketData;
   company: Company;
 }
 
+
 const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
   const [priceHistory, setPriceHistory] = useState<Array<{timestamp: number, price: number}>>([]);
+
 
   // Update price history
   useEffect(() => {
     if (!data?.ltp) return;
+
 
     setPriceHistory(prev => {
       const newPoint = { timestamp: Date.now(), price: data.ltp };
@@ -42,19 +48,23 @@ const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
     });
   }, [data?.ltp]);
 
+
   // Generate SVG path
   const { pathData, gradientId } = useMemo(() => {
     if (priceHistory.length < 2) {
       return { pathData: '', gradientId: `gradient-${company.company_code}` };
     }
 
+
     const width = 280;
     const height = 140;
     const padding = 10;
 
+
     const minPrice = Math.min(...priceHistory.map(p => p.price));
     const maxPrice = Math.max(...priceHistory.map(p => p.price));
     const priceRange = maxPrice - minPrice || 1;
+
 
     const points = priceHistory.map((point, index) => {
       const x = padding + (index / (priceHistory.length - 1)) * width;
@@ -62,8 +72,10 @@ const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
       return { x, y };
     });
 
+
     const pathData = `M ${points[0].x} ${points[0].y} ` + 
                     points.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
+
 
     return { 
       pathData, 
@@ -71,9 +83,11 @@ const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
     };
   }, [priceHistory, company.company_code]);
 
+
   const isPositive = (data?.change || 0) >= 0;
-  const primaryColor = isPositive ? '#10B981' : '#EF4444';
-  const secondaryColor = isPositive ? '#10B98140' : '#EF444440';
+  const primaryColor = isPositive ? '#2ca499' : '#ee5351';
+  const secondaryColor = isPositive ? '#2ca49940' : '#ee535140';
+
 
   return (
     <div className="w-full h-full bg-background border rounded overflow-hidden">
@@ -81,15 +95,16 @@ const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
       <div className="p-2 bg-muted/30 border-b">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">{company.company_code}</span>
-          <span className={`text-xs font-bold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+          <span className={`text-xs font-bold ${isPositive ? 'text-[#2ca499]' : 'text-[#ee5351]'}`}>
             ₹{data?.ltp?.toFixed(2) || '0.00'}
           </span>
         </div>
       </div>
 
+
       {/* Chart Area */}
       <div className="relative" style={{ height: '140px' }}>
-        <svg width="100%" height="140" viewBox="0 0 300 140" className="absolute inset-0">
+        <svg width="100%" height="340" viewBox="0 0 300 140" className="absolute inset-0">
           {/* Gradient Definition */}
           <defs>
             <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
@@ -103,8 +118,10 @@ const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
             </pattern>
           </defs>
 
+
           {/* Grid Background */}
           <rect width="100%" height="100%" fill={`url(#grid-${company.company_code})`} />
+
 
           {/* Area under curve */}
           {pathData && (
@@ -113,6 +130,7 @@ const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
               fill={`url(#${gradientId})`}
             />
           )}
+
 
           {/* Price line */}
           {pathData && (
@@ -125,6 +143,7 @@ const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
               strokeLinejoin="round"
             />
           )}
+
 
           {/* Data points */}
           {priceHistory.length > 0 && priceHistory.map((_, index) => {
@@ -152,6 +171,7 @@ const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
             );
           })}
 
+
           {/* Current price indicator */}
           {data?.ltp && priceHistory.length > 0 && (
             <text
@@ -167,6 +187,7 @@ const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
           )}
         </svg>
 
+
         {/* No data state */}
         {priceHistory.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
@@ -178,8 +199,9 @@ const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
         )}
       </div>
 
+
       {/* Footer with OHLC data */}
-      <div className="grid grid-cols-4 gap-1 p-2 bg-muted/20 border-t text-xs">
+      {/* <div className="grid grid-cols-4 gap-1 p-2 bg-muted/20 border-t text-xs">
         <div className="text-center">
           <div className="text-muted-foreground">Open</div>
           <div className="font-medium">₹{data?.open?.toFixed(2) || '--'}</div>
@@ -196,12 +218,14 @@ const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
           <div className="text-muted-foreground">Vol</div>
           <div className="font-medium">{data?.volume ? (data.volume / 1000).toFixed(0) + 'K' : '--'}</div>
         </div>
-      </div>
+      </div> */}
     </div>
   );
 };
 
+
 export default GridChart;
+
 
 
 
