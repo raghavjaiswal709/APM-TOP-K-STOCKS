@@ -291,28 +291,28 @@ def get_historical_data_for_date(sid, data):
         date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
     
     try:
-        try:
-            with open(f'market_data_{date}_{symbol}.json', 'r') as f:
-                saved_data = json.load(f)
-                logger.info(f"Loaded saved data for {symbol} on {date}")
-                return {
-                    'success': True,
-                    'symbol': symbol,
-                    'date': date,
-                    'data': saved_data
-                }
-        except FileNotFoundError:
-            pass
+        # try:
+        #     with open(f'market_data_{date}_{symbol}.json', 'r') as f:
+        #         saved_data = json.load(f)
+        #         logger.info(f"Loaded saved data for {symbol} on {date}")
+        #         return {
+        #             'success': True,
+        #             'symbol': symbol,
+        #             'date': date,
+        #             'data': saved_data
+        #         }
+        # except FileNotFoundError:
+        #     pass
         
         hist_data = fetch_historical_intraday_data(symbol, date)
         
-        if hist_data:
-            try:
-                with open(f'market_data_{date}_{symbol}.json', 'w') as f:
-                    json.dump(hist_data, f)
-                logger.info(f"Saved historical data for {symbol} on {date}")
-            except Exception as e:
-                logger.error(f"Error saving historical data: {e}")
+        # if hist_data:
+        #     try:
+        #         with open(f'market_data_{date}_{symbol}.json', 'w') as f:
+        #             json.dump(hist_data, f)
+        #         logger.info(f"Saved historical data for {symbol} on {date}")
+        #     except Exception as e:
+        #         logger.error(f"Error saving historical data: {e}")
         
         return {
             'success': True,
@@ -563,14 +563,14 @@ def load_daily_data():
             except Exception as e:
                 logger.error(f"Error loading OHLC data for {symbol}: {e}")
 
-def data_persistence_task():
-    global running
-    while running:
-        try:
-            save_daily_data()
-            time.sleep(300)
-        except Exception as e:
-            logger.error(f"Error in data persistence task: {e}")
+# def data_persistence_task():
+#     global running
+#     while running:
+#         try:
+#             save_daily_data()
+#             time.sleep(300)
+#         except Exception as e:
+#             logger.error(f"Error in data persistence task: {e}")
 
 def cleanup_old_data_files():
     try:
@@ -592,7 +592,7 @@ def main_process():
     global fyers, fyers_client, running
     
     try:
-        load_daily_data()
+        # load_daily_data()
         
         cleanup_old_data_files()
         
@@ -641,8 +641,8 @@ def main_process():
         heartbeat_thread = threading.Thread(target=heartbeat_task, daemon=True)
         heartbeat_thread.start()
         
-        persistence_thread = threading.Thread(target=data_persistence_task, daemon=True)
-        persistence_thread.start()
+        # persistence_thread = threading.Thread(target=data_persistence_task, daemon=True)
+        # persistence_thread.start()
         
         def schedule_end_of_day_save():
             now = datetime.datetime.now(INDIA_TZ)
@@ -653,7 +653,7 @@ def main_process():
                 threading.Timer(delay, save_daily_data).start()
                 logger.info(f"Scheduled end-of-day data save for {market_close.strftime('%H:%M:%S')}")
         
-        schedule_end_of_day_save()
+        # schedule_end_of_day_save()
         
         fyers.connect()
         logger.info("Connected to Fyers WebSocket")
@@ -677,7 +677,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("Shutting down...")
         running = False
-        save_daily_data()
+        # save_daily_data()
 
 if __name__ == "__main__":
     try:

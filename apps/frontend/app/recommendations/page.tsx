@@ -21,6 +21,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DateSelector } from "../components/controllers/DateSelector";
 import { RecordedCompanySelector } from "../components/controllers/RecordedCompanySelector";
 import { useRecordedData } from "@/hooks/useRecordedData";
+import { ViewInDashboardButton } from "../components/ViewInDashboardButton";
+
 
 const PlotlyChart = dynamic(() => import('./components/PlotlyChart'), { 
   ssr: false,
@@ -390,6 +392,43 @@ useEffect(() => {
                           <div>💾 Source: Recorded Data</div>
                         </div>
                       </div>
+                      {selectedCompany && availableCompanies.find(c => c.symbol === selectedCompany) && (
+  <>
+    <div className="mt-6 border-t border-zinc-700 pt-4">
+      <h3 className="text-sm font-medium mb-2 text-zinc-300">Company Details</h3>
+      <div className="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <span className="text-zinc-400">Symbol:</span>
+          <div className="font-medium text-white">{selectedCompany}</div>
+        </div>
+        <div>
+          <span className="text-zinc-400">Exchange:</span>
+          <div className="font-medium text-white">
+            {availableCompanies.find(c => c.symbol === selectedCompany)?.exchange}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* View in Dashboard Button */}
+    <div className="mt-4 border-t border-zinc-700 pt-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-zinc-400">
+          Analyze {availableCompanies.find(c => c.symbol === selectedCompany)?.company} in dashboard?
+        </div>
+        <ViewInDashboardButton
+          companyCode={selectedCompany.split('-')[0]}
+          exchange={availableCompanies.find(c => c.symbol === selectedCompany)?.exchange || 'NSE'}
+          watchlist="A"
+          interval="1h"
+          variant="default"
+          size="md"
+        />
+      </div>
+    </div>
+  </>
+)}
+
                     </>
                   ) : (
                     <div className="text-center py-8">
@@ -419,6 +458,8 @@ useEffect(() => {
                   </pre>
                 </div>
               )}
+
+              
             </div>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import GridChart from './GridChart';
 import { TrendingUp, TrendingDown, Activity, Wifi, WifiOff } from 'lucide-react';
+import { ViewInDashboardButton } from "../../components/ViewInDashboardButton"; 
 
 interface Company {
   company_code: string;
@@ -136,6 +137,18 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
                       </span>
                     </div>
                   </div>
+
+                   <div className="flex justify-end">
+    <ViewInDashboardButton
+      companyCode={company.company_code}
+      exchange={company.exchange}
+      watchlist="A"
+      interval="15m"
+      variant="card"
+      size="sm"
+      className="ml-auto"
+    />
+  </div>
                   
                   {/* OHLC Data */}
                   {hasData && (
