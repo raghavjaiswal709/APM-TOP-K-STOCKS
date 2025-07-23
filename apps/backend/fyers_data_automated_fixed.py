@@ -127,7 +127,7 @@ class AutomatedAuthHandler:
     
     def generate_auth_url(self):
         """Generate Fyers auth URL"""
-        return f"https://api-t2.fyers.in/api/v3/generate-authcode?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code&state=fyers_oauth"
+        return f"https://api-t1.fyers.in/api/v3/generate-authcode?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code&state=fyers_oauth"
     
     def check_auth_file(self):
         """Check if auth file exists and is recent"""

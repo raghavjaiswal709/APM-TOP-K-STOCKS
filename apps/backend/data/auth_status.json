@@ -1,0 +1,12 @@
+{
+  "authenticated": true,
+  "token_valid": true,
+  "expires_at": "2025-07-24T18:29:00.000Z",
+  "services_notified": [
+    "multi_company_live_data",
+    "fyers_data"
+  ],
+  "session_date": "2025-07-23",
+  "auto_refresh_enabled": true,
+  "next_refresh_check": "2025-07-23T14:21:30.920Z"
+}
