@@ -197,7 +197,7 @@ const LiveMarketPage: React.FC = () => {
         
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
           {/* Authentication Status Alert */}
-          {(!authStatus?.authenticated || !authStatus?.token_valid) && (
+          {/* {(!authStatus?.authenticated || !authStatus?.token_valid) && (
             <Alert className="border-yellow-200 bg-yellow-50">
               <Shield className="h-4 w-4" />
               <AlertDescription className="flex items-center justify-between">
@@ -209,7 +209,7 @@ const LiveMarketPage: React.FC = () => {
                 </Button>
               </AlertDescription>
             </Alert>
-          )}
+          )} */}
 
           {/* Header Card with Status Overview */}
           <Card className="w-full">
@@ -220,9 +220,9 @@ const LiveMarketPage: React.FC = () => {
                     <TrendingUp className="h-5 w-5" />
                     Live Market Data Grid
                   </CardTitle>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  {/* <p className="text-sm text-muted-foreground mt-1">
                     Monitor real-time market data for up to 6 companies from your watchlists
-                  </p>
+                  </p> */}
                 </div>
                 <div className="flex items-center gap-6">
                   {/* Fyers Auth Status */}
@@ -256,11 +256,11 @@ const LiveMarketPage: React.FC = () => {
                       Market Closed
                     </Badge>
                   )}
-                  {!marketStatus?.is_market_day && (
+                  {/* {!marketStatus?.is_market_day && (
                     <Badge variant="outline">
                       Weekend
                     </Badge>
-                  )}
+                  )} */}
                 </div>
               </div>
             </CardHeader>
@@ -269,7 +269,7 @@ const LiveMarketPage: React.FC = () => {
                 {/* Company Selection */}
                 <div className="lg:col-span-3 space-y-4">
                   <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-medium">Select Companies from Watchlist (1-6)</h3>
+                    {/* <h3 className="text-lg font-medium">Select Companies from Watchlist (1-6)</h3> */}
                     {selectedCompanies.length > 0 && (
                       <div className="flex items-center gap-4">
                         <div className="flex flex-col items-end gap-1 text-sm text-muted-foreground">
@@ -377,7 +377,7 @@ const LiveMarketPage: React.FC = () => {
           )}
 
           {/* Debug Panel (Development only) */}
-          {process.env.NODE_ENV === 'development' && (
+          {/* {process.env.NODE_ENV === 'development' && (
             <Card className="w-full bg-gray-50">
               <CardHeader>
                 <CardTitle className="text-sm">Debug Information</CardTitle>
@@ -399,7 +399,7 @@ const LiveMarketPage: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
-          )}
+          )} */}
         </div>
       </SidebarInset>
     </SidebarProvider>
