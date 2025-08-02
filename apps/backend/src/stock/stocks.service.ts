@@ -33,13 +33,10 @@ export class StockService {
     @InjectRepository(StockData)
     private stockRepository: Repository<StockData>,
   ) {
-    // Clean up cache periodically
     setInterval(() => this.cleanupCache(), 60 * 1000); // Every minute
   }
 
-  /**
-   * Existing method - Get top 5 companies by average close price
-   */
+ 
   async getTop5Companies() {
     return this.stockRepository
       .createQueryBuilder('stock')
@@ -53,9 +50,6 @@ export class StockService {
       .getRawMany();
   }
 
-  /**
-   * Existing method - Get company historical data from database
-   */
   async getCompanyHistory(companyCode: string, exchange?: string) {
     const queryBuilder = this.stockRepository
       .createQueryBuilder('stock')
@@ -72,9 +66,7 @@ export class StockService {
       .getMany();
   }
 
-  /**
-   * Enhanced method to get stock data with intelligent caching and optimization
-   */
+
   async getStockDataFromPython(params: StockDataRequestDto): Promise<StockDataDto[]> {
     try {
       this.validateRequest(params);
@@ -82,14 +74,12 @@ export class StockService {
       const startTime = Date.now();
       this.logger.log(`Fetching stock data for ${params.companyCode} from ${params.startDate} to ${params.endDate}`);
 
-      // Check if we can serve from cache
       const cachedData = this.getCachedData(params);
       if (cachedData) {
         this.logger.log(`Serving data from cache for ${params.companyCode}`);
         return cachedData;
       }
 
-      // Check for pending requests to avoid duplicates
       const requestKey = this.generateRequestKey(params);
       const pendingRequest = this.pendingRequests.get(requestKey);
       if (pendingRequest) {
@@ -97,14 +87,12 @@ export class StockService {
         return await pendingRequest;
       }
 
-      // Create and execute the data fetch promise
       const dataPromise = this.executeStockDataFetch(params);
       this.pendingRequests.set(requestKey, dataPromise);
 
       try {
         const data = await dataPromise;
         
-        // Cache the result
         this.setCachedData(params, data);
         
         this.logger.log(`Successfully fetched ${data.length} data points for ${params.companyCode} in ${Date.now() - startTime}ms`);
@@ -120,32 +108,26 @@ export class StockService {
     }
   }
 
-  /**
-   * Core method to execute stock data fetch from Python - FIXED stderr handling
-   */
+
   private async executeStockDataFetch(params: StockDataRequestDto): Promise<StockDataDto[]> {
     return new Promise((resolve, reject) => {
       const scriptPath = path.resolve(__dirname, '../../data/data_fetch.py');
       
       let command = `python ${scriptPath} --company_code=${params.companyCode} --interval=${params.interval}`;
       
-      // Exchange handling
       if (params.exchange) {
         command += ` --exchange=${params.exchange}`;
       } else {
         command += ` --exchange=NSE,BSE`;
       }
       
-      // Enhanced date range handling
       if (params.startDate && params.endDate) {
-        // Convert to IST for better compatibility
         const startIST = new Date(params.startDate.getTime() + 5.5 * 60 * 60 * 1000);
         const endIST = new Date(params.endDate.getTime() + 5.5 * 60 * 60 * 1000);
         
         command += ` --start_date="${startIST.toISOString()}" --end_date="${endIST.toISOString()}"`;
         command += ' --optimize_for_range=true'; // Range optimization flag
         
-        // Add buffer for smooth scrolling
         const bufferMinutes = this.getBufferMinutes(params.interval);
         command += ` --buffer_minutes=${bufferMinutes}`;
         
@@ -154,15 +136,13 @@ export class StockService {
         }
       } else {
         command += ' --fetch_all_data=true';
-        command += ' --limit=10000'; // Prevent excessive data
+        command += ' --limit=2500'; // Prevent excessive data
       }
       
-      // Performance optimizations
       command += ' --enable_cache=true';
       command += ' --compression=true';
       command += ' --validate_data=true';
       
-      // Add indicators support
       if (params.indicators && params.indicators.length > 0) {
         command += ` --indicators="${params.indicators.join(',')}"`;
       }
@@ -177,7 +157,7 @@ export class StockService {
       }, timeout);
       
       const childProcess = exec(command, { 
-        maxBuffer: 1024 * 1024 * 100, // 100MB buffer for large datasets
+        maxBuffer: 1024 * 1024 * 100, 
         timeout: timeout,
         cwd: path.resolve(__dirname, '../../data')
       }, (error, stdout, stderr) => {
@@ -186,7 +166,6 @@ export class StockService {
         if (error) {
           this.logger.error(`Python script execution failed: ${error.message}`);
           
-          // Fix #2: Proper type handling for error.code
           if (typeof error.code === 'string' && error.code === 'ENOENT') {
             return reject(new InternalServerErrorException('Python environment not configured properly'));
           }
@@ -198,11 +177,9 @@ export class StockService {
           return reject(new InternalServerErrorException(`Failed to fetch stock data: ${error.message}`));
         }
         
-        // ENHANCED stderr handling - properly categorize messages
         if (stderr) {
           const lines = stderr.split('\n').filter(line => line.trim());
           
-          // Categorize stderr output intelligently
         const actualErrors: string[] = [];
 const warnings: string[] = [];
 const infoMessages: string[] = [];
@@ -211,7 +188,6 @@ const infoMessages: string[] = [];
           for (const line of lines) {
             const lowerLine = line.toLowerCase();
             
-            // Actual error patterns that should fail the request
             if (lowerLine.includes('error:') || 
                 lowerLine.includes('traceback') || 
                 lowerLine.includes('exception:') ||
@@ -222,14 +198,12 @@ const infoMessages: string[] = [];
                 lowerLine.startsWith('error ')) {
               actualErrors.push(line);
             }
-            // Warning patterns
             else if (lowerLine.includes('warning') || 
                      lowerLine.includes('userwarning') ||
                      lowerLine.includes('deprecation') ||
                      lowerLine.includes('skipped') && lowerLine.includes('invalid')) {
               warnings.push(line);
             }
-            // Informational messages (should NOT cause failures)
             else if (lowerLine.includes('fetching') ||
                      lowerLine.includes('data range:') ||
                      lowerLine.includes('successfully') ||
@@ -247,13 +221,11 @@ const infoMessages: string[] = [];
                      lowerLine.includes('in ') && lowerLine.includes('s')) {
               infoMessages.push(line);
             }
-            // Default: treat unknown stderr as potential warning, not error
             else if (line.trim()) {
               warnings.push(line);
             }
           }
           
-          // Log different types appropriately
           if (infoMessages.length > 0) {
             this.logger.log(`Python script info: ${infoMessages.join('; ')}`);
           }
@@ -262,7 +234,6 @@ const infoMessages: string[] = [];
             this.logger.warn(`Python script warnings: ${warnings.join('; ')}`);
           }
           
-          // ONLY fail on ACTUAL errors, not informational messages or warnings
           if (actualErrors.length > 0) {
             this.logger.error(`Python script errors: ${actualErrors.join('; ')}`);
             return reject(new InternalServerErrorException('Data processing failed with errors'));
@@ -277,7 +248,6 @@ const infoMessages: string[] = [];
             return resolve([]);
           }
           
-          // Validate and process data
           const processedResults = this.processAndValidateData(results, params);
           
           this.logger.log(`Successfully processed ${processedResults.length} data points for ${params.companyCode}`);
@@ -290,14 +260,12 @@ const infoMessages: string[] = [];
         }
       });
       
-      // Handle process errors
       childProcess.on('error', (error) => {
         clearTimeout(timeoutId);
         this.logger.error(`Child process error: ${error.message}`);
         reject(new InternalServerErrorException(`Data fetch process failed: ${error.message}`));
       });
       
-      // Handle process exit codes
       childProcess.on('exit', (code, signal) => {
         if (code !== 0 && code !== null) {
           this.logger.error(`Python script exited with code ${code}`);
@@ -309,14 +277,12 @@ const infoMessages: string[] = [];
     });
   }
 
-  /**
-   * Enhanced parsing with comprehensive error handling
-   */
+  
   private parseOptimizedOutput(stdout: string, params: StockDataRequestDto): StockDataDto[] {
     const lines = stdout.trim().split('\n');
     const results: StockDataDto[] = [];
     let errorCount = 0;
-    const maxErrors = 10; // Maximum parsing errors to tolerate
+    const maxErrors = 10; 
     
     for (const line of lines) {
       if (line.startsWith('Interval:')) {
@@ -334,26 +300,22 @@ const infoMessages: string[] = [];
           const closePart = parseFloat(parts[4].replace('Close:', '').trim());
           const volumePart = parts[5] ? parseFloat(parts[5].replace('Volume:', '').trim()) : 0;
           
-          // Comprehensive data validation
           if (isNaN(openPart) || isNaN(highPart) || isNaN(lowPart) || isNaN(closePart)) {
             throw new Error('Invalid numeric values detected');
           }
           
-          // Business logic validation
           if (highPart < Math.max(openPart, closePart) || lowPart > Math.min(openPart, closePart)) {
             throw new Error('Invalid OHLC relationship');
           }
           
-          // Validate timestamp
           const timestamp = new Date(intervalPart);
           if (isNaN(timestamp.getTime())) {
             throw new Error('Invalid timestamp format');
           }
           
-          // Check if timestamp is within expected range
           if (params.startDate && params.endDate) {
             if (timestamp < params.startDate || timestamp > params.endDate) {
-              continue; // Skip data outside requested range
+              continue; 
             }
           }
           
@@ -363,7 +325,7 @@ const infoMessages: string[] = [];
             high: this.roundToDecimalPlaces(highPart, 2),
             low: this.roundToDecimalPlaces(lowPart, 2),
             close: this.roundToDecimalPlaces(closePart, 2),
-            volume: Math.max(0, Math.round(volumePart)), // Ensure non-negative integer
+            volume: Math.max(0, Math.round(volumePart)), 
           });
           
         } catch (err) {
@@ -386,24 +348,19 @@ const infoMessages: string[] = [];
     return results;
   }
 
-  /**
-   * Process and validate data with first fifteen minutes filter
-   */
+ 
   private processAndValidateData(data: StockDataDto[], params: StockDataRequestDto): StockDataDto[] {
     if (data.length === 0) return data;
     
-    // Sort by timestamp
     data.sort((a, b) => a.interval_start.getTime() - b.interval_start.getTime());
     
-    // Remove duplicates
     const uniqueData = data.filter((item, index, array) => 
       index === 0 || item.interval_start.getTime() !== array[index - 1].interval_start.getTime()
     );
     
-    // Apply first fifteen minutes filter if requested
     if (params.firstFifteenMinutes && uniqueData.length > 0) {
       const startTime = new Date(uniqueData[0].interval_start);
-      const endTime = new Date(startTime.getTime() + 15 * 60 * 1000); // 15 minutes
+      const endTime = new Date(startTime.getTime() + 15 * 60 * 1000); 
       
       const filteredResults = uniqueData.filter(item => {
         const itemTime = new Date(item.interval_start);
@@ -414,7 +371,6 @@ const infoMessages: string[] = [];
       return filteredResults;
     }
     
-    // Detect and log data gaps
     const gaps = this.detectDataGaps(uniqueData, params.interval);
     if (gaps.length > 0) {
       this.logger.warn(`Detected ${gaps.length} data gaps for ${params.companyCode}`);
@@ -423,9 +379,7 @@ const infoMessages: string[] = [];
     return uniqueData;
   }
 
-  /**
-   * Cache management methods
-   */
+ 
   private generateRequestKey(params: StockDataRequestDto): string {
     const dateKey = params.startDate && params.endDate 
       ? `${params.startDate.getTime()}-${params.endDate.getTime()}`
@@ -443,16 +397,14 @@ const infoMessages: string[] = [];
     
     if (!cached) return null;
     
-    // Check if cache is still valid
     if (Date.now() - cached.timestamp > this.cacheTTL) {
       this.dataCache.delete(key);
       return null;
     }
     
-    // Check if cached data covers the requested range
     if (params.startDate && params.endDate) {
       if (cached.startDate > params.startDate || cached.endDate < params.endDate) {
-        return null; // Cache doesn't cover full range
+        return null; 
       }
     }
     
@@ -464,7 +416,6 @@ const infoMessages: string[] = [];
     
     const key = this.generateRequestKey(params);
     
-    // Implement LRU cache eviction
     if (this.dataCache.size >= this.maxCacheSize) {
       const oldestKey = this.dataCache.keys().next().value;
       this.dataCache.delete(oldestKey);
@@ -511,7 +462,7 @@ const infoMessages: string[] = [];
     for (let i = 1; i < data.length; i++) {
       const timeDiff = data[i].interval_start.getTime() - data[i-1].interval_start.getTime();
       
-      if (timeDiff > expectedInterval * 1.5) { // Allow 50% tolerance
+      if (timeDiff > expectedInterval * 1.5) { 
         gaps.push({
           start: data[i-1].interval_start,
           end: data[i].interval_start,
@@ -523,9 +474,6 @@ const infoMessages: string[] = [];
     return gaps;
   }
 
-  /**
-   * Utility methods
-   */
   private validateRequest(params: StockDataRequestDto): void {
     if (!params.companyCode) {
       throw new BadRequestException('Company code is required');
@@ -539,7 +487,6 @@ const infoMessages: string[] = [];
       throw new BadRequestException('Start date must be before end date');
     }
     
-    // Validate date range is not too large
     if (params.startDate && params.endDate) {
       const daysDiff = (params.endDate.getTime() - params.startDate.getTime()) / (1000 * 60 * 60 * 24);
       const maxDays = this.getMaxDaysForInterval(params.interval);
@@ -562,10 +509,10 @@ const infoMessages: string[] = [];
   }
 
   private getTimeoutForRange(params: StockDataRequestDto): number {
-    const baseTimeout = 60000; // 60 seconds (reduced from original 300 seconds)
+    const baseTimeout = 60000; 
     
     if (!params.startDate || !params.endDate) {
-      return 300000; // 5 minutes for full data (keeping original timeout)
+      return 300000; 
     }
     
     const daysDiff = (params.endDate.getTime() - params.startDate.getTime()) / (1000 * 60 * 60 * 24);
@@ -598,9 +545,7 @@ const infoMessages: string[] = [];
     return Math.round(value * Math.pow(10, places)) / Math.pow(10, places);
   }
 
-  /**
-   * Public utility methods for cache management and monitoring
-   */
+
   public clearCache(): void {
     this.dataCache.clear();
     this.pendingRequests.clear();
@@ -624,9 +569,7 @@ const infoMessages: string[] = [];
     };
   }
 
-  /**
-   * Method to support incremental data loading for chart scrolling
-   */
+ 
   async getIncrementalData(
     companyCode: string,
     startDate: Date,

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname,useSearchParams  } from 'next/navigation';
 import { AppSidebar } from "../components/app-sidebar";
 import {
   Breadcrumb,
@@ -36,15 +36,19 @@ const MarketDataPage = dynamic(() => import('../market-data/page'), {
 
 export default function Page() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const isMarketDataRoute = pathname?.includes('/market-data');
   
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [selectedExchange, setSelectedExchange] = useState<string | null>(null);
   const [selectedWatchlist, setSelectedWatchlist] = useState('A');
-  const [selectedInterval, setSelectedInterval] = useState('1m');
+  const [selectedInterval, setSelectedInterval] = useState('1h');
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
   const [selectedStartDate, setSelectedStartDate] = useState<Date | undefined>();
   const [selectedEndDate, setSelectedEndDate] = useState<Date | undefined>();
+    const [isAutoLoading, setIsAutoLoading] = useState(false);
+  const [urlParamsProcessed, setUrlParamsProcessed] = useState(false);
+
   
   const { 
     companies, 
@@ -124,6 +128,57 @@ export default function Page() {
   }
 };
 
+ useEffect(() => {
+    if (urlParamsProcessed) return;
+    
+    const urlCompany = searchParams.get('company');
+    const urlExchange = searchParams.get('exchange');
+    const urlWatchlist = searchParams.get('watchlist');
+    const urlInterval = searchParams.get('interval');
+    const autoLoad = searchParams.get('autoLoad');
+
+    if (urlCompany && urlExchange) {
+      console.log('🔗 Processing URL parameters:', {
+        company: urlCompany,
+        exchange: urlExchange,
+        watchlist: urlWatchlist,
+        interval: urlInterval,
+        autoLoad
+      });
+
+      // Set watchlist first if provided
+      if (urlWatchlist && urlWatchlist !== selectedWatchlist) {
+        setSelectedWatchlist(urlWatchlist);
+        setWatchlist(urlWatchlist);
+      }
+
+      // Set interval if provided
+      if (urlInterval && urlInterval !== selectedInterval) {
+        setSelectedInterval(urlInterval);
+      }
+
+      // Set company with a slight delay to ensure watchlist is loaded
+      setTimeout(() => {
+        setSelectedCompany(urlCompany);
+        setSelectedExchange(urlExchange);
+        
+        if (autoLoad === 'true') {
+          setIsAutoLoading(true);
+          // Clear data and fetch all data for the company
+          clearData();
+          setTimeout(() => {
+            handleFetchAllData();
+            setIsAutoLoading(false);
+          }, 500);
+        }
+      }, 100);
+
+      setUrlParamsProcessed(true);
+    } else {
+      setUrlParamsProcessed(true);
+    }
+  }, [searchParams, selectedWatchlist, selectedInterval, setWatchlist, clearData, handleFetchAllData, urlParamsProcessed]);
+
   const handleWatchlistChange = useCallback((watchlist: string) => {
     setSelectedWatchlist(watchlist);
     setWatchlist(watchlist);
@@ -183,7 +238,9 @@ export default function Page() {
     };
   }, []);
 
-  return (
+    const isChartLoading = stockLoading || isAutoLoading;
+
+    return (
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
@@ -209,11 +266,23 @@ export default function Page() {
         </header>
         
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+          {/* NEW: Auto-loading indicator */}
+          {isAutoLoading && (
+            <Card className="w-full border-blue-200 bg-blue-50">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3 text-blue-700">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
+                  <span className="font-medium">Loading company data from URL parameters...</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {isMarketDataRoute ? (
             <MarketDataPage />
           ) : (
             <>
-              <Card className="w-full ">
+              <Card className="w-full">
                 <CardContent className="p-4">
                   <div className="flex gap-4 items-center justify-between w-full">
                     <CardWithForm 
@@ -224,7 +293,7 @@ export default function Page() {
                       onIndicatorsChange={handleIndicatorsChange}
                       selectedWatchlist={selectedWatchlist}
                       onWatchlistChange={handleWatchlistChange} 
-                      loading={stockLoading}
+                      loading={isChartLoading}
                     />
                     
                     <div className="p-3 border border-opacity-30 rounded-md h-24 flex items-center justify-end w-fit mr-4">
@@ -232,7 +301,7 @@ export default function Page() {
                         onDateRangeChange={handleDateRangeChange}
                         onFetchData={handleFetchData}
                         onFetchAllData={handleFetchAllData}
-                        loading={stockLoading}
+                        loading={isChartLoading}
                       />
                     </div>
                     
@@ -255,73 +324,11 @@ export default function Page() {
                   interval={selectedInterval}
                   onIntervalChange={handleIntervalChange}
                   indicators={selectedIndicators}
-                  loading={stockLoading}
+                  loading={isChartLoading}
                   error={stockError}
-onRangeChange={handleRangeChange}
+                  onRangeChange={handleRangeChange}
                 />
               </div>
-              
-              {/* <Card className="w-full border border-opacity-30 h-[400px] overflow-hidden">
-                <CardContent className="p-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-medium">Watchlist {selectedWatchlist} Companies</h3>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">
-                        {watchlistLoading ? 'Loading...' : `${companies.length} companies`}
-                      </span>
-                      {selectedCompany && (
-                        <button
-                          onClick={() => handleCompanyChange(null)}
-                          className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200 transition-colors"
-                        >
-                          Clear Selection
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="h-[340px] overflow-y-auto pr-2">
-                    {watchlistError ? (
-                      <div className="flex items-center justify-center h-full text-destructive">
-                        {watchlistError}
-                      </div>
-                    ) : watchlistLoading ? (
-                      <div className="grid grid-cols-1 gap-2 animate-pulse">
-                        {[...Array(9)].map((_, i) => (
-                          <div key={i} className="h-8 bg-muted rounded"></div>
-                        ))}
-                      </div>
-                    ) : companies.length === 0 ? (
-                      <div className="flex items-center justify-center h-full text-muted-foreground">
-                        No companies in this watchlist
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-2">
-                        {companies.map((company) => (
-                          <div 
-                            key={company.company_code}
-                            className={`p-2 rounded-md text-sm cursor-pointer transition-colors
-                              ${selectedCompany === company.company_code 
-                                ? 'bg-primary text-primary-foreground shadow-md' 
-                                : 'bg-secondary hover:bg-secondary/80'}`}
-                            onClick={() => handleCompanyChange(company.company_code, company.exchange)}
-                          >
-                            <div className="font-medium truncate">{company.name}</div>
-                            <div className="text-xs opacity-80 truncate">
-                              {company.company_code} ({company.exchange})
-                            </div>
-                            {selectedCompany === company.company_code && (
-                              <div className="text-xs mt-1 opacity-90">
-                                {stockData.length > 0 ? `${stockData.length} data points loaded` : 'Click "Fetch All Data" to load'}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card> */}
             </>
           )}
         </div>

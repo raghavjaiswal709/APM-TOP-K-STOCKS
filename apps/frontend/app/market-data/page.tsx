@@ -21,6 +21,7 @@ import { ModeToggle } from "../components/toggleButton";
 import { Card, CardContent } from "@/components/ui/card";
 import { WatchlistSelector } from "../components/controllers/WatchlistSelector";
 import { useWatchlist } from "@/hooks/useWatchlist";
+import { ViewInDashboardButton } from "../components/ViewInDashboardButton";
 
 const PlotlyChart = dynamic(() => import('./components/charts/PlotlyChart'), { 
   ssr: false,
@@ -444,6 +445,22 @@ const MarketDataPage: React.FC = () => {
                     <div className="font-medium">{symbolHistory.length} historical / {dataCount} updates</div>
                   </div>
                 </div>
+
+                {selectedCompany && selectedExchange && (
+  <div className="flex items-center justify-between pt-4 border-t">
+    <div className="text-sm text-muted-foreground">
+      Ready to analyze {selectedCompany} historical data?
+    </div>
+    <ViewInDashboardButton
+      companyCode={selectedCompany}
+      exchange={selectedExchange}
+      watchlist={selectedWatchlist}
+      interval="1h"
+      variant="default"
+      size="md"
+    />
+  </div>
+)}
 
                 {watchlistError && (
                   <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">

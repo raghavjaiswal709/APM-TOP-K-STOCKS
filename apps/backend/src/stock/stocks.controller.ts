@@ -49,8 +49,9 @@ async getStockData(
     if (endDate) {
       endDateTime = new Date(endDate);
     } else {
-      endDateTime = new Date(startDateTime);
-      endDateTime.setMinutes(endDateTime.getMinutes() + 375);
+      endDateTime = new Date();
+  startDateTime = new Date();
+  startDateTime.setDate(startDateTime.getDate() - 7);
     }
 
     if (firstFifteenMinutes === 'true') {

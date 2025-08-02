@@ -14,6 +14,7 @@ dist/
 *.tsbuildinfo
 /monorepo/apps/frontend/node_modules/
 /monorepo/apps/backend/node_modules/
+/monorepo/apps/frontend/public/*
 /monorepo/node_modules
 node_modules
 

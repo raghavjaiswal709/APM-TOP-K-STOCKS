@@ -135,7 +135,7 @@ export function SelectScrollable({
         <Button
           variant="outline"
           onClick={handleButtonClick}
-          className="w-[500px] justify-between h-20" 
+          className="w-[350px] justify-between h-20" 
         >
           {selectedCompany ? (
             <div className="flex items-center gap-2 min-w-0">
@@ -157,7 +157,6 @@ export function SelectScrollable({
             className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-[500px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Your existing dropdown content */}
             <div className="p-2 border-b border-border">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -178,7 +177,6 @@ export function SelectScrollable({
             </div>
 
             <div className="overflow-y-auto max-h-[250px]">
-              {/* Your existing company list */}
               {filteredCompanies.length === 0 ? (
                 <div className="p-3 text-sm text-muted-foreground text-center">
                   {searchTerm ? 'No companies match your search' : 'No companies found'}
@@ -235,13 +233,11 @@ export function SelectScrollable({
         )}
       </div>
 
-      {/* Company Details Section - Separate and consistent positioning */}
-      {/* Company Details Section - Separate and consistent positioning */}
-<div className="min-h-[96px] flex items-center"> {/* Reserve space to prevent layout shift */}
+     
+<div className="min-h-[96px] flex items-center"> 
   {selectedCompany && (
-    <div className="p-3 bg-muted/50 rounded-md h-20 border border-border w-[250px] overflow-hidden"> {/* Increased width and reduced padding */}
+    <div className="p-3 bg-muted/50 rounded-md h-20 border border-border w-[250px] overflow-hidden"> 
       <div className="h-full flex flex-col justify-center ">
-        {/* Header Section */}
         <div className="flex items-center justify-between mb-1">
           <h4 className="font-medium text-sm truncate flex-1 mr-2">{selectedCompany.company_code}</h4>
           <div className="flex items-center gap-1 flex-shrink-0">
@@ -254,12 +250,10 @@ export function SelectScrollable({
           </div>
         </div>
         
-        {/* Company Name */}
         <p className="text-xs text-muted-foreground mb-2 truncate">
           {selectedCompany.name}
         </p>
         
-        {/* Trading Metrics - Compact Grid */}
         {(selectedCompany.total_valid_days || selectedCompany.median_daily_volume || selectedCompany.pe_ratio) && (
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             {selectedCompany.total_valid_days && (

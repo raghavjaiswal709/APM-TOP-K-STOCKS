@@ -87,6 +87,29 @@ const data = {
       // ],
     },
     {
+      title: "Multiple Live Chart",
+      url: "/live-market",
+      icon: SquareTerminal,
+      // items: [
+      //   {
+      //     title: "Undervalued Growth",
+      //     url: "#",
+      //   },
+      //   {
+      //     title: "Buy the Dip",
+      //     url: "#",
+      //   },
+      //   {
+      //     title: "High Dividend Yield",
+      //     url: "#",
+      //   },
+      //   {
+      //     title: "Analyst Picks",
+      //     url: "#",
+      //   },
+      // ],
+    },
+    {
       title: "Recommendation List",
       url: "/recommendations",
       icon: Star,
