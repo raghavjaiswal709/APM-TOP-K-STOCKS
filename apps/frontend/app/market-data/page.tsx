@@ -20,6 +20,7 @@ import {
 import { ModeToggle } from "../components/toggleButton";
 import { Card, CardContent } from "@/components/ui/card";
 import { WatchlistSelector } from "../components/controllers/WatchlistSelector";
+import { ImageCarousel } from "./components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { ViewInDashboardButton } from "../components/ViewInDashboardButton";
 
@@ -400,7 +401,7 @@ const MarketDataPage: React.FC = () => {
         </header>
         
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          {/* Watchlist Selector Card - Same pattern as dashboard */}
+          
           <Card className="w-full">
             <CardContent className="p-4">
               <div className="space-y-4">
@@ -414,15 +415,18 @@ const MarketDataPage: React.FC = () => {
                   </div>
                 </div>
                 
-                <WatchlistSelector
-                  onCompanySelect={handleCompanyChange}
-                  selectedWatchlist={selectedWatchlist}
-                  onWatchlistChange={handleWatchlistChange}
-                  showExchangeFilter={true}
-                  showMarkerFilter={true}
-                />
                 
-                {/* Status Information */}
+                <div className="p-3 border border-opacity-30 rounded-md h-24 flex items-center">
+                  <WatchlistSelector
+                    onCompanySelect={handleCompanyChange}
+                    selectedWatchlist={selectedWatchlist}
+                    onWatchlistChange={handleWatchlistChange}
+                    showExchangeFilter={true}
+                    showMarkerFilter={true}
+                  />
+                </div>
+                
+                
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Selected:</span>
@@ -447,20 +451,20 @@ const MarketDataPage: React.FC = () => {
                 </div>
 
                 {selectedCompany && selectedExchange && (
-  <div className="flex items-center justify-between pt-4 border-t">
-    <div className="text-sm text-muted-foreground">
-      Ready to analyze {selectedCompany} historical data?
-    </div>
-    <ViewInDashboardButton
-      companyCode={selectedCompany}
-      exchange={selectedExchange}
-      watchlist={selectedWatchlist}
-      interval="1h"
-      variant="default"
-      size="md"
-    />
-  </div>
-)}
+                  <div className="flex items-center justify-between pt-4 border-t">
+                    <div className="text-sm text-muted-foreground">
+                      Ready to analyze {selectedCompany} historical data?
+                    </div>
+                    <ViewInDashboardButton
+                      companyCode={selectedCompany}
+                      exchange={selectedExchange}
+                      watchlist={selectedWatchlist}
+                      interval="1h"
+                      variant="default"
+                      size="md"
+                    />
+                  </div>
+                )}
 
                 {watchlistError && (
                   <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
@@ -471,7 +475,7 @@ const MarketDataPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Market Data Display */}
+          
           <div className="min-h-screen bg-zinc-900 text-zinc-100 rounded-lg">
             <div className="container mx-auto p-4">
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
@@ -495,7 +499,7 @@ const MarketDataPage: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Market Data Panel */}
+                
                 <div className="bg-zinc-800 p-4 rounded-lg shadow-lg">
                   {currentData ? (
                     <>
@@ -545,7 +549,7 @@ const MarketDataPage: React.FC = () => {
                         </div>
                       </div>
                       
-                      {/* Technical Indicators */}
+                      
                       {(currentData.sma_20 || currentData.ema_9 || currentData.rsi_14) && (
                         <div className="mt-6 border-t border-zinc-700 pt-4">
                           <h3 className="text-sm font-medium mb-2 text-zinc-300">Technical Indicators</h3>
@@ -582,8 +586,16 @@ const MarketDataPage: React.FC = () => {
                 </div>
               </div>
               
-              {/* Debug section */}
-              <div className="mt-8 p-4 bg-zinc-800 rounded-lg shadow-lg">
+              
+              <div className="mb-8">
+                <ImageCarousel
+                  companyCode={selectedCompany || ''}
+                  exchange={selectedExchange || ''}
+                />
+              </div>
+              
+              
+              <div className="p-4 bg-zinc-800 rounded-lg shadow-lg">
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-lg font-semibold text-white">Raw Market Data</h3>
                   <div className="text-xs text-zinc-400">

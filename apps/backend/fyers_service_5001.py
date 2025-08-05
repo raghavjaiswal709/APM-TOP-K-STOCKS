@@ -9,12 +9,13 @@ import datetime
 import pytz
 import threading
 import logging
+import requests
+import numpy as np
 import os
 from collections import deque
 from fyers_apiv3 import fyersModel
-import pandas as pd
+from fyers_apiv3.FyersWebsocket import data_ws
 
-# Enhanced logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -23,115 +24,43 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout)
     ]
 )
-logger = logging.getLogger("Fyers5001")
+logger = logging.getLogger("FyersServer")
 
-# Socket.IO setup
 sio = socketio.Server(cors_allowed_origins='*', async_mode='eventlet')
 app = socketio.WSGIApp(sio)
 
-# Configuration
 client_id = "150HUKJSWG-100"
-INDIA_TZ = pytz.timezone('Asia/Kolkata')
-MAX_HISTORY_POINTS = 10000
+secret_key = "18YYNXCAS7"
+redirect_uri = "https://raghavjaiswal709.github.io/DAKSphere_redirect/"
+response_type = "code"
+grant_type = "authorization_code"
 
-# Global variables
 clients = {}
 symbol_to_clients = {}
-historical_data = {}
-fyers_client = None
-auth_initialized = False
 running = True
-last_connection_test = 0
+auth_initialized = False
 
-# ADDED: Rate limiting and error tracking (same as port 5010)
-api_call_timestamps = deque(maxlen=50)
-failed_symbols = {}
-RATE_LIMIT_PER_SECOND = 2
-FAILED_SYMBOL_COOLDOWN = 300  # 5 minutes
+historical_data = {}
+ohlc_data = {}
+MAX_HISTORY_POINTS = 10000
 
-def get_trading_hours():
-    """Get market trading hours in IST."""
-    now = datetime.datetime.now(INDIA_TZ)
-    start_time = now.replace(hour=9, minute=15, second=0, microsecond=0)
-    end_time = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    return start_time, end_time
+INDIA_TZ = pytz.timezone('Asia/Kolkata')
 
-def is_trading_hours():
-    """Check if current time is within trading hours."""
-    now = datetime.datetime.now(INDIA_TZ)
-    start_time, end_time = get_trading_hours()
-    if now.weekday() >= 5:
-        return False
-    return start_time <= now <= end_time
+fyers = None
+fyers_client = None
 
 def extract_jwt_token(full_token):
     """Extract JWT token from full token string."""
     if ':' in full_token:
+        # Format: "client_id:jwt_token" - extract the JWT part
         return full_token.split(':', 1)[1]
     else:
+        # Already just the JWT token
         return full_token
 
-# ADDED: Rate limiting functions (same as port 5010)
-def can_make_api_call():
-    """Check if we can make an API call based on rate limiting."""
-    current_time = time.time()
-    
-    # Remove old timestamps (older than 1 second)
-    while api_call_timestamps and current_time - api_call_timestamps[0] > 1:
-        api_call_timestamps.popleft()
-    
-    return len(api_call_timestamps) < RATE_LIMIT_PER_SECOND
-
-def record_api_call():
-    """Record an API call timestamp."""
-    api_call_timestamps.append(time.time())
-
-def is_symbol_in_cooldown(symbol):
-    """Check if a symbol is in cooldown due to recent failures."""
-    if symbol not in failed_symbols:
-        return False
-    
-    current_time = time.time()
-    if current_time - failed_symbols[symbol] > FAILED_SYMBOL_COOLDOWN:
-        del failed_symbols[symbol]
-        return False
-    
-    return True
-
-def record_symbol_failure(symbol):
-    """Record a symbol failure."""
-    failed_symbols[symbol] = time.time()
-    logger.warning(f"🚫 Symbol {symbol} added to cooldown for {FAILED_SYMBOL_COOLDOWN} seconds")
-
-def test_fyers_connection():
-    """Test Fyers API connection."""
-    global last_connection_test
-    
-    try:
-        current_time = time.time()
-        if current_time - last_connection_test < 30:
-            return True, "Recent test passed"
-        
-        logger.info("🧪 Testing Fyers API connection...")
-        response = fyers_client.get_profile()
-        last_connection_test = current_time
-        
-        if response and response.get('s') == 'ok':
-            user_data = response.get('data', {})
-            user_name = user_data.get('name', 'Unknown')
-            logger.info(f"✅ API connection successful - User: {user_name}")
-            return True, "Connection successful"
-        else:
-            logger.error(f"❌ API test failed: {response}")
-            return False, f"API test failed: {response}"
-            
-    except Exception as e:
-        logger.error(f"❌ Connection test error: {e}")
-        return False, f"Connection test error: {e}"
-
 def initialize_fyers():
-    """Initialize Fyers client from auth file."""
-    global fyers_client, auth_initialized
+    """Initialize Fyers client and WebSocket with auto authentication."""
+    global fyers_client, fyers, auth_initialized
     
     auth_file_path = os.path.join('data', 'fyers_data_auth.json')
     
@@ -148,11 +77,12 @@ def initialize_fyers():
             logger.error("❌ No access token found")
             return False
         
-        # Extract only the JWT token for REST API
+        # Handle different token formats properly
         jwt_token = extract_jwt_token(full_access_token)
-        logger.info(f"🔍 Extracted JWT token: {jwt_token[:30]}...")
+        logger.info(f"🔍 JWT token: {jwt_token[:30]}...")
+        logger.info(f"🔍 Full token: {full_access_token[:30]}...")
         
-        # Initialize Fyers client with JWT token only
+        # Initialize REST client with JWT token only
         try:
             fyers_client = fyersModel.FyersModel(
                 client_id=client_id,
@@ -161,50 +91,118 @@ def initialize_fyers():
             )
             
             # Test connection
-            success, message = test_fyers_connection()
-            if success:
-                auth_initialized = True
-                logger.info("✅ Fyers client initialized successfully")
-                return True
+            response = fyers_client.get_profile()
+            if response and response.get('s') == 'ok':
+                user_data = response.get('data', {})
+                user_name = user_data.get('name', 'Unknown')
+                logger.info(f"✅ REST API client initialized - User: {user_name}")
             else:
-                logger.error(f"❌ Connection test failed: {message}")
+                logger.error(f"❌ REST API test failed: {response}")
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Failed to initialize Fyers client: {e}")
+            logger.error(f"❌ REST client error: {e}")
             return False
         
+        # Initialize WebSocket with full token (client_id:jwt format)
+        try:
+            # Ensure we have the client_id:jwt format for WebSocket
+            ws_token = full_access_token if ':' in full_access_token else f"{client_id}:{jwt_token}"
+            
+            fyers = data_ws.FyersDataSocket(
+                access_token=ws_token,
+                log_path="",
+                litemode=False,
+                write_to_file=False,
+                reconnect=True,
+                on_connect=onopen,
+                on_close=onclose,
+                on_error=onerror,
+                on_message=onmessage
+            )
+            logger.info("✅ WebSocket client initialized")
+            
+        except Exception as e:
+            logger.error(f"❌ WebSocket initialization error: {e}")
+            fyers = None
+        
+        auth_initialized = True
+        return True
+        
     except Exception as e:
-        logger.error(f"❌ Error loading auth data: {e}")
+        logger.error(f"❌ Error loading auth: {e}")
         return False
 
-def fetch_historical_data(symbol, date=None):
-    """ENHANCED: Fetch historical intraday data with proper error handling."""
+def auth_watcher():
+    """Watch auth file for updates and reinitialize when needed."""
+    global running, auth_initialized
+    auth_file_path = os.path.join('data', 'fyers_data_auth.json')
+    last_modified = 0
+    
+    while running:
+        try:
+            if os.path.exists(auth_file_path):
+                current_modified = os.path.getmtime(auth_file_path)
+                if current_modified > last_modified or not auth_initialized:
+                    if not auth_initialized:  # Only reinitialize if not already successful
+                        logger.info("🔄 Auth file updated, reinitializing...")
+                        if initialize_fyers() and fyers:
+                            try:
+                                ws_thread = threading.Thread(target=lambda: fyers.connect(), daemon=True)
+                                ws_thread.start()
+                                logger.info("✅ WebSocket connection started")
+                            except Exception as e:
+                                logger.error(f"❌ WebSocket start error: {e}")
+                    last_modified = current_modified
+            time.sleep(5)
+        except Exception as e:
+            logger.error(f"❌ Auth watcher error: {e}")
+            time.sleep(10)
+
+def get_trading_hours():
+    now = datetime.datetime.now(INDIA_TZ)
+    start_time = now.replace(hour=9, minute=15, second=0, microsecond=0)
+    end_time = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    return start_time, end_time
+
+def is_trading_hours():
+    now = datetime.datetime.now(INDIA_TZ)
+    start_time, end_time = get_trading_hours()
+    
+    if now.weekday() >= 5:
+        return False
+    
+    return start_time <= now <= end_time
+
+@sio.event
+def connect(sid, environ):
+    logger.info(f"Client connected: {sid}")
+    clients[sid] = {'subscriptions': set()}
+    
+    # Send auth status to client
+    sio.emit('authStatus', {
+        'authenticated': auth_initialized,
+        'timestamp': int(time.time())
+    }, room=sid)
+
+@sio.event
+def disconnect(sid):
+    logger.info(f"Client disconnected: {sid}")
+    if sid in clients:
+        for symbol in clients[sid]['subscriptions']:
+            if symbol in symbol_to_clients:
+                symbol_to_clients[symbol].discard(sid)
+        del clients[sid]
+
+def fetch_historical_intraday_data(symbol, date=None):
     if not date:
         date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
     
     try:
-        # Check if symbol is in cooldown
-        if is_symbol_in_cooldown(symbol):
-            logger.debug(f"🚫 Symbol {symbol} is in cooldown, skipping request")
-            return []
-        
-        # Check authentication
         if not fyers_client or not auth_initialized:
-            logger.error(f"❌ Fyers client not initialized for {symbol}")
+            logger.warning(f"Fyers client not initialized for {symbol}")
             return []
-        
-        # Check rate limiting
-        if not can_make_api_call():
-            logger.debug(f"⏳ Rate limit reached, waiting before fetching {symbol}")
-            time.sleep(0.5)
-            if not can_make_api_call():
-                logger.warning(f"⚠️ Still rate limited, skipping {symbol}")
-                return []
-        
-        # Record this API call
-        record_api_call()
-        
+            
         date_obj = datetime.datetime.strptime(date, '%Y-%m-%d')
         date_obj = INDIA_TZ.localize(date_obj)
         
@@ -213,17 +211,19 @@ def fetch_historical_data(symbol, date=None):
         
         now = datetime.datetime.now(INDIA_TZ)
         if date == now.strftime('%Y-%m-%d') and now < market_open:
-            logger.debug(f"📅 Market not yet open for {date}")
+            logger.info(f"Market not yet open for {date}")
             return []
         
-        end_time = min(now, market_close) if date == now.strftime('%Y-%m-%d') else market_close
+        if date == now.strftime('%Y-%m-%d') and now < market_close:
+            end_time = now
+        else:
+            end_time = market_close
         
         from_date = market_open.strftime('%Y-%m-%d %H:%M:%S')
         to_date = end_time.strftime('%Y-%m-%d %H:%M:%S')
         
-        logger.info(f"📊 Fetching data for {symbol} from {from_date} to {to_date}")
+        logger.info(f"Fetching historical data for {symbol} from {from_date} to {to_date}")
         
-        # FIXED: Use exact same format as working port 5010
         data_args = {
             "symbol": symbol,
             "resolution": "1",
@@ -233,305 +233,576 @@ def fetch_historical_data(symbol, date=None):
             "cont_flag": "1"
         }
         
-        logger.debug(f"🔍 API request for {symbol}: {data_args}")
+        response = fyers_client.history(data_args)
         
-        # Make the API call with proper error handling
-        try:
-            response = fyers_client.history(data_args)
+        if response and response.get('s') == 'ok' and 'candles' in response:
+            candles = response['candles']
+            logger.info(f"Received {len(candles)} candles for {symbol}")
             
-            if not response:
-                logger.error(f"❌ No response from API for {symbol}")
-                record_symbol_failure(symbol)
-                return []
+            result = []
             
-            logger.debug(f"📡 API Response for {symbol}: status={response.get('s')}, code={response.get('code')}")
+            for candle in candles:
+                timestamp, open_price, high_price, low_price, close_price, volume = candle
+                
+                if timestamp > 10000000000:
+                    timestamp = timestamp // 1000
+                
+                data_point = {
+                    'symbol': symbol,
+                    'ltp': close_price,
+                    'open': open_price,
+                    'high': high_price,
+                    'low': low_price,
+                    'close': close_price,
+                    'volume': volume,
+                    'timestamp': timestamp,
+                    'change': 0,
+                    'changePercent': 0
+                }
+                
+                result.append(data_point)
+                
+                if symbol not in ohlc_data:
+                    ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                
+                minute_timestamp = (timestamp // 60) * 60
+                
+                ohlc_candle = {
+                    'timestamp': minute_timestamp,
+                    'open': open_price,
+                    'high': high_price,
+                    'low': low_price,
+                    'close': close_price,
+                    'volume': volume
+                }
+                
+                if not ohlc_data[symbol] or ohlc_data[symbol][-1]['timestamp'] != minute_timestamp:
+                    ohlc_data[symbol].append(ohlc_candle)
             
-            if response.get('s') == 'ok' and 'candles' in response:
-                candles = response['candles']
-                logger.info(f"✅ Received {len(candles)} candles for {symbol}")
-                
-                result = []
-                for candle in candles:
-                    try:
-                        timestamp, open_price, high_price, low_price, close_price, volume = candle
-                        
-                        # Handle timestamp conversion
-                        if timestamp > 10000000000:
-                            timestamp = timestamp // 1000
-                        
-                        data_point = {
-                            'symbol': symbol,
-                            'ltp': float(close_price),
-                            'open': float(open_price),
-                            'high': float(high_price),
-                            'low': float(low_price),
-                            'close': float(close_price),
-                            'volume': int(volume),
-                            'timestamp': timestamp,
-                            'change': 0,
-                            'changePercent': 0
-                        }
-                        result.append(data_point)
-                        
-                    except Exception as candle_error:
-                        logger.error(f"❌ Error processing candle for {symbol}: {candle_error}")
-                        continue
-                
-                # Calculate change and change percent
-                if result:
-                    prev_close = result[0]['open']
-                    for point in result:
-                        try:
-                            point['change'] = point['ltp'] - prev_close
-                            point['changePercent'] = (point['change'] / prev_close) * 100 if prev_close else 0
-                        except:
-                            point['change'] = 0
-                            point['changePercent'] = 0
-                
-                return result
-            else:
-                error_msg = response.get('message', 'Unknown error')
-                error_code = response.get('code', 'No code')
-                logger.error(f"❌ API error for {symbol}: Code={error_code}, Message={error_msg}")
-                
-                # Add to failed symbols to prevent immediate retry
-                record_symbol_failure(symbol)
-                return []
-                
-        except Exception as api_error:
-            logger.error(f"❌ API call exception for {symbol}: {api_error}")
-            record_symbol_failure(symbol)
-            return []
+            if result:
+                prev_close = result[0]['open']
+                for point in result:
+                    point['change'] = point['ltp'] - prev_close
+                    point['changePercent'] = (point['change'] / prev_close) * 100 if prev_close else 0
+            
+            return result
+        else:
+            logger.error(f"Failed to fetch historical data: {response}")
+        
+        return []
         
     except Exception as e:
-        logger.error(f"❌ Error fetching historical data for {symbol}: {e}")
-        record_symbol_failure(symbol)
+        logger.error(f"Error fetching historical data: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
-# Socket.IO Event Handlers
-@sio.event
-def connect(sid, environ):
-    """Handle client connection."""
-    logger.info(f"[5001] Client connected: {sid}")
-    clients[sid] = {
-        'subscriptions': set(),
-        'connected_at': time.time()
-    }
-    
-    sio.emit('connected', {
-        'status': 'connected',
-        'server_time': time.time(),
-        'auth_status': auth_initialized
-    }, room=sid)
-
-@sio.event
-def disconnect(sid):
-    """Handle client disconnection."""
-    logger.info(f"[5001] Client disconnected: {sid}")
-    if sid in clients:
-        for symbol in clients[sid]['subscriptions']:
-            if symbol in symbol_to_clients:
-                symbol_to_clients[symbol].discard(sid)
-                if not symbol_to_clients[symbol]:
-                    del symbol_to_clients[symbol]
-        del clients[sid]
+def fetch_daily_historical_data(symbol, days=30):
+    try:
+        if not fyers_client or not auth_initialized:
+            logger.error("Fyers client not initialized")
+            return []
+        
+        end_date = datetime.datetime.now(INDIA_TZ)
+        start_date = end_date - datetime.timedelta(days=days)
+        
+        data_args = {
+            "symbol": symbol,
+            "resolution": "D",
+            "date_format": "1",
+            "range_from": start_date.strftime('%Y-%m-%d'),
+            "range_to": end_date.strftime('%Y-%m-%d'),
+            "cont_flag": "1"
+        }
+        
+        response = fyers_client.history(data_args)
+        
+        if response and response.get('s') == 'ok' and 'candles' in response:
+            return response['candles']
+        else:
+            logger.error(f"Failed to fetch daily historical data: {response}")
+            return []
+            
+    except Exception as e:
+        logger.error(f"Error fetching daily historical data: {e}")
+        return []
 
 @sio.event
 def subscribe(sid, data):
-    """ENHANCED: Handle subscription requests with better error handling."""
     symbol = data.get('symbol')
     if not symbol:
-        sio.emit('error', {'message': 'No symbol provided'}, room=sid)
-        return
+        return {'success': False, 'error': 'No symbol provided'}
     
-    logger.info(f"[5001] Client {sid} subscribing to {symbol}")
+    if not auth_initialized:
+        return {'success': False, 'error': 'Authentication not initialized'}
     
-    if sid in clients:
-        clients[sid]['subscriptions'].add(symbol)
+    logger.info(f"Client {sid} subscribing to {symbol}")
+    
+    clients[sid]['subscriptions'].add(symbol)
+    if symbol not in symbol_to_clients:
+        symbol_to_clients[symbol] = set()
+    symbol_to_clients[symbol].add(sid)
+    
+    if symbol not in historical_data or not historical_data[symbol]:
+        logger.info(f"Fetching historical data for {symbol}")
+        hist_data = fetch_historical_intraday_data(symbol)
         
-        if symbol not in symbol_to_clients:
-            symbol_to_clients[symbol] = set()
-        symbol_to_clients[symbol].add(sid)
+        if symbol not in historical_data:
+            historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
         
-        # Check if we already have cached data
-        if symbol in historical_data and historical_data[symbol]:
-            # Send cached data immediately
-            hist_data_list = list(historical_data[symbol])
-            sio.emit('historicalData', {
-                'symbol': symbol,
-                'data': hist_data_list
-            }, room=sid)
-            logger.info(f"[5001] Sent cached data for {symbol} ({len(hist_data_list)} points)")
-        else:
-            # Fetch new data in background
-            def fetch_and_send():
-                try:
-                    if is_symbol_in_cooldown(symbol):
-                        logger.debug(f"[5001] Symbol {symbol} in cooldown, sending empty data")
-                        sio.emit('historicalData', {
-                            'symbol': symbol,
-                            'data': []
-                        }, room=sid)
-                        return
-                    
-                    hist_data = fetch_historical_data(symbol)
-                    
-                    if symbol not in historical_data:
-                        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
-                    
-                    for data_point in hist_data:
-                        historical_data[symbol].append(data_point)
-                    
-                    sio.emit('historicalData', {
-                        'symbol': symbol,
-                        'data': hist_data
-                    }, room=sid)
-                    
-                    if hist_data:
-                        logger.info(f"[5001] Sent {len(hist_data)} data points for {symbol}")
-                    else:
-                        logger.warning(f"[5001] No data available for {symbol}")
-                    
-                except Exception as e:
-                    logger.error(f"[5001] Error fetching data for {symbol}: {e}")
-                    sio.emit('error', {'message': f'Failed to fetch data for {symbol}'}, room=sid)
-            
-            threading.Thread(target=fetch_and_send, daemon=True).start()
+        for data_point in hist_data:
+            historical_data[symbol].append(data_point)
+    
+    if fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
+        logger.info(f"Subscribing to symbol: {symbol}")
+        try:
+            fyers.subscribe(symbols=[symbol], data_type="SymbolUpdate")
+        except Exception as e:
+            logger.error(f"Error subscribing to {symbol}: {e}")
+    
+    if symbol in historical_data and historical_data[symbol]:
+        logger.info(f"Sending historical data for {symbol} to client {sid}")
+        hist_data_list = list(historical_data[symbol])
+        sio.emit('historicalData', {
+            'symbol': symbol,
+            'data': hist_data_list
+        }, room=sid)
+    
+    if symbol in ohlc_data and ohlc_data[symbol]:
+        logger.info(f"Sending OHLC data for {symbol} to client {sid}")
+        sio.emit('ohlcData', {
+            'symbol': symbol,
+            'data': list(ohlc_data[symbol])
+        }, room=sid)
     
     return {'success': True, 'symbol': symbol}
 
 @sio.event
 def unsubscribe(sid, data):
-    """Handle unsubscription requests."""
     symbol = data.get('symbol')
     if not symbol:
         return {'success': False, 'error': 'No symbol provided'}
     
-    logger.info(f"[5001] Client {sid} unsubscribing from {symbol}")
+    logger.info(f"Client {sid} unsubscribing from {symbol}")
     
     if sid in clients:
         clients[sid]['subscriptions'].discard(symbol)
     
     if symbol in symbol_to_clients:
         symbol_to_clients[symbol].discard(sid)
-        if not symbol_to_clients[symbol]:
-            del symbol_to_clients[symbol]
+        
+        if not symbol_to_clients[symbol] and fyers and hasattr(fyers, 'unsubscribe'):
+            logger.info(f"No more clients for {symbol}, unsubscribing from Fyers")
+            try:
+                fyers.unsubscribe(symbols=[symbol])
+            except Exception as e:
+                logger.error(f"Error unsubscribing from {symbol}: {e}")
     
     return {'success': True, 'symbol': symbol}
 
 @sio.event
 def get_trading_status(sid, data):
-    """Get trading status."""
     start_time, end_time = get_trading_hours()
     return {
         'trading_active': is_trading_hours(),
         'trading_start': start_time.isoformat(),
         'trading_end': end_time.isoformat(),
         'current_time': datetime.datetime.now(INDIA_TZ).isoformat(),
+        'is_market_day': datetime.datetime.now(INDIA_TZ).weekday() < 5,
         'auth_status': auth_initialized
     }
 
-def auth_watcher():
-    """Watch for auth file changes."""
-    global running
-    auth_file_path = os.path.join('data', 'fyers_data_auth.json')
-    last_modified = 0
+@sio.event
+def get_historical_data_for_date(sid, data):
+    symbol = data.get('symbol')
+    date = data.get('date')
     
-    while running:
+    if not symbol:
+        return {'success': False, 'error': 'No symbol provided'}
+    
+    if not auth_initialized:
+        return {'success': False, 'error': 'Authentication not initialized'}
+    
+    if not date:
+        date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
+    
+    try:
         try:
-            if os.path.exists(auth_file_path):
-                current_modified = os.path.getmtime(auth_file_path)
-                if current_modified > last_modified or not auth_initialized:
-                    # Only reinitialize if not already successful
-                    if not auth_initialized:
-                        logger.info("🔄 Auth file updated, reinitializing...")
-                        initialize_fyers()
-                    last_modified = current_modified
-            time.sleep(5)
-        except Exception as e:
-            logger.error(f"❌ Auth watcher error: {e}")
-            time.sleep(10)
+            with open(f'market_data_{date}_{symbol}.json', 'r') as f:
+                saved_data = json.load(f)
+                logger.info(f"Loaded saved data for {symbol} on {date}")
+                return {
+                    'success': True,
+                    'symbol': symbol,
+                    'date': date,
+                    'data': saved_data
+                }
+        except FileNotFoundError:
+            pass
+        
+        hist_data = fetch_historical_intraday_data(symbol, date)
+        
+        if hist_data:
+            try:
+                with open(f'market_data_{date}_{symbol}.json', 'w') as f:
+                    json.dump(hist_data, f)
+                logger.info(f"Saved historical data for {symbol} on {date}")
+            except Exception as e:
+                logger.error(f"Error saving historical data: {e}")
+        
+        return {
+            'success': True,
+            'symbol': symbol,
+            'date': date,
+            'data': hist_data
+        }
+    except Exception as e:
+        logger.error(f"Error fetching historical data for date: {e}")
+        return {'success': False, 'error': str(e)}
 
-def heartbeat():
-    """Send periodic heartbeat."""
+@sio.event
+def get_daily_data(sid, data):
+    symbol = data.get('symbol')
+    days = data.get('days', 30)
+    
+    if not symbol:
+        return {'success': False, 'error': 'No symbol provided'}
+    
+    if not auth_initialized:
+        return {'success': False, 'error': 'Authentication not initialized'}
+    
+    try:
+        daily_data = fetch_daily_historical_data(symbol, days)
+        
+        if daily_data:
+            formatted_data = []
+            for candle in daily_data:
+                timestamp, open_price, high_price, low_price, close_price, volume = candle
+                formatted_data.append({
+                    'timestamp': timestamp,
+                    'open': open_price,
+                    'high': high_price,
+                    'low': low_price,
+                    'close': close_price,
+                    'volume': volume
+                })
+            
+            return {
+                'success': True,
+                'symbol': symbol,
+                'days': days,
+                'data': formatted_data
+            }
+        else:
+            return {'success': False, 'error': 'No data available'}
+    except Exception as e:
+        logger.error(f"Error fetching daily data: {e}")
+        return {'success': False, 'error': str(e)}
+
+def store_historical_data(symbol, data_point):
+    if symbol not in historical_data:
+        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+    
+    if 'timestamp' not in data_point:
+        data_point['timestamp'] = int(time.time())
+    
+    historical_data[symbol].append(data_point)
+    
+    update_ohlc_data(symbol, data_point)
+
+def update_ohlc_data(symbol, data_point):
+    if symbol not in ohlc_data:
+        ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+    
+    timestamp = data_point['timestamp']
+    price = data_point['ltp']
+    
+    minute_timestamp = (timestamp // 60) * 60
+    
+    if not ohlc_data[symbol] or ohlc_data[symbol][-1]['timestamp'] < minute_timestamp:
+        ohlc_data[symbol].append({
+            'timestamp': minute_timestamp,
+            'open': price,
+            'high': price,
+            'low': price,
+            'close': price,
+            'volume': data_point.get('volume', 0)
+        })
+    else:
+        current_candle = ohlc_data[symbol][-1]
+        current_candle['high'] = max(current_candle['high'], price)
+        current_candle['low'] = min(current_candle['low'], price)
+        current_candle['close'] = price
+        current_candle['volume'] = data_point.get('volume', current_candle['volume'])
+
+def calculate_indicators(symbol):
+    if symbol not in ohlc_data or len(ohlc_data[symbol]) < 20:
+        return {}
+    
+    closes = [candle['close'] for candle in ohlc_data[symbol]]
+    
+    sma_20 = np.mean(closes[-20:])
+    
+    ema_9 = closes[-1]
+    alpha = 2 / (9 + 1)
+    for i in range(2, min(10, len(closes) + 1)):
+        ema_9 = alpha * closes[-i] + (1 - alpha) * ema_9
+    
+    changes = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+    gains = [max(0, change) for change in changes]
+    losses = [max(0, -change) for change in changes]
+    
+    if len(gains) >= 14:
+        avg_gain = np.mean(gains[-14:])
+        avg_loss = np.mean(losses[-14:])
+        
+        if avg_loss == 0:
+            rsi = 100
+        else:
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+    else:
+        rsi = 50
+    
+    return {
+        'sma_20': sma_20,
+        'ema_9': ema_9,
+        'rsi_14': rsi
+    }
+
+def onmessage(message):
+    logger.debug(f"Response: {message}")
+    
+    if isinstance(message, dict) and message.get('type') == 'sub':
+        logger.info(f"Subscription confirmation: {message}")
+        return
+    
+    if isinstance(message, dict) and 'symbol' in message:
+        symbol = message['symbol']
+        
+        simplified_data = {
+            'symbol': symbol,
+            'ltp': message.get('ltp'),
+            'change': message.get('ch'),
+            'changePercent': message.get('chp'),
+            'volume': message.get('vol_traded_today'),
+            'open': message.get('open_price'),
+            'high': message.get('high_price'),
+            'low': message.get('low_price'),
+            'close': message.get('prev_close_price'),
+            'bid': message.get('bid_price'),
+            'ask': message.get('ask_price'),
+            'timestamp': message.get('last_traded_time') or int(time.time())
+        }
+        
+        store_historical_data(symbol, simplified_data)
+        
+        indicators = calculate_indicators(symbol)
+        if indicators:
+            simplified_data.update(indicators)
+        
+        if symbol in symbol_to_clients:
+            for sid in symbol_to_clients[symbol]:
+                try:
+                    sio.emit('marketData', simplified_data, room=sid)
+                except Exception as e:
+                    logger.error(f"Error sending data to client {sid}: {e}")
+        else:
+            logger.debug(f"No clients subscribed to {symbol}")
+    else:
+        logger.warning(f"Invalid message format: {message}")
+
+def onerror(error):
+    logger.error(f"Error: {error}")
+    sio.emit('error', {'message': str(error)})
+
+def onclose(message):
+    logger.info(f"Connection closed: {message}")
+    sio.emit('fyersDisconnected', {'message': str(message)})
+
+def onopen():
+    logger.info("Fyers WebSocket connected")
+    sio.emit('fyersConnected', {'status': 'connected'})
+    
+    default_symbols = []
+    if fyers and hasattr(fyers, 'subscribe'):
+        try:
+            fyers.subscribe(symbols=default_symbols, data_type="SymbolUpdate")
+            logger.info(f"Subscribed to default symbols: {default_symbols}")
+        except Exception as e:
+            logger.error(f"Error subscribing to default symbols: {e}")
+
+def heartbeat_task():
     global running
     while running:
         try:
             sio.emit('heartbeat', {
                 'timestamp': int(time.time()),
-                'connected_clients': len(clients),
-                'active_symbols': len(symbol_to_clients),
-                'auth_status': auth_initialized,
                 'trading_active': is_trading_hours(),
-                'rate_limit_status': {
-                    'current_calls': len(api_call_timestamps),
-                    'max_calls_per_second': RATE_LIMIT_PER_SECOND,
-                    'failed_symbols_count': len(failed_symbols)
-                }
+                'auth_status': auth_initialized
             })
             time.sleep(30)
         except Exception as e:
-            logger.error(f"❌ Heartbeat error: {e}")
-            time.sleep(30)
+            logger.error(f"Error in heartbeat: {e}")
 
-def cleanup_failed_symbols():
-    """Periodic cleanup of failed symbols."""
+def save_daily_data():
+    today = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
+    
+    for symbol in historical_data:
+        data_to_save = list(historical_data[symbol])
+        
+        try:
+            with open(f'market_data_{today}_{symbol}.json', 'w') as f:
+                json.dump(data_to_save, f)
+            logger.info(f"Saved market data for {symbol} on {today}")
+        except Exception as e:
+            logger.error(f"Error saving market data for {symbol}: {e}")
+    
+    for symbol in ohlc_data:
+        ohlc_to_save = list(ohlc_data[symbol])
+        
+        try:
+            with open(f'ohlc_data_{today}_{symbol}.json', 'w') as f:
+                json.dump(ohlc_to_save, f)
+            logger.info(f"Saved OHLC data for {symbol} on {today}")
+        except Exception as e:
+            logger.error(f"Error saving OHLC data for {symbol}: {e}")
+
+def load_daily_data():
+    today = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
+    
+    for file in os.listdir('.'):
+        if file.startswith('market_data_' + today) and file.endswith('.json'):
+            symbol = file.replace('market_data_' + today + '_', '').replace('.json', '')
+            
+            try:
+                with open(file, 'r') as f:
+                    data_points = json.load(f)
+                    
+                    if symbol not in historical_data:
+                        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                    
+                    for point in data_points:
+                        historical_data[symbol].append(point)
+                    
+                    logger.info(f"Loaded {len(data_points)} historical data points for {symbol}")
+            except Exception as e:
+                logger.error(f"Error loading market data for {symbol}: {e}")
+    
+    for file in os.listdir('.'):
+        if file.startswith('ohlc_data_' + today) and file.endswith('.json'):
+            symbol = file.replace('ohlc_data_' + today + '_', '').replace('.json', '')
+            
+            try:
+                with open(file, 'r') as f:
+                    candles = json.load(f)
+                    
+                    if symbol not in ohlc_data:
+                        ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                    
+                    for candle in candles:
+                        ohlc_data[symbol].append(candle)
+                    
+                    logger.info(f"Loaded {len(candles)} OHLC candles for {symbol}")
+            except Exception as e:
+                logger.error(f"Error loading OHLC data for {symbol}: {e}")
+
+def data_persistence_task():
     global running
     while running:
         try:
-            current_time = time.time()
-            expired_symbols = [
-                symbol for symbol, fail_time in failed_symbols.items()
-                if current_time - fail_time > FAILED_SYMBOL_COOLDOWN
-            ]
-            for symbol in expired_symbols:
-                del failed_symbols[symbol]
-                logger.info(f"🔄 Removed {symbol} from failed symbols cooldown")
-            
-            time.sleep(60)  # Run cleanup every minute
+            save_daily_data()
+            time.sleep(300)
         except Exception as e:
-            logger.error(f"❌ Cleanup error: {e}")
-            time.sleep(60)
+            logger.error(f"Error in data persistence task: {e}")
 
-def main():
-    """Main function."""
-    global running
-    
-    logger.info("🚀 Starting Fyers Service 5001 - Historical Data Service (Enhanced)")
+def cleanup_old_data_files():
+    try:
+        today = datetime.datetime.now(INDIA_TZ)
+        for file in os.listdir('.'):
+            if (file.startswith('market_data_') or file.startswith('ohlc_data_')) and file.endswith('.json'):
+                try:
+                    date_str = file.split('_')[2]
+                    file_date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
+                    if (today - file_date).days > 30:
+                        os.remove(file)
+                        logger.info(f"Removed old data file: {file}")
+                except (ValueError, IndexError):
+                    continue
+    except Exception as e:
+        logger.error(f"Error cleaning up old data files: {e}")
+
+def main_process():
+    global fyers, fyers_client, running
     
     try:
         # Create data directory
         os.makedirs('data', exist_ok=True)
         
-        # Initialize Fyers
+        # Load existing data
+        load_daily_data()
+        cleanup_old_data_files()
+        
+        # Initialize auto authentication
         if initialize_fyers():
             logger.info("✅ Initial authentication successful")
+            # Start WebSocket
+            if fyers:
+                ws_thread = threading.Thread(target=lambda: fyers.connect(), daemon=True)
+                ws_thread.start()
+                logger.info("✅ WebSocket connection started")
         else:
             logger.info("⚠️ Initial authentication failed, will retry when auth file updates")
         
-        # Start background tasks
+        # Start auth watcher
         auth_thread = threading.Thread(target=auth_watcher, daemon=True)
-        heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
-        cleanup_thread = threading.Thread(target=cleanup_failed_symbols, daemon=True)
-        
         auth_thread.start()
+        
+        # Start heartbeat
+        heartbeat_thread = threading.Thread(target=heartbeat_task, daemon=True)
         heartbeat_thread.start()
-        cleanup_thread.start()
         
-        logger.info("✅ Service 5001 started successfully on port 5001")
-        logger.info("🔑 Using JWT token extraction for REST API calls")
-        logger.info("⚡ Rate limiting: Max 2 API calls per second")
-        logger.info("🛡️ Error recovery: 5-minute cooldown for failed symbols")
+        # Start data persistence
+        persistence_thread = threading.Thread(target=data_persistence_task, daemon=True)
+        persistence_thread.start()
         
-        # Start server
+        def schedule_end_of_day_save():
+            now = datetime.datetime.now(INDIA_TZ)
+            market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+            
+            if now < market_close:
+                delay = (market_close - now).total_seconds()
+                threading.Timer(delay, save_daily_data).start()
+                logger.info(f"Scheduled end-of-day data save for {market_close.strftime('%H:%M:%S')}")
+        
+        schedule_end_of_day_save()
+        
+        logger.info("✅ Starting Socket.IO server on port 5001...")
+        logger.info("🔑 Using auto authentication with JWT token handling")
         eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 5001)), app)
         
-    except KeyboardInterrupt:
-        logger.info("🛑 Shutdown requested")
-        running = False
     except Exception as e:
-        logger.error(f"❌ Fatal error: {e}")
+        logger.error(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+
+def main():
+    global running
+    
+    try:
+        eventlet.spawn(main_process)
+        
+        while running:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Shutting down...")
         running = False
+        save_daily_data()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("Shutting down...")
+        running = False
+        save_daily_data()
