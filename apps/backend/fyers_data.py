@@ -291,28 +291,28 @@ def get_historical_data_for_date(sid, data):
         date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
     
     try:
-        try:
-            with open(f'market_data_{date}_{symbol}.json', 'r') as f:
-                saved_data = json.load(f)
-                logger.info(f"Loaded saved data for {symbol} on {date}")
-                return {
-                    'success': True,
-                    'symbol': symbol,
-                    'date': date,
-                    'data': saved_data
-                }
-        except FileNotFoundError:
-            pass
+        # try:
+        #     with open(f'market_data_{date}_{symbol}.json', 'r') as f:
+        #         saved_data = json.load(f)
+        #         logger.info(f"Loaded saved data for {symbol} on {date}")
+        #         return {
+        #             'success': True,
+        #             'symbol': symbol,
+        #             'date': date,
+        #             'data': saved_data
+        #         }
+        # except FileNotFoundError:
+        #     pass
         
         hist_data = fetch_historical_intraday_data(symbol, date)
         
-        if hist_data:
-            try:
-                with open(f'market_data_{date}_{symbol}.json', 'w') as f:
-                    json.dump(hist_data, f)
-                logger.info(f"Saved historical data for {symbol} on {date}")
-            except Exception as e:
-                logger.error(f"Error saving historical data: {e}")
+        # if hist_data:
+        #     try:
+        #         with open(f'market_data_{date}_{symbol}.json', 'w') as f:
+        #             json.dump(hist_data, f)
+        #         logger.info(f"Saved historical data for {symbol} on {date}")
+        #     except Exception as e:
+        #         logger.error(f"Error saving historical data: {e}")
         
         return {
             'success': True,
@@ -502,91 +502,96 @@ def heartbeat_task():
             logger.error(f"Error in heartbeat: {e}")
 
 def save_daily_data():
-    today = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
     
-    for symbol in historical_data:
-        data_to_save = list(historical_data[symbol])
-        
-        try:
-            with open(f'market_data_{today}_{symbol}.json', 'w') as f:
-                json.dump(data_to_save, f)
-            logger.info(f"Saved market data for {symbol} on {today}")
-        except Exception as e:
-            logger.error(f"Error saving market data for {symbol}: {e}")
+    pass
+    # today = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
     
-    for symbol in ohlc_data:
-        ohlc_to_save = list(ohlc_data[symbol])
+    # for symbol in historical_data:
+    #     data_to_save = list(historical_data[symbol])
         
-        try:
-            with open(f'ohlc_data_{today}_{symbol}.json', 'w') as f:
-                json.dump(ohlc_to_save, f)
-            logger.info(f"Saved OHLC data for {symbol} on {today}")
-        except Exception as e:
-            logger.error(f"Error saving OHLC data for {symbol}: {e}")
+    #     try:
+    #         with open(f'market_data_{today}_{symbol}.json', 'w') as f:
+    #             json.dump(data_to_save, f)
+    #         logger.info(f"Saved market data for {symbol} on {today}")
+    #     except Exception as e:
+    #         logger.error(f"Error saving market data for {symbol}: {e}")
+    
+    # for symbol in ohlc_data:
+    #     ohlc_to_save = list(ohlc_data[symbol])
+        
+    #     try:
+    #         with open(f'ohlc_data_{today}_{symbol}.json', 'w') as f:
+    #             json.dump(ohlc_to_save, f)
+    #         logger.info(f"Saved OHLC data for {symbol} on {today}")
+    #     except Exception as e:
+    #         logger.error(f"Error saving OHLC data for {symbol}: {e}")
 
 def load_daily_data():
-    today = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
+    pass
+    # today = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
     
-    for file in os.listdir('.'):
-        if file.startswith('market_data_' + today) and file.endswith('.json'):
-            symbol = file.replace('market_data_' + today + '_', '').replace('.json', '')
+    # for file in os.listdir('.'):
+    #     if file.startswith('market_data_' + today) and file.endswith('.json'):
+    #         symbol = file.replace('market_data_' + today + '_', '').replace('.json', '')
             
-            try:
-                with open(file, 'r') as f:
-                    data_points = json.load(f)
+    #         try:
+    #             with open(file, 'r') as f:
+    #                 data_points = json.load(f)
                     
-                    if symbol not in historical_data:
-                        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+    #                 if symbol not in historical_data:
+    #                     historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
                     
-                    for point in data_points:
-                        historical_data[symbol].append(point)
+    #                 for point in data_points:
+    #                     historical_data[symbol].append(point)
                     
-                    logger.info(f"Loaded {len(data_points)} historical data points for {symbol}")
-            except Exception as e:
-                logger.error(f"Error loading market data for {symbol}: {e}")
+    #                 logger.info(f"Loaded {len(data_points)} historical data points for {symbol}")
+    #         except Exception as e:
+    #             logger.error(f"Error loading market data for {symbol}: {e}")
     
-    for file in os.listdir('.'):
-        if file.startswith('ohlc_data_' + today) and file.endswith('.json'):
-            symbol = file.replace('ohlc_data_' + today + '_', '').replace('.json', '')
+    # for file in os.listdir('.'):
+    #     if file.startswith('ohlc_data_' + today) and file.endswith('.json'):
+    #         symbol = file.replace('ohlc_data_' + today + '_', '').replace('.json', '')
             
-            try:
-                with open(file, 'r') as f:
-                    candles = json.load(f)
+    #         try:
+    #             with open(file, 'r') as f:
+    #                 candles = json.load(f)
                     
-                    if symbol not in ohlc_data:
-                        ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+    #                 if symbol not in ohlc_data:
+    #                     ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
                     
-                    for candle in candles:
-                        ohlc_data[symbol].append(candle)
+    #                 for candle in candles:
+    #                     ohlc_data[symbol].append(candle)
                     
-                    logger.info(f"Loaded {len(candles)} OHLC candles for {symbol}")
-            except Exception as e:
-                logger.error(f"Error loading OHLC data for {symbol}: {e}")
+    #                 logger.info(f"Loaded {len(candles)} OHLC candles for {symbol}")
+    #         except Exception as e:
+    #             logger.error(f"Error loading OHLC data for {symbol}: {e}")
 
 def data_persistence_task():
-    global running
-    while running:
-        try:
-            save_daily_data()
-            time.sleep(300)
-        except Exception as e:
-            logger.error(f"Error in data persistence task: {e}")
+    pass
+    # global running
+    # while running:
+    #     try:
+    #         save_daily_data()
+    #         time.sleep(300)
+    #     except Exception as e:
+    #         logger.error(f"Error in data persistence task: {e}")
 
 def cleanup_old_data_files():
-    try:
-        today = datetime.datetime.now(INDIA_TZ)
-        for file in os.listdir('.'):
-            if (file.startswith('market_data_') or file.startswith('ohlc_data_')) and file.endswith('.json'):
-                try:
-                    date_str = file.split('_')[2]
-                    file_date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
-                    if (today - file_date).days > 30:
-                        os.remove(file)
-                        logger.info(f"Removed old data file: {file}")
-                except (ValueError, IndexError):
-                    continue
-    except Exception as e:
-        logger.error(f"Error cleaning up old data files: {e}")
+    pass
+    # try:
+    #     today = datetime.datetime.now(INDIA_TZ)
+    #     for file in os.listdir('.'):
+    #         if (file.startswith('market_data_') or file.startswith('ohlc_data_')) and file.endswith('.json'):
+    #             try:
+    #                 date_str = file.split('_')[2]
+    #                 file_date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
+    #                 if (today - file_date).days > 30:
+    #                     os.remove(file)
+    #                     logger.info(f"Removed old data file: {file}")
+    #             except (ValueError, IndexError):
+    #                 continue
+    # except Exception as e:
+    #     logger.error(f"Error cleaning up old data files: {e}")
 
 def main_process():
     global fyers, fyers_client, running
@@ -623,7 +628,7 @@ def main_process():
         fyers_client = fyersModel.FyersModel(
             client_id=client_id,
             token=token_response['access_token'],
-            log_path=""
+            log_path=None
         )
         
         fyers = data_ws.FyersDataSocket(
@@ -641,17 +646,18 @@ def main_process():
         heartbeat_thread = threading.Thread(target=heartbeat_task, daemon=True)
         heartbeat_thread.start()
         
-        persistence_thread = threading.Thread(target=data_persistence_task, daemon=True)
-        persistence_thread.start()
+        # persistence_thread = threading.Thread(target=data_persistence_task, daemon=True)
+        # persistence_thread.start()
         
         def schedule_end_of_day_save():
-            now = datetime.datetime.now(INDIA_TZ)
-            market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+            pass
+            # now = datetime.datetime.now(INDIA_TZ)
+            # market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
             
-            if now < market_close:
-                delay = (market_close - now).total_seconds()
-                threading.Timer(delay, save_daily_data).start()
-                logger.info(f"Scheduled end-of-day data save for {market_close.strftime('%H:%M:%S')}")
+            # if now < market_close:
+            #     delay = (market_close - now).total_seconds()
+            #     threading.Timer(delay, save_daily_data).start()
+            #     logger.info(f"Scheduled end-of-day data save for {market_close.strftime('%H:%M:%S')}")
         
         schedule_end_of_day_save()
         

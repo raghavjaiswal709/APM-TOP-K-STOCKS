@@ -51,10 +51,10 @@ fyers_client = None
 def extract_jwt_token(full_token):
     """Extract JWT token from full token string."""
     if ':' in full_token:
-        # Format: "client_id:jwt_token" - extract the JWT part
+        
         return full_token.split(':', 1)[1]
     else:
-        # Already just the JWT token
+        
         return full_token
 
 def initialize_fyers():
@@ -76,20 +76,20 @@ def initialize_fyers():
             logger.error("❌ No access token found")
             return False
         
-        # Handle different token formats properly
+        
         jwt_token = extract_jwt_token(full_access_token)
         logger.info(f"🔍 JWT token: {jwt_token[:30]}...")
         logger.info(f"🔍 Full token: {full_access_token[:30]}...")
         
-        # Initialize REST client with JWT token only
+        
         try:
             fyers_client = fyersModel.FyersModel(
                 client_id=client_id,
-                token=jwt_token,  # Use JWT token only for REST API
-                log_path=""
+                token=jwt_token,  
+                log_path=None
             )
             
-            # Test connection
+            
             response = fyers_client.get_profile()
             if response and response.get('s') == 'ok':
                 user_data = response.get('data', {})
@@ -103,9 +103,9 @@ def initialize_fyers():
             logger.error(f"❌ REST client error: {e}")
             return False
         
-        # Initialize WebSocket with full token (client_id:jwt format)
+        
         try:
-            # Ensure we have the client_id:jwt format for WebSocket
+            
             ws_token = full_access_token if ':' in full_access_token else f"{client_id}:{jwt_token}"
             
             fyers = data_ws.FyersDataSocket(
@@ -143,7 +143,7 @@ def auth_watcher():
             if os.path.exists(auth_file_path):
                 current_modified = os.path.getmtime(auth_file_path)
                 if current_modified > last_modified or not auth_initialized:
-                    if not auth_initialized:  # Only reinitialize if not already successful
+                    if not auth_initialized:  
                         logger.info("🔄 Auth file updated, reinitializing...")
                         if initialize_fyers() and fyers:
                             try:
@@ -178,7 +178,7 @@ def connect(sid, environ):
     logger.info(f"Client connected: {sid}")
     clients[sid] = {'subscriptions': set()}
     
-    # Send auth status to client
+    
     sio.emit('authStatus', {
         'authenticated': auth_initialized,
         'timestamp': int(time.time())
@@ -426,28 +426,28 @@ def get_historical_data_for_date(sid, data):
         date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
     
     try:
-        try:
-            with open(f'market_data_{date}_{symbol}.json', 'r') as f:
-                saved_data = json.load(f)
-                logger.info(f"Loaded saved data for {symbol} on {date}")
-                return {
-                    'success': True,
-                    'symbol': symbol,
-                    'date': date,
-                    'data': saved_data
-                }
-        except FileNotFoundError:
-            pass
+        # try:
+        #     with open(f'market_data_{date}_{symbol}.json', 'r') as f:
+        #         saved_data = json.load(f)
+        #         logger.info(f"Loaded saved data for {symbol} on {date}")
+        #         return {
+        #             'success': True,
+        #             'symbol': symbol,
+        #             'date': date,
+        #             'data': saved_data
+        #         }
+        # except FileNotFoundError:
+        #     pass
         
         hist_data = fetch_historical_intraday_data(symbol, date)
         
-        if hist_data:
-            try:
-                with open(f'market_data_{date}_{symbol}.json', 'w') as f:
-                    json.dump(hist_data, f)
-                logger.info(f"Saved historical data for {symbol} on {date}")
-            except Exception as e:
-                logger.error(f"Error saving historical data: {e}")
+        # if hist_data:
+        #     try:
+        #         with open(f'market_data_{date}_{symbol}.json', 'w') as f:
+        #             json.dump(hist_data, f)
+        #         logger.info(f"Saved historical data for {symbol} on {date}")
+        #     except Exception as e:
+        #         logger.error(f"Error saving historical data: {e}")
         
         return {
             'success': True,
@@ -645,107 +645,111 @@ def heartbeat_task():
             logger.error(f"Error in heartbeat: {e}")
 
 def save_daily_data():
-    today = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
+    pass
+    # today = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
     
-    for symbol in historical_data:
-        data_to_save = list(historical_data[symbol])
+    # for symbol in historical_data:
+    #     data_to_save = list(historical_data[symbol])
         
-        try:
-            with open(f'market_data_{today}_{symbol}.json', 'w') as f:
-                json.dump(data_to_save, f)
-            logger.info(f"Saved market data for {symbol} on {today}")
-        except Exception as e:
-            logger.error(f"Error saving market data for {symbol}: {e}")
+    #     try:
+    #         with open(f'market_data_{today}_{symbol}.json', 'w') as f:
+    #             json.dump(data_to_save, f)
+    #         logger.info(f"Saved market data for {symbol} on {today}")
+    #     except Exception as e:
+    #         logger.error(f"Error saving market data for {symbol}: {e}")
     
-    for symbol in ohlc_data:
-        ohlc_to_save = list(ohlc_data[symbol])
+    # for symbol in ohlc_data:
+    #     ohlc_to_save = list(ohlc_data[symbol])
         
-        try:
-            with open(f'ohlc_data_{today}_{symbol}.json', 'w') as f:
-                json.dump(ohlc_to_save, f)
-            logger.info(f"Saved OHLC data for {symbol} on {today}")
-        except Exception as e:
-            logger.error(f"Error saving OHLC data for {symbol}: {e}")
+    #     try:
+    #         with open(f'ohlc_data_{today}_{symbol}.json', 'w') as f:
+    #             json.dump(ohlc_to_save, f)
+    #         logger.info(f"Saved OHLC data for {symbol} on {today}")
+    #     except Exception as e:
+    #         logger.error(f"Error saving OHLC data for {symbol}: {e}")
 
 def load_daily_data():
-    today = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
+    pass
+    # today = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
     
-    for file in os.listdir('.'):
-        if file.startswith('market_data_' + today) and file.endswith('.json'):
-            symbol = file.replace('market_data_' + today + '_', '').replace('.json', '')
+    # for file in os.listdir('.'):
+    #     if file.startswith('market_data_' + today) and file.endswith('.json'):
+    #         symbol = file.replace('market_data_' + today + '_', '').replace('.json', '')
             
-            try:
-                with open(file, 'r') as f:
-                    data_points = json.load(f)
+    #         try:
+    #             with open(file, 'r') as f:
+    #                 data_points = json.load(f)
                     
-                    if symbol not in historical_data:
-                        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+    #                 if symbol not in historical_data:
+    #                     historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
                     
-                    for point in data_points:
-                        historical_data[symbol].append(point)
+    #                 for point in data_points:
+    #                     historical_data[symbol].append(point)
                     
-                    logger.info(f"Loaded {len(data_points)} historical data points for {symbol}")
-            except Exception as e:
-                logger.error(f"Error loading market data for {symbol}: {e}")
+    #                 logger.info(f"Loaded {len(data_points)} historical data points for {symbol}")
+    #         except Exception as e:
+    #             logger.error(f"Error loading market data for {symbol}: {e}")
     
-    for file in os.listdir('.'):
-        if file.startswith('ohlc_data_' + today) and file.endswith('.json'):
-            symbol = file.replace('ohlc_data_' + today + '_', '').replace('.json', '')
+    # for file in os.listdir('.'):
+    #     if file.startswith('ohlc_data_' + today) and file.endswith('.json'):
+    #         symbol = file.replace('ohlc_data_' + today + '_', '').replace('.json', '')
             
-            try:
-                with open(file, 'r') as f:
-                    candles = json.load(f)
+    #         try:
+    #             with open(file, 'r') as f:
+    #                 candles = json.load(f)
                     
-                    if symbol not in ohlc_data:
-                        ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+    #                 if symbol not in ohlc_data:
+    #                     ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
                     
-                    for candle in candles:
-                        ohlc_data[symbol].append(candle)
+    #                 for candle in candles:
+    #                     ohlc_data[symbol].append(candle)
                     
-                    logger.info(f"Loaded {len(candles)} OHLC candles for {symbol}")
-            except Exception as e:
-                logger.error(f"Error loading OHLC data for {symbol}: {e}")
+    #                 logger.info(f"Loaded {len(candles)} OHLC candles for {symbol}")
+    #         except Exception as e:
+    #             logger.error(f"Error loading OHLC data for {symbol}: {e}")
 
 def data_persistence_task():
-    global running
-    while running:
-        try:
-            save_daily_data()
-            time.sleep(300)
-        except Exception as e:
-            logger.error(f"Error in data persistence task: {e}")
+    pass
+    # global running
+    # while running:
+    #     try:
+    #         save_daily_data()
+    #         time.sleep(300)
+    #     except Exception as e:
+    #         logger.error(f"Error in data persistence task: {e}")
 
 def cleanup_old_data_files():
-    try:
-        today = datetime.datetime.now(INDIA_TZ)
-        for file in os.listdir('.'):
-            if (file.startswith('market_data_') or file.startswith('ohlc_data_')) and file.endswith('.json'):
-                try:
-                    date_str = file.split('_')[2]
-                    file_date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
-                    if (today - file_date).days > 30:
-                        os.remove(file)
-                        logger.info(f"Removed old data file: {file}")
-                except (ValueError, IndexError):
-                    continue
-    except Exception as e:
-        logger.error(f"Error cleaning up old data files: {e}")
+    pass
+    # try:
+    #     today = datetime.datetime.now(INDIA_TZ)
+    #     for file in os.listdir('.'):
+    #         if (file.startswith('market_data_') or file.startswith('ohlc_data_')) and file.endswith('.json'):
+    #             try:
+    #                 date_str = file.split('_')[2]
+    #                 file_date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
+    #                 if (today - file_date).days > 30:
+    #                     os.remove(file)
+    #                     logger.info(f"Removed old data file: {file}")
+    #             except (ValueError, IndexError):
+    #                 continue
+    # except Exception as e:
+    #     logger.error(f"Error cleaning up old data files: {e}")
 
 def main_process():
     global fyers, fyers_client, running
     
     try:
-        # Create data directory
+        
         os.makedirs('data', exist_ok=True)
         
-        # Load existing data
+        
         load_daily_data()
         cleanup_old_data_files()
         
-        # Initialize auto authentication
+        
         if initialize_fyers():
             logger.info("✅ Initial authentication successful")
-            # Start WebSocket
+            
             if fyers:
                 ws_thread = threading.Thread(target=lambda: fyers.connect(), daemon=True)
                 ws_thread.start()
@@ -753,26 +757,28 @@ def main_process():
         else:
             logger.info("⚠️ Initial authentication failed, will retry when auth file updates")
         
-        # Start auth watcher
+        
         auth_thread = threading.Thread(target=auth_watcher, daemon=True)
         auth_thread.start()
         
-        # Start heartbeat
+        
         heartbeat_thread = threading.Thread(target=heartbeat_task, daemon=True)
         heartbeat_thread.start()
         
-        # Start data persistence
-        persistence_thread = threading.Thread(target=data_persistence_task, daemon=True)
-        persistence_thread.start()
+        
+        # persistence_thread = threading.Thread(target=data_persistence_task, daemon=True)
+        # persistence_thread.start()
         
         def schedule_end_of_day_save():
-            now = datetime.datetime.now(INDIA_TZ)
-            market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+            pass
             
-            if now < market_close:
-                delay = (market_close - now).total_seconds()
-                threading.Timer(delay, save_daily_data).start()
-                logger.info(f"Scheduled end-of-day data save for {market_close.strftime('%H:%M:%S')}")
+            # now = datetime.datetime.now(INDIA_TZ)
+            # market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+            
+            # if now < market_close:
+            #     delay = (market_close - now).total_seconds()
+            #     threading.Timer(delay, save_daily_data).start()
+            #     logger.info(f"Scheduled end-of-day data save for {market_close.strftime('%H:%M:%S')}")
         
         schedule_end_of_day_save()
         
@@ -796,7 +802,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("Shutting down...")
         running = False
-        save_daily_data()
+        # save_daily_data()
 
 if __name__ == "__main__":
     try:
@@ -804,4 +810,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Shutting down...")
         running = False
-        save_daily_data()
+        # save_daily_data()
