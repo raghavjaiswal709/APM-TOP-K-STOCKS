@@ -22,8 +22,6 @@ import { DateSelector } from "../components/controllers/DateSelector";
 import { RecordedCompanySelector } from "../components/controllers/RecordedCompanySelector";
 import { useRecordedData } from "@/hooks/useRecordedData";
 import { ViewInDashboardButton } from "../components/ViewInDashboardButton";
-
-
 const PlotlyChart = dynamic(() => import('./components/PlotlyChart'), { 
   ssr: false,
   loading: () => (
@@ -32,7 +30,6 @@ const PlotlyChart = dynamic(() => import('./components/PlotlyChart'), {
     </div>
   )
 });
-
 interface MarketData {
   symbol: string;
   ltp: number;
@@ -50,7 +47,6 @@ interface MarketData {
   ema_9?: number;
   rsi_14?: number;
 }
-
 interface OHLCData {
   timestamp: number;
   open: number;
@@ -59,17 +55,14 @@ interface OHLCData {
   close: number;
   volume: number;
 }
-
 interface TradingHours {
   start: string;
   end: string;
   current: string;
   isActive: boolean;
 }
-
 const RecommendationsPage: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
-  
   const {
     availableDates,
     availableCompanies,
@@ -82,22 +75,18 @@ const RecommendationsPage: React.FC = () => {
     setSelectedCompany,
     loadCompanyData
   } = useRecordedData();
-
   const [currentData, setCurrentData] = useState<MarketData | null>(null);
   const [historicalData, setHistoricalData] = useState<MarketData[]>([]);
   const [ohlcData, setOhlcData] = useState<OHLCData[]>([]);
-
   const [tradingHours] = useState<TradingHours>({
     start: selectedDate ? `${selectedDate}T09:15:00.000Z` : new Date().toISOString(),
     end: selectedDate ? `${selectedDate}T15:30:00.000Z` : new Date().toISOString(),
     current: new Date().toISOString(),
     isActive: false 
   });
-
   useEffect(() => {
     setIsClient(true);
   }, []);
-
   const handleCompanySelect = useCallback(async (symbol: string | null) => {
     setSelectedCompany(symbol);
     if (symbol) {
@@ -108,23 +97,17 @@ const RecommendationsPage: React.FC = () => {
       setOhlcData([]);
     }
   }, [setSelectedCompany, loadCompanyData]);
-
-
 useEffect(() => {
   if (recordedData.length > 0) {
     console.log('🔍 Processing recorded data:', recordedData.length, 'points');
-    
     const latest = recordedData[recordedData.length - 1];
     setCurrentData(latest);
-    
     setHistoricalData(recordedData);
-    
     const ohlc: OHLCData[] = recordedData.map((point, index) => {
       const open = point.open || point.ltp;
       const close = point.close || point.ltp;
       let high = point.high || 0;
       let low = point.low || 0;
-      
       if (high <= 0 || low <= 0 || high < low) {
         const prices = [open, close, point.ltp].filter(p => p > 0);
         if (prices.length > 0) {
@@ -132,10 +115,8 @@ useEffect(() => {
           low = low <= 0 ? Math.min(...prices) : low;
         }
       }
-      
       const finalHigh = Math.max(high, open, close, point.ltp);
       const finalLow = Math.min(low, open, close, point.ltp);
-      
       const ohlcPoint = {
         timestamp: point.timestamp,
         open: open,
@@ -144,10 +125,8 @@ useEffect(() => {
         close: close,
         volume: point.volume || 0
       };
-      
       return ohlcPoint;
     });
-    
     console.log('✅ OHLC Data created:', ohlc.length, 'points');
     console.log('📊 Sample OHLC:', ohlc[0]);
     setOhlcData(ohlc);
@@ -157,18 +136,14 @@ useEffect(() => {
     setOhlcData([]);
   }
 }, [recordedData]);
-
-
   const formatPrice = (price?: number) => {
     return price?.toFixed(2) || '0.00';
   };
-
   const formatChange = (change?: number, percent?: number) => {
     if ((!change && change !== 0) || (!percent && percent !== 0)) return '-';
     const sign = change >= 0 ? '+' : '';
     return `${sign}${change.toFixed(2)} (${sign}${percent.toFixed(2)}%)`;
   };
-
   const getChangeClass = (change?: number) => {
     if (!change && change !== 0) return '';
     return change >= 0 ? 'text-green-500' : 'text-red-500';
@@ -178,7 +153,6 @@ useEffect(() => {
   const sum = data.reduce((acc, item) => acc + item.ltp, 0);
   return sum / data.length;
 };
-
   if (!isClient) {
     return (
       <SidebarProvider>
@@ -213,7 +187,6 @@ useEffect(() => {
       </SidebarProvider>
     );
   }
-
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -238,7 +211,6 @@ useEffect(() => {
             </Breadcrumb>
           </div>
         </header>
-        
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
           <DateSelector
             availableDates={availableDates}
@@ -246,7 +218,6 @@ useEffect(() => {
             onDateSelect={setSelectedDate}
             loading={loading}
           />
-
           {selectedDate && (
             <RecordedCompanySelector
               availableCompanies={availableCompanies}
@@ -255,8 +226,7 @@ useEffect(() => {
               loading={loading}
             />
           )}
-
-          {/* Error Display */}
+          {}
           {error && (
             <Card className="w-full border-red-200 bg-red-50">
               <CardContent className="p-4">
@@ -266,8 +236,7 @@ useEffect(() => {
               </CardContent>
             </Card>
           )}
-
-          {/* Market Data Display */}
+          {}
           <div className="min-h-screen bg-zinc-900 text-zinc-100 rounded-lg">
             <div className="container mx-auto p-4">
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
@@ -282,7 +251,6 @@ useEffect(() => {
   ohlcData={ohlcData}
   tradingHours={tradingHours}
 />
-
                     ) : (
                       <div className="h-full flex items-center justify-center">
                         <p className="text-zinc-400">
@@ -296,8 +264,7 @@ useEffect(() => {
                     )}
                   </div>
                 </div>
-                
-                {/* Market Data Panel */}
+                {}
                 <div className="bg-zinc-800 p-4 rounded-lg shadow-lg">
                   {currentData ? (
                     <>
@@ -309,12 +276,10 @@ useEffect(() => {
                        <div className="text-lg text-blue-400">
       Avg: ₹{formatPrice(calculateAverage(historicalData))}
     </div>
-    
-    {/* Add data points count for reference */}
+    {}
     <div className="text-sm text-zinc-400 mt-1">
       Based on {historicalData.length} data points
     </div>
-                      
                       <div className="grid grid-cols-2 gap-4 mt-6">
                         <div className="bg-zinc-700 p-3 rounded">
                           <div className="text-xs text-zinc-400">Open</div>
@@ -333,7 +298,6 @@ useEffect(() => {
                           <div className="text-lg">₹{formatPrice(currentData.low)}</div>
                         </div>
                       </div>
-                      
                       <div className="mt-6 border-t border-zinc-700 pt-4">
                         <div className="grid grid-cols-2 gap-y-2">
                           <div>
@@ -354,8 +318,7 @@ useEffect(() => {
                           </div>
                         </div>
                       </div>
-                      
-                      {/* Technical Indicators */}
+                      {}
                       {(currentData.sma_20 || currentData.ema_9 || currentData.rsi_14) && (
                         <div className="mt-6 border-t border-zinc-700 pt-4">
                           <h3 className="text-sm font-medium mb-2 text-zinc-300">Technical Indicators</h3>
@@ -381,8 +344,7 @@ useEffect(() => {
                           </div>
                         </div>
                       )}
-                      
-                      {/* Recording Info */}
+                      {}
                       <div className="mt-6 border-t border-zinc-700 pt-4">
                         <h3 className="text-sm font-medium mb-2 text-zinc-300">Recording Info</h3>
                         <div className="text-xs text-zinc-400 space-y-1">
@@ -409,8 +371,7 @@ useEffect(() => {
         </div>
       </div>
     </div>
-
-    {/* View in Dashboard Button */}
+    {}
     <div className="mt-4 border-t border-zinc-700 pt-4">
       <div className="flex items-center justify-between">
         <div className="text-sm text-zinc-400">
@@ -428,7 +389,6 @@ useEffect(() => {
     </div>
   </>
 )}
-
                     </>
                   ) : (
                     <div className="text-center py-8">
@@ -443,8 +403,7 @@ useEffect(() => {
                   )}
                 </div>
               </div>
-              
-              {/* Debug section */}
+              {}
               {currentData && (
                 <div className="mt-8 p-4 bg-zinc-800 rounded-lg shadow-lg">
                   <div className="flex justify-between items-center mb-2">
@@ -458,8 +417,6 @@ useEffect(() => {
                   </pre>
                 </div>
               )}
-
-              
             </div>
           </div>
         </div>
@@ -467,5 +424,5 @@ useEffect(() => {
     </SidebarProvider>
   );
 };
-
 export default RecommendationsPage;
+

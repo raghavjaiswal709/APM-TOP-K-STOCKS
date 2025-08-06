@@ -11,7 +11,6 @@ import { CalendarForm } from "./controllers/CalendarForm";
 import { WatchlistSelector } from "./controllers/WatchlistSelector";
 import { ImageCarousel } from "./ImageCarousel";
 import { BarChart3 } from "lucide-react";
-
 interface CardWithFormProps {
   onCompanyChange: (companyCode: string | null, exchange?: string) => void;
   onDateRangeChange: (startDate: Date | undefined, endDate: Date | undefined) => void;
@@ -22,7 +21,6 @@ interface CardWithFormProps {
   onWatchlistChange?: (watchlist: string) => void;
   loading?: boolean;
 }
-
 export function CardWithForm({
   onCompanyChange,
   onDateRangeChange,
@@ -33,68 +31,54 @@ export function CardWithForm({
   onWatchlistChange,
   loading = false,
 }: CardWithFormProps) {
-  
-  // State for selected company and carousel
   const [selectedCompany, setSelectedCompany] = React.useState<{
     companyCode: string;
     exchange: string;
   } | null>(null);
   const [isCarouselOpen, setIsCarouselOpen] = React.useState(false);
-
   const handleDateRangeChange = React.useCallback((startDate: Date | undefined, endDate: Date | undefined) => {
     console.log('CardWithForm received date range change:', startDate, endDate);
     onDateRangeChange(startDate, endDate);
   }, [onDateRangeChange]);
-
   const handleCompanySelect = React.useCallback((companyCode: string | null, exchange?: string) => {
     console.log('CardWithForm received company change:', companyCode, 'on exchange:', exchange);
-    
-    // Update selected company state
     if (companyCode && exchange) {
       setSelectedCompany({ companyCode, exchange });
     } else {
       setSelectedCompany(null);
     }
-    
     onCompanyChange(companyCode, exchange);
   }, [onCompanyChange]);
-
   const handleFetchData = React.useCallback(() => {
     console.log('CardWithForm received fetch data request');
     onFetchData();
   }, [onFetchData]);
-
   const handleIntervalChange = React.useCallback((interval: string) => {
     console.log('CardWithForm received interval change:', interval);
     onIntervalChange(interval);
   }, [onIntervalChange]);
-
   const handleIndicatorsChange = React.useCallback((indicators: string[]) => {
     console.log('CardWithForm received indicators change:', indicators);
     onIndicatorsChange(indicators);
   }, [onIndicatorsChange]);
-
   const handleWatchlistChange = React.useCallback((watchlist: string) => {
     console.log('CardWithForm received watchlist change:', watchlist);
-    // Reset selected company when watchlist changes
     setSelectedCompany(null);
     if (onWatchlistChange) {
       onWatchlistChange(watchlist);
     }
   }, [onWatchlistChange]);
-
   const handleOpenCarousel = React.useCallback(() => {
     if (selectedCompany) {
       setIsCarouselOpen(true);
     }
   }, [selectedCompany]);
-
   return (
     <>
       <Card className="border-none w-full">
         <CardContent className="p-4 w-full">
           <div className="space-y-2">
-            {/* Company and Watchlist Selection */}
+            {}
             <div className="flex justify-between gap-4">
               <div className="p-3 border border-opacity-30 rounded-md flex-1 gap-4 h-24 flex items-center">
                 <WatchlistSelector 
@@ -102,7 +86,7 @@ export function CardWithForm({
                   selectedWatchlist={selectedWatchlist}
                   onWatchlistChange={handleWatchlistChange} 
                 />
-                 {/* Graph Analysis Button */}
+                 {}
               <div className=" flex items-center justify-center min-w-[120px]">
                 <Button
                   onClick={handleOpenCarousel}
@@ -110,19 +94,16 @@ export function CardWithForm({
                   variant="outline"
                   className="flex items-center gap-2 h-20"
                 >
-                  {/* <BarChart3 className="h-4 w-4" /> */}
+                  {}
                   <span className="text-sm">View Graphs</span>
                 </Button>
               </div>
               </div>
-
-             
             </div>
           </div>
         </CardContent>
       </Card>
-
-      {/* Image Carousel */}
+      {}
       {selectedCompany && (
         <ImageCarousel
           isOpen={isCarouselOpen}
@@ -134,5 +115,5 @@ export function CardWithForm({
     </>
   );
 }
-
 export default CardWithForm;
+

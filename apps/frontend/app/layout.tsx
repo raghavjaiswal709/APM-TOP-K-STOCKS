@@ -2,22 +2,18 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./components/theme-provider";
-
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
-
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
-
 export const metadata: Metadata = {
  title: "DAKSPHERE Dashboard",
   description: "Dashboard for your stock goals",
 };
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -40,3 +36,4 @@ export default function RootLayout({
     </html>
   );
 }
+

@@ -9,26 +9,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
 interface SelectIndicatorsProps {
   onIndicatorsChange?: (indicators: string[]) => void;
 }
-
 export function SelectIndicators({ onIndicatorsChange }: SelectIndicatorsProps) {
   const [selectedIndicators, setSelectedIndicators] = React.useState<string[]>([]);
-
   const handleValueChange = (value: string) => {
     const newIndicators = selectedIndicators.includes(value)
       ? selectedIndicators.filter(i => i !== value)
       : [...selectedIndicators, value];
-    
     setSelectedIndicators(newIndicators);
-    
     if (onIndicatorsChange) {
       onIndicatorsChange(newIndicators);
     }
   };
-
   return (
     <Select onValueChange={handleValueChange}>
       <SelectTrigger>
@@ -57,3 +51,4 @@ export function SelectIndicators({ onIndicatorsChange }: SelectIndicatorsProps) 
     </Select>
   );
 }
+

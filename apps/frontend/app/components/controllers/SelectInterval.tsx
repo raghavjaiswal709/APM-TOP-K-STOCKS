@@ -9,18 +9,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
 interface SelectIntervalProps {
   onIntervalChange?: (interval: string) => void;
 }
-
 export function SelectInterval({ onIntervalChange }: SelectIntervalProps) {
   const handleValueChange = (value: string) => {
     if (onIntervalChange) {
       onIntervalChange(value);
     }
   };
-
   return (
     <Select defaultValue="10m" onValueChange={handleValueChange}>
       <SelectTrigger>
@@ -46,3 +43,4 @@ export function SelectInterval({ onIntervalChange }: SelectIntervalProps) {
     </Select>
   );
 }
+

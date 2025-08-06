@@ -7,15 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Building2, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-
 interface Company {
   company_code: string;
   name: string;
   exchange: string;
   marker: string;
 }
-
 interface MultiSelectWatchlistSelectorProps {
   onCompaniesSelect?: (companies: Company[]) => void;
   selectedWatchlist?: string;
@@ -25,7 +22,6 @@ interface MultiSelectWatchlistSelectorProps {
   showExchangeFilter?: boolean;
   showMarkerFilter?: boolean;
 }
-
 export const MultiSelectWatchlistSelector = React.memo(({ 
   onCompaniesSelect,
   selectedWatchlist: externalSelectedWatchlist,
@@ -35,11 +31,9 @@ export const MultiSelectWatchlistSelector = React.memo(({
   showExchangeFilter = true,
   showMarkerFilter = true
 }: MultiSelectWatchlistSelectorProps) => {
-  
   const [currentWatchlist, setCurrentWatchlist] = React.useState(() => 
     externalSelectedWatchlist || 'A'
   );
-  
   const {
     companies,
     loading,
@@ -50,63 +44,47 @@ export const MultiSelectWatchlistSelector = React.memo(({
     totalCompanies,
     getFilteredCompanies
   } = useWatchlist({ externalWatchlist: currentWatchlist });
-  
   const [selectedExchange, setSelectedExchange] = React.useState<string>('');
   const [selectedMarker, setSelectedMarker] = React.useState<string>('');
-  
   const handleWatchlistChange = React.useCallback((value: string) => {
     console.log(`[MultiSelectWatchlistSelector] Watchlist changed to: ${value}`);
-    
     if (value === currentWatchlist) return;
-    
     setSelectedExchange('');
     setSelectedMarker('');
     setCurrentWatchlist(value);
-    
-    // Clear selections when watchlist changes
     if (onCompaniesSelect) {
       onCompaniesSelect([]);
     }
-    
     if (onWatchlistChange) {
       onWatchlistChange(value);
     }
   }, [currentWatchlist, onWatchlistChange, onCompaniesSelect]);
-
   const handleCompaniesSelect = React.useCallback((newSelectedCompanies: Company[]) => {
     console.log(`[MultiSelectWatchlistSelector] Selected companies:`, newSelectedCompanies);
-    
     if (onCompaniesSelect) {
       onCompaniesSelect(newSelectedCompanies);
     }
   }, [onCompaniesSelect]);
-
   const handleRemoveCompany = React.useCallback((companyToRemove: Company) => {
     const newSelection = selectedCompanies.filter(c => c.company_code !== companyToRemove.company_code);
     handleCompaniesSelect(newSelection);
   }, [selectedCompanies, handleCompaniesSelect]);
-
   const handleClearAll = React.useCallback(() => {
     handleCompaniesSelect([]);
   }, [handleCompaniesSelect]);
-
   const filteredCompanies = React.useMemo(() => {
     const filters: any = {};
     if (selectedExchange) filters.exchange = selectedExchange;
     if (selectedMarker) filters.marker = selectedMarker;
-    
     return getFilteredCompanies(filters);
   }, [companies, selectedExchange, selectedMarker, getFilteredCompanies]);
-
   const handleExchangeChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedExchange(e.target.value);
     setSelectedMarker('');
   }, []);
-
   const handleMarkerChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedMarker(e.target.value);
   }, []);
-
   return (
     <Card className=" flex gap-4 px-4 py-4 ">
       {/* Watchlist Selection */}
@@ -149,7 +127,6 @@ export const MultiSelectWatchlistSelector = React.memo(({
                 </select>
               </div>
             )}
-
             {showMarkerFilter && availableMarkers.length > 0 && (
               <div className="flex flex-col">
                 <select
@@ -166,7 +143,6 @@ export const MultiSelectWatchlistSelector = React.memo(({
                 </select>
               </div>
             )}
-
             {filteredCompanies.length !== companies.length && (
               <div className="text-xs text-muted-foreground">
                 {`${filteredCompanies.length} of ${companies.length} shown`}
@@ -236,5 +212,5 @@ export const MultiSelectWatchlistSelector = React.memo(({
     </Card>
   );
 });
-
 MultiSelectWatchlistSelector.displayName = 'MultiSelectWatchlistSelector';
+

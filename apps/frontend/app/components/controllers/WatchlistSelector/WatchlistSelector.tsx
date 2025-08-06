@@ -3,7 +3,6 @@ import * as React from "react";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { RadioGroupDemo } from "./RadioGroup";
 import { SelectScrollable } from "./SelectScrollable";
-
 interface WatchlistSelectorProps {
   onCompanySelect?: (companyCode: string | null, exchange?: string, marker?: string) => void;
   selectedWatchlist?: string;
@@ -11,7 +10,6 @@ interface WatchlistSelectorProps {
   showExchangeFilter?: boolean;
   showMarkerFilter?: boolean;
 }
-
 export const WatchlistSelector = React.memo(({ 
   onCompanySelect,
   selectedWatchlist: externalSelectedWatchlist,
@@ -19,13 +17,10 @@ export const WatchlistSelector = React.memo(({
   showExchangeFilter = true,
   showMarkerFilter = true
 }: WatchlistSelectorProps) => {
-  
   const [currentWatchlist, setCurrentWatchlist] = React.useState(() => 
     externalSelectedWatchlist || 'A'
   );
-  
   const prevExternalWatchlist = React.useRef(externalSelectedWatchlist);
-  
   React.useEffect(() => {
     if (externalSelectedWatchlist && 
         externalSelectedWatchlist !== prevExternalWatchlist.current && 
@@ -35,7 +30,6 @@ export const WatchlistSelector = React.memo(({
       setCurrentWatchlist(externalSelectedWatchlist);
     }
   }, [externalSelectedWatchlist, currentWatchlist]);
-
   const {
     selectedWatchlist,
     setSelectedWatchlist,
@@ -48,27 +42,20 @@ export const WatchlistSelector = React.memo(({
     totalCompanies,
     getFilteredCompanies
   } = useWatchlist({ externalWatchlist: currentWatchlist });
-  
   const [selectedExchange, setSelectedExchange] = React.useState<string>('');
   const [selectedMarker, setSelectedMarker] = React.useState<string>('');
-  
   const handleWatchlistChange = React.useCallback((value: string) => {
     console.log(`[WatchlistSelector] Watchlist changed to: ${value}`);
-    
     if (value === currentWatchlist) {
       return;
     }
-    
     setSelectedExchange('');
     setSelectedMarker('');
-    
     setCurrentWatchlist(value);
-    
     if (onWatchlistChange) {
       onWatchlistChange(value);
     }
   }, [currentWatchlist, onWatchlistChange]);
-
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
     if (!companyCode) {
       if (onCompanySelect) {
@@ -76,40 +63,31 @@ export const WatchlistSelector = React.memo(({
       }
       return;
     }
-
     const selectedCompany = companies.find(c => c.company_code === companyCode);
-    
     console.log(`[WatchlistSelector] Selected company: ${companyCode}`, selectedCompany);
-    
     if (onCompanySelect && selectedCompany) {
       onCompanySelect(companyCode, selectedCompany.exchange, selectedCompany.marker);
     }
   }, [companies, onCompanySelect]);
-
   const filteredCompanies = React.useMemo(() => {
     const filters: any = {};
     if (selectedExchange) filters.exchange = selectedExchange;
     if (selectedMarker) filters.marker = selectedMarker;
-    
     const filtered = getFilteredCompanies(filters);
     console.log(`[WatchlistSelector] Filtered companies: ${filtered.length} out of ${companies.length}`);
     return filtered;
   }, [companies, selectedExchange, selectedMarker, getFilteredCompanies]);
-
   const handleExchangeChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedExchange(e.target.value);
     setSelectedMarker('');
   }, []);
-
   const handleMarkerChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedMarker(e.target.value);
   }, []);
-
   console.log(`[WatchlistSelector] Render - currentWatchlist: ${currentWatchlist}, selectedWatchlist: ${selectedWatchlist}, companies: ${companies.length}, loading: ${loading}`);
-
   return (
     <div className="flex gap-4">
-      {/* Watchlist Selection */}
+      {}
       <div className="flex gap-5 items-center">
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium">Watchlist</label>
@@ -130,8 +108,6 @@ export const WatchlistSelector = React.memo(({
     </div>
   )} */}
 </div>
-
-         
         </div>
         </div>
         
@@ -208,5 +184,5 @@ export const WatchlistSelector = React.memo(({
     </div>
   );
 });
-
 WatchlistSelector.displayName = 'WatchlistSelector';
+

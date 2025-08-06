@@ -1,5 +1,4 @@
 "use client"
-
 import * as React from "react"
 import {
   BookOpen,
@@ -18,7 +17,6 @@ import {
   Star,
   Newspaper,
 } from "lucide-react"
-
 import { NavMain } from "../components/nav-main"
 import { NavProjects } from "..//components/nav-projects"
 import { NavSecondary } from "..//components/nav-secondary"
@@ -32,7 +30,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-
 const data = {
   user: {
     name: "Raghav",
@@ -67,54 +64,16 @@ const data = {
       title: "LIve Market",
       url: "/market-data",
       icon: SquareTerminal,
-      // items: [
-      //   {
-      //     title: "Undervalued Growth",
-      //     url: "#",
-      //   },
-      //   {
-      //     title: "Buy the Dip",
-      //     url: "#",
-      //   },
-      //   {
-      //     title: "High Dividend Yield",
-      //     url: "#",
-      //   },
-      //   {
-      //     title: "Analyst Picks",
-      //     url: "#",
-      //   },
-      // ],
     },
     {
       title: "Multiple Live Chart",
       url: "/live-market",
       icon: SquareTerminal,
-      // items: [
-      //   {
-      //     title: "Undervalued Growth",
-      //     url: "#",
-      //   },
-      //   {
-      //     title: "Buy the Dip",
-      //     url: "#",
-      //   },
-      //   {
-      //     title: "High Dividend Yield",
-      //     url: "#",
-      //   },
-      //   {
-      //     title: "Analyst Picks",
-      //     url: "#",
-      //   },
-      // ],
     },
     {
       title: "Recommendation List",
       url: "/recommendations",
       icon: Star,
-      // icon: SquareTerminal,
-      
     },
     {
       title: "Watchlist",
@@ -212,7 +171,6 @@ const data = {
   projects: [
   ],
 }
-
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar variant="inset" {...props}>
@@ -241,3 +199,4 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     </Sidebar>
   )
 }
+

@@ -1,23 +1,19 @@
 'use client';
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, XCircle, Clock, RefreshCw, ExternalLink } from 'lucide-react';
-
 interface AuthStatus {
   authenticated: boolean;
   token_valid: boolean;
   expires_at: string | null;
   services_notified: string[];
 }
-
 export const FyersAuthStatus: React.FC = () => {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const fetchAuthStatus = async () => {
     try {
       setLoading(true);
@@ -32,13 +28,11 @@ export const FyersAuthStatus: React.FC = () => {
       setLoading(false);
     }
   };
-
   const startAuthFlow = async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/auth/fyers/start', { method: 'POST' });
       const data = await response.json();
-      
       if (data.auth_url) {
         window.open(data.auth_url, '_blank');
       }
@@ -48,16 +42,13 @@ export const FyersAuthStatus: React.FC = () => {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchAuthStatus();
-    const interval = setInterval(fetchAuthStatus, 10000); // Refresh every 10 seconds
+    const interval = setInterval(fetchAuthStatus, 10000);
     return () => clearInterval(interval);
   }, []);
-
   const getStatusBadge = () => {
     if (!authStatus) return null;
-    
     if (authStatus.authenticated && authStatus.token_valid) {
       return <Badge variant="default" className="bg-green-500"><CheckCircle className="w-3 h-3 mr-1" />Active</Badge>;
     } else if (authStatus.authenticated) {
@@ -66,19 +57,15 @@ export const FyersAuthStatus: React.FC = () => {
       return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Inactive</Badge>;
     }
   };
-
   const getExpiryText = () => {
     if (!authStatus?.expires_at) return 'N/A';
-    
     const expiryDate = new Date(authStatus.expires_at);
     const now = new Date();
     const diffHours = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60));
-    
     if (diffHours <= 0) return 'Expired';
     if (diffHours === 1) return '1 hour remaining';
     return `${diffHours} hours remaining`;
   };
-
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -102,7 +89,6 @@ export const FyersAuthStatus: React.FC = () => {
             {error}
           </div>
         )}
-        
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Status:</span>
@@ -110,19 +96,16 @@ export const FyersAuthStatus: React.FC = () => {
               {authStatus?.authenticated ? 'Authenticated' : 'Not Authenticated'}
             </span>
           </div>
-          
           <div className="flex justify-between">
             <span className="text-muted-foreground">Token Valid:</span>
             <span className="font-medium">
               {authStatus?.token_valid ? 'Yes' : 'No'}
             </span>
           </div>
-          
           <div className="flex justify-between">
             <span className="text-muted-foreground">Expires:</span>
             <span className="font-medium">{getExpiryText()}</span>
           </div>
-          
           {authStatus?.services_notified && authStatus.services_notified.length > 0 && (
             <div className="pt-2 border-t">
               <div className="text-muted-foreground text-xs mb-1">Services Notified:</div>
@@ -136,7 +119,6 @@ export const FyersAuthStatus: React.FC = () => {
             </div>
           )}
         </div>
-        
         <div className="flex gap-2 mt-4">
           <Button
             onClick={startAuthFlow}
@@ -156,3 +138,4 @@ export const FyersAuthStatus: React.FC = () => {
     </Card>
   );
 };
+

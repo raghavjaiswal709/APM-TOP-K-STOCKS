@@ -2,7 +2,6 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
 import { BarChart3, ExternalLink } from "lucide-react";
-
 interface ViewInDashboardButtonProps {
   companyCode: string;
   exchange: string;
@@ -13,7 +12,6 @@ interface ViewInDashboardButtonProps {
   className?: string;
   disabled?: boolean;
 }
-
 export const ViewInDashboardButton: React.FC<ViewInDashboardButtonProps> = ({
   companyCode,
   exchange,
@@ -29,7 +27,6 @@ export const ViewInDashboardButton: React.FC<ViewInDashboardButtonProps> = ({
       console.warn('Company code or exchange not provided');
       return;
     }
-
     // Build URL with query parameters
     const params = new URLSearchParams({
       company: companyCode,
@@ -38,13 +35,9 @@ export const ViewInDashboardButton: React.FC<ViewInDashboardButtonProps> = ({
       interval: interval,
       autoLoad: 'true'
     });
-
     const dashboardUrl = `/dashboard?${params.toString()}`;
-    
-    // Open in new tab
     window.open(dashboardUrl, '_blank');
   };
-
   const getButtonContent = () => {
     switch (variant) {
       case "card":
@@ -65,7 +58,6 @@ export const ViewInDashboardButton: React.FC<ViewInDashboardButtonProps> = ({
         );
     }
   };
-
   const getButtonSize = () => {
     switch (size) {
       case "sm":
@@ -76,7 +68,6 @@ export const ViewInDashboardButton: React.FC<ViewInDashboardButtonProps> = ({
         return "h-9 px-4 text-sm";
     }
   };
-
   return (
     <Button
       onClick={handleViewInDashboard}
@@ -89,5 +80,5 @@ export const ViewInDashboardButton: React.FC<ViewInDashboardButtonProps> = ({
     </Button>
   );
 };
-
 export default ViewInDashboardButton;
+

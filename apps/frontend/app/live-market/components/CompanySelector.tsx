@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
 import { Search, X, Check, Building2 } from 'lucide-react';
-
 interface Company {
   company_code: string;
   name: string;
@@ -14,7 +13,6 @@ interface Company {
   marker: string;
   symbol: string;
 }
-
 interface CompanySelectorProps {
   availableCompanies: Company[];
   selectedCompanies: string[];
@@ -22,7 +20,6 @@ interface CompanySelectorProps {
   maxSelection: number;
   loading?: boolean;
 }
-
 const CompanySelector: React.FC<CompanySelectorProps> = ({
   availableCompanies,
   selectedCompanies,
@@ -31,42 +28,34 @@ const CompanySelector: React.FC<CompanySelectorProps> = ({
   loading = false
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-
   const filteredCompanies = useMemo(() => {
     if (!searchTerm) return availableCompanies;
-    
     const term = searchTerm.toLowerCase();
     return availableCompanies.filter(company =>
       company.company_code.toLowerCase().includes(term) ||
       company.name.toLowerCase().includes(term)
     );
   }, [availableCompanies, searchTerm]);
-
   const handleCompanyToggle = (companyCode: string) => {
     const isSelected = selectedCompanies.includes(companyCode);
-    
     if (isSelected) {
       // Remove from selection
       const newSelection = selectedCompanies.filter(code => code !== companyCode);
       onSelectionChange(newSelection);
     } else {
-      // Add to selection if under limit
       if (selectedCompanies.length < maxSelection) {
         const newSelection = [...selectedCompanies, companyCode];
         onSelectionChange(newSelection);
       }
     }
   };
-
   const handleClearAll = () => {
     onSelectionChange([]);
   };
-
   const isSelectionFull = selectedCompanies.length >= maxSelection;
-
   return (
     <div className="space-y-4">
-      {/* Search */}
+      {}
       <div className="relative">
         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
         <Input
@@ -76,8 +65,7 @@ const CompanySelector: React.FC<CompanySelectorProps> = ({
           className="pl-8"
         />
       </div>
-
-      {/* Selected Companies Tags */}
+      {}
       {selectedCompanies.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -120,8 +108,7 @@ const CompanySelector: React.FC<CompanySelectorProps> = ({
           </div>
         </div>
       )}
-
-      {/* Available Companies Grid */}
+      {}
       <Card>
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-3">
@@ -130,7 +117,6 @@ const CompanySelector: React.FC<CompanySelectorProps> = ({
               {filteredCompanies.length} companies
             </span>
           </div>
-          
           <ScrollArea className="h-64 w-full">
             {loading ? (
               <div className="flex items-center justify-center h-32">
@@ -141,7 +127,6 @@ const CompanySelector: React.FC<CompanySelectorProps> = ({
                 {filteredCompanies.map((company) => {
                   const isSelected = selectedCompanies.includes(company.company_code);
                   const canSelect = !isSelected && !isSelectionFull;
-                  
                   return (
                     <Button
                       key={company.company_code}
@@ -179,7 +164,6 @@ const CompanySelector: React.FC<CompanySelectorProps> = ({
               </div>
             )}
           </ScrollArea>
-          
           {isSelectionFull && (
             <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
               Maximum {maxSelection} companies selected. Remove a company to select another.
@@ -190,5 +174,5 @@ const CompanySelector: React.FC<CompanySelectorProps> = ({
     </div>
   );
 };
-
 export default CompanySelector;
+

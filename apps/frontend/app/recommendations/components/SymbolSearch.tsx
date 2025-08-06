@@ -1,14 +1,10 @@
 'use client';
-
 import React, { useState } from 'react';
 import { Input } from '../../../components/ui/input';
 import { Button } from '../../../components/ui/button';
-
 interface SymbolSearchProps {
   onSymbolSelect: (symbol: string) => void;
 }
-
-// Common Indian stock symbols
 const commonSymbols = [
   { symbol: 'NSE:NIFTY50-INDEX', name: 'Nifty 50' },
   { symbol: 'NSE:BANKNIFTY-INDEX', name: 'Bank Nifty' },
@@ -21,12 +17,10 @@ const commonSymbols = [
   { symbol: 'NSE:ITC-EQ', name: 'ITC' },
   { symbol: 'NSE:SBIN-EQ', name: 'State Bank of India' },
 ];
-
 const SymbolSearch: React.FC<SymbolSearchProps> = ({ onSymbolSelect }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [customSymbol, setCustomSymbol] = useState('');
-
   const filteredSymbols = searchTerm
     ? commonSymbols.filter(
         (item) =>
@@ -34,13 +28,11 @@ const SymbolSearch: React.FC<SymbolSearchProps> = ({ onSymbolSelect }) => {
           item.name.toLowerCase().includes(searchTerm.toLowerCase())
       )
     : commonSymbols;
-
   const handleSymbolSelect = (symbol: string) => {
     onSymbolSelect(symbol);
     setSearchTerm('');
     setShowDropdown(false);
   };
-
   const handleCustomSymbolSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (customSymbol) {
@@ -48,7 +40,6 @@ const SymbolSearch: React.FC<SymbolSearchProps> = ({ onSymbolSelect }) => {
       setCustomSymbol('');
     }
   };
-
   return (
     <div className="relative">
       <div className="flex">
@@ -64,7 +55,6 @@ const SymbolSearch: React.FC<SymbolSearchProps> = ({ onSymbolSelect }) => {
           className="w-64"
         />
       </div>
-
       {showDropdown && (
         <div className="absolute z-10 mt-1 w-full bg-popover rounded-md shadow-lg">
           <ul className="py-1 max-h-60 overflow-auto">
@@ -84,7 +74,6 @@ const SymbolSearch: React.FC<SymbolSearchProps> = ({ onSymbolSelect }) => {
               </li>
             )}
           </ul>
-          
           <div className="border-t p-2">
             <form onSubmit={handleCustomSymbolSubmit} className="flex gap-2">
               <Input
@@ -102,5 +91,5 @@ const SymbolSearch: React.FC<SymbolSearchProps> = ({ onSymbolSelect }) => {
     </div>
   );
 };
-
 export default SymbolSearch;
+

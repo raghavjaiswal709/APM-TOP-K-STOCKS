@@ -1,5 +1,4 @@
 import React from 'react';
-
 interface MarketData {
   ltp: number;
   change: number;
@@ -11,14 +10,12 @@ interface MarketData {
   volume: number;
   timestamp: number;
 }
-
 interface MarketDataTableProps {
   data: Record<string, MarketData>;
   onSymbolSelect: (symbol: string) => void;
   onRemoveSymbol: (symbol: string) => void;
   selectedSymbol: string;
 }
-
 const MarketDataTable: React.FC<MarketDataTableProps> = ({
   data,
   onSymbolSelect,
@@ -79,7 +76,6 @@ const MarketDataTable: React.FC<MarketDataTableProps> = ({
               </td>
             </tr>
           ))}
-          
           {Object.keys(data).length === 0 && (
             <tr>
               <td colSpan={6} className="py-4 text-center text-muted-foreground">
@@ -92,5 +88,5 @@ const MarketDataTable: React.FC<MarketDataTableProps> = ({
     </div>
   );
 };
-
 export default MarketDataTable;
+

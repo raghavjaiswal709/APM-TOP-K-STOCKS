@@ -1,11 +1,9 @@
 "use client"
-
 import * as React from "react"
 import { Check, ChevronsUpDown, Building2, TrendingUp, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-
 interface MergedCompany {
   company_id?: number;
   company_code: string;
@@ -19,14 +17,12 @@ interface MergedCompany {
   pe_ratio?: number;
   N1_Pattern_count?: number;
 }
-
 interface SelectScrollableProps {
   companies: MergedCompany[];
   loading: boolean;
   exists: boolean;
   onCompanySelect: (companyCode: string | null) => void;
 }
-
 export function SelectScrollable({ 
   companies, 
   loading, 
@@ -37,7 +33,6 @@ export function SelectScrollable({
   const [value, setValue] = React.useState("")
   const [selectedCompany, setSelectedCompany] = React.useState<MergedCompany | null>(null)
   const [searchTerm, setSearchTerm] = React.useState("")
-
   React.useEffect(() => {
     console.log(`[SelectScrollable] Companies changed, resetting selection. New count: ${companies.length}`);
     setValue("")
@@ -46,7 +41,6 @@ export function SelectScrollable({
     setOpen(false)
     onCompanySelect(null)
   }, [companies, onCompanySelect]);
-
   React.useEffect(() => {
     const handleClickOutside = () => {
       if (open) {
@@ -54,16 +48,13 @@ export function SelectScrollable({
         setSearchTerm("")
       }
     }
-
     if (open) {
       document.addEventListener('click', handleClickOutside)
       return () => document.removeEventListener('click', handleClickOutside)
     }
   }, [open])
-
   const handleSelect = (company: MergedCompany) => {
     console.log(`[SelectScrollable] handleSelect called with company:`, company);
-    
     if (value === company.company_code) {
       console.log(`[SelectScrollable] Deselecting company: ${company.company_code}`);
       setValue("")
@@ -78,7 +69,6 @@ export function SelectScrollable({
     setOpen(false)
     setSearchTerm("")
   }
-
   const handleButtonClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     setOpen(!open)
@@ -86,11 +76,9 @@ export function SelectScrollable({
       setSearchTerm("")
     }
   }
-
   const formatCompanyDisplay = (company: MergedCompany) => {
     return `${company.company_code} - ${company.name}`;
   };
-
   const formatCompanyDetails = (company: MergedCompany) => {
     const details = [];
     if (company.exchange) details.push(company.exchange);
@@ -98,7 +86,6 @@ export function SelectScrollable({
     if (company.total_valid_days) details.push(`${company.total_valid_days} days`);
     return details.join(' • ');
   };
-
   const filteredCompanies = React.useMemo(() => {
     if (!searchTerm) return companies;
     const searchLower = searchTerm.toLowerCase();
@@ -109,7 +96,6 @@ export function SelectScrollable({
       company.marker.toLowerCase().includes(searchLower)
     );
   }, [companies, searchTerm]);
-
    if (loading) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground min-h-[40px]">
@@ -118,7 +104,6 @@ export function SelectScrollable({
       </div>
     );
   }
-
   if (!exists || companies.length === 0) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground min-h-[40px]">
@@ -127,10 +112,8 @@ export function SelectScrollable({
       </div>
     );
   }
-
   return (
     <div className="flex gap-3 items-center w-full">
-
       <div className="relative">
         <Button
           variant="outline"
@@ -151,7 +134,6 @@ export function SelectScrollable({
           )}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
-
         {open && (
           <div 
             className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-[500px] overflow-hidden"
@@ -175,7 +157,6 @@ export function SelectScrollable({
                 </div>
               )}
             </div>
-
             <div className="overflow-y-auto max-h-[250px]">
               {filteredCompanies.length === 0 ? (
                 <div className="p-3 text-sm text-muted-foreground text-center">
@@ -185,7 +166,6 @@ export function SelectScrollable({
                 filteredCompanies.map((company, index) => {
                   const uniqueKey = `${company.company_code}-${company.exchange}-${index}`;
                   const isSelected = value === company.company_code;
-                  
                   return (
                     <div
                       key={uniqueKey}
@@ -232,8 +212,6 @@ export function SelectScrollable({
           </div>
         )}
       </div>
-
-     
 <div className="min-h-[96px] flex items-center"> 
   {selectedCompany && (
     <div className="p-3 bg-muted/50 rounded-md h-20 border border-border w-[250px] overflow-hidden"> 
@@ -249,11 +227,9 @@ export function SelectScrollable({
             </span>
           </div>
         </div>
-        
         <p className="text-xs text-muted-foreground mb-2 truncate">
           {selectedCompany.name}
         </p>
-        
         {(selectedCompany.total_valid_days || selectedCompany.median_daily_volume || selectedCompany.pe_ratio) && (
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             {selectedCompany.total_valid_days && (
@@ -289,7 +265,7 @@ export function SelectScrollable({
     </div>
   )}
 </div>
-
     </div>
   );
 }
+

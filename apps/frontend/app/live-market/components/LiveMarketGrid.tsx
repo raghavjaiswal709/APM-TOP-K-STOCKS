@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import GridChart from './GridChart';
 import { TrendingUp, TrendingDown, Activity, Wifi, WifiOff } from 'lucide-react';
 import { ViewInDashboardButton } from "../../components/ViewInDashboardButton"; 
-
 interface Company {
   company_code: string;
   name: string;
@@ -13,7 +12,6 @@ interface Company {
   marker: string;
   symbol: string;
 }
-
 interface MarketData {
   symbol: string;
   ltp: number;
@@ -26,14 +24,12 @@ interface MarketData {
   volume?: number;
   timestamp: number;
 }
-
 interface LiveMarketGridProps {
   selectedCompanies: Company[];
   marketData: Record<string, MarketData>;
   connectionStatus: string;
   loading?: boolean;
 }
-
 const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
   selectedCompanies,
   marketData,
@@ -42,7 +38,6 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
 }) => {
   const gridLayout = useMemo(() => {
     const count = selectedCompanies.length;
-    
     switch (count) {
       case 1:
         return 'grid-cols-1';
@@ -60,30 +55,25 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
         return 'grid-cols-1';
     }
   }, [selectedCompanies.length]);
-
   const formatPrice = (price?: number) => {
     return price ? `₹${price.toFixed(2)}` : '₹0.00';
   };
-
   const formatChange = (change?: number, percent?: number) => {
     if (change === undefined || percent === undefined) return '--';
     const sign = change >= 0 ? '+' : '';
     return `${sign}${change.toFixed(2)} (${sign}${percent.toFixed(2)}%)`;
   };
-
   const getChangeColor = (change?: number) => {
     if (change === undefined) return 'text-muted-foreground';
     return change >= 0 ? 'text-[#2ca499]' : 'text-[#ee5351]';
   };
-
   const getChangeIcon = (change?: number) => {
     if (change === undefined) return <Activity className="w-4 h-4" />;
     return change >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />;
   };
-
   return (
     <div className="space-y-4">
-      {/* Grid Status */}
+      {}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Live Market Grid</h2>
         <div className="flex items-center gap-2 text-sm">
@@ -100,13 +90,11 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
           )}
         </div>
       </div>
-
-      {/* Companies Grid */}
+      {}
       <div className={`grid ${gridLayout} gap-4`}>
         {selectedCompanies.map((company) => {
           const data = marketData[company.symbol];
           const hasData = !!data;
-          
           return (
             <Card key={company.company_code} className="overflow-hidden">
               <CardHeader className="pb-2">
@@ -122,9 +110,8 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
                   </Badge>
                 </div>
               </CardHeader>
-              
               <CardContent className="space-y-4">
-                {/* Price Information */}
+                {}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-2xl font-bold">
@@ -137,7 +124,6 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
                       </span>
                     </div>
                   </div>
-
                    <div className="flex justify-end">
     <ViewInDashboardButton
       companyCode={company.company_code}
@@ -149,8 +135,7 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
       className="ml-auto"
     />
   </div>
-                  
-                  {/* OHLC Data */}
+                  {}
                   {hasData && (
                     <div className="grid grid-cols-4 gap-2 text-xs">
                       <div className="text-center">
@@ -172,8 +157,7 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
                     </div>
                   )}
                 </div>
-
-                {/* Chart */}
+                {}
                 <div className="h-96 bg-muted/20 rounded border">
                   {hasData ? (
                     <GridChart
@@ -197,8 +181,7 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
                     </div>
                   )}
                 </div>
-
-                {/* Last Updated */}
+                {}
                 {hasData && (
                   <div className="text-xs text-muted-foreground text-center">
                     Last updated: {new Date(data.timestamp * 1000).toLocaleTimeString()}
@@ -212,5 +195,5 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
     </div>
   );
 };
-
 export default LiveMarketGrid;
+

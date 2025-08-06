@@ -1,4 +1,4 @@
-// src/components/charts/SyncfusionChartComponents.tsx
+
 'use client';
 import React from 'react';
 import { 
@@ -14,19 +14,16 @@ import {
   Legend,
   DataLabel
 } from '@syncfusion/ej2-react-charts';
-
 interface SyncfusionChartComponentsProps {
   data: any[];
   height: number;
   symbol: string;
 }
-
 const SyncfusionChartComponents: React.FC<SyncfusionChartComponentsProps> = ({ 
   data, 
   height, 
   symbol 
 }) => {
-  // Primary X Axis configuration
   const primaryXAxis = {
     valueType: 'DateTime',
     labelFormat: 'HH:mm:ss',
@@ -39,8 +36,6 @@ const SyncfusionChartComponents: React.FC<SyncfusionChartComponentsProps> = ({
       color: '#333'
     }
   };
-
-  // Primary Y Axis configuration
   const primaryYAxis = {
     labelFormat: '₹{value}',
     rangePadding: 'None',
@@ -56,19 +51,13 @@ const SyncfusionChartComponents: React.FC<SyncfusionChartComponentsProps> = ({
       color: '#333'
     }
   };
-
-  // Chart title
   const title = `${symbol} Price Chart`;
-
-  // Tooltip settings
   const tooltip = {
     enable: true,
     shared: true,
     format: '${series.name} : ₹${point.y}',
     header: '${point.x}'
   };
-
-  // Crosshair settings
   const crosshair = {
     enable: true,
     lineType: 'Vertical',
@@ -77,8 +66,6 @@ const SyncfusionChartComponents: React.FC<SyncfusionChartComponentsProps> = ({
       color: 'rgba(0, 0, 0, 0.3)'
     }
   };
-
-  // Marker settings
   const marker = {
     visible: true,
     height: 7,
@@ -86,22 +73,16 @@ const SyncfusionChartComponents: React.FC<SyncfusionChartComponentsProps> = ({
     shape: 'Circle',
     fill: '#2962FF'
   };
-
-  // Chart area settings
   const chartArea = {
     border: {
       width: 0
     }
   };
-
-  // Legend settings
   const legendSettings = {
     visible: true,
     position: 'Top',
     alignment: 'Far'
   };
-
-  // Zoom settings
   const zoomSettings = {
     enableMouseWheelZooming: true,
     enablePinchZooming: true,
@@ -109,7 +90,6 @@ const SyncfusionChartComponents: React.FC<SyncfusionChartComponentsProps> = ({
     mode: 'X',
     enableScrollbar: true
   };
-
   return (
     <ChartComponent 
       id="syncfusion-chart"
@@ -150,5 +130,5 @@ const SyncfusionChartComponents: React.FC<SyncfusionChartComponentsProps> = ({
     </ChartComponent>
   );
 };
-
 export default SyncfusionChartComponents;
+

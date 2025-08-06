@@ -3,21 +3,18 @@ import React from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, TrendingUp } from "lucide-react";
-
 interface AvailableCompany {
   symbol: string;
   company: string;
   exchange: string;
   fileName: string;
 }
-
 interface RecordedCompanySelectorProps {
   availableCompanies: AvailableCompany[];
   selectedCompany: string | null;
   onCompanySelect: (company: string | null) => void;
   loading?: boolean;
 }
-
 export const RecordedCompanySelector: React.FC<RecordedCompanySelectorProps> = ({
   availableCompanies,
   selectedCompany,
@@ -31,14 +28,11 @@ export const RecordedCompanySelector: React.FC<RecordedCompanySelectorProps> = (
       onCompanySelect(value);
     }
   };
-
   const getSelectedCompanyInfo = () => {
     if (!selectedCompany) return null;
     return availableCompanies.find(c => c.symbol === selectedCompany);
   };
-
   const selectedCompanyInfo = getSelectedCompanyInfo();
-
   return (
     <Card className="w-full">
       <CardContent className="p-4">
@@ -55,7 +49,6 @@ export const RecordedCompanySelector: React.FC<RecordedCompanySelectorProps> = (
               </div>
             )}
           </div>
-
           <div className="space-y-2">
             <Select value={selectedCompany || 'none'} onValueChange={handleCompanyChange}>
               <SelectTrigger className="w-full">
@@ -90,14 +83,12 @@ export const RecordedCompanySelector: React.FC<RecordedCompanySelectorProps> = (
                 ))}
               </SelectContent>
             </Select>
-
             {availableCompanies.length > 0 && (
               <div className="text-xs text-muted-foreground">
                 {availableCompanies.length} companies available for selected date
               </div>
             )}
           </div>
-
           {selectedCompanyInfo && (
             <div className="grid grid-cols-2 gap-4 text-sm pt-2 border-t">
               <div>
@@ -115,3 +106,4 @@ export const RecordedCompanySelector: React.FC<RecordedCompanySelectorProps> = (
     </Card>
   );
 };
+

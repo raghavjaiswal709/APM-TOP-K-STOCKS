@@ -1,10 +1,8 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
-
 // NEW: Dashboard URL utilities
 export const createDashboardUrl = (params: {
   company: string;
@@ -20,10 +18,8 @@ export const createDashboardUrl = (params: {
     interval: params.interval || '1h',
     autoLoad: params.autoLoad ? 'true' : 'false'
   });
-  
   return `/dashboard?${searchParams.toString()}`;
 };
-
 export const openDashboardInNewTab = (params: {
   company: string;
   exchange: string;
@@ -33,7 +29,6 @@ export const openDashboardInNewTab = (params: {
   const url = createDashboardUrl({ ...params, autoLoad: true });
   window.open(url, '_blank');
 };
-
 // NEW: URL parameter parsing
 export const parseDashboardParams = (searchParams: URLSearchParams) => {
   return {
@@ -44,3 +39,4 @@ export const parseDashboardParams = (searchParams: URLSearchParams) => {
     autoLoad: searchParams.get('autoLoad') === 'true'
   };
 };
+

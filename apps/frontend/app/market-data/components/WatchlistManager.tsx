@@ -1,18 +1,14 @@
 'use client';
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
-
 interface WatchlistManagerProps {
   subscribedSymbols: string[];
   onSymbolSelect: (symbol: string) => void;
   onAddSymbol: (symbol: string) => void;
   onRemoveSymbol: (symbol: string) => void;
 }
-
-// Predefined watchlists
 const predefinedWatchlists = {
   'Indices': [
     'NSE:NIFTY50-INDEX',
@@ -36,7 +32,6 @@ const predefinedWatchlists = {
     'NSE:TECHM-EQ',
   ],
 };
-
 const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   subscribedSymbols,
   onSymbolSelect,
@@ -47,7 +42,6 @@ const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   const [savedWatchlists, setSavedWatchlists] = useState<Record<string, string[]>>({});
   const [newWatchlistName, setNewWatchlistName] = useState('');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
-
   // Load saved watchlists from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('marketDataWatchlists');
@@ -55,7 +49,6 @@ const WatchlistManager: React.FC<WatchlistManagerProps> = ({
       setSavedWatchlists(JSON.parse(saved));
     }
   }, []);
-
   const handleAddSymbol = (e: React.FormEvent) => {
     e.preventDefault();
     if (newSymbol && !subscribedSymbols.includes(newSymbol)) {
@@ -63,29 +56,23 @@ const WatchlistManager: React.FC<WatchlistManagerProps> = ({
       setNewSymbol('');
     }
   };
-
   const handleSaveWatchlist = () => {
     if (newWatchlistName) {
       const updatedWatchlists = {
         ...savedWatchlists,
         [newWatchlistName]: [...subscribedSymbols],
       };
-      
       setSavedWatchlists(updatedWatchlists);
       localStorage.setItem('marketDataWatchlists', JSON.stringify(updatedWatchlists));
       setNewWatchlistName('');
       setShowSaveDialog(false);
     }
   };
-
   const handleLoadWatchlist = (watchlist: string[]) => {
-    // Remove all current symbols
     subscribedSymbols.forEach(symbol => onRemoveSymbol(symbol));
-    
     // Add all symbols from the selected watchlist
     watchlist.forEach(symbol => onAddSymbol(symbol));
   };
-
   return (
     <div className="space-y-6">
       <Card>
@@ -110,7 +97,6 @@ const WatchlistManager: React.FC<WatchlistManagerProps> = ({
           </form>
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader>
           <CardTitle>Predefined Watchlists</CardTitle>
@@ -135,7 +121,6 @@ const WatchlistManager: React.FC<WatchlistManagerProps> = ({
           ))}
         </CardContent>
       </Card>
-
       {Object.keys(savedWatchlists).length > 0 && (
         <Card>
           <CardHeader>
@@ -176,7 +161,6 @@ const WatchlistManager: React.FC<WatchlistManagerProps> = ({
           </CardContent>
         </Card>
       )}
-
       <Card>
         <CardHeader>
           <CardTitle>Manage Watchlist</CardTitle>
@@ -189,7 +173,6 @@ const WatchlistManager: React.FC<WatchlistManagerProps> = ({
           >
             Save Current Watchlist
           </Button>
-          
           {showSaveDialog && (
             <div className="space-y-2">
               <Input
@@ -220,5 +203,5 @@ const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     </div>
   );
 };
-
 export default WatchlistManager;
+

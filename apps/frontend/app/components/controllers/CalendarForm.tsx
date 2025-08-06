@@ -5,7 +5,6 @@ import { CalendarIcon, Search, BarChart3 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { useEffect, useCallback } from "react"
-
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -21,7 +20,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-
 const FormSchema = z.object({
   startDate: z.date().optional(),
   endDate: z.date().optional(),
@@ -34,18 +32,16 @@ const FormSchema = z.object({
   message: "End date must be after start date",
   path: ["endDate"],
 });
-
 interface CalendarFormProps {
   onDateRangeChange?: (startDate: Date | undefined, endDate: Date | undefined) => void;
   onFetchData?: () => void;
   onFetchAllData?: () => void; 
   loading?: boolean;
 }
-
 export function CalendarForm({ 
   onDateRangeChange, 
   onFetchData, 
-  onFetchAllData, // **NEW**
+  onFetchAllData,
   loading = false 
 }: CalendarFormProps) {
   const form = useForm<z.infer<typeof FormSchema>>({
@@ -55,9 +51,7 @@ export function CalendarForm({
       endDate: undefined,
     },
   });
-
   const memoizedOnDateRangeChange = useCallback(onDateRangeChange, [onDateRangeChange]);
-
   useEffect(() => {
     const subscription = form.watch((value) => {
       if (memoizedOnDateRangeChange) {
@@ -65,23 +59,19 @@ export function CalendarForm({
         memoizedOnDateRangeChange(value.startDate, value.endDate);
       }
     });
-    
     return () => subscription.unsubscribe();
   }, [form, memoizedOnDateRangeChange]);
-
   const handleStartDateSelect = useCallback((date: Date | undefined) => {
     form.setValue('startDate', date, { 
       shouldValidate: true,
       shouldDirty: true,
       shouldTouch: true 
     });
-    
     const currentEndDate = form.getValues('endDate');
     if (date && currentEndDate && date > currentEndDate) {
       form.setValue('endDate', undefined);
     }
   }, [form]);
-
   const handleEndDateSelect = useCallback((date: Date | undefined) => {
     form.setValue('endDate', date, { 
       shouldValidate: true,
@@ -89,22 +79,18 @@ export function CalendarForm({
       shouldTouch: true 
     });
   }, [form]);
-
   const handleFetchClick = () => {
     if (onFetchData) {
       onFetchData();
     }
   };
-
   const handleFetchAllClick = () => {
     if (onFetchAllData) {
       onFetchAllData();
     }
   };
-
   const startDate = form.watch('startDate');
   const endDate = form.watch('endDate');
-
   return (
     <Form {...form}>
       <div className="flex items-center
@@ -233,9 +219,9 @@ export function CalendarForm({
             </>
           )}
         </Button>
-     
      </div>
       </div>
     </Form>
   );
 }
+

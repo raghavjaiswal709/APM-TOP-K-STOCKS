@@ -1,23 +1,19 @@
-// src/components/charts/ApexChart.tsx
+
 'use client';
 import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-
 // Import ApexCharts with dynamic loading (no SSR)
 const ReactApexChart = dynamic(() => import('react-apexcharts'), { ssr: false });
-
 interface MarketData {
   ltp: number;
   timestamp: number;
 }
-
 interface ApexChartProps {
   symbol: string;
   data: MarketData | null | undefined;
   height?: number;
   width?: string;
 }
-
 const ApexChart: React.FC<ApexChartProps> = ({ 
   symbol, 
   data, 
@@ -124,20 +120,14 @@ const ApexChart: React.FC<ApexChartProps> = ({
       horizontalAlign: 'right'
     }
   });
-
-  // Set isClient to true on mount
   useEffect(() => {
     setIsClient(true);
-    
-    // Create initial dummy data
     const now = Date.now();
     const initialData: [number, number][] = [];
     for (let i = 10; i > 0; i--) {
       initialData.push([now - i * 60000, data?.ltp || 100 + Math.random() * 10]);
     }
     setChartData(initialData);
-    
-    // Update title when symbol changes
     setOptions(prevOptions => ({
       ...prevOptions,
       title: {
@@ -146,35 +136,23 @@ const ApexChart: React.FC<ApexChartProps> = ({
       }
     }));
   }, [symbol, data?.ltp]);
-
-  // Update chart data when new data arrives
   useEffect(() => {
     if (!isClient || !data || typeof data.ltp !== 'number' || typeof data.timestamp !== 'number') {
       return;
     }
-
     try {
-      // Convert timestamp to milliseconds for ApexCharts
       const timestamp = data.timestamp * 1000;
-      
       setChartData(prevData => {
-        // Check if we already have a point with this timestamp
         const existingIndex = prevData.findIndex(point => point[0] === timestamp);
-        
         if (existingIndex >= 0) {
-          // Update existing point
           const newData = [...prevData];
           newData[existingIndex] = [timestamp, data.ltp];
           return newData;
         } else {
-          // Add new point
           const newData = [...prevData, [timestamp, data.ltp]];
-          
-          // Keep only the last 300 points for performance
           if (newData.length > 300) {
             return newData.slice(-300);
           }
-          
           return newData;
         }
       });
@@ -182,8 +160,6 @@ const ApexChart: React.FC<ApexChartProps> = ({
       console.error('Error updating ApexChart:', error);
     }
   }, [data, isClient]);
-
-  // Show loading during SSR
   if (!isClient) {
     return (
       <div className="w-full h-[500px] bg-gray-100 flex items-center justify-center">
@@ -191,12 +167,10 @@ const ApexChart: React.FC<ApexChartProps> = ({
       </div>
     );
   }
-
   const series = [{
     name: symbol,
     data: chartData
   }];
-
   return (
     <div className="relative w-full h-full border border-gray-200 rounded shadow-sm bg-white overflow-hidden">
       {chartData.length > 0 ? (
@@ -215,5 +189,5 @@ const ApexChart: React.FC<ApexChartProps> = ({
     </div>
   );
 };
-
 export default ApexChart;
+

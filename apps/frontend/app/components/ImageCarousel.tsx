@@ -3,8 +3,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-
-// List of actual indices based on your requirements
 const ACTUAL_INDICES = [
   'NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'AUTONIFTY', 
   'PHARMANIFTY', 'METALNIFTY', 'ENERGYNIFTY', 'INFRA', 'GROWTHSECT', 
@@ -16,7 +14,6 @@ const ACTUAL_INDICES = [
   'NIFTY100', 'NIFTY200', 'NIFTY500', 'NIFTYMID', 'NIFTYNXT', 
   'NIFTYSML', 'NIFTYTOT', 'NIFTYDIV', 'NIFTY50', 'NIFTYQUALITY30'
 ];
-
 interface ImageCarouselProps {
   isOpen: boolean;
   onClose: () => void;
@@ -24,14 +21,12 @@ interface ImageCarouselProps {
   exchange: string;
   selectedDate?: Date;
 }
-
 interface CarouselImage {
   src: string;
   name: string;
   type: string;
   exists: boolean;
 }
-
 export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   isOpen,
   onClose,
@@ -45,24 +40,15 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const [isResizing, setIsResizing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 1200, height: 900 });
-
-  // Generate current date string in yyyy-mm-dd format
   const getCurrentDateString = useCallback(() => {
-    // const date = selectedDate || new Date();
     const date = selectedDate || new Date('2025-07-01');;
     return date.toISOString().split('T')[0];
   }, [selectedDate]);
-
-  // Generate image paths with actual indices
   const generateImagePaths = useCallback(() => {
     if (!companyCode || !exchange) return [];
-
     const dateString = getCurrentDateString();
     const companyExchange = `${companyCode}_${exchange}`;
-    
     const imageList: CarouselImage[] = [];
-
-    // Pattern 1: N1_Pattern_Plot
     const pattern1Path = `/Graphs/${dateString}/N1_Pattern_Plot/${companyExchange}/${companyExchange}_combined_overlay.png`;
     imageList.push({
       src: pattern1Path,
@@ -70,8 +56,6 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       type: 'N1 Pattern Analysis',
       exists: false
     });
-
-    // Pattern 2: Watchlist Analysis with actual indices
     ACTUAL_INDICES.forEach(index => {
       const pattern2Path = `/Graphs/${dateString}/watchlist_comp_ind_90d_analysis_plot/${companyExchange}_${dateString}/${companyCode}_${index}_Yes_category_confusion_heatmap.png`;
       imageList.push({
@@ -81,11 +65,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         exists: false
       });
     });
-
     return imageList;
   }, [companyCode, exchange, getCurrentDateString]);
-
-  // Check if images exist
   const checkImageExists = useCallback(async (imageSrc: string): Promise<boolean> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -94,8 +75,6 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       img.src = imageSrc;
     });
   }, []);
-
-  // Load and validate images
   useEffect(() => {
     const loadImages = async () => {
       setIsLoading(true);
@@ -107,8 +86,6 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             exists: await checkImageExists(image.src)
           }))
         );
-        
-        // Filter only existing images
         const existingImages = validatedImages.filter(img => img.exists);
         setImages(existingImages);
         setCurrentIndex(0);
@@ -119,26 +96,19 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         setIsLoading(false);
       }
     };
-
     if (isOpen && companyCode && exchange) {
       loadImages();
     }
   }, [isOpen, companyCode, exchange, generateImagePaths, checkImageExists]);
-
-  // Navigation handlers
   const handleNext = useCallback(() => {
     setCurrentIndex((prev) => (prev + 1) % images.length);
   }, [images.length]);
-
   const handlePrevious = useCallback(() => {
     setCurrentIndex((prev) => (prev - 1 + images.length) % images.length);
   }, [images.length]);
-
-  // Keyboard navigation
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (!isOpen) return;
-      
       switch (e.key) {
         case 'ArrowLeft':
           handlePrevious();
@@ -151,41 +121,31 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
           break;
       }
     };
-
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [isOpen, handleNext, handlePrevious, onClose]);
-
-  // Mouse events for resizing
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (isMaximized) return;
-    
     setIsResizing(true);
     const startX = e.clientX;
     const startY = e.clientY;
     const startWidth = dimensions.width;
     const startHeight = dimensions.height;
-
     const handleMouseMove = (e: MouseEvent) => {
       const newWidth = Math.max(400, startWidth + (e.clientX - startX));
       const newHeight = Math.max(300, startHeight + (e.clientY - startY));
       setDimensions({ width: newWidth, height: newHeight });
     };
-
     const handleMouseUp = () => {
       setIsResizing(false);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   }, [isMaximized, dimensions]);
-
   if (!isOpen) return null;
-
   const currentImage = images[currentIndex];
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
       <Card 
@@ -202,13 +162,12 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         } : {}}
       >
         <CardHeader className="flex flex-row items-center justify-between p-4 border-b">
-          {/* Left side: Title and Navigation */}
+          {}
           <div className="flex items-center gap-4">
             <CardTitle className="text-lg font-semibold">
               {companyCode} - Graph Analysis
             </CardTitle>
-            
-            {/* Navigation Buttons */}
+            {}
             {images.length > 0 && !isLoading && (
               <div className="flex items-center gap-1 ml-4">
                 <Button
@@ -220,11 +179,9 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                
                 <span className="text-sm text-muted-foreground px-2 min-w-[60px] text-center">
                   {images.length > 0 ? `${currentIndex + 1} / ${images.length}` : '0 / 0'}
                 </span>
-                
                 <Button
                   variant="outline"
                   size="sm"
@@ -236,8 +193,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 </Button>
               </div>
             )}
-
-            {/* Loading indicator */}
+            {}
             {isLoading && (
               <div className="flex items-center gap-2 ml-4">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -245,8 +201,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               </div>
             )}
           </div>
-
-          {/* Right side: Controls */}
+          {}
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -260,7 +215,6 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             </Button>
           </div>
         </CardHeader>
-
         <CardContent className="p-0 flex-1 flex flex-col relative">
           {isLoading ? (
             <div className="flex-1 flex items-center justify-center">
@@ -283,13 +237,12 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             </div>
           ) : (
             <>
-              {/* Image Header */}
+              {}
               <div className="p-4 border-b bg-muted/30">
                 <h3 className="font-medium text-sm">{currentImage?.name}</h3>
                 <p className="text-xs text-muted-foreground">{currentImage?.type}</p>
               </div>
-
-              {/* Image Display */}
+              {}
               <div className="flex-1 relative overflow-hidden">
                 {currentImage && (
                   <img
@@ -300,8 +253,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                   />
                 )}
               </div>
-
-              {/* Image Indicators */}
+              {}
               {images.length > 1 && (
                 <div className="p-2 border-t bg-muted/30">
                   <div className="flex justify-center gap-1">
@@ -319,8 +271,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               )}
             </>
           )}
-
-          {/* Resize Handle */}
+          {}
           {!isMaximized && (
             <div
               className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
@@ -334,3 +285,4 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     </div>
   );
 };
+

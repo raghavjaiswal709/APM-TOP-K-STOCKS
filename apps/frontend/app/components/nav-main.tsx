@@ -1,8 +1,6 @@
 "use client"
-
 import React from "react"
 import { ChevronRight, type LucideIcon } from "lucide-react"
-
 import {
   Collapsible,
   CollapsibleContent,
@@ -20,7 +18,6 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
 import Link from "next/link"
-
 interface NavItem {
   title: string
   url: string
@@ -31,19 +28,16 @@ interface NavItem {
     url: string
   }[]
 }
-
 interface NavMainProps {
   items: NavItem[]
 }
-
 export const NavMain = React.memo(({ items }: NavMainProps) => {
   return (
     <SidebarGroup>
-      {/* <SidebarGroupLabel>Platform</SidebarGroupLabel> */}
+      {}
       <SidebarMenu>
         {items.map((item) => {
           const hasSubItems = item.items && item.items.length > 0;
-
           return (
             <SidebarMenuItem key={item.title}>
               {hasSubItems ? (
@@ -91,5 +85,5 @@ export const NavMain = React.memo(({ items }: NavMainProps) => {
     </SidebarGroup>
   )
 })
-
 NavMain.displayName = 'NavMain'
+

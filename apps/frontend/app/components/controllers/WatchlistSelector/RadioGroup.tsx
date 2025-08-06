@@ -1,12 +1,10 @@
 import React from "react";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-
 interface RadioGroupDemoProps {
   value: string;
   onChange: (value: string) => void;
 }
-
 export const RadioGroupDemo = React.memo(({ value, onChange }: RadioGroupDemoProps) => {
   return (
     <RadioGroup className="flex" value={value} onValueChange={onChange}>
@@ -25,5 +23,5 @@ export const RadioGroupDemo = React.memo(({ value, onChange }: RadioGroupDemoPro
     </RadioGroup>
   );
 });
-
 RadioGroupDemo.displayName = 'RadioGroupDemo';
+
