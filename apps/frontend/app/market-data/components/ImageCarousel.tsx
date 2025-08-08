@@ -20,7 +20,7 @@ interface NewsComponentProps {
   gradientMode: 'profit' | 'loss' | 'neutral';
 }
 
-// Three-way toggle switch component
+// Three-way toggle switch componentfdfdf
 interface GradientToggleProps {
   value: 'profit' | 'loss' | 'neutral';
   onChange: (value: 'profit' | 'loss' | 'neutral') => void;
@@ -730,6 +730,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
           )}
         </CardContent>
       </Card>
+      
       
       {/* News Component */}
       <div className={`${isMaximized ? 'w-96' : 'w-[360px]'} flex-shrink-0`}>
