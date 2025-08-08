@@ -20,7 +20,7 @@ interface NewsComponentProps {
   gradientMode: 'profit' | 'loss' | 'neutral';
 }
 
-// Three-way toggle switch componentfdfdf
+// Three-way toggle switch componentfdfdfdd
 interface GradientToggleProps {
   value: 'profit' | 'loss' | 'neutral';
   onChange: (value: 'profit' | 'loss' | 'neutral') => void;
