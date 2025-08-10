@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-
 interface NewsItem {
   id: string;
   headline: string;
@@ -16,25 +15,22 @@ interface NewsItem {
   sentiment: 'positive' | 'negative' | 'neutral';
 }
 
-
 interface NewsComponentProps {
   companyCode: string;
   isMaximized: boolean;
   gradientMode: 'profit' | 'loss' | 'neutral';
 }
 
-
 interface GradientToggleProps {
   value: 'profit' | 'loss' | 'neutral';
   onChange: (value: 'profit' | 'loss' | 'neutral') => void;
 }
 
-
 const GradientToggle: React.FC<GradientToggleProps> = ({ value, onChange }) => {
   const modes = [
     { 
       key: 'loss' as const, 
-      label: 'Loss', 
+      label: 'Negative', 
       icon: TrendingDown, 
       color: 'text-red-400',
       bgColor: 'bg-red-500/20 border-red-500/30'
@@ -48,17 +44,16 @@ const GradientToggle: React.FC<GradientToggleProps> = ({ value, onChange }) => {
     },
     { 
       key: 'profit' as const, 
-      label: 'Profit', 
+      label: 'Positive', 
       icon: TrendingUp, 
       color: 'text-green-400',
       bgColor: 'bg-green-500/20 border-green-500/30'
     },
   ];
 
-
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-zinc-400 mr-2">Market Mood:</span>
+      <span className="text-xs text-zinc-400 mr-2">Headline Sentiment:</span>
       <div className="flex bg-zinc-800 rounded-lg p-1 border border-zinc-700">
         {modes.map((mode) => {
           const Icon = mode.icon;
@@ -75,7 +70,6 @@ const GradientToggle: React.FC<GradientToggleProps> = ({ value, onChange }) => {
                 }
               `}
             >
-              <Icon className="h-3 w-3" />
               {mode.label}
             </button>
           );
@@ -85,24 +79,50 @@ const GradientToggle: React.FC<GradientToggleProps> = ({ value, onChange }) => {
   );
 };
 
+// New component for displaying current sentiment (read-only)
+interface SentimentDisplayProps {
+  sentiment: 'positive' | 'negative' | 'neutral';
+}
+
+const SentimentDisplay: React.FC<SentimentDisplayProps> = ({ sentiment }) => {
+  const getSentimentConfig = () => {
+    switch (sentiment) {
+      case 'positive':
+        return { label: 'Positive', color: 'text-green-400', bgColor: 'bg-green-500/20 border-green-500/30' };
+      case 'negative':
+        return { label: 'Negative', color: 'text-red-400', bgColor: 'bg-red-500/20 border-red-500/30' };
+      case 'neutral':
+      default:
+        return { label: 'Neutral', color: 'text-zinc-400', bgColor: 'bg-zinc-500/20 border-zinc-500/30' };
+    }
+  };
+
+  const config = getSentimentConfig();
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-zinc-400 mr-2">Headline Sentiment:</span>
+      <div className={`px-3 py-1.5 rounded-md text-xs font-medium border ${config.bgColor} ${config.color}`}>
+        {config.label}
+      </div>
+    </div>
+  );
+};
 
 const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized, gradientMode }) => {
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
 
-
- 
   const getGradientClass = (mode: 'profit' | 'loss' | 'neutral') => {
     switch (mode) {
       case 'profit':
-        return 'bg-gradient-to-br from-green-900/30 via-zinc-950 to-green-900/10';
+        return 'bg-zinc-950';
       case 'loss':
-        return 'bg-gradient-to-br from-red-900/30 via-zinc-950 to-red-900/10';
+        return 'bg-zinc-950';
       case 'neutral':
       default:
         return 'bg-zinc-950';
     }
   };
-
 
   const getSentimentStyling = (sentiment: NewsItem['sentiment']) => {
     switch (sentiment) {
@@ -125,8 +145,6 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     }
   };
 
-
- 
   const getSentimentIndicator = (sentiment: NewsItem['sentiment']) => {
     switch (sentiment) {
       case 'positive':
@@ -153,7 +171,6 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
         );
     }
   };
-
 
   const generateRandomNews = useCallback(() => {
     const headlines = [
@@ -186,7 +203,6 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
       "Unde omnis iste natus error sit voluptatem accusantium doloremque laudantium totam rem aperiam eaque ipsa quae ab illo."
     ];
 
-
     const categories: NewsItem['category'][] = ['market', 'company', 'sector', 'economy'];
     const relevance: NewsItem['relevance'][] = ['high', 'medium', 'low'];
     const sentiments: NewsItem['sentiment'][] = ['positive', 'negative', 'neutral'];
@@ -204,20 +220,17 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     return news.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, []);
 
-
   useEffect(() => {
     if (companyCode) {
       setNewsItems(generateRandomNews());
     }
   }, [companyCode, generateRandomNews]);
 
-
   const handleNewsClick = (newsItem: NewsItem) => {
     const searchQuery = encodeURIComponent(`${newsItem.headline} ${companyCode}`);
     const googleSearchUrl = `https://www.google.com/search?q=${searchQuery}`;
     window.open(googleSearchUrl, '_blank', 'noopener,noreferrer');
   };
-
 
   const formatTime = (timestamp: string) => {
     const now = new Date();
@@ -229,7 +242,6 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     return `${Math.floor(diffInHours / 24)}d ago`;
   };
 
-
   const getCategoryColor = (category: NewsItem['category']) => {
     switch (category) {
       case 'market': return 'bg-blue-500/20 text-blue-400';
@@ -240,7 +252,6 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     }
   };
 
-
   const getRelevanceIcon = (relevance: NewsItem['relevance']) => {
     switch (relevance) {
       case 'high': return <TrendingUp className="h-3 w-3 text-red-400" />;
@@ -248,7 +259,6 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
       case 'low': return <TrendingUp className="h-3 w-3 text-zinc-400" />;
     }
   };
-
 
   if (!companyCode) {
     return (
@@ -268,15 +278,12 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     );
   }
 
-
   return (
     <Card className={`${getGradientClass(gradientMode)} shadow-lg ${isMaximized ? 'h-full' : 'h-auto'} border border-zinc-700/50`}>
       <CardHeader className="p-4 border-b border-zinc-700/50">
-        <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
-          <TrendingUp className="h-5 w-5" />
+        <CardTitle className="text-base font-semibold text-white flex items-center gap-2">
           {companyCode} News Feed
         </CardTitle>
-        <p className="text-sm text-zinc-400">Click on any headline to search Google • Color-coded by sentiment</p>
       </CardHeader>
       <CardContent className="p-0">
         <ScrollArea className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[900px]'} w-full`}>
@@ -295,15 +302,6 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(newsItem.category)}`}>
-                        {newsItem.category}
-                      </span>
-                      {getRelevanceIcon(newsItem.relevance)}
-                      {getSentimentIndicator(newsItem.sentiment)}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-zinc-500">
-                      <Clock className="h-3 w-3" />
-                      {formatTime(newsItem.timestamp)}
                     </div>
                   </div>
                   <h3 className="text-white font-medium mb-2 group-hover:text-blue-400 transition-colors duration-200 flex items-start gap-2">
@@ -317,15 +315,13 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <span className="text-xs text-zinc-500">
-                          Relevance: {newsItem.relevance}
-                        </span>
-                        <span className="text-xs text-zinc-500">
                           Sentiment: {newsItem.sentiment}
                         </span>
                       </div>
-                      <span className="text-xs text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                        Click to search →
-                      </span>
+                      <div className="flex items-center gap-2 text-xs text-zinc-500">
+                        <Clock className="h-3 w-3" />
+                        {formatTime(newsItem.timestamp)}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -337,7 +333,6 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     </Card>
   );
 };
-
 
 const ACTUAL_INDICES = [
   'NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'AUTONIFTY', 
@@ -351,15 +346,13 @@ const ACTUAL_INDICES = [
   'NIFTYSML', 'NIFTYTOT', 'NIFTYDIV', 'NIFTY50', 'NIFTYQUALITY30'
 ];
 
-
 interface ImageCarouselProps {
- companyCode: string;
+  companyCode: string;
   exchange: string;
   selectedDate?: Date;
   gradientMode: 'profit' | 'loss' | 'neutral';
   onGradientModeChange: (mode: 'profit' | 'loss' | 'neutral') => void;
 }
-
 
 interface CarouselImage {
   src: string;
@@ -370,7 +363,6 @@ interface CarouselImage {
   dimensions?: { width: number; height: number };
 }
 
-
 interface ChartTabsProps {
   activeTab: 'intraday' | 'interday';
   onTabChange: (tab: 'intraday' | 'interday') => void;
@@ -378,13 +370,11 @@ interface ChartTabsProps {
   interdayCount: number;
 }
 
-
 const ChartTabs: React.FC<ChartTabsProps> = ({ activeTab, onTabChange, intradayCount, interdayCount }) => {
   const tabs = [
     { key: 'intraday' as const, label: 'Intraday', count: intradayCount },
     { key: 'interday' as const, label: 'Interday', count: interdayCount }
   ];
-
 
   return (
     <div className="flex bg-zinc-800 rounded-lg p-1 border border-zinc-700">
@@ -395,7 +385,7 @@ const ChartTabs: React.FC<ChartTabsProps> = ({ activeTab, onTabChange, intradayC
             key={tab.key}
             onClick={() => onTabChange(tab.key)}
             className={`
-              flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200
+              flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium transition-all duration-200
               ${isActive 
                 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-sm' 
                 : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50'
@@ -415,7 +405,6 @@ const ChartTabs: React.FC<ChartTabsProps> = ({ activeTab, onTabChange, intradayC
   );
 };
 
-
 export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   companyCode,
   exchange,
@@ -429,28 +418,40 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState<Record<number, boolean>>({});
   const [activeTab, setActiveTab] = useState<'intraday' | 'interday'>('intraday');
-
+  
+  // New state for maximized view headline carousel
+  const [currentHeadlineIndex, setCurrentHeadlineIndex] = useState(0);
+  const [headlines] = useState([
+    { text: "Lorem ipsum dolor sit amet consectetur", sentiment: 'positive' as const },
+    { text: "Sed do eiusmod tempor incididunt ut labore", sentiment: 'negative' as const },
+    { text: "Ut enim ad minim veniam quis nostrud", sentiment: 'neutral' as const },
+    { text: "Duis aute irure dolor in reprehenderit", sentiment: 'positive' as const },
+    { text: "Excepteur sint occaecat cupidatat non", sentiment: 'negative' as const }
+  ]);
 
   const filteredImages = useMemo(() => {
     return allImages.filter(image => image.chartType === activeTab);
   }, [allImages, activeTab]);
 
-
   const intradayCount = useMemo(() => {
     return allImages.filter(image => image.chartType === 'intraday').length;
   }, [allImages]);
-
 
   const interdayCount = useMemo(() => {
     return allImages.filter(image => image.chartType === 'interday').length;
   }, [allImages]);
 
+  const intradayImages = useMemo(() => {
+    return allImages.filter(image => image.chartType === 'intraday');
+  }, [allImages]);
+
+  const interdayImages = useMemo(() => {
+    return allImages.filter(image => image.chartType === 'interday');
+  }, [allImages]);
 
   useEffect(() => {
     setCurrentIndex(0);
   }, [activeTab]);
-
-
 
   const getGradientClass = (mode: 'profit' | 'loss' | 'neutral') => {
     switch (mode) {
@@ -464,12 +465,23 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     }
   };
 
+  // New function for maximized view background based on current headline sentiment
+  const getMaximizedBackgroundClass = (sentiment: 'positive' | 'negative' | 'neutral') => {
+    switch (sentiment) {
+      case 'positive':
+        return 'bg-zinc-950'; // Opaque green background
+      case 'negative':
+        return 'bg-zinc-950'; // Opaque red background
+      case 'neutral':
+      default:
+        return 'bg-zinc-950'; // Opaque neutral background
+    }
+  };
 
   const getCurrentDateString = useCallback(() => {
     const date = selectedDate || new Date('2025-07-01');
     return date.toISOString().split('T')[0];
   }, [selectedDate]);
-
 
   const generateImagePaths = useCallback(() => {
     if (!companyCode || !exchange) return [];
@@ -478,19 +490,16 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     const companyExchange = `${companyCode}_${exchange}`;
     const imageList: CarouselImage[] = [];
 
+    // Skip the "Combined Overlay" pattern1 images for maximized view
+    // const pattern1Path = `/GraphsN/${dateString}/N1_Pattern_Plot/${companyExchange}/${companyExchange}_interday.png`;
+    // imageList.push({
+    //   src: pattern1Path,
+    //   name: `${companyCode} Combined Overlay`,
+    //   type: 'N1 Pattern Analysis',
+    //   chartType: 'interday',
+    //   exists: false
+    // });
 
-
-    const pattern1Path = `/GraphsN/${dateString}/N1_Pattern_Plot/${companyExchange}/${companyExchange}_interday.png`;
-    imageList.push({
-      src: pattern1Path,
-      name: `${companyCode} Combined Overlay`,
-      type: 'N1 Pattern Analysis',
-      chartType: 'interday',
-      exists: false
-    });
-
-
-   
     ACTUAL_INDICES.forEach(index => {
       const pattern2Path = `/GraphsN/${dateString}/watchlist_comp_ind_90d_analysis_plot/${companyExchange}_${dateString}/${companyCode}_${index}_intraday.png`;
       imageList.push({
@@ -502,10 +511,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       });
     });
 
-
     return imageList;
   }, [companyCode, exchange, getCurrentDateString]);
-
 
   const checkImageExists = useCallback(async (imageSrc: string): Promise<{ exists: boolean; dimensions?: { width: number; height: number } }> => {
     return new Promise((resolve) => {
@@ -523,7 +530,6 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       img.src = imageSrc;
     });
   }, []);
-
 
   useEffect(() => {
     const loadImages = async () => {
@@ -551,32 +557,35 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       }
     };
 
-
     if (companyCode && exchange) {
       loadImages();
     }
   }, [companyCode, exchange, generateImagePaths, checkImageExists]);
 
-
   const handleNext = useCallback(() => {
     setCurrentIndex((prev) => (prev + 1) % filteredImages.length);
   }, [filteredImages.length]);
-
 
   const handlePrevious = useCallback(() => {
     setCurrentIndex((prev) => (prev - 1 + filteredImages.length) % filteredImages.length);
   }, [filteredImages.length]);
 
+  // New handlers for headline carousel in maximized view
+  const handleHeadlineNext = useCallback(() => {
+    setCurrentHeadlineIndex((prev) => (prev + 1) % headlines.length);
+  }, [headlines.length]);
+
+  const handleHeadlinePrevious = useCallback(() => {
+    setCurrentHeadlineIndex((prev) => (prev - 1 + headlines.length) % headlines.length);
+  }, [headlines.length]);
 
   const handleImageLoad = (index: number) => {
     setImageLoading(prev => ({ ...prev, [index]: false }));
   };
 
-
   const handleImageLoadStart = (index: number) => {
     setImageLoading(prev => ({ ...prev, [index]: true }));
   };
-
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -594,29 +603,30 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       }
     };
 
-
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [handleNext, handlePrevious, companyCode, exchange, isMaximized]);
 
-
   const currentImage = filteredImages[currentIndex];
-
+  const currentHeadline = headlines[currentHeadlineIndex];
 
   if (!companyCode || !exchange) {
     return null;
   }
 
-
   return (
     <div className={`flex gap-4 ${isMaximized ? 'fixed inset-4 z-50' : 'w-full'}`}>
       {/* Main Image Carousel */}
-      <Card className={`${getGradientClass(gradientMode)} shadow-lg border border-zinc-700/50 ${isMaximized ? 'flex-1' : 'flex-1'}`}>
-        <CardHeader className="flex flex-row items-center justify-between p-4 border-b border-zinc-700/50">
+      <Card className={`shadow-lg border border-zinc-700/50 ${
+        isMaximized 
+          ? `${getMaximizedBackgroundClass(currentHeadline.sentiment)} w-full` 
+          : `${getGradientClass(gradientMode)} flex-1`
+      }`}>
+        <CardHeader className="flex flex-row items-center justify-between p-1 border-b border-zinc-700/50">
           {/* Title and Navigation */}
-          <div className="flex items-center gap-4">
-            <CardTitle className="text-lg font-semibold text-white">
-              {companyCode} - Headline Analysis
+          <div className="flex items-center gap-4 mx-2">
+            <CardTitle className="text-base font-semibold text-white">
+              {companyCode} - Graph Analysis
             </CardTitle>
             
             {/* Navigation Controls - Hidden in maximized mode */}
@@ -653,22 +663,12 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 <span className="text-sm text-zinc-400">Searching for graphs...</span>
               </div>
             )}
-
-
-            {/* Show filtered count in maximized mode */}
-            {isMaximized && filteredImages.length > 0 && !isLoading && (
-              <div className="flex items-center gap-2 ml-4">
-                <span className="text-sm text-zinc-400">
-                  {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Images: {filteredImages.length}
-                </span>
-              </div>
-            )}
           </div>
           
           {/* Right side controls */}
           <div className="flex items-center gap-4">
-            {/* Chart Type Tabs */}
-            {!isLoading && allImages.length > 0 && (
+            {/* Chart Type Tabs - Only show in non-maximized view */}
+            {!isLoading && allImages.length > 0 && !isMaximized && (
               <ChartTabs 
                 activeTab={activeTab} 
                 onTabChange={setActiveTab}
@@ -677,9 +677,12 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               />
             )}
             
-            {/* Gradient Mode Toggle */}
-            {/* <GradientToggle value={gradientMode} onChange={setGradientMode} /> */}
-            <GradientToggle value={gradientMode} onChange={onGradientModeChange} />
+            {/* Gradient Mode Toggle or Sentiment Display */}
+            {isMaximized ? (
+              <SentimentDisplay sentiment={currentHeadline.sentiment} />
+            ) : (
+              <GradientToggle value={gradientMode} onChange={onGradientModeChange} />
+            )}
             
             {/* Maximize/Minimize button */}
             <Button
@@ -704,95 +707,160 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 </p>
               </div>
             </div>
-          ) : filteredImages.length === 0 ? (
+          ) : allImages.length === 0 ? (
             <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
               <div className="text-center">
                 <p className="text-zinc-400 mb-2">
-                  No {activeTab} graphs found for {companyCode}
+                  No graphs found for {companyCode}
                 </p>
                 <p className="text-sm text-zinc-500">
                   Date: {getCurrentDateString()}
                 </p>
-                {allImages.length > 0 && (
-                  <p className="text-sm text-zinc-500 mt-2">
-                    Try switching to {activeTab === 'intraday' ? 'interday' : 'intraday'} tab
-                  </p>
-                )}
               </div>
             </div>
           ) : (
             <>
               {isMaximized ? (
-              
-                <ScrollArea className="h-[calc(100vh-200px)] w-full">
-                  <div className="p-6 space-y-6">
-                    {filteredImages.map((image, index) => (
-                      <div key={index} className="space-y-4">
-                        
-                        <div className="p-4 border border-zinc-700/50 rounded-lg bg-zinc-700/20">
-                          <h3 className="font-medium text-white mb-1">{image.name}</h3>
-                          <div className="flex items-center gap-2 mb-1">
-                            
-                            <span className="px-2 py-1 rounded-full text-xs bg-blue-500/20 text-blue-400">
-                              {image.chartType}
-                            </span>
-                          </div>
-                          {image.dimensions && (
-                            <p className="text-xs text-zinc-500 mt-1">
-                              {image.dimensions.width} × {image.dimensions.height}px
-                            </p>
-                          )}
-                        </div>
-                        
-                       
-                        <div className={`relative overflow-hidden rounded-lg bg-gradient-to-br ${
-                          gradientMode === 'profit' ? 'from-green-950/20 to-zinc-900' :
-                          gradientMode === 'loss' ? 'from-red-950/20 to-zinc-900' : 
-                          'from-zinc-900 to-zinc-900'
-                        } border border-zinc-700/30`}>
-                          {imageLoading[index] && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
-                              <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-                            </div>
-                          )}
-                          <img
-                            src={image.src}
-                            alt={image.name}
-                            className="w-full h-auto block"
-                            style={{ 
-                              maxWidth: '100%',
-                              height: 'auto',
-                              display: 'block'
-                            }}
-                            onLoadStart={() => handleImageLoadStart(index)}
-                            onLoad={() => handleImageLoad(index)}
-                            onError={() => handleImageLoad(index)}
-                          />
-                        </div>
+                <div className="h-[calc(100vh-200px)] w-full">
+                  {/* Headline Carousel at the top */}
+                  <div className="p-4 border-b border-zinc-700/50 bg-zinc-900/50">
+                    <div className="flex items-center justify-between">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleHeadlinePrevious}
+                        className="h-8 w-8 p-0"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      
+                      <div className="flex-1 text-center px-4">
+                        <h2 className="text-white font-medium text-lg">
+                          {currentHeadline.text}
+                        </h2>
                       </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              ) : (
-               
-                <>
-                  {/* Image metadata */}
-                  <div className="border-b border-zinc-700/50 bg-zinc-700/20">
-                    {/* <h3 className="font-medium text-sm text-white">{currentImage?.name}</h3> */}
-                    <div className="flex items-center gap-2 mt-1">
-                      {/* <p className="text-xs text-zinc-400">{currentImage?.type}</p> */}
-                      {/* <span className="px-2 py-1 rounded-full text-xs bg-blue-500/20 text-blue-400">
-                        {currentImage?.chartType}
-                      </span> */}
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleHeadlineNext}
+                        className="h-8 w-8 p-0"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
                     </div>
-                    {/* {currentImage?.dimensions && (
-                      <p className="text-xs text-zinc-500 mt-1">
-                        {currentImage.dimensions.width} × {currentImage.dimensions.height}px
-                      </p>
-                    )} */}
+                    
+                    {/* Pagination dots for headlines */}
+                    <div className="flex justify-center gap-1 mt-2">
+                      {headlines.map((_, index) => (
+                        <button
+                          key={index}
+                          className={`w-2 h-2 rounded-full transition-colors ${
+                            index === currentHeadlineIndex ? 'bg-blue-500' : 'bg-zinc-600'
+                          }`}
+                          onClick={() => setCurrentHeadlineIndex(index)}
+                        />
+                      ))}
+                    </div>
                   </div>
                   
-                  {/* Image display - ADAPTIVE HEIGHT CONTAINER */}
+                  {/* Side-by-side images */}
+                  <div className="flex h-[calc(100%-120px)]">
+                    {/* Intraday images on the left */}
+                    <div className="w-1/2 border-r border-zinc-700/50">
+                      <div className="p-2 bg-zinc-800/50 border-b border-zinc-700/50">
+                        <h3 className="text-white font-medium text-center">Intraday Analysis ({intradayImages.length})</h3>
+                      </div>
+                      <ScrollArea className="h-full">
+                        <div className="p-4 space-y-4">
+                          {intradayImages.map((image, index) => (
+                            <div key={index} className="space-y-2">
+                              <div className="text-sm text-zinc-400">
+                                {image.name}
+                              </div>
+                              <div className="relative overflow-hidden rounded-lg bg-zinc-900 border border-zinc-700/30">
+                                {imageLoading[`intraday-${index}`] && (
+                                  <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
+                                    <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                                  </div>
+                                )}
+                                <img
+                                  src={image.src}
+                                  alt={image.name}
+                                  className="w-full h-auto block"
+                                  style={{ 
+                                    maxWidth: '100%',
+                                    height: 'auto',
+                                    display: 'block'
+                                  }}
+                                  onLoadStart={() => handleImageLoadStart(`intraday-${index}` as any)}
+                                  onLoad={() => handleImageLoad(`intraday-${index}` as any)}
+                                  onError={() => handleImageLoad(`intraday-${index}` as any)}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                          {intradayImages.length === 0 && (
+                            <div className="text-center text-zinc-500 py-8">
+                              No intraday images found
+                            </div>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                    
+                    {/* Interday images on the right */}
+                    <div className="w-1/2">
+                      <div className="p-2 bg-zinc-800/50 border-b border-zinc-700/50">
+                        <h3 className="text-white font-medium text-center">Interday Analysis ({interdayImages.length})</h3>
+                      </div>
+                      <ScrollArea className="h-full">
+                        <div className="p-4 space-y-4">
+                          {interdayImages.map((image, index) => (
+                            <div key={index} className="space-y-2">
+                              <div className="text-sm text-zinc-400">
+                                {image.name}
+                              </div>
+                              <div className="relative overflow-hidden rounded-lg bg-zinc-900 border border-zinc-700/30">
+                                {imageLoading[`interday-${index}`] && (
+                                  <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
+                                    <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                                  </div>
+                                )}
+                                <img
+                                  src={image.src}
+                                  alt={image.name}
+                                  className="w-full h-auto block"
+                                  style={{ 
+                                    maxWidth: '100%',
+                                    height: 'auto',
+                                    display: 'block'
+                                  }}
+                                  onLoadStart={() => handleImageLoadStart(`interday-${index}` as any)}
+                                  onLoad={() => handleImageLoad(`interday-${index}` as any)}
+                                  onError={() => handleImageLoad(`interday-${index}` as any)}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                          {interdayImages.length === 0 && (
+                            <div className="text-center text-zinc-500 py-8">
+                              No interday images found
+                            </div>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                // Non-maximized view remains the same
+                <>
+                  <div className="border-b border-zinc-700/50 bg-zinc-700/20">
+                    <div className="flex items-center gap-2 mt-1">
+                    </div>
+                  </div>
+                  
                   <div className={`relative overflow-hidden bg-gradient-to-br ${
                     gradientMode === 'profit' ? 'from-green-950/20 to-zinc-900' :
                     gradientMode === 'loss' ? 'from-red-950/20 to-zinc-900' : 
@@ -820,7 +888,6 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                     )}
                   </div>
                   
-                  {/* Pagination dots - Based on filtered images */}
                   {filteredImages.length > 1 && (
                     <div className="p-2 border-t border-zinc-700/50 bg-zinc-700/20">
                       <div className="flex justify-center gap-1">
@@ -843,15 +910,16 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         </CardContent>
       </Card>
       
-      
-      {/* News Component */}
-      <div className={`${isMaximized ? 'w-96' : 'w-[360px]'} flex-shrink-0`}>
-        <NewsComponent 
-          companyCode={companyCode} 
-          isMaximized={isMaximized} 
-          gradientMode={gradientMode}
-        />
-      </div>
+      {/* News Component - Only show in non-maximized view */}
+      {!isMaximized && (
+        <div className="w-[360px] flex-shrink-0">
+          <NewsComponent 
+            companyCode={companyCode} 
+            isMaximized={isMaximized} 
+            gradientMode={gradientMode}
+          />
+        </div>
+      )}
     </div>
   );
 };
