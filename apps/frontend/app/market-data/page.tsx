@@ -23,6 +23,7 @@ import { WatchlistSelector } from "../components/controllers/WatchlistSelector";
 import { ImageCarousel } from "./components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { ViewInDashboardButton } from "../components/ViewInDashboardButton";
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 const PlotlyChart = dynamic(() => import('./components/charts/PlotlyChart'), { 
   ssr: false,
@@ -88,6 +89,8 @@ const MarketDataPage: React.FC = () => {
     isActive: false
   });
 
+  const [gradientMode, setGradientMode] = useState<'profit' | 'loss' | 'neutral'>('neutral');
+
   const { 
     companies, 
     loading: watchlistLoading, 
@@ -136,6 +139,34 @@ const MarketDataPage: React.FC = () => {
     setSelectedCompany(null);
     setSelectedSymbol('');
   }, [setWatchlist]);
+
+  const getSentimentIndicator = (mode: 'profit' | 'loss' | 'neutral') => {
+    switch (mode) {
+      case 'profit':
+        return {
+          background: 'bg-gradient-to-r from-green-500/10 to-green-900/10 border-green-500/40',
+          text: 'text-green-400',
+          icon: TrendingUp,
+          label: '_ve Sentiment'
+        };
+      case 'loss':
+        return {
+          background: 'bg-gradient-to-r from-red-500/10 to-red-900/10 border-red-500/40',
+          text: 'text-red-400',
+          icon: TrendingDown,
+          label: '+ve Sentiment'
+        };
+      case 'neutral':
+      default:
+        return {
+          background: 'bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40',
+          text: 'text-zinc-400',
+          icon: Minus,
+          label: 'Neutral Sentiment'
+        };
+    }
+  };
+
 
   useEffect(() => {
     if (companies.length > 0 && !selectedCompany) {
@@ -424,7 +455,7 @@ const MarketDataPage: React.FC = () => {
                   />
                 </div>
                 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Selected:</span>
                     <div className="font-medium">
@@ -445,13 +476,8 @@ const MarketDataPage: React.FC = () => {
                     <span className="text-muted-foreground">Data Points:</span>
                     <div className="font-medium">{symbolHistory.length} historical / {dataCount} updates</div>
                   </div>
-                </div>
-
-                {selectedCompany && selectedExchange && (
-                  <div className="flex items-center justify-between pt-4 border-t">
-                    <div className="text-sm text-muted-foreground">
-                      Ready to analyze {selectedCompany} historical data?
-                    </div>
+                   {selectedCompany && selectedExchange && (
+                  <div className="flex items-center justify-center">
                     <ViewInDashboardButton
                       companyCode={selectedCompany}
                       exchange={selectedExchange}
@@ -462,6 +488,7 @@ const MarketDataPage: React.FC = () => {
                     />
                   </div>
                 )}
+                </div>
 
                 {watchlistError && (
                   <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
@@ -473,7 +500,7 @@ const MarketDataPage: React.FC = () => {
           </Card>
 
           <div className="min-h-screen bg-zinc-900 text-zinc-100 rounded-lg">
-            <div className="container mx-auto p-4">
+            <div className="container w-full p-4">
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
                 <div className="lg:col-span-3">
                   <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-[600px]">
@@ -495,7 +522,7 @@ const MarketDataPage: React.FC = () => {
                   </div>
                 </div>
                 
-                <div className="bg-zinc-800 p-4 rounded-lg shadow-lg">
+                <div className="bg-zinc-800 p-4 w-full rounded-lg shadow-lg">
                   {currentData ? (
                     <>
                       <h2 className="text-xl font-semibold mb-2 text-white">{selectedSymbol}</h2>
@@ -503,6 +530,27 @@ const MarketDataPage: React.FC = () => {
                       <div className={`text-lg ${getChangeClass(currentData.change)}`}>
                         {formatChange(currentData.change, currentData.changePercent)}
                       </div>
+                      
+                      {/* Sentiment Indicator Div - Now controlled by toggle */}
+                      {(() => {
+                        const sentiment = getSentimentIndicator(gradientMode);
+                        // const Icon = sentiment.icon;
+                        return (
+                          <div className={`mt-3 p-3 rounded-lg border-2 ${sentiment.background} backdrop-blur-sm`}>
+                            <div className="flex items-center gap-2">
+                              {/* <Icon className={`h-4 w-4 ${sentiment.text}`} /> */}
+                              <span className={`text-sm font-medium ${sentiment.text}`}>
+                                {sentiment.label}
+                              </span>
+                            </div>
+                            <div className="mt-1">
+                              <span className="text-xs text-zinc-400">
+                                Market sentiment controlled by toggle
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                       
                       <div className="grid grid-cols-2 gap-4 mt-6">
                         <div className="bg-zinc-700 p-3 rounded">
@@ -585,6 +633,8 @@ const MarketDataPage: React.FC = () => {
                 <ImageCarousel
                   companyCode={selectedCompany || ''}
                   exchange={selectedExchange || ''}
+                  gradientMode={gradientMode}
+                  onGradientModeChange={setGradientMode}
                 />
               </div>
               

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
+
 interface NewsItem {
   id: string;
   headline: string;
@@ -12,7 +13,9 @@ interface NewsItem {
   timestamp: string;
   category: 'market' | 'company' | 'sector' | 'economy';
   relevance: 'high' | 'medium' | 'low';
+  sentiment: 'positive' | 'negative' | 'neutral';
 }
+
 
 interface NewsComponentProps {
   companyCode: string;
@@ -20,11 +23,12 @@ interface NewsComponentProps {
   gradientMode: 'profit' | 'loss' | 'neutral';
 }
 
-// Three-way toggle switch componentfdfdfdd
+
 interface GradientToggleProps {
   value: 'profit' | 'loss' | 'neutral';
   onChange: (value: 'profit' | 'loss' | 'neutral') => void;
 }
+
 
 const GradientToggle: React.FC<GradientToggleProps> = ({ value, onChange }) => {
   const modes = [
@@ -50,6 +54,7 @@ const GradientToggle: React.FC<GradientToggleProps> = ({ value, onChange }) => {
       bgColor: 'bg-green-500/20 border-green-500/30'
     },
   ];
+
 
   return (
     <div className="flex items-center gap-2">
@@ -80,21 +85,75 @@ const GradientToggle: React.FC<GradientToggleProps> = ({ value, onChange }) => {
   );
 };
 
+
 const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized, gradientMode }) => {
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
 
-  // Get gradient classes based on mode
+
+ 
   const getGradientClass = (mode: 'profit' | 'loss' | 'neutral') => {
     switch (mode) {
       case 'profit':
-        return 'bg-gradient-to-br from-green-900 via-zinc-800 to-green-900';
+        return 'bg-gradient-to-br from-green-900/30 via-zinc-950 to-green-900/10';
       case 'loss':
-        return 'bg-gradient-to-br from-red-900 via-zinc-800 to-red-900';
+        return 'bg-gradient-to-br from-red-900/30 via-zinc-950 to-red-900/10';
       case 'neutral':
       default:
-        return 'bg-zinc-800';
+        return 'bg-zinc-950';
     }
   };
+
+
+  const getSentimentStyling = (sentiment: NewsItem['sentiment']) => {
+    switch (sentiment) {
+      case 'positive':
+        return {
+          border: 'border-green-500/60 hover:border-green-400/80',
+          background: 'hover:bg-green-500/10',
+        };
+      case 'negative':
+        return {
+          border: 'border-red-500/60 hover:border-red-400/80',
+          background: 'hover:bg-red-500/10',
+        };
+      case 'neutral':
+      default:
+        return {
+          border: 'border-zinc-600/50 hover:border-zinc-500/70',
+          background: 'hover:bg-zinc-700/30',
+        };
+    }
+  };
+
+
+ 
+  const getSentimentIndicator = (sentiment: NewsItem['sentiment']) => {
+    switch (sentiment) {
+      case 'positive':
+        return (
+          <div className="flex items-center gap-1">
+            <TrendingUp className="h-3 w-3 text-green-400" />
+            <span className="text-xs text-green-400 font-medium">Positive</span>
+          </div>
+        );
+      case 'negative':
+        return (
+          <div className="flex items-center gap-1">
+            <TrendingDown className="h-3 w-3 text-red-400" />
+            <span className="text-xs text-red-400 font-medium">Negative</span>
+          </div>
+        );
+      case 'neutral':
+      default:
+        return (
+          <div className="flex items-center gap-1">
+            <Minus className="h-3 w-3 text-zinc-400" />
+            <span className="text-xs text-zinc-400 font-medium">Neutral</span>
+          </div>
+        );
+    }
+  };
+
 
   const generateRandomNews = useCallback(() => {
     const headlines = [
@@ -127,8 +186,10 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
       "Unde omnis iste natus error sit voluptatem accusantium doloremque laudantium totam rem aperiam eaque ipsa quae ab illo."
     ];
 
+
     const categories: NewsItem['category'][] = ['market', 'company', 'sector', 'economy'];
     const relevance: NewsItem['relevance'][] = ['high', 'medium', 'low'];
+    const sentiments: NewsItem['sentiment'][] = ['positive', 'negative', 'neutral'];
     
     const news: NewsItem[] = headlines.map((headline, index) => ({
       id: `news-${index}`,
@@ -136,11 +197,13 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
       summary: summaries[index % summaries.length],
       timestamp: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000).toISOString(),
       category: categories[Math.floor(Math.random() * categories.length)],
-      relevance: relevance[Math.floor(Math.random() * relevance.length)]
+      relevance: relevance[Math.floor(Math.random() * relevance.length)],
+      sentiment: sentiments[Math.floor(Math.random() * sentiments.length)]
     }));
     
     return news.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, []);
+
 
   useEffect(() => {
     if (companyCode) {
@@ -148,11 +211,13 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     }
   }, [companyCode, generateRandomNews]);
 
+
   const handleNewsClick = (newsItem: NewsItem) => {
     const searchQuery = encodeURIComponent(`${newsItem.headline} ${companyCode}`);
     const googleSearchUrl = `https://www.google.com/search?q=${searchQuery}`;
     window.open(googleSearchUrl, '_blank', 'noopener,noreferrer');
   };
+
 
   const formatTime = (timestamp: string) => {
     const now = new Date();
@@ -164,6 +229,7 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     return `${Math.floor(diffInHours / 24)}d ago`;
   };
 
+
   const getCategoryColor = (category: NewsItem['category']) => {
     switch (category) {
       case 'market': return 'bg-blue-500/20 text-blue-400';
@@ -174,6 +240,7 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     }
   };
 
+
   const getRelevanceIcon = (relevance: NewsItem['relevance']) => {
     switch (relevance) {
       case 'high': return <TrendingUp className="h-3 w-3 text-red-400" />;
@@ -181,6 +248,7 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
       case 'low': return <TrendingUp className="h-3 w-3 text-zinc-400" />;
     }
   };
+
 
   if (!companyCode) {
     return (
@@ -200,6 +268,7 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     );
   }
 
+
   return (
     <Card className={`${getGradientClass(gradientMode)} shadow-lg ${isMaximized ? 'h-full' : 'h-auto'} border border-zinc-700/50`}>
       <CardHeader className="p-4 border-b border-zinc-700/50">
@@ -207,54 +276,68 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
           <TrendingUp className="h-5 w-5" />
           {companyCode} News Feed
         </CardTitle>
-        <p className="text-sm text-zinc-400">Click on any headline to search Google</p>
+        <p className="text-sm text-zinc-400">Click on any headline to search Google • Color-coded by sentiment</p>
       </CardHeader>
       <CardContent className="p-0">
         <ScrollArea className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[900px]'} w-full`}>
           <div className="p-4 space-y-4">
-            {newsItems.map((newsItem) => (
-              <div
-                key={newsItem.id}
-                onClick={() => handleNewsClick(newsItem)}
-                className="group cursor-pointer p-4 rounded-lg border border-zinc-700/50 hover:border-zinc-600 hover:bg-zinc-700/30 transition-all duration-200"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(newsItem.category)}`}>
-                      {newsItem.category}
-                    </span>
-                    {getRelevanceIcon(newsItem.relevance)}
+            {newsItems.map((newsItem) => {
+              const sentimentStyling = getSentimentStyling(newsItem.sentiment);
+              return (
+                <div
+                  key={newsItem.id}
+                  onClick={() => handleNewsClick(newsItem)}
+                  className={`
+                    group cursor-pointer p-4 rounded-lg border-2 transition-all duration-200 shadow-lg
+                    ${sentimentStyling.border} ${sentimentStyling.background}
+                    hover:shadow-xl
+                  `}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(newsItem.category)}`}>
+                        {newsItem.category}
+                      </span>
+                      {getRelevanceIcon(newsItem.relevance)}
+                      {getSentimentIndicator(newsItem.sentiment)}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-zinc-500">
+                      <Clock className="h-3 w-3" />
+                      {formatTime(newsItem.timestamp)}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-zinc-500">
-                    <Clock className="h-3 w-3" />
-                    {formatTime(newsItem.timestamp)}
+                  <h3 className="text-white font-medium mb-2 group-hover:text-blue-400 transition-colors duration-200 flex items-start gap-2">
+                    {newsItem.headline}
+                    <ExternalLink className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex-shrink-0 mt-0.5" />
+                  </h3>
+                  <p className="text-sm text-zinc-400 line-clamp-3 leading-relaxed">
+                    {newsItem.summary}
+                  </p>
+                  <div className="mt-3 pt-3 border-t border-zinc-700/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-zinc-500">
+                          Relevance: {newsItem.relevance}
+                        </span>
+                        <span className="text-xs text-zinc-500">
+                          Sentiment: {newsItem.sentiment}
+                        </span>
+                      </div>
+                      <span className="text-xs text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        Click to search →
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <h3 className="text-white font-medium mb-2 group-hover:text-blue-400 transition-colors duration-200 flex items-start gap-2">
-                  {newsItem.headline}
-                  <ExternalLink className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex-shrink-0 mt-0.5" />
-                </h3>
-                <p className="text-sm text-zinc-400 line-clamp-3 leading-relaxed">
-                  {newsItem.summary}
-                </p>
-                <div className="mt-3 pt-3 border-t border-zinc-700/50">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-500">
-                      Relevance: {newsItem.relevance}
-                    </span>
-                    <span className="text-xs text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      Click to search →
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </ScrollArea>
       </CardContent>
     </Card>
   );
 };
+
 
 const ACTUAL_INDICES = [
   'NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'AUTONIFTY', 
@@ -268,22 +351,26 @@ const ACTUAL_INDICES = [
   'NIFTYSML', 'NIFTYTOT', 'NIFTYDIV', 'NIFTY50', 'NIFTYQUALITY30'
 ];
 
+
 interface ImageCarouselProps {
-  companyCode: string;
+ companyCode: string;
   exchange: string;
   selectedDate?: Date;
+  gradientMode: 'profit' | 'loss' | 'neutral';
+  onGradientModeChange: (mode: 'profit' | 'loss' | 'neutral') => void;
 }
+
 
 interface CarouselImage {
   src: string;
   name: string;
   type: string;
-  chartType: 'intraday' | 'interday'; // Added chart type
+  chartType: 'intraday' | 'interday';
   exists: boolean;
   dimensions?: { width: number; height: number };
 }
 
-// Tab component for chart type selection
+
 interface ChartTabsProps {
   activeTab: 'intraday' | 'interday';
   onTabChange: (tab: 'intraday' | 'interday') => void;
@@ -291,11 +378,13 @@ interface ChartTabsProps {
   interdayCount: number;
 }
 
+
 const ChartTabs: React.FC<ChartTabsProps> = ({ activeTab, onTabChange, intradayCount, interdayCount }) => {
   const tabs = [
     { key: 'intraday' as const, label: 'Intraday', count: intradayCount },
     { key: 'interday' as const, label: 'Interday', count: interdayCount }
   ];
+
 
   return (
     <div className="flex bg-zinc-800 rounded-lg p-1 border border-zinc-700">
@@ -326,55 +415,61 @@ const ChartTabs: React.FC<ChartTabsProps> = ({ activeTab, onTabChange, intradayC
   );
 };
 
+
 export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   companyCode,
   exchange,
-  selectedDate
+  selectedDate,
+  gradientMode = 'neutral',
+  onGradientModeChange 
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [allImages, setAllImages] = useState<CarouselImage[]>([]);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [gradientMode, setGradientMode] = useState<'profit' | 'loss' | 'neutral'>('neutral');
   const [imageLoading, setImageLoading] = useState<Record<number, boolean>>({});
   const [activeTab, setActiveTab] = useState<'intraday' | 'interday'>('intraday');
 
-  // Filter images based on active tab
+
   const filteredImages = useMemo(() => {
     return allImages.filter(image => image.chartType === activeTab);
   }, [allImages, activeTab]);
 
-  // Get counts for each chart type
+
   const intradayCount = useMemo(() => {
     return allImages.filter(image => image.chartType === 'intraday').length;
   }, [allImages]);
+
 
   const interdayCount = useMemo(() => {
     return allImages.filter(image => image.chartType === 'interday').length;
   }, [allImages]);
 
-  // Reset current index when tab changes
+
   useEffect(() => {
     setCurrentIndex(0);
   }, [activeTab]);
 
-  // Get gradient classes based on mode
+
+
   const getGradientClass = (mode: 'profit' | 'loss' | 'neutral') => {
     switch (mode) {
       case 'profit':
-        return 'bg-gradient-to-br from-green-900 via-zinc-800 to-green-900/50';
+        return 'bg-gradient-to-br from-green-900/30 via-zinc-950 to-green-900/10';
       case 'loss':
-        return 'bg-gradient-to-br from-red-900 via-zinc-800 to-red-900/50';
+        return 'bg-gradient-to-br from-red-900/30 via-zinc-950 to-red-900/10';
       case 'neutral':
       default:
-        return 'bg-zinc-800';
+        return 'bg-zinc-950';
     }
   };
+
 
   const getCurrentDateString = useCallback(() => {
     const date = selectedDate || new Date('2025-07-01');
     return date.toISOString().split('T')[0];
   }, [selectedDate]);
+
 
   const generateImagePaths = useCallback(() => {
     if (!companyCode || !exchange) return [];
@@ -383,7 +478,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     const companyExchange = `${companyCode}_${exchange}`;
     const imageList: CarouselImage[] = [];
 
-    // Interday pattern
+
+
     const pattern1Path = `/GraphsN/${dateString}/N1_Pattern_Plot/${companyExchange}/${companyExchange}_interday.png`;
     imageList.push({
       src: pattern1Path,
@@ -393,7 +489,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       exists: false
     });
 
-    // Intraday patterns
+
+   
     ACTUAL_INDICES.forEach(index => {
       const pattern2Path = `/GraphsN/${dateString}/watchlist_comp_ind_90d_analysis_plot/${companyExchange}_${dateString}/${companyCode}_${index}_intraday.png`;
       imageList.push({
@@ -405,8 +502,10 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       });
     });
 
+
     return imageList;
   }, [companyCode, exchange, getCurrentDateString]);
+
 
   const checkImageExists = useCallback(async (imageSrc: string): Promise<{ exists: boolean; dimensions?: { width: number; height: number } }> => {
     return new Promise((resolve) => {
@@ -424,6 +523,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       img.src = imageSrc;
     });
   }, []);
+
 
   useEffect(() => {
     const loadImages = async () => {
@@ -451,26 +551,32 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       }
     };
 
+
     if (companyCode && exchange) {
       loadImages();
     }
   }, [companyCode, exchange, generateImagePaths, checkImageExists]);
 
+
   const handleNext = useCallback(() => {
     setCurrentIndex((prev) => (prev + 1) % filteredImages.length);
   }, [filteredImages.length]);
+
 
   const handlePrevious = useCallback(() => {
     setCurrentIndex((prev) => (prev - 1 + filteredImages.length) % filteredImages.length);
   }, [filteredImages.length]);
 
+
   const handleImageLoad = (index: number) => {
     setImageLoading(prev => ({ ...prev, [index]: false }));
   };
 
+
   const handleImageLoadStart = (index: number) => {
     setImageLoading(prev => ({ ...prev, [index]: true }));
   };
+
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -488,15 +594,19 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       }
     };
 
+
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [handleNext, handlePrevious, companyCode, exchange, isMaximized]);
 
+
   const currentImage = filteredImages[currentIndex];
+
 
   if (!companyCode || !exchange) {
     return null;
   }
+
 
   return (
     <div className={`flex gap-4 ${isMaximized ? 'fixed inset-4 z-50' : 'w-full'}`}>
@@ -506,7 +616,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
           {/* Title and Navigation */}
           <div className="flex items-center gap-4">
             <CardTitle className="text-lg font-semibold text-white">
-              {companyCode} - Graph Analysis
+              {companyCode} - Headline Analysis
             </CardTitle>
             
             {/* Navigation Controls - Hidden in maximized mode */}
@@ -544,6 +654,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               </div>
             )}
 
+
             {/* Show filtered count in maximized mode */}
             {isMaximized && filteredImages.length > 0 && !isLoading && (
               <div className="flex items-center gap-2 ml-4">
@@ -567,7 +678,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             )}
             
             {/* Gradient Mode Toggle */}
-            <GradientToggle value={gradientMode} onChange={setGradientMode} />
+            {/* <GradientToggle value={gradientMode} onChange={setGradientMode} /> */}
+            <GradientToggle value={gradientMode} onChange={onGradientModeChange} />
             
             {/* Maximize/Minimize button */}
             <Button
@@ -611,16 +723,16 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
           ) : (
             <>
               {isMaximized ? (
-                // List view for maximized mode - ADAPTIVE HEIGHT
+              
                 <ScrollArea className="h-[calc(100vh-200px)] w-full">
                   <div className="p-6 space-y-6">
                     {filteredImages.map((image, index) => (
                       <div key={index} className="space-y-4">
-                        {/* Image metadata */}
+                        
                         <div className="p-4 border border-zinc-700/50 rounded-lg bg-zinc-700/20">
                           <h3 className="font-medium text-white mb-1">{image.name}</h3>
                           <div className="flex items-center gap-2 mb-1">
-                            <p className="text-sm text-zinc-400">{image.type}</p>
+                            
                             <span className="px-2 py-1 rounded-full text-xs bg-blue-500/20 text-blue-400">
                               {image.chartType}
                             </span>
@@ -632,7 +744,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                           )}
                         </div>
                         
-                        {/* Image display - ADAPTIVE CONTAINER */}
+                       
                         <div className={`relative overflow-hidden rounded-lg bg-gradient-to-br ${
                           gradientMode === 'profit' ? 'from-green-950/20 to-zinc-900' :
                           gradientMode === 'loss' ? 'from-red-950/20 to-zinc-900' : 
@@ -662,22 +774,22 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                   </div>
                 </ScrollArea>
               ) : (
-                // Carousel view for normal mode - ADAPTIVE HEIGHT
+               
                 <>
                   {/* Image metadata */}
-                  <div className="p-4 border-b border-zinc-700/50 bg-zinc-700/20">
-                    <h3 className="font-medium text-sm text-white">{currentImage?.name}</h3>
+                  <div className="border-b border-zinc-700/50 bg-zinc-700/20">
+                    {/* <h3 className="font-medium text-sm text-white">{currentImage?.name}</h3> */}
                     <div className="flex items-center gap-2 mt-1">
-                      <p className="text-xs text-zinc-400">{currentImage?.type}</p>
-                      <span className="px-2 py-1 rounded-full text-xs bg-blue-500/20 text-blue-400">
+                      {/* <p className="text-xs text-zinc-400">{currentImage?.type}</p> */}
+                      {/* <span className="px-2 py-1 rounded-full text-xs bg-blue-500/20 text-blue-400">
                         {currentImage?.chartType}
-                      </span>
+                      </span> */}
                     </div>
-                    {currentImage?.dimensions && (
+                    {/* {currentImage?.dimensions && (
                       <p className="text-xs text-zinc-500 mt-1">
                         {currentImage.dimensions.width} × {currentImage.dimensions.height}px
                       </p>
-                    )}
+                    )} */}
                   </div>
                   
                   {/* Image display - ADAPTIVE HEIGHT CONTAINER */}

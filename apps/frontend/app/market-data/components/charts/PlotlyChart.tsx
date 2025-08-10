@@ -2385,7 +2385,7 @@ const timeframeButtons = [
         </div>
       )}
       {}
-      <div className="mt-2 flex items-center space-x-4 text-sm">
+      {/* <div className="mt-2 flex items-center space-x-4 text-sm">
         <div className={`flex items-center space-x-2 ${
           tradingHours.isActive ? 'text-green-400' : 'text-red-400'
         }`}>
@@ -2435,7 +2435,7 @@ const timeframeButtons = [
             )}
           </div>
         )}
-      </div>
+      </div> */}
     </div>
   );
 };
