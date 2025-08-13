@@ -147,14 +147,14 @@ const MarketDataPage: React.FC = () => {
           background: 'bg-gradient-to-r from-green-500/10 to-green-900/10 border-green-500/40',
           text: 'text-green-400',
           icon: TrendingUp,
-          label: '_ve Sentiment'
+          label: 'Positive Sentiment'
         };
       case 'loss':
         return {
           background: 'bg-gradient-to-r from-red-500/10 to-red-900/10 border-red-500/40',
           text: 'text-red-400',
           icon: TrendingDown,
-          label: '+ve Sentiment'
+          label: 'Negative Sentiment'
         };
       case 'neutral':
       default:
@@ -544,9 +544,9 @@ const MarketDataPage: React.FC = () => {
                               </span>
                             </div>
                             <div className="mt-1">
-                              <span className="text-xs text-zinc-400">
+                              {/* <span className="text-xs text-zinc-400">
                                 Market sentiment controlled by toggle
-                              </span>
+                              </span> */}
                             </div>
                           </div>
                         );
