@@ -701,12 +701,11 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             </CardTitle>
             
             {/* Counter Navigation - Only show in maximized mode */}
-            {isMaximized && currentHeadline && (
-              <div className={`flex items-center gap-2 px-3 py-1 rounded-lg border-2 transition-all duration-200 ${
-                getSentimentStyling(currentHeadline.sentiment).border
-              } ${
-                getSentimentStyling(currentHeadline.sentiment).background
-              }`}>
+            {/* Counter Navigation - Only show in maximized mode */}
+{isMaximized && currentHeadline && (
+  <div className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-all duration-200 ${
+    getSentimentStyling(currentHeadline.sentiment).background
+  }`}>
                 <Button
                   variant="outline"
                   size="sm"

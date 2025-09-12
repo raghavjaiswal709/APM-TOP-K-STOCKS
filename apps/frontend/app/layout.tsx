@@ -11,7 +11,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 export const metadata: Metadata = {
- title: "DAKSPHERE Dashboard",
+ title: "DAKSphere",
   description: "Dashboard for your stock goals",
 };
 export default function RootLayout({

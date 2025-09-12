@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/sidebar";
 import { ModeToggle } from "../components/toggleButton";
 import { Card, CardContent } from "@/components/ui/card";
-import { WatchlistSelector } from "../components/controllers/WatchlistSelector";
+import { WatchlistSelector } from "../components/controllers/WatchlistSelector2/WatchlistSelector";
 import { ImageCarousel } from "./components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { ViewInDashboardButton } from "../components/ViewInDashboardButton";
