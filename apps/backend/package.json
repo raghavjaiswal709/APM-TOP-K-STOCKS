@@ -24,6 +24,7 @@
         "@nestjs/core": "^11.0.10",
         "@nestjs/platform-express": "^11.0.10",
         "@nestjs/platform-socket.io": "^11.1.0",
+        "@nestjs/schedule": "^6.0.0",
         "@nestjs/typeorm": "^11.0.0",
         "@nestjs/websockets": "^11.1.0",
         "child_process": "^1.0.2",

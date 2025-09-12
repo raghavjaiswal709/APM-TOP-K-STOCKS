@@ -103,7 +103,8 @@ export class LiveMarketService {
 
       // Build symbols
       const symbols = companyCodes.map(code => {
-        const company = availableCompanies.companies.find(c => c.company_code === code);
+        const company = (availableCompanies.companies as any[]).find(c => c.company_code === code);
+
         return company?.symbol;
       }).filter(Boolean);
 
