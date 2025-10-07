@@ -2,6 +2,7 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
 import { BarChart3, ExternalLink } from "lucide-react";
+
 interface ViewInDashboardButtonProps {
   companyCode: string;
   exchange: string;
@@ -12,12 +13,13 @@ interface ViewInDashboardButtonProps {
   className?: string;
   disabled?: boolean;
 }
+
 export const ViewInDashboardButton: React.FC<ViewInDashboardButtonProps> = ({
   companyCode,
   exchange,
   watchlist = 'A',
   interval = '1h',
-  variant = "outline",
+  variant = "outline",  // Changed to outline for visible border
   size = "sm",
   className = "",
   disabled = false
@@ -27,7 +29,6 @@ export const ViewInDashboardButton: React.FC<ViewInDashboardButtonProps> = ({
       console.warn('Company code or exchange not provided');
       return;
     }
-    // Build URL with query parameters
     const params = new URLSearchParams({
       company: companyCode,
       exchange: exchange,
@@ -38,13 +39,14 @@ export const ViewInDashboardButton: React.FC<ViewInDashboardButtonProps> = ({
     const dashboardUrl = `/dashboard?${params.toString()}`;
     window.open(dashboardUrl, '_blank');
   };
+
   const getButtonContent = () => {
     switch (variant) {
       case "card":
         return (
           <>
             <BarChart3 className="h-4 w-4" />
-            <span>View in Dashboard</span>
+            <span>Open Historical Data</span>
             <ExternalLink className="h-3 w-3 opacity-70" />
           </>
         );
@@ -52,12 +54,13 @@ export const ViewInDashboardButton: React.FC<ViewInDashboardButtonProps> = ({
         return (
           <>
             <BarChart3 className="h-4 w-4" />
-            {size !== "sm" && <span>Dashboard</span>}
+            {size !== "sm" && <span>Open Historical Data</span>}
             <ExternalLink className="h-3 w-3 opacity-70" />
           </>
         );
     }
   };
+
   const getButtonSize = () => {
     switch (size) {
       case "sm":
@@ -68,17 +71,21 @@ export const ViewInDashboardButton: React.FC<ViewInDashboardButtonProps> = ({
         return "h-9 px-4 text-sm";
     }
   };
+
   return (
     <Button
       onClick={handleViewInDashboard}
       variant={variant}
       disabled={disabled || !companyCode || !exchange}
-      className={`${getButtonSize()} flex items-center gap-2 ${className}`}
-      title={`Open ${companyCode} in Dashboard (New Tab)`}
+      className={
+        `${getButtonSize()} flex items-center gap-2 border border-gray-300 
+        bg-white hover:bg-gray-100 text-gray-700 ${className}`
+      }
+      title={`Open ${companyCode} Historical Data (New Tab)`}
     >
       {getButtonContent()}
     </Button>
   );
 };
-export default ViewInDashboardButton;
 
+export default ViewInDashboardButton;

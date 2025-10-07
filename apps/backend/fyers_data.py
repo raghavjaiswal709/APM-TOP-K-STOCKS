@@ -12,12 +12,12 @@ import logging
 import requests
 import numpy as np
 import os
-from collections import deque
+from collections import deque, defaultdict
 from fyers_apiv3 import fyersModel
 from fyers_apiv3.FyersWebsocket import data_ws
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,  # Changed from INFO to reduce logging overhead
     format='%(asctime)s - %(levelname)s - %(message)s',
 )
 logger = logging.getLogger("FyersServer")
@@ -44,11 +44,21 @@ INDIA_TZ = pytz.timezone('Asia/Kolkata')
 fyers = None
 fyers_client = None
 
+# ============ NEW: Throttling Configuration ============
+THROTTLE_INTERVAL = 1.0  # Send updates every 1 second
+last_emit_time = defaultdict(float)  # Track last emit time per symbol
+pending_data = {}  # Store latest data for throttled emission
+
+# ============ NEW: Cached Indicators ============
+cached_indicators = {}
+
+
 def get_trading_hours():
     now = datetime.datetime.now(INDIA_TZ)
     start_time = now.replace(hour=9, minute=15, second=0, microsecond=0)
     end_time = now.replace(hour=15, minute=30, second=0, microsecond=0)
     return start_time, end_time
+
 
 def is_trading_hours():
     now = datetime.datetime.now(INDIA_TZ)
@@ -59,10 +69,12 @@ def is_trading_hours():
     
     return start_time <= now <= end_time
 
+
 @sio.event
 def connect(sid, environ):
     logger.info(f"Client connected: {sid}")
     clients[sid] = {'subscriptions': set()}
+
 
 @sio.event
 def disconnect(sid):
@@ -72,6 +84,7 @@ def disconnect(sid):
             if symbol in symbol_to_clients:
                 symbol_to_clients[symbol].discard(sid)
         del clients[sid]
+
 
 def fetch_historical_intraday_data(symbol, date=None):
     if not date:
@@ -161,6 +174,10 @@ def fetch_historical_intraday_data(symbol, date=None):
                         point['change'] = point['ltp'] - prev_close
                         point['changePercent'] = (point['change'] / prev_close) * 100 if prev_close else 0
                 
+                # Initialize indicators cache after loading historical data
+                if result:
+                    calculate_indicators_optimized(symbol, init=True)
+                
                 return result
             else:
                 logger.error(f"Failed to fetch historical data: {response}")
@@ -173,6 +190,7 @@ def fetch_historical_intraday_data(symbol, date=None):
         import traceback
         traceback.print_exc()
         return []
+
 
 def fetch_daily_historical_data(symbol, days=30):
     try:
@@ -203,6 +221,7 @@ def fetch_daily_historical_data(symbol, days=30):
     except Exception as e:
         logger.error(f"Error fetching daily historical data: {e}")
         return []
+
 
 @sio.event
 def subscribe(sid, data):
@@ -248,6 +267,7 @@ def subscribe(sid, data):
     
     return {'success': True, 'symbol': symbol}
 
+
 @sio.event
 def unsubscribe(sid, data):
     symbol = data.get('symbol')
@@ -268,6 +288,7 @@ def unsubscribe(sid, data):
     
     return {'success': True, 'symbol': symbol}
 
+
 @sio.event
 def get_trading_status(sid, data):
     start_time, end_time = get_trading_hours()
@@ -278,6 +299,7 @@ def get_trading_status(sid, data):
         'current_time': datetime.datetime.now(INDIA_TZ).isoformat(),
         'is_market_day': datetime.datetime.now(INDIA_TZ).weekday() < 5
     }
+
 
 @sio.event
 def get_historical_data_for_date(sid, data):
@@ -291,28 +313,7 @@ def get_historical_data_for_date(sid, data):
         date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
     
     try:
-        # try:
-        #     with open(f'market_data_{date}_{symbol}.json', 'r') as f:
-        #         saved_data = json.load(f)
-        #         logger.info(f"Loaded saved data for {symbol} on {date}")
-        #         return {
-        #             'success': True,
-        #             'symbol': symbol,
-        #             'date': date,
-        #             'data': saved_data
-        #         }
-        # except FileNotFoundError:
-        #     pass
-        
         hist_data = fetch_historical_intraday_data(symbol, date)
-        
-        # if hist_data:
-        #     try:
-        #         with open(f'market_data_{date}_{symbol}.json', 'w') as f:
-        #             json.dump(hist_data, f)
-        #         logger.info(f"Saved historical data for {symbol} on {date}")
-        #     except Exception as e:
-        #         logger.error(f"Error saving historical data: {e}")
         
         return {
             'success': True,
@@ -323,6 +324,7 @@ def get_historical_data_for_date(sid, data):
     except Exception as e:
         logger.error(f"Error fetching historical data for date: {e}")
         return {'success': False, 'error': str(e)}
+
 
 @sio.event
 def get_daily_data(sid, data):
@@ -360,6 +362,7 @@ def get_daily_data(sid, data):
         logger.error(f"Error fetching daily data: {e}")
         return {'success': False, 'error': str(e)}
 
+
 def store_historical_data(symbol, data_point):
     if symbol not in historical_data:
         historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
@@ -370,6 +373,7 @@ def store_historical_data(symbol, data_point):
     historical_data[symbol].append(data_point)
     
     update_ohlc_data(symbol, data_point)
+
 
 def update_ohlc_data(symbol, data_point):
     if symbol not in ohlc_data:
@@ -396,90 +400,187 @@ def update_ohlc_data(symbol, data_point):
         current_candle['close'] = price
         current_candle['volume'] = data_point.get('volume', current_candle['volume'])
 
-def calculate_indicators(symbol):
+
+# ============ NEW: Optimized Indicator Calculation with Caching ============
+def calculate_indicators_optimized(symbol, init=False):
+    """
+    Optimized indicator calculation using incremental updates instead of full recalculation.
+    """
     if symbol not in ohlc_data or len(ohlc_data[symbol]) < 20:
         return {}
     
-    closes = [candle['close'] for candle in ohlc_data[symbol]]
+    # Get the latest close price
+    latest_close = ohlc_data[symbol][-1]['close']
     
-    sma_20 = np.mean(closes[-20:])
-    
-    ema_9 = closes[-1]
-    alpha = 2 / (9 + 1)
-    for i in range(2, min(10, len(closes) + 1)):
-        ema_9 = alpha * closes[-i] + (1 - alpha) * ema_9
-    
-    changes = [closes[i] - closes[i-1] for i in range(1, len(closes))]
-    gains = [max(0, change) for change in changes]
-    losses = [max(0, -change) for change in changes]
-    
-    if len(gains) >= 14:
-        avg_gain = np.mean(gains[-14:])
-        avg_loss = np.mean(losses[-14:])
+    # Initialize cache if needed
+    if symbol not in cached_indicators or init:
+        # Full calculation on first run
+        closes = np.array([candle['close'] for candle in ohlc_data[symbol]])
         
-        if avg_loss == 0:
-            rsi = 100
+        sma_20 = np.mean(closes[-20:]) if len(closes) >= 20 else latest_close
+        
+        # Calculate EMA_9
+        if len(closes) >= 9:
+            ema_9 = closes[0]
+            alpha = 2 / (9 + 1)
+            for price in closes[1:]:
+                ema_9 = alpha * price + (1 - alpha) * ema_9
         else:
-            rs = avg_gain / avg_loss
-            rsi = 100 - (100 / (1 + rs))
+            ema_9 = latest_close
+        
+        # Calculate RSI_14
+        if len(closes) >= 15:
+            changes = np.diff(closes)
+            gains = np.where(changes > 0, changes, 0)
+            losses = np.where(changes < 0, -changes, 0)
+            
+            avg_gain = np.mean(gains[-14:])
+            avg_loss = np.mean(losses[-14:])
+            
+            if avg_loss == 0:
+                rsi = 100
+            else:
+                rs = avg_gain / avg_loss
+                rsi = 100 - (100 / (1 + rs))
+        else:
+            rsi = 50
+        
+        cached_indicators[symbol] = {
+            'sma_20': float(sma_20),
+            'ema_9': float(ema_9),
+            'rsi_14': float(rsi),
+            'avg_gain': avg_gain if len(closes) >= 15 else 0,
+            'avg_loss': avg_loss if len(closes) >= 15 else 0,
+            'prev_close': latest_close
+        }
     else:
-        rsi = 50
+        # Incremental update using cached values
+        cache = cached_indicators[symbol]
+        prev_close = cache['prev_close']
+        
+        # Update SMA_20 incrementally (approximate for efficiency)
+        if len(ohlc_data[symbol]) >= 20:
+            # For exact SMA, we'd need rolling window - this is approximate but fast
+            old_sma = cache['sma_20']
+            cache['sma_20'] = old_sma + (latest_close - old_sma) / 20
+        
+        # Update EMA_9 incrementally
+        alpha = 2 / (9 + 1)
+        cache['ema_9'] = alpha * latest_close + (1 - alpha) * cache['ema_9']
+        
+        # Update RSI_14 incrementally (Wilder's smoothing)
+        change = latest_close - prev_close
+        gain = max(0, change)
+        loss = max(0, -change)
+        
+        # Wilder's smoothing
+        cache['avg_gain'] = (cache['avg_gain'] * 13 + gain) / 14
+        cache['avg_loss'] = (cache['avg_loss'] * 13 + loss) / 14
+        
+        if cache['avg_loss'] == 0:
+            cache['rsi_14'] = 100
+        else:
+            rs = cache['avg_gain'] / cache['avg_loss']
+            cache['rsi_14'] = 100 - (100 / (1 + rs))
+        
+        cache['prev_close'] = latest_close
     
     return {
-        'sma_20': sma_20,
-        'ema_9': ema_9,
-        'rsi_14': rsi
+        'sma_20': cached_indicators[symbol]['sma_20'],
+        'ema_9': cached_indicators[symbol]['ema_9'],
+        'rsi_14': cached_indicators[symbol]['rsi_14']
     }
 
+
+# ============ NEW: Throttled Emission Function ============
+def emit_throttled_data():
+    """
+    Background task that emits pending data every THROTTLE_INTERVAL seconds.
+    """
+    global running
+    while running:
+        try:
+            current_time = time.time()
+            symbols_to_emit = []
+            
+            # Find symbols that need to be emitted
+            for symbol in list(pending_data.keys()):
+                if current_time - last_emit_time[symbol] >= THROTTLE_INTERVAL:
+                    symbols_to_emit.append(symbol)
+            
+            # Emit data for each symbol
+            for symbol in symbols_to_emit:
+                if symbol in pending_data and symbol in symbol_to_clients:
+                    data = pending_data[symbol]
+                    
+                    # Emit to all subscribed clients
+                    for sid in list(symbol_to_clients[symbol]):
+                        try:
+                            sio.emit('marketData', data, room=sid)
+                        except Exception as e:
+                            logger.error(f"Error sending data to client {sid}: {e}")
+                    
+                    last_emit_time[symbol] = current_time
+                    # Don't delete pending_data - keep latest for next interval
+            
+            # Sleep for a fraction of throttle interval to check frequently
+            eventlet.sleep(0.1)  # Check 10 times per second
+            
+        except Exception as e:
+            logger.error(f"Error in throttled emission: {e}")
+            eventlet.sleep(1)
+
+
 def onmessage(message):
-    logger.debug(f"Response: {message}")
-    
-    if isinstance(message, dict) and message.get('type') == 'sub':
-        logger.info(f"Subscription confirmation: {message}")
+    # Reduced logging for performance
+    if not isinstance(message, dict) or 'symbol' not in message:
         return
     
-    if isinstance(message, dict) and 'symbol' in message:
-        symbol = message['symbol']
-        
-        simplified_data = {
-            'symbol': symbol,
-            'ltp': message.get('ltp'),
-            'change': message.get('ch'),
-            'changePercent': message.get('chp'),
-            'volume': message.get('vol_traded_today'),
-            'open': message.get('open_price'),
-            'high': message.get('high_price'),
-            'low': message.get('low_price'),
-            'close': message.get('prev_close_price'),
-            'bid': message.get('bid_price'),
-            'ask': message.get('ask_price'),
-            'timestamp': message.get('last_traded_time') or int(time.time())
-        }
-        
-        store_historical_data(symbol, simplified_data)
-        
-        indicators = calculate_indicators(symbol)
-        if indicators:
-            simplified_data.update(indicators)
-        
-        if symbol in symbol_to_clients:
-            for sid in symbol_to_clients[symbol]:
-                try:
-                    sio.emit('marketData', simplified_data, room=sid)
-                except Exception as e:
-                    logger.error(f"Error sending data to client {sid}: {e}")
-        else:
-            logger.debug(f"No clients subscribed to {symbol}")
-    else:
-        logger.warning(f"Invalid message format: {message}")
+    symbol = message['symbol']
+    
+    if message.get('type') == 'sub':
+        logger.info(f"Subscription confirmation: {symbol}")
+        return
+    
+    simplified_data = {
+        'symbol': symbol,
+        'ltp': message.get('ltp'),
+        'change': message.get('ch'),
+        'changePercent': message.get('chp'),
+        'volume': message.get('vol_traded_today'),
+        'open': message.get('open_price'),
+        'high': message.get('high_price'),
+        'low': message.get('low_price'),
+        'close': message.get('prev_close_price'),
+        'bid': message.get('bid_price'),
+        'ask': message.get('ask_price'),
+        'timestamp': message.get('last_traded_time') or int(time.time())
+    }
+    
+    # Store historical data
+    store_historical_data(symbol, simplified_data)
+    
+    # Calculate indicators (optimized with caching)
+    indicators = calculate_indicators_optimized(symbol)
+    if indicators:
+        simplified_data.update(indicators)
+    
+    # Store in pending_data for throttled emission
+    pending_data[symbol] = simplified_data
+    
+    # Yield control to eventlet to prevent blocking
+    eventlet.sleep(0)
+
 
 def onerror(error):
     logger.error(f"Error: {error}")
     sio.emit('error', {'message': str(error)})
 
+
 def onclose(message):
     logger.info(f"Connection closed: {message}")
     sio.emit('fyersDisconnected', {'message': str(message)})
+
 
 def onopen():
     logger.info("Fyers WebSocket connected")
@@ -489,6 +590,7 @@ def onopen():
     fyers.subscribe(symbols=default_symbols, data_type="SymbolUpdate")
     logger.info(f"Subscribed to default symbols: {default_symbols}")
 
+
 def heartbeat_task():
     global running
     while running:
@@ -497,108 +599,32 @@ def heartbeat_task():
                 'timestamp': int(time.time()),
                 'trading_active': is_trading_hours()
             })
-            time.sleep(30)
+            eventlet.sleep(30)  # Use eventlet.sleep instead of time.sleep
         except Exception as e:
             logger.error(f"Error in heartbeat: {e}")
 
+
 def save_daily_data():
-    
     pass
-    # today = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
-    
-    # for symbol in historical_data:
-    #     data_to_save = list(historical_data[symbol])
-        
-    #     try:
-    #         with open(f'market_data_{today}_{symbol}.json', 'w') as f:
-    #             json.dump(data_to_save, f)
-    #         logger.info(f"Saved market data for {symbol} on {today}")
-    #     except Exception as e:
-    #         logger.error(f"Error saving market data for {symbol}: {e}")
-    
-    # for symbol in ohlc_data:
-    #     ohlc_to_save = list(ohlc_data[symbol])
-        
-    #     try:
-    #         with open(f'ohlc_data_{today}_{symbol}.json', 'w') as f:
-    #             json.dump(ohlc_to_save, f)
-    #         logger.info(f"Saved OHLC data for {symbol} on {today}")
-    #     except Exception as e:
-    #         logger.error(f"Error saving OHLC data for {symbol}: {e}")
+
 
 def load_daily_data():
     pass
-    # today = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
-    
-    # for file in os.listdir('.'):
-    #     if file.startswith('market_data_' + today) and file.endswith('.json'):
-    #         symbol = file.replace('market_data_' + today + '_', '').replace('.json', '')
-            
-    #         try:
-    #             with open(file, 'r') as f:
-    #                 data_points = json.load(f)
-                    
-    #                 if symbol not in historical_data:
-    #                     historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
-                    
-    #                 for point in data_points:
-    #                     historical_data[symbol].append(point)
-                    
-    #                 logger.info(f"Loaded {len(data_points)} historical data points for {symbol}")
-    #         except Exception as e:
-    #             logger.error(f"Error loading market data for {symbol}: {e}")
-    
-    # for file in os.listdir('.'):
-    #     if file.startswith('ohlc_data_' + today) and file.endswith('.json'):
-    #         symbol = file.replace('ohlc_data_' + today + '_', '').replace('.json', '')
-            
-    #         try:
-    #             with open(file, 'r') as f:
-    #                 candles = json.load(f)
-                    
-    #                 if symbol not in ohlc_data:
-    #                     ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
-                    
-    #                 for candle in candles:
-    #                     ohlc_data[symbol].append(candle)
-                    
-    #                 logger.info(f"Loaded {len(candles)} OHLC candles for {symbol}")
-    #         except Exception as e:
-    #             logger.error(f"Error loading OHLC data for {symbol}: {e}")
+
 
 def data_persistence_task():
     pass
-    # global running
-    # while running:
-    #     try:
-    #         save_daily_data()
-    #         time.sleep(300)
-    #     except Exception as e:
-    #         logger.error(f"Error in data persistence task: {e}")
+
 
 def cleanup_old_data_files():
     pass
-    # try:
-    #     today = datetime.datetime.now(INDIA_TZ)
-    #     for file in os.listdir('.'):
-    #         if (file.startswith('market_data_') or file.startswith('ohlc_data_')) and file.endswith('.json'):
-    #             try:
-    #                 date_str = file.split('_')[2]
-    #                 file_date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
-    #                 if (today - file_date).days > 30:
-    #                     os.remove(file)
-    #                     logger.info(f"Removed old data file: {file}")
-    #             except (ValueError, IndexError):
-    #                 continue
-    # except Exception as e:
-    #     logger.error(f"Error cleaning up old data files: {e}")
+
 
 def main_process():
     global fyers, fyers_client, running
     
     try:
         load_daily_data()
-        
         cleanup_old_data_files()
         
         session = fyersModel.SessionModel(
@@ -643,23 +669,13 @@ def main_process():
             on_message=onmessage
         )
         
+        # Start background tasks
         heartbeat_thread = threading.Thread(target=heartbeat_task, daemon=True)
         heartbeat_thread.start()
         
-        # persistence_thread = threading.Thread(target=data_persistence_task, daemon=True)
-        # persistence_thread.start()
-        
-        def schedule_end_of_day_save():
-            pass
-            # now = datetime.datetime.now(INDIA_TZ)
-            # market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-            
-            # if now < market_close:
-            #     delay = (market_close - now).total_seconds()
-            #     threading.Timer(delay, save_daily_data).start()
-            #     logger.info(f"Scheduled end-of-day data save for {market_close.strftime('%H:%M:%S')}")
-        
-        schedule_end_of_day_save()
+        # ============ NEW: Start throttled emission task ============
+        emission_thread = threading.Thread(target=emit_throttled_data, daemon=True)
+        emission_thread.start()
         
         fyers.connect()
         logger.info("Connected to Fyers WebSocket")
@@ -672,6 +688,7 @@ def main_process():
         import traceback
         traceback.print_exc()
 
+
 def main():
     global running
     
@@ -679,11 +696,11 @@ def main():
         eventlet.spawn(main_process)
         
         while running:
-            time.sleep(1)
+            eventlet.sleep(1)  # Use eventlet.sleep instead of time.sleep
     except KeyboardInterrupt:
         logger.info("Shutting down...")
         running = False
-        save_daily_data()
+
 
 if __name__ == "__main__":
     try:
@@ -691,4 +708,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Shutting down...")
         running = False
-        save_daily_data()
