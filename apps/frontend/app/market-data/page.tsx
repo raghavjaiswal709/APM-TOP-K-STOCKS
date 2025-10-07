@@ -1,3 +1,4 @@
+// ============ COMPLETELY FIXED: Market Data Component - No Hook Errors ============
 'use client';
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -23,7 +24,7 @@ import { WatchlistSelector } from "../components/controllers/WatchlistSelector2/
 import { ImageCarousel } from "./components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { ViewInDashboardButton } from "../components/ViewInDashboardButton";
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Database, Wifi } from 'lucide-react';
 
 const PlotlyChart = dynamic(() => import('./components/charts/PlotlyChart'), { 
   ssr: false,
@@ -83,13 +84,13 @@ const MarketDataPage: React.FC = () => {
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [selectedExchange, setSelectedExchange] = useState<string | null>(null);
   const [selectedWatchlist, setSelectedWatchlist] = useState('A');
-  
-  // ============ OPTIMIZED: Real-time State Management ============
+
+  // State management
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
   const [historicalData, setHistoricalData] = useState<Record<string, MarketData[]>>({});
   const [ohlcData, setOhlcData] = useState<Record<string, OHLCData[]>>({});
   const [chartUpdates, setChartUpdates] = useState<Record<string, ChartUpdate[]>>({});
-  
+
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
   const [lastDataReceived, setLastDataReceived] = useState<Date | null>(null);
   const [dataCount, setDataCount] = useState<number>(0);
@@ -101,12 +102,16 @@ const MarketDataPage: React.FC = () => {
     isActive: false
   });
 
+  const [activeSymbols, setActiveSymbols] = useState<string[]>([]);
+  const [backgroundDataPoints, setBackgroundDataPoints] = useState<number>(0);
   const [gradientMode, setGradientMode] = useState<'profit' | 'loss' | 'neutral'>('neutral');
 
-  // ============ OPTIMIZED: Performance Refs ============
+  // Refs
   const updateCountRef = useRef(0);
   const lastUpdateTimeRef = useRef(Date.now());
   const frequencyIntervalRef = useRef<NodeJS.Timeout>();
+  const socketRef = useRef<any>(null);
+  const isSubscribedRef = useRef<Set<string>>(new Set());
 
   const { 
     companies, 
@@ -114,34 +119,16 @@ const MarketDataPage: React.FC = () => {
     error: watchlistError,
     selectedWatchlist: currentWatchlist,
     setSelectedWatchlist: setWatchlist,
-    exists: watchlistExists
   } = useWatchlist();
 
-  // ============ OPTIMIZED: Update Frequency Calculation ============
-  useEffect(() => {
-    frequencyIntervalRef.current = setInterval(() => {
-      const now = Date.now();
-      const timeDiff = (now - lastUpdateTimeRef.current) / 1000;
-      const frequency = timeDiff > 0 ? Math.round(updateCountRef.current / timeDiff) : 0;
-      setUpdateFrequency(frequency);
-      updateCountRef.current = 0;
-      lastUpdateTimeRef.current = now;
-    }, 1000);
-
-    return () => {
-      if (frequencyIntervalRef.current) {
-        clearInterval(frequencyIntervalRef.current);
-      }
-    };
-  }, []);
-
+  // ============ FIXED: All stable functions defined at component level ============
   const validateAndFormatSymbol = useCallback((companyCode: string, exchange: string, marker: string = 'EQ'): string => {
     const cleanSymbol = companyCode.replace(/[^A-Z0-9]/g, '').toUpperCase();
-    
+
     if (!cleanSymbol || cleanSymbol.length === 0) {
       return '';
     }
-    
+
     switch (exchange.toUpperCase()) {
       case 'NSE':
         return `NSE:${cleanSymbol}-${marker}`;
@@ -153,14 +140,14 @@ const MarketDataPage: React.FC = () => {
   }, []);
 
   const handleCompanyChange = useCallback((companyCode: string | null, exchange?: string, marker?: string) => {
-    console.log(`[MarketData] Company selected: ${companyCode} (${exchange}, ${marker})`);
-    
+    console.log(`Company selected: ${companyCode} (${exchange}, ${marker})`);
+
     setSelectedCompany(companyCode);
     setSelectedExchange(exchange || null);
-    
+
     if (companyCode && exchange) {
       const formattedSymbol = validateAndFormatSymbol(companyCode, exchange, marker);
-      console.log(`[MarketData] Formatted symbol: ${formattedSymbol}`);
+      console.log(`Formatted symbol: ${formattedSymbol}`);
       setSelectedSymbol(formattedSymbol);
     } else {
       setSelectedSymbol('');
@@ -168,14 +155,175 @@ const MarketDataPage: React.FC = () => {
   }, [validateAndFormatSymbol]);
 
   const handleWatchlistChange = useCallback((watchlist: string) => {
-    console.log(`[MarketData] Watchlist changed to: ${watchlist}`);
+    console.log(`Watchlist changed to: ${watchlist}`);
     setSelectedWatchlist(watchlist);
     setWatchlist(watchlist);
     setSelectedCompany(null);
     setSelectedSymbol('');
   }, [setWatchlist]);
 
-  const getSentimentIndicator = (mode: 'profit' | 'loss' | 'neutral') => {
+  // ============ FIXED: Event handlers defined at component level ============
+  const handleConnect = useCallback(() => {
+    console.log('✅ Connected to server');
+    setSocketStatus('Connected - Fixed');
+
+    if (socketRef.current) {
+      socketRef.current.emit('get_trading_status', {}, (response: any) => {
+        if (response) {
+          setTradingHours({
+            start: response.trading_start || '',
+            end: response.trading_end || '',
+            current: response.current_time || '',
+            isActive: response.trading_active || false
+          });
+
+          if (response.active_symbols) {
+            setActiveSymbols(response.active_symbols);
+          }
+          if (response.total_data_points) {
+            setBackgroundDataPoints(response.total_data_points);
+          }
+        }
+      });
+    }
+  }, []);
+
+  const handleDisconnect = useCallback((reason: string) => {
+    console.log('❌ Disconnected:', reason);
+    setSocketStatus(`Disconnected: ${reason}`);
+  }, []);
+
+  const handleError = useCallback((error: any) => {
+    console.error('❌ Socket error:', error);
+    setSocketStatus(`Error: ${error.message || 'Unknown'}`);
+  }, []);
+
+  const handleMarketDataUpdate = useCallback((data: MarketData) => {
+    if (!data || !data.symbol) return;
+
+    updateCountRef.current++;
+    setLastDataReceived(new Date());
+    setDataCount(prev => prev + 1);
+
+    setMarketData(prev => ({
+      ...prev,
+      [data.symbol]: data
+    }));
+
+    setHistoricalData(prev => {
+      const symbol = data.symbol;
+      const existingHistory = prev[symbol] || [];
+
+      const exists = existingHistory.some(item => item.timestamp === data.timestamp);
+      if (exists) return prev;
+
+      const newHistory = [...existingHistory, data].slice(-10000);
+      newHistory.sort((a, b) => a.timestamp - b.timestamp);
+
+      return {
+        ...prev,
+        [symbol]: newHistory
+      };
+    });
+  }, []);
+
+  const handleChartUpdate = useCallback((update: ChartUpdate) => {
+    if (!update || !update.symbol) return;
+
+    updateCountRef.current++;
+
+    setChartUpdates(prev => {
+      const symbolUpdates = prev[update.symbol] || [];
+      const newUpdates = [...symbolUpdates, update].slice(-1000);
+
+      return {
+        ...prev,
+        [update.symbol]: newUpdates
+      };
+    });
+  }, []);
+
+  const handleHistoricalData = useCallback((data: { symbol: string, data: MarketData[] }) => {
+    if (!data || !data.symbol || !Array.isArray(data.data)) return;
+
+    console.log(`📈 Received historical data for ${data.symbol}: ${data.data.length} points`);
+
+    const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
+
+    setHistoricalData(prev => ({
+      ...prev,
+      [data.symbol]: sortedData
+    }));
+
+    if (sortedData.length > 0) {
+      setMarketData(prev => ({
+        ...prev,
+        [data.symbol]: sortedData[sortedData.length - 1]
+      }));
+
+      const chartData = sortedData.map(item => ({
+        symbol: data.symbol,
+        price: item.ltp,
+        timestamp: item.timestamp,
+        volume: item.volume || 0,
+        change: item.change || 0,
+        changePercent: item.changePercent || 0
+      }));
+
+      setChartUpdates(prev => ({
+        ...prev,
+        [data.symbol]: chartData
+      }));
+    }
+  }, []);
+
+  const handleOhlcData = useCallback((data: { symbol: string, data: OHLCData[] }) => {
+    if (!data || !data.symbol || !Array.isArray(data.data)) return;
+
+    console.log(`📊 Received OHLC data for ${data.symbol}: ${data.data.length} candles`);
+
+    const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
+
+    setOhlcData(prev => ({
+      ...prev,
+      [data.symbol]: sortedData
+    }));
+  }, []);
+
+  const handleHeartbeat = useCallback((data: any) => {
+    if (!data) return;
+
+    setTradingHours(prev => ({
+      ...prev,
+      current: new Date().toISOString(),
+      isActive: data.trading_active || false
+    }));
+
+    if (data.active_symbols && Array.isArray(data.active_symbols)) {
+      setActiveSymbols(data.active_symbols);
+    }
+    if (typeof data.total_cached_points === 'number') {
+      setBackgroundDataPoints(data.total_cached_points);
+    }
+  }, []);
+
+  // Utility functions
+  const formatPrice = useCallback((price?: number) => {
+    return price?.toFixed(2) || '0.00';
+  }, []);
+
+  const formatChange = useCallback((change?: number, percent?: number) => {
+    if ((!change && change !== 0) || (!percent && percent !== 0)) return '-';
+    const sign = change >= 0 ? '+' : '';
+    return `${sign}${change.toFixed(2)} (${sign}${percent.toFixed(2)}%)`;
+  }, []);
+
+  const getChangeClass = useCallback((change?: number) => {
+    if (!change && change !== 0) return '';
+    return change >= 0 ? 'text-green-500' : 'text-red-500';
+  }, []);
+
+  const getSentimentIndicator = useCallback((mode: 'profit' | 'loss' | 'neutral') => {
     switch (mode) {
       case 'profit':
         return {
@@ -200,237 +348,123 @@ const MarketDataPage: React.FC = () => {
           label: 'Neutral Sentiment'
         };
     }
-  };
+  }, []);
 
-  // ============ OPTIMIZED: Auto-select first company ============
+  // ============ FIXED: Update frequency calculation ============
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const timeDiff = (now - lastUpdateTimeRef.current) / 1000;
+      const frequency = timeDiff > 0 ? Math.round(updateCountRef.current / timeDiff) : 0;
+      setUpdateFrequency(frequency);
+      updateCountRef.current = 0;
+      lastUpdateTimeRef.current = now;
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // ============ FIXED: Auto-select first company ============
   useEffect(() => {
     if (companies.length > 0 && !selectedCompany) {
       const firstCompany = companies[0];
-      console.log(`[MarketData] Auto-selecting first company: ${firstCompany.company_code}`);
+      console.log(`Auto-selecting first company: ${firstCompany.company_code}`);
       handleCompanyChange(firstCompany.company_code, firstCompany.exchange, firstCompany.marker);
     }
-  }, [companies, selectedCompany, handleCompanyChange]);
+  }, [companies.length, selectedCompany, handleCompanyChange]);
 
+  // ============ FIXED: Client initialization ============
   useEffect(() => {
     setIsClient(true);
-    console.log('Component mounted, isClient set to true');
+    console.log('Component mounted');
   }, []);
 
-  // ============ OPTIMIZED: Ultra-Fast WebSocket Connection ============
+  // ============ FIXED: WebSocket connection ============
   useEffect(() => {
     if (!isClient) return;
 
-    console.log('🚀 Connecting to optimized Python WebSocket server...');
-    
+    console.log('🚀 Initializing WebSocket connection...');
+
     const socket = getSocket();
+    socketRef.current = socket;
 
-    socket.on('connect', () => {
-      console.log('✅ Connected to optimized Python WebSocket server');
-      console.log('Socket ID:', socket.id);
-      setSocketStatus('Connected - Ultra Fast');
-      
-      socket.emit('get_trading_status', {}, (response: any) => {
-        console.log('Trading status:', response);
-        setTradingHours({
-          start: response.trading_start,
-          end: response.trading_end,
-          current: response.current_time,
-          isActive: response.trading_active
-        });
-      });
-      
-      if (selectedSymbol && selectedSymbol.includes(':') && selectedSymbol.includes('-')) {
-        console.log('📊 Subscribing to validated symbol:', selectedSymbol);
-        socket.emit('subscribe', { symbol: selectedSymbol });
-      }
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('❌ Connection error:', error.message);
-      setSocketStatus(`Connection error: ${error.message}`);
-    });
-
-    socket.on('disconnect', (reason) => {
-      console.log('❌ Disconnected from Python WebSocket server. Reason:', reason);
-      setSocketStatus(`Disconnected: ${reason}`);
-    });
-
-    // ============ OPTIMIZED: Handle ultra-fast market data updates (200ms) ============
-    socket.on('marketDataUpdate', (data: MarketData) => {
-      updateCountRef.current++;
-      setLastDataReceived(new Date());
-      setDataCount(prev => prev + 1);
-      
-      if (data && data.symbol) {
-        setMarketData(prev => ({
-          ...prev,
-          [data.symbol]: data
-        }));
-        
-        setHistoricalData(prev => {
-          const symbol = data.symbol;
-          const existingHistory = prev[symbol] || [];
-          
-          const exists = existingHistory.some(item => item.timestamp === data.timestamp);
-          if (exists) return prev;
-          
-          const newHistory = [...existingHistory, data].slice(-10000); // Keep last 10k points
-          newHistory.sort((a, b) => a.timestamp - b.timestamp);
-          
-          return {
-            ...prev,
-            [symbol]: newHistory
-          };
-        });
-      }
-    });
-
-    // ============ OPTIMIZED: Handle ultra-fast chart updates (100ms) ============
-    socket.on('chartUpdate', (update: ChartUpdate) => {
-      updateCountRef.current++;
-      
-      setChartUpdates(prev => {
-        const symbolUpdates = prev[update.symbol] || [];
-        const newUpdates = [...symbolUpdates, update].slice(-1000); // Keep last 1000 updates
-        
-        return {
-          ...prev,
-          [update.symbol]: newUpdates
-        };
-      });
-    });
-    
-    socket.on('historicalData', (data: { symbol: string, data: MarketData[] }) => {
-      console.log('📈 Received historical data:', data);
-      
-      if (data && data.symbol && Array.isArray(data.data)) {
-        const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
-        
-        setHistoricalData(prev => ({
-          ...prev,
-          [data.symbol]: sortedData
-        }));
-        
-        console.log(`Processed ${sortedData.length} historical data points for ${data.symbol}`);
-        
-        if (sortedData.length > 0) {
-          setMarketData(prev => ({
-            ...prev,
-            [data.symbol]: sortedData[sortedData.length - 1]
-          }));
-
-          // Initialize chart updates with historical data
-          const chartData = sortedData.map(item => ({
-            symbol: data.symbol,
-            price: item.ltp,
-            timestamp: item.timestamp,
-            volume: item.volume || 0,
-            change: item.change || 0,
-            changePercent: item.changePercent || 0
-          }));
-          
-          setChartUpdates(prev => ({
-            ...prev,
-            [data.symbol]: chartData
-          }));
-        }
-      }
-    });
-
-    socket.on('ohlcData', (data: { symbol: string, data: OHLCData[] }) => {
-      console.log('📊 Received OHLC data:', data);
-      
-      if (data && data.symbol && Array.isArray(data.data)) {
-        const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
-        
-        setOhlcData(prev => ({
-          ...prev,
-          [data.symbol]: sortedData
-        }));
-        
-        console.log(`Processed ${sortedData.length} OHLC data points for ${data.symbol}`);
-      }
-    });
-    
-    socket.on('heartbeat', (data: any) => {
-      setTradingHours(prev => ({
-        ...prev,
-        current: new Date().toISOString(),
-        isActive: data.trading_active
-      }));
-    });
-
-    // ============ OPTIMIZED: Reduced connection monitoring interval ============
-    const dataCheckInterval = setInterval(() => {
-      const now = new Date();
-      const lastReceived = lastDataReceived;
-      
-      if (!lastReceived || now.getTime() - lastReceived.getTime() > 2000) { // Reduced to 2 seconds
-        console.warn('⚠️ No market data received in the last 2 seconds');
-        
-        if (socket.connected && selectedSymbol) {
-          console.log('🔄 Attempting to resubscribe to:', selectedSymbol);
-          socket.emit('subscribe', { symbol: selectedSymbol });
-        }
-      }
-    }, 1000); // Check every second
+    // Register event handlers
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('error', handleError);
+    socket.on('marketDataUpdate', handleMarketDataUpdate);
+    socket.on('chartUpdate', handleChartUpdate);
+    socket.on('historicalData', handleHistoricalData);
+    socket.on('ohlcData', handleOhlcData);
+    socket.on('heartbeat', handleHeartbeat);
 
     return () => {
-      console.log('Component unmounting, cleaning up socket connection');
-      clearInterval(dataCheckInterval);
-      
-      Object.keys(marketData).forEach(symbol => {
-        console.log('🛑 Unsubscribing from:', symbol);
-        socket.emit('unsubscribe', { symbol });
-      });
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('error', handleError);
+      socket.off('marketDataUpdate', handleMarketDataUpdate);
+      socket.off('chartUpdate', handleChartUpdate);
+      socket.off('historicalData', handleHistoricalData);
+      socket.off('ohlcData', handleOhlcData);
+      socket.off('heartbeat', handleHeartbeat);
     };
-  }, [isClient, lastDataReceived, selectedSymbol]);
+  }, [isClient, handleConnect, handleDisconnect, handleError, handleMarketDataUpdate, handleChartUpdate, handleHistoricalData, handleOhlcData, handleHeartbeat]);
 
-  // ============ OPTIMIZED: Symbol change handling ============
+  // ============ FIXED: Symbol subscription management ============
   useEffect(() => {
-    if (!isClient) return;
-    
-    console.log('🔄 Symbol changed to:', selectedSymbol);
-    const socket = getSocket();
-    
-    if (!socket.connected) {
-      console.log('Socket not connected, waiting for connection...');
+    if (!isClient || !selectedSymbol || !socketRef.current) return;
+
+    const socket = socketRef.current;
+
+    if (isSubscribedRef.current.has(selectedSymbol)) {
+      console.log(`Already subscribed to ${selectedSymbol}`);
       return;
     }
 
-    Object.keys(marketData).forEach(symbol => {
-      if (symbol !== selectedSymbol) {
-        console.log('🛑 Unsubscribing from:', symbol);
-        socket.emit('unsubscribe', { symbol });
+    console.log('🔄 Subscribing to symbol:', selectedSymbol);
+
+    socket.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
+      if (response && response.success) {
+        isSubscribedRef.current.add(selectedSymbol);
+        console.log(`✅ Successfully subscribed to ${selectedSymbol}`);
       }
     });
-    
-    if (selectedSymbol) {
-      socket.emit('subscribe', { symbol: selectedSymbol });
-      console.log('📊 Subscribed to:', selectedSymbol);
-    }
+
+    return () => {
+      if (isSubscribedRef.current.has(selectedSymbol)) {
+        console.log('🛑 Unsubscribing from:', selectedSymbol);
+        socket.emit('unsubscribe', { symbol: selectedSymbol });
+        isSubscribedRef.current.delete(selectedSymbol);
+      }
+    };
   }, [selectedSymbol, isClient]);
 
-  const formatPrice = (price?: number) => {
-    return price?.toFixed(2) || '0.00';
-  };
+  // Memoized data calculations
+  const currentData = useMemo(() => 
+    marketData[selectedSymbol] || null, 
+    [marketData, selectedSymbol]
+  );
 
-  const formatChange = (change?: number, percent?: number) => {
-    if ((!change && change !== 0) || (!percent && percent !== 0)) return '-';
-    const sign = change >= 0 ? '+' : '';
-    return `${sign}${change.toFixed(2)} (${sign}${percent.toFixed(2)}%)`;
-  };
+  const symbolHistory = useMemo(() => 
+    historicalData[selectedSymbol] || [], 
+    [historicalData, selectedSymbol]
+  );
 
-  const getChangeClass = (change?: number) => {
-    if (!change && change !== 0) return '';
-    return change >= 0 ? 'text-green-500' : 'text-red-500';
-  };
+  const symbolOhlc = useMemo(() => 
+    ohlcData[selectedSymbol] || [], 
+    [ohlcData, selectedSymbol]
+  );
 
-  // ============ OPTIMIZED: Memoized data calculations ============
-  const currentData = useMemo(() => marketData[selectedSymbol], [marketData, selectedSymbol]);
-  const symbolHistory = useMemo(() => historicalData[selectedSymbol] || [], [historicalData, selectedSymbol]);
-  const symbolOhlc = useMemo(() => ohlcData[selectedSymbol] || [], [ohlcData, selectedSymbol]);
-  const symbolChartUpdates = useMemo(() => chartUpdates[selectedSymbol] || [], [chartUpdates, selectedSymbol]);
+  const symbolChartUpdates = useMemo(() => 
+    chartUpdates[selectedSymbol] || [], 
+    [chartUpdates, selectedSymbol]
+  );
+
+  const totalCachedSymbols = useMemo(() => Object.keys(marketData).length, [marketData]);
+  const totalHistoricalPoints = useMemo(() => 
+    Object.values(historicalData).reduce((sum, data) => sum + data.length, 0), 
+    [historicalData]
+  );
 
   if (!isClient) {
     return (
@@ -450,7 +484,7 @@ const MarketDataPage: React.FC = () => {
                   </BreadcrumbItem>
                   <BreadcrumbSeparator className="hidden md:block" />
                   <BreadcrumbItem>
-                    <BreadcrumbPage>Live Market Data</BreadcrumbPage>
+                    <BreadcrumbPage>Market Data</BreadcrumbPage>
                   </BreadcrumbItem>
                 </BreadcrumbList>
                 <ModeToggle />
@@ -459,7 +493,7 @@ const MarketDataPage: React.FC = () => {
           </header>
           <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
             <div className="container mx-auto p-4 bg-zinc-900 text-white flex items-center justify-center h-[80vh]">
-              <div className="text-xl animate-pulse">Loading ultra-fast market data...</div>
+              <div className="text-xl animate-pulse">Loading market data...</div>
             </div>
           </div>
         </SidebarInset>
@@ -484,20 +518,20 @@ const MarketDataPage: React.FC = () => {
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem>
-                  <BreadcrumbPage>Live Market Data - Ultra Fast</BreadcrumbPage>
+                  <BreadcrumbPage>Fixed Market Data</BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
               <ModeToggle />
             </Breadcrumb>
           </div>
         </header>
-        
+
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
           <Card className="w-full">
             <CardContent className="p-4">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-medium">Ultra-Fast Market Data Watchlist</h3>
+                  <h3 className="text-lg font-medium">Fixed Market Data</h3>
                   <div className="flex items-center space-x-4">
                     <div className="flex items-center space-x-2">
                       <span className={`inline-block w-2 h-2 rounded-full ${
@@ -508,9 +542,15 @@ const MarketDataPage: React.FC = () => {
                     <div className="text-sm text-muted-foreground">
                       Updates: {updateFrequency}/sec
                     </div>
+                    <div className="flex items-center space-x-2">
+                      <Database className="h-4 w-4 text-blue-500" />
+                      <span className="text-sm text-blue-400">
+                        {backgroundDataPoints} pts
+                      </span>
+                    </div>
                   </div>
                 </div>
-                
+
                 <div className="p-3 border border-opacity-30 rounded-md h-24 flex items-center">
                   <WatchlistSelector
                     onCompanySelect={handleCompanyChange}
@@ -520,7 +560,7 @@ const MarketDataPage: React.FC = () => {
                     showMarkerFilter={true}
                   />
                 </div>
-                
+
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Selected:</span>
@@ -529,35 +569,79 @@ const MarketDataPage: React.FC = () => {
                     </div>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Fyers Symbol:</span>
+                    <span className="text-muted-foreground">Symbol:</span>
                     <div className="font-medium">{selectedSymbol || 'None'}</div>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Market Status:</span>
+                    <span className="text-muted-foreground">Market:</span>
                     <div className={`font-medium ${tradingHours.isActive ? 'text-green-500' : 'text-red-500'}`}>
                       {tradingHours.isActive ? 'Open' : 'Closed'}
                     </div>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Data Points:</span>
-                    <div className="font-medium">{symbolHistory.length} hist / {symbolChartUpdates.length} chart</div>
+                    <span className="text-muted-foreground">Data:</span>
+                    <div className="font-medium">{symbolHistory.length}h / {symbolChartUpdates.length}c</div>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Total Updates:</span>
+                    <span className="text-muted-foreground">Updates:</span>
                     <div className="font-medium text-green-400">{dataCount}</div>
                   </div>
-                  {selectedCompany && selectedExchange && (
-                    <div className="flex items-center justify-center">
-                      <ViewInDashboardButton
-                        companyCode={selectedCompany}
-                        exchange={selectedExchange}
-                        watchlist={selectedWatchlist}
-                        interval="1h"
-                        variant="default"
-                        size="md"
-                      />
+                  <div>
+                    <span className="text-muted-foreground">Cached:</span>
+                    <div className="font-medium text-purple-400">{totalCachedSymbols}</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div className="p-3 bg-zinc-800 rounded">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Wifi className="h-4 w-4 text-green-500" />
+                      <span className="text-green-400 font-medium">Active Background ({activeSymbols.length})</span>
                     </div>
-                  )}
+                    <div className="max-h-20 overflow-y-auto">
+                      {activeSymbols.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {activeSymbols.slice(0, 5).map(symbol => (
+                            <span key={symbol} className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded">
+                              {symbol.split(':')[1]?.split('-')[0] || symbol}
+                            </span>
+                          ))}
+                          {activeSymbols.length > 5 && (
+                            <span className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded">
+                              +{activeSymbols.length - 5} more
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-zinc-500 text-xs">No active symbols</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-zinc-800 rounded">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Database className="h-4 w-4 text-blue-500" />
+                      <span className="text-blue-400 font-medium">Cached Data ({Object.keys(historicalData).length})</span>
+                    </div>
+                    <div className="max-h-20 overflow-y-auto">
+                      {Object.keys(historicalData).length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {Object.keys(historicalData).slice(0, 5).map(symbol => (
+                            <span key={symbol} className="text-xs bg-blue-900/50 text-blue-300 px-2 py-1 rounded">
+                              {symbol.split(':')[1]?.split('-')[0] || symbol}
+                            </span>
+                          ))}
+                          {Object.keys(historicalData).length > 5 && (
+                            <span className="text-xs bg-blue-900/50 text-blue-300 px-2 py-1 rounded">
+                              +{Object.keys(historicalData).length - 5} more
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-zinc-500 text-xs">No cached data</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {watchlistError && (
@@ -580,20 +664,20 @@ const MarketDataPage: React.FC = () => {
                         data={currentData} 
                         historicalData={symbolHistory}
                         ohlcData={symbolOhlc}
-                        chartUpdates={symbolChartUpdates} // ✨ Pass chart updates for ultra-smooth updates
+                        chartUpdates={symbolChartUpdates}
                         tradingHours={tradingHours}
-                        updateFrequency={updateFrequency} // ✨ Pass update frequency
+                        updateFrequency={updateFrequency}
                       />
                     ) : (
                       <div className="h-full flex items-center justify-center">
                         <p className="text-zinc-400">
-                          {selectedSymbol ? `Loading ultra-fast data for ${selectedSymbol}...` : 'Select a company to view market data'}
+                          {selectedSymbol ? `Loading data for ${selectedSymbol}...` : 'Select a company'}
                         </p>
                       </div>
                     )}
                   </div>
                 </div>
-                
+
                 <div className="bg-zinc-800 p-4 w-full rounded-lg shadow-lg">
                   {currentData ? (
                     <>
@@ -607,7 +691,7 @@ const MarketDataPage: React.FC = () => {
                       <div className={`text-lg ${getChangeClass(currentData.change)}`}>
                         {formatChange(currentData.change, currentData.changePercent)}
                       </div>
-                      
+
                       {(() => {
                         const sentiment = getSentimentIndicator(gradientMode);
                         return (
@@ -620,14 +704,14 @@ const MarketDataPage: React.FC = () => {
                           </div>
                         );
                       })()}
-                      
+
                       <div className="grid grid-cols-2 gap-4 mt-6">
                         <div className="bg-zinc-700 p-3 rounded">
                           <div className="text-xs text-zinc-400">Open</div>
                           <div className="text-lg">₹{formatPrice(currentData.open)}</div>
                         </div>
                         <div className="bg-zinc-700 p-3 rounded">
-                          <div className="text-xs text-zinc-400">Prev Close</div>
+                          <div className="text-xs text-zinc-400">Close</div>
                           <div className="text-lg">₹{formatPrice(currentData.close)}</div>
                         </div>
                         <div className="bg-zinc-700 p-3 rounded">
@@ -639,30 +723,22 @@ const MarketDataPage: React.FC = () => {
                           <div className="text-lg">₹{formatPrice(currentData.low)}</div>
                         </div>
                       </div>
-                      
+
                       <div className="mt-6 border-t border-zinc-700 pt-4">
                         <div className="grid grid-cols-2 gap-y-2">
-                          <div>
-                            <div className="text-xs text-zinc-400">Bid</div>
-                            <div>₹{formatPrice(currentData.bid)}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-zinc-400">Ask</div>
-                            <div>₹{formatPrice(currentData.ask)}</div>
-                          </div>
                           <div>
                             <div className="text-xs text-zinc-400">Volume</div>
                             <div>{currentData.volume?.toLocaleString() || '0'}</div>
                           </div>
                           <div>
-                            <div className="text-xs text-zinc-400">Last Updated</div>
-                            <div className="text-green-400 animate-pulse">
+                            <div className="text-xs text-zinc-400">Updated</div>
+                            <div className="text-green-400">
                               {new Date(currentData.timestamp * 1000).toLocaleTimeString()}
                             </div>
                           </div>
                         </div>
                       </div>
-                      
+
                       {(currentData.sma_20 || currentData.ema_9 || currentData.rsi_14) && (
                         <div className="mt-6 border-t border-zinc-700 pt-4">
                           <h3 className="text-sm font-medium mb-2 text-zinc-300">Technical Indicators</h3>
@@ -688,18 +764,18 @@ const MarketDataPage: React.FC = () => {
                           </div>
                         </div>
                       )}
-                      
+
                     </>
                   ) : (
                     <div className="text-center py-8">
                       <p className="text-zinc-400">
-                        {selectedSymbol ? 'Connecting to ultra-fast stream...' : 'Select a company to view data'}
+                        {selectedSymbol ? 'Connecting...' : 'Select a company'}
                       </p>
                     </div>
                   )}
                 </div>
               </div>
-              
+
               <div className="mb-8">
                 <ImageCarousel
                   companyCode={selectedCompany || ''}
@@ -708,26 +784,53 @@ const MarketDataPage: React.FC = () => {
                   onGradientModeChange={setGradientMode}
                 />
               </div>
-              
+
               <div className="p-4 bg-zinc-800 rounded-lg shadow-lg">
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-lg font-semibold text-white">Ultra-Fast Market Data Stream</h3>
+                  <h3 className="text-lg font-semibold text-white">Market Data Stream</h3>
                   <div className="text-xs text-zinc-400">
                     {symbolHistory.length > 0 && tradingHours.start && (
                       <>
-                        Trading Hours: {new Date(tradingHours.start).toLocaleTimeString()} - {new Date(tradingHours.end).toLocaleTimeString()}
-                        <span className="ml-2 text-green-400">• {updateFrequency} updates/sec</span>
+                        Trading: {new Date(tradingHours.start).toLocaleTimeString()} - {new Date(tradingHours.end).toLocaleTimeString()}
+                        <span className="ml-2 text-green-400">• {updateFrequency} ups/sec</span>
+                        <span className="ml-2 text-blue-400">• {backgroundDataPoints} bg pts</span>
+                        <span className="ml-2 text-purple-400">• {totalCachedSymbols} cached</span>
                       </>
                     )}
                   </div>
                 </div>
-                {currentData ? (
-                  <pre className="text-xs overflow-auto max-h-60 bg-zinc-900 p-4 rounded text-zinc-300">
-                    {JSON.stringify(currentData, null, 2)}
-                  </pre>
-                ) : (
-                  <p className="text-zinc-400">Initializing ultra-fast data stream...</p>
-                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-zinc-300 mb-2">Current Data</h4>
+                    {currentData ? (
+                      <pre className="text-xs overflow-auto max-h-40 bg-zinc-900 p-2 rounded text-zinc-300">
+                        {JSON.stringify({
+                          symbol: currentData.symbol,
+                          ltp: currentData.ltp,
+                          change: currentData.change,
+                          changePercent: currentData.changePercent,
+                          volume: currentData.volume,
+                          timestamp: new Date(currentData.timestamp * 1000).toLocaleTimeString()
+                        }, null, 2)}
+                      </pre>
+                    ) : (
+                      <p className="text-zinc-400 text-xs">No current data</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-medium text-zinc-300 mb-2">System Stats</h4>
+                    <div className="text-xs bg-zinc-900 p-2 rounded text-zinc-300">
+                      <div>Total Symbols: {totalCachedSymbols}</div>
+                      <div>Total Historical: {totalHistoricalPoints}</div>
+                      <div>Background Points: {backgroundDataPoints}</div>
+                      <div>Active Symbols: {activeSymbols.length}</div>
+                      <div>Update Frequency: {updateFrequency}/sec</div>
+                      <div className="text-green-400 mt-2">✅ Fixed Version</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
