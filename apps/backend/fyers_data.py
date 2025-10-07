@@ -17,7 +17,7 @@ from fyers_apiv3 import fyersModel
 from fyers_apiv3.FyersWebsocket import data_ws
 
 logging.basicConfig(
-    level=logging.WARNING,  # Changed from INFO to reduce logging overhead
+    level=logging.WARNING,
     format='%(asctime)s - %(levelname)s - %(message)s',
 )
 logger = logging.getLogger("FyersServer")
@@ -44,12 +44,14 @@ INDIA_TZ = pytz.timezone('Asia/Kolkata')
 fyers = None
 fyers_client = None
 
-# ============ NEW: Throttling Configuration ============
-THROTTLE_INTERVAL = 1.0  # Send updates every 1 second
-last_emit_time = defaultdict(float)  # Track last emit time per symbol
-pending_data = {}  # Store latest data for throttled emission
+# ============ OPTIMIZED: Real-time Configuration ============
+REAL_TIME_INTERVAL = 0.2  # Send updates every 200ms for ultra-smooth charts
+CHART_UPDATE_INTERVAL = 0.1  # Chart-specific updates every 100ms
+last_emit_time = defaultdict(float)
+pending_data = {}
+chart_data_queue = defaultdict(deque)  # Queue for chart data
 
-# ============ NEW: Cached Indicators ============
+# ============ OPTIMIZED: Enhanced Cached Indicators ============
 cached_indicators = {}
 
 
@@ -63,17 +65,17 @@ def get_trading_hours():
 def is_trading_hours():
     now = datetime.datetime.now(INDIA_TZ)
     start_time, end_time = get_trading_hours()
-    
+
     if now.weekday() >= 5:
         return False
-    
+
     return start_time <= now <= end_time
 
 
 @sio.event
 def connect(sid, environ):
     logger.info(f"Client connected: {sid}")
-    clients[sid] = {'subscriptions': set()}
+    clients[sid] = {'subscriptions': set(), 'last_ping': time.time()}
 
 
 @sio.event
@@ -89,29 +91,29 @@ def disconnect(sid):
 def fetch_historical_intraday_data(symbol, date=None):
     if not date:
         date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
-    
+
     try:
         date_obj = datetime.datetime.strptime(date, '%Y-%m-%d')
         date_obj = INDIA_TZ.localize(date_obj)
-        
+
         market_open = date_obj.replace(hour=9, minute=15, second=0, microsecond=0)
         market_close = date_obj.replace(hour=15, minute=30, second=0, microsecond=0)
-        
+
         now = datetime.datetime.now(INDIA_TZ)
         if date == now.strftime('%Y-%m-%d') and now < market_open:
             logger.info(f"Market not yet open for {date}")
             return []
-        
+
         if date == now.strftime('%Y-%m-%d') and now < market_close:
             end_time = now
         else:
             end_time = market_close
-        
+
         from_date = market_open.strftime('%Y-%m-%d %H:%M:%S')
         to_date = end_time.strftime('%Y-%m-%d %H:%M:%S')
-        
+
         logger.info(f"Fetching historical data for {symbol} from {from_date} to {to_date}")
-        
+
         if fyers_client:
             data_args = {
                 "symbol": symbol,
@@ -121,21 +123,21 @@ def fetch_historical_intraday_data(symbol, date=None):
                 "range_to": to_date,
                 "cont_flag": "1"
             }
-            
+
             response = fyers_client.history(data_args)
-            
+
             if response and response.get('s') == 'ok' and 'candles' in response:
                 candles = response['candles']
                 logger.info(f"Received {len(candles)} candles for {symbol}")
-                
+
                 result = []
-                
+
                 for candle in candles:
                     timestamp, open_price, high_price, low_price, close_price, volume = candle
-                    
+
                     if timestamp > 10000000000:
                         timestamp = timestamp // 1000
-                    
+
                     data_point = {
                         'symbol': symbol,
                         'ltp': close_price,
@@ -148,14 +150,14 @@ def fetch_historical_intraday_data(symbol, date=None):
                         'change': 0,
                         'changePercent': 0
                     }
-                    
+
                     result.append(data_point)
-                    
+
                     if symbol not in ohlc_data:
                         ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
-                    
+
                     minute_timestamp = (timestamp // 60) * 60
-                    
+
                     ohlc_candle = {
                         'timestamp': minute_timestamp,
                         'open': open_price,
@@ -164,62 +166,30 @@ def fetch_historical_intraday_data(symbol, date=None):
                         'close': close_price,
                         'volume': volume
                     }
-                    
+
                     if not ohlc_data[symbol] or ohlc_data[symbol][-1]['timestamp'] != minute_timestamp:
                         ohlc_data[symbol].append(ohlc_candle)
-                
+
                 if result:
                     prev_close = result[0]['open']
                     for point in result:
                         point['change'] = point['ltp'] - prev_close
                         point['changePercent'] = (point['change'] / prev_close) * 100 if prev_close else 0
-                
-                # Initialize indicators cache after loading historical data
+
                 if result:
                     calculate_indicators_optimized(symbol, init=True)
-                
+
                 return result
             else:
                 logger.error(f"Failed to fetch historical data: {response}")
-        
+
         logger.warning(f"Fyers client not initialized or API call failed for {symbol}")
         return []
-        
+
     except Exception as e:
         logger.error(f"Error fetching historical data: {e}")
         import traceback
         traceback.print_exc()
-        return []
-
-
-def fetch_daily_historical_data(symbol, days=30):
-    try:
-        if not fyers_client:
-            logger.error("Fyers client not initialized")
-            return []
-        
-        end_date = datetime.datetime.now(INDIA_TZ)
-        start_date = end_date - datetime.timedelta(days=days)
-        
-        data_args = {
-            "symbol": symbol,
-            "resolution": "D",
-            "date_format": "1",
-            "range_from": start_date.strftime('%Y-%m-%d'),
-            "range_to": end_date.strftime('%Y-%m-%d'),
-            "cont_flag": "1"
-        }
-        
-        response = fyers_client.history(data_args)
-        
-        if response and response.get('s') == 'ok' and 'candles' in response:
-            return response['candles']
-        else:
-            logger.error(f"Failed to fetch daily historical data: {response}")
-            return []
-            
-    except Exception as e:
-        logger.error(f"Error fetching daily historical data: {e}")
         return []
 
 
@@ -228,28 +198,28 @@ def subscribe(sid, data):
     symbol = data.get('symbol')
     if not symbol:
         return {'success': False, 'error': 'No symbol provided'}
-    
+
     logger.info(f"Client {sid} subscribing to {symbol}")
-    
+
     clients[sid]['subscriptions'].add(symbol)
     if symbol not in symbol_to_clients:
         symbol_to_clients[symbol] = set()
     symbol_to_clients[symbol].add(sid)
-    
+
     if symbol not in historical_data or not historical_data[symbol]:
         logger.info(f"Fetching historical data for {symbol}")
         hist_data = fetch_historical_intraday_data(symbol)
-        
+
         if symbol not in historical_data:
             historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
-        
+
         for data_point in hist_data:
             historical_data[symbol].append(data_point)
-    
+
     if hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
         logger.info(f"Subscribing to symbol: {symbol}")
         fyers.subscribe(symbols=[symbol], data_type="SymbolUpdate")
-    
+
     if symbol in historical_data and historical_data[symbol]:
         logger.info(f"Sending historical data for {symbol} to client {sid}")
         hist_data_list = list(historical_data[symbol])
@@ -257,14 +227,14 @@ def subscribe(sid, data):
             'symbol': symbol,
             'data': hist_data_list
         }, room=sid)
-    
+
     if symbol in ohlc_data and ohlc_data[symbol]:
         logger.info(f"Sending OHLC data for {symbol} to client {sid}")
         sio.emit('ohlcData', {
             'symbol': symbol,
             'data': list(ohlc_data[symbol])
         }, room=sid)
-    
+
     return {'success': True, 'symbol': symbol}
 
 
@@ -273,19 +243,19 @@ def unsubscribe(sid, data):
     symbol = data.get('symbol')
     if not symbol:
         return {'success': False, 'error': 'No symbol provided'}
-    
+
     logger.info(f"Client {sid} unsubscribing from {symbol}")
-    
+
     if sid in clients:
         clients[sid]['subscriptions'].discard(symbol)
-    
+
     if symbol in symbol_to_clients:
         symbol_to_clients[symbol].discard(sid)
-        
+
         if not symbol_to_clients[symbol] and hasattr(fyers, 'unsubscribe'):
             logger.info(f"No more clients for {symbol}, unsubscribing from Fyers")
             fyers.unsubscribe(symbols=[symbol])
-    
+
     return {'success': True, 'symbol': symbol}
 
 
@@ -301,89 +271,26 @@ def get_trading_status(sid, data):
     }
 
 
-@sio.event
-def get_historical_data_for_date(sid, data):
-    symbol = data.get('symbol')
-    date = data.get('date')
-    
-    if not symbol:
-        return {'success': False, 'error': 'No symbol provided'}
-    
-    if not date:
-        date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
-    
-    try:
-        hist_data = fetch_historical_intraday_data(symbol, date)
-        
-        return {
-            'success': True,
-            'symbol': symbol,
-            'date': date,
-            'data': hist_data
-        }
-    except Exception as e:
-        logger.error(f"Error fetching historical data for date: {e}")
-        return {'success': False, 'error': str(e)}
-
-
-@sio.event
-def get_daily_data(sid, data):
-    symbol = data.get('symbol')
-    days = data.get('days', 30)
-    
-    if not symbol:
-        return {'success': False, 'error': 'No symbol provided'}
-    
-    try:
-        daily_data = fetch_daily_historical_data(symbol, days)
-        
-        if daily_data:
-            formatted_data = []
-            for candle in daily_data:
-                timestamp, open_price, high_price, low_price, close_price, volume = candle
-                formatted_data.append({
-                    'timestamp': timestamp,
-                    'open': open_price,
-                    'high': high_price,
-                    'low': low_price,
-                    'close': close_price,
-                    'volume': volume
-                })
-            
-            return {
-                'success': True,
-                'symbol': symbol,
-                'days': days,
-                'data': formatted_data
-            }
-        else:
-            return {'success': False, 'error': 'No data available'}
-    except Exception as e:
-        logger.error(f"Error fetching daily data: {e}")
-        return {'success': False, 'error': str(e)}
-
-
 def store_historical_data(symbol, data_point):
     if symbol not in historical_data:
         historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
-    
+
     if 'timestamp' not in data_point:
         data_point['timestamp'] = int(time.time())
-    
+
     historical_data[symbol].append(data_point)
-    
     update_ohlc_data(symbol, data_point)
 
 
 def update_ohlc_data(symbol, data_point):
     if symbol not in ohlc_data:
         ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
-    
+
     timestamp = data_point['timestamp']
     price = data_point['ltp']
-    
+
     minute_timestamp = (timestamp // 60) * 60
-    
+
     if not ohlc_data[symbol] or ohlc_data[symbol][-1]['timestamp'] < minute_timestamp:
         ohlc_data[symbol].append({
             'timestamp': minute_timestamp,
@@ -401,25 +308,17 @@ def update_ohlc_data(symbol, data_point):
         current_candle['volume'] = data_point.get('volume', current_candle['volume'])
 
 
-# ============ NEW: Optimized Indicator Calculation with Caching ============
 def calculate_indicators_optimized(symbol, init=False):
-    """
-    Optimized indicator calculation using incremental updates instead of full recalculation.
-    """
     if symbol not in ohlc_data or len(ohlc_data[symbol]) < 20:
         return {}
-    
-    # Get the latest close price
+
     latest_close = ohlc_data[symbol][-1]['close']
-    
-    # Initialize cache if needed
+
     if symbol not in cached_indicators or init:
-        # Full calculation on first run
         closes = np.array([candle['close'] for candle in ohlc_data[symbol]])
-        
+
         sma_20 = np.mean(closes[-20:]) if len(closes) >= 20 else latest_close
-        
-        # Calculate EMA_9
+
         if len(closes) >= 9:
             ema_9 = closes[0]
             alpha = 2 / (9 + 1)
@@ -427,16 +326,15 @@ def calculate_indicators_optimized(symbol, init=False):
                 ema_9 = alpha * price + (1 - alpha) * ema_9
         else:
             ema_9 = latest_close
-        
-        # Calculate RSI_14
+
         if len(closes) >= 15:
             changes = np.diff(closes)
             gains = np.where(changes > 0, changes, 0)
             losses = np.where(changes < 0, -changes, 0)
-            
+
             avg_gain = np.mean(gains[-14:])
             avg_loss = np.mean(losses[-14:])
-            
+
             if avg_loss == 0:
                 rsi = 100
             else:
@@ -444,7 +342,7 @@ def calculate_indicators_optimized(symbol, init=False):
                 rsi = 100 - (100 / (1 + rs))
         else:
             rsi = 50
-        
+
         cached_indicators[symbol] = {
             'sma_20': float(sma_20),
             'ema_9': float(ema_9),
@@ -454,37 +352,31 @@ def calculate_indicators_optimized(symbol, init=False):
             'prev_close': latest_close
         }
     else:
-        # Incremental update using cached values
         cache = cached_indicators[symbol]
         prev_close = cache['prev_close']
-        
-        # Update SMA_20 incrementally (approximate for efficiency)
+
         if len(ohlc_data[symbol]) >= 20:
-            # For exact SMA, we'd need rolling window - this is approximate but fast
             old_sma = cache['sma_20']
             cache['sma_20'] = old_sma + (latest_close - old_sma) / 20
-        
-        # Update EMA_9 incrementally
+
         alpha = 2 / (9 + 1)
         cache['ema_9'] = alpha * latest_close + (1 - alpha) * cache['ema_9']
-        
-        # Update RSI_14 incrementally (Wilder's smoothing)
+
         change = latest_close - prev_close
         gain = max(0, change)
         loss = max(0, -change)
-        
-        # Wilder's smoothing
+
         cache['avg_gain'] = (cache['avg_gain'] * 13 + gain) / 14
         cache['avg_loss'] = (cache['avg_loss'] * 13 + loss) / 14
-        
+
         if cache['avg_loss'] == 0:
             cache['rsi_14'] = 100
         else:
             rs = cache['avg_gain'] / cache['avg_loss']
             cache['rsi_14'] = 100 - (100 / (1 + rs))
-        
+
         cache['prev_close'] = latest_close
-    
+
     return {
         'sma_20': cached_indicators[symbol]['sma_20'],
         'ema_9': cached_indicators[symbol]['ema_9'],
@@ -492,56 +384,61 @@ def calculate_indicators_optimized(symbol, init=False):
     }
 
 
-# ============ NEW: Throttled Emission Function ============
-def emit_throttled_data():
-    """
-    Background task that emits pending data every THROTTLE_INTERVAL seconds.
-    """
+# ============ OPTIMIZED: Ultra-Fast Real-time Emission ============
+def emit_real_time_data():
+    """Ultra-fast emission for smooth chart updates"""
     global running
     while running:
         try:
             current_time = time.time()
-            symbols_to_emit = []
-            
-            # Find symbols that need to be emitted
+
             for symbol in list(pending_data.keys()):
-                if current_time - last_emit_time[symbol] >= THROTTLE_INTERVAL:
-                    symbols_to_emit.append(symbol)
-            
-            # Emit data for each symbol
-            for symbol in symbols_to_emit:
-                if symbol in pending_data and symbol in symbol_to_clients:
-                    data = pending_data[symbol]
-                    
-                    # Emit to all subscribed clients
-                    for sid in list(symbol_to_clients[symbol]):
-                        try:
-                            sio.emit('marketData', data, room=sid)
-                        except Exception as e:
-                            logger.error(f"Error sending data to client {sid}: {e}")
-                    
-                    last_emit_time[symbol] = current_time
-                    # Don't delete pending_data - keep latest for next interval
-            
-            # Sleep for a fraction of throttle interval to check frequently
-            eventlet.sleep(0.1)  # Check 10 times per second
-            
+                if symbol in symbol_to_clients and symbol_to_clients[symbol]:
+                    # Check if enough time has passed for real-time updates
+                    if current_time - last_emit_time[symbol] >= REAL_TIME_INTERVAL:
+                        data = pending_data[symbol].copy()  # Copy to avoid race conditions
+
+                        # Emit to all subscribed clients with high frequency
+                        for sid in list(symbol_to_clients[symbol]):
+                            try:
+                                # Send market data update
+                                sio.emit('marketDataUpdate', data, room=sid)
+
+                                # Send chart-specific update with optimized payload
+                                chart_update = {
+                                    'symbol': symbol,
+                                    'price': data['ltp'],
+                                    'timestamp': data['timestamp'],
+                                    'volume': data.get('volume', 0),
+                                    'change': data.get('change', 0),
+                                    'changePercent': data.get('changePercent', 0)
+                                }
+                                sio.emit('chartUpdate', chart_update, room=sid)
+
+                            except Exception as e:
+                                logger.error(f"Error sending real-time data to client {sid}: {e}")
+
+                        last_emit_time[symbol] = current_time
+
+            # Ultra-fast check cycle
+            eventlet.sleep(CHART_UPDATE_INTERVAL)
+
         except Exception as e:
-            logger.error(f"Error in throttled emission: {e}")
-            eventlet.sleep(1)
+            logger.error(f"Error in real-time emission: {e}")
+            eventlet.sleep(0.1)
 
 
 def onmessage(message):
-    # Reduced logging for performance
     if not isinstance(message, dict) or 'symbol' not in message:
         return
-    
+
     symbol = message['symbol']
-    
+
     if message.get('type') == 'sub':
         logger.info(f"Subscription confirmation: {symbol}")
         return
-    
+
+    # Create optimized data structure
     simplified_data = {
         'symbol': symbol,
         'ltp': message.get('ltp'),
@@ -556,19 +453,29 @@ def onmessage(message):
         'ask': message.get('ask_price'),
         'timestamp': message.get('last_traded_time') or int(time.time())
     }
-    
+
     # Store historical data
     store_historical_data(symbol, simplified_data)
-    
-    # Calculate indicators (optimized with caching)
+
+    # Calculate indicators with caching
     indicators = calculate_indicators_optimized(symbol)
     if indicators:
         simplified_data.update(indicators)
-    
-    # Store in pending_data for throttled emission
+
+    # Store for immediate emission
     pending_data[symbol] = simplified_data
-    
-    # Yield control to eventlet to prevent blocking
+
+    # Add to chart data queue for ultra-smooth updates
+    if symbol not in chart_data_queue:
+        chart_data_queue[symbol] = deque(maxlen=1000)  # Keep last 1000 points
+
+    chart_data_queue[symbol].append({
+        'timestamp': simplified_data['timestamp'],
+        'price': simplified_data['ltp'],
+        'volume': simplified_data.get('volume', 0)
+    })
+
+    # Yield control to prevent blocking
     eventlet.sleep(0)
 
 
@@ -585,7 +492,7 @@ def onclose(message):
 def onopen():
     logger.info("Fyers WebSocket connected")
     sio.emit('fyersConnected', {'status': 'connected'})
-    
+
     default_symbols = []
     fyers.subscribe(symbols=default_symbols, data_type="SymbolUpdate")
     logger.info(f"Subscribed to default symbols: {default_symbols}")
@@ -595,38 +502,21 @@ def heartbeat_task():
     global running
     while running:
         try:
+            # Send heartbeat with trading status
             sio.emit('heartbeat', {
                 'timestamp': int(time.time()),
-                'trading_active': is_trading_hours()
+                'trading_active': is_trading_hours(),
+                'server_time': datetime.datetime.now(INDIA_TZ).isoformat()
             })
-            eventlet.sleep(30)  # Use eventlet.sleep instead of time.sleep
+            eventlet.sleep(10)  # Heartbeat every 10 seconds
         except Exception as e:
             logger.error(f"Error in heartbeat: {e}")
 
 
-def save_daily_data():
-    pass
-
-
-def load_daily_data():
-    pass
-
-
-def data_persistence_task():
-    pass
-
-
-def cleanup_old_data_files():
-    pass
-
-
 def main_process():
     global fyers, fyers_client, running
-    
+
     try:
-        load_daily_data()
-        cleanup_old_data_files()
-        
         session = fyersModel.SessionModel(
             client_id=client_id,
             secret_key=secret_key,
@@ -634,29 +524,29 @@ def main_process():
             response_type=response_type,
             grant_type=grant_type
         )
-        
+
         auth_url = session.generate_authcode()
         logger.info("\n==== Fyers Authentication ====")
         logger.info("Open this URL in your browser and log in:")
         logger.info(auth_url)
-        
+
         auth_code = input("\nEnter Auth Code: ")
         session.set_token(auth_code)
         token_response = session.generate_token()
-        
+
         if token_response.get('s') != 'ok':
             logger.error(f"Authentication failed: {token_response}")
             return
-            
+
         logger.info("Authentication successful!")
         access_token = f"{client_id}:{token_response['access_token']}"
-        
+
         fyers_client = fyersModel.FyersModel(
             client_id=client_id,
             token=token_response['access_token'],
             log_path=None
         )
-        
+
         fyers = data_ws.FyersDataSocket(
             access_token=access_token,
             log_path="",
@@ -668,21 +558,21 @@ def main_process():
             on_error=onerror,
             on_message=onmessage
         )
-        
-        # Start background tasks
+
+        # Start optimized background tasks
         heartbeat_thread = threading.Thread(target=heartbeat_task, daemon=True)
         heartbeat_thread.start()
-        
-        # ============ NEW: Start throttled emission task ============
-        emission_thread = threading.Thread(target=emit_throttled_data, daemon=True)
+
+        # ============ OPTIMIZED: Start ultra-fast real-time emission ============
+        emission_thread = threading.Thread(target=emit_real_time_data, daemon=True)
         emission_thread.start()
-        
+
         fyers.connect()
         logger.info("Connected to Fyers WebSocket")
-        
-        logger.info("Starting Socket.IO server on port 5001...")
+
+        logger.info("Starting optimized Socket.IO server on port 5001...")
         eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 5001)), app)
-        
+
     except Exception as e:
         logger.error(f"Error: {e}")
         import traceback
@@ -691,12 +581,12 @@ def main_process():
 
 def main():
     global running
-    
+
     try:
         eventlet.spawn(main_process)
-        
+
         while running:
-            eventlet.sleep(1)  # Use eventlet.sleep instead of time.sleep
+            eventlet.sleep(0.1)
     except KeyboardInterrupt:
         logger.info("Shutting down...")
         running = False

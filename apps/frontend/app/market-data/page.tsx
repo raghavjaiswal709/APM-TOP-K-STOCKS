@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { getSocket } from '@/lib/socket';
 import dynamic from 'next/dynamic';
 import { AppSidebar } from "../components/app-sidebar";
@@ -52,6 +52,15 @@ interface MarketData {
   rsi_14?: number;
 }
 
+interface ChartUpdate {
+  symbol: string;
+  price: number;
+  timestamp: number;
+  volume: number;
+  change: number;
+  changePercent: number;
+}
+
 interface OHLCData {
   timestamp: number;
   open: number;
@@ -75,13 +84,16 @@ const MarketDataPage: React.FC = () => {
   const [selectedExchange, setSelectedExchange] = useState<string | null>(null);
   const [selectedWatchlist, setSelectedWatchlist] = useState('A');
   
+  // ============ OPTIMIZED: Real-time State Management ============
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
   const [historicalData, setHistoricalData] = useState<Record<string, MarketData[]>>({});
   const [ohlcData, setOhlcData] = useState<Record<string, OHLCData[]>>({});
+  const [chartUpdates, setChartUpdates] = useState<Record<string, ChartUpdate[]>>({});
   
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
   const [lastDataReceived, setLastDataReceived] = useState<Date | null>(null);
   const [dataCount, setDataCount] = useState<number>(0);
+  const [updateFrequency, setUpdateFrequency] = useState<number>(0);
   const [tradingHours, setTradingHours] = useState<TradingHours>({
     start: '',
     end: '',
@@ -91,6 +103,11 @@ const MarketDataPage: React.FC = () => {
 
   const [gradientMode, setGradientMode] = useState<'profit' | 'loss' | 'neutral'>('neutral');
 
+  // ============ OPTIMIZED: Performance Refs ============
+  const updateCountRef = useRef(0);
+  const lastUpdateTimeRef = useRef(Date.now());
+  const frequencyIntervalRef = useRef<NodeJS.Timeout>();
+
   const { 
     companies, 
     loading: watchlistLoading, 
@@ -99,6 +116,24 @@ const MarketDataPage: React.FC = () => {
     setSelectedWatchlist: setWatchlist,
     exists: watchlistExists
   } = useWatchlist();
+
+  // ============ OPTIMIZED: Update Frequency Calculation ============
+  useEffect(() => {
+    frequencyIntervalRef.current = setInterval(() => {
+      const now = Date.now();
+      const timeDiff = (now - lastUpdateTimeRef.current) / 1000;
+      const frequency = timeDiff > 0 ? Math.round(updateCountRef.current / timeDiff) : 0;
+      setUpdateFrequency(frequency);
+      updateCountRef.current = 0;
+      lastUpdateTimeRef.current = now;
+    }, 1000);
+
+    return () => {
+      if (frequencyIntervalRef.current) {
+        clearInterval(frequencyIntervalRef.current);
+      }
+    };
+  }, []);
 
   const validateAndFormatSymbol = useCallback((companyCode: string, exchange: string, marker: string = 'EQ'): string => {
     const cleanSymbol = companyCode.replace(/[^A-Z0-9]/g, '').toUpperCase();
@@ -167,7 +202,7 @@ const MarketDataPage: React.FC = () => {
     }
   };
 
-
+  // ============ OPTIMIZED: Auto-select first company ============
   useEffect(() => {
     if (companies.length > 0 && !selectedCompany) {
       const firstCompany = companies[0];
@@ -181,17 +216,18 @@ const MarketDataPage: React.FC = () => {
     console.log('Component mounted, isClient set to true');
   }, []);
 
+  // ============ OPTIMIZED: Ultra-Fast WebSocket Connection ============
   useEffect(() => {
     if (!isClient) return;
 
-    console.log('Connecting to Python WebSocket server...');
+    console.log('🚀 Connecting to optimized Python WebSocket server...');
     
     const socket = getSocket();
 
     socket.on('connect', () => {
-      console.log('✅ Connected to Python WebSocket server');
+      console.log('✅ Connected to optimized Python WebSocket server');
       console.log('Socket ID:', socket.id);
-      setSocketStatus('Connected');
+      setSocketStatus('Connected - Ultra Fast');
       
       socket.emit('get_trading_status', {}, (response: any) => {
         console.log('Trading status:', response);
@@ -204,7 +240,7 @@ const MarketDataPage: React.FC = () => {
       });
       
       if (selectedSymbol && selectedSymbol.includes(':') && selectedSymbol.includes('-')) {
-        console.log('Subscribing to validated symbol:', selectedSymbol);
+        console.log('📊 Subscribing to validated symbol:', selectedSymbol);
         socket.emit('subscribe', { symbol: selectedSymbol });
       }
     });
@@ -219,8 +255,9 @@ const MarketDataPage: React.FC = () => {
       setSocketStatus(`Disconnected: ${reason}`);
     });
 
-    socket.on('marketData', (data: MarketData) => {
-      console.log('📊 Received market data:', data);
+    // ============ OPTIMIZED: Handle ultra-fast market data updates (200ms) ============
+    socket.on('marketDataUpdate', (data: MarketData) => {
+      updateCountRef.current++;
       setLastDataReceived(new Date());
       setDataCount(prev => prev + 1);
       
@@ -237,7 +274,7 @@ const MarketDataPage: React.FC = () => {
           const exists = existingHistory.some(item => item.timestamp === data.timestamp);
           if (exists) return prev;
           
-          const newHistory = [...existingHistory, data];
+          const newHistory = [...existingHistory, data].slice(-10000); // Keep last 10k points
           newHistory.sort((a, b) => a.timestamp - b.timestamp);
           
           return {
@@ -246,6 +283,21 @@ const MarketDataPage: React.FC = () => {
           };
         });
       }
+    });
+
+    // ============ OPTIMIZED: Handle ultra-fast chart updates (100ms) ============
+    socket.on('chartUpdate', (update: ChartUpdate) => {
+      updateCountRef.current++;
+      
+      setChartUpdates(prev => {
+        const symbolUpdates = prev[update.symbol] || [];
+        const newUpdates = [...symbolUpdates, update].slice(-1000); // Keep last 1000 updates
+        
+        return {
+          ...prev,
+          [update.symbol]: newUpdates
+        };
+      });
     });
     
     socket.on('historicalData', (data: { symbol: string, data: MarketData[] }) => {
@@ -261,20 +313,25 @@ const MarketDataPage: React.FC = () => {
         
         console.log(`Processed ${sortedData.length} historical data points for ${data.symbol}`);
         
-        if (marketData[data.symbol] && sortedData.length > 0) {
-          const lastHistorical = sortedData[sortedData.length - 1];
-          const current = marketData[data.symbol];
-          
-          if (lastHistorical.timestamp > current.timestamp) {
-            setMarketData(prev => ({
-              ...prev,
-              [data.symbol]: lastHistorical
-            }));
-          }
-        } else if (sortedData.length > 0) {
+        if (sortedData.length > 0) {
           setMarketData(prev => ({
             ...prev,
             [data.symbol]: sortedData[sortedData.length - 1]
+          }));
+
+          // Initialize chart updates with historical data
+          const chartData = sortedData.map(item => ({
+            symbol: data.symbol,
+            price: item.ltp,
+            timestamp: item.timestamp,
+            volume: item.volume || 0,
+            change: item.change || 0,
+            changePercent: item.changePercent || 0
+          }));
+          
+          setChartUpdates(prev => ({
+            ...prev,
+            [data.symbol]: chartData
           }));
         }
       }
@@ -303,31 +360,33 @@ const MarketDataPage: React.FC = () => {
       }));
     });
 
+    // ============ OPTIMIZED: Reduced connection monitoring interval ============
     const dataCheckInterval = setInterval(() => {
       const now = new Date();
       const lastReceived = lastDataReceived;
       
-      if (!lastReceived || now.getTime() - lastReceived.getTime() > 10000) {
-        console.warn('⚠️ No market data received in the last 10 seconds');
+      if (!lastReceived || now.getTime() - lastReceived.getTime() > 2000) { // Reduced to 2 seconds
+        console.warn('⚠️ No market data received in the last 2 seconds');
         
         if (socket.connected && selectedSymbol) {
           console.log('🔄 Attempting to resubscribe to:', selectedSymbol);
           socket.emit('subscribe', { symbol: selectedSymbol });
         }
       }
-    }, 5000);
+    }, 1000); // Check every second
 
     return () => {
       console.log('Component unmounting, cleaning up socket connection');
       clearInterval(dataCheckInterval);
       
       Object.keys(marketData).forEach(symbol => {
-        console.log('🔕 Unsubscribing from:', symbol);
+        console.log('🛑 Unsubscribing from:', symbol);
         socket.emit('unsubscribe', { symbol });
       });
     };
   }, [isClient, lastDataReceived, selectedSymbol]);
 
+  // ============ OPTIMIZED: Symbol change handling ============
   useEffect(() => {
     if (!isClient) return;
     
@@ -341,14 +400,14 @@ const MarketDataPage: React.FC = () => {
 
     Object.keys(marketData).forEach(symbol => {
       if (symbol !== selectedSymbol) {
-        console.log('🔕 Unsubscribing from:', symbol);
+        console.log('🛑 Unsubscribing from:', symbol);
         socket.emit('unsubscribe', { symbol });
       }
     });
     
     if (selectedSymbol) {
       socket.emit('subscribe', { symbol: selectedSymbol });
-      console.log('🔔 Subscribed to:', selectedSymbol);
+      console.log('📊 Subscribed to:', selectedSymbol);
     }
   }, [selectedSymbol, isClient]);
 
@@ -367,9 +426,11 @@ const MarketDataPage: React.FC = () => {
     return change >= 0 ? 'text-green-500' : 'text-red-500';
   };
 
-  const currentData = marketData[selectedSymbol];
-  const symbolHistory = historicalData[selectedSymbol] || [];
-  const symbolOhlc = ohlcData[selectedSymbol] || [];
+  // ============ OPTIMIZED: Memoized data calculations ============
+  const currentData = useMemo(() => marketData[selectedSymbol], [marketData, selectedSymbol]);
+  const symbolHistory = useMemo(() => historicalData[selectedSymbol] || [], [historicalData, selectedSymbol]);
+  const symbolOhlc = useMemo(() => ohlcData[selectedSymbol] || [], [ohlcData, selectedSymbol]);
+  const symbolChartUpdates = useMemo(() => chartUpdates[selectedSymbol] || [], [chartUpdates, selectedSymbol]);
 
   if (!isClient) {
     return (
@@ -398,7 +459,7 @@ const MarketDataPage: React.FC = () => {
           </header>
           <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
             <div className="container mx-auto p-4 bg-zinc-900 text-white flex items-center justify-center h-[80vh]">
-              <div className="text-xl animate-pulse">Loading market data...</div>
+              <div className="text-xl animate-pulse">Loading ultra-fast market data...</div>
             </div>
           </div>
         </SidebarInset>
@@ -423,7 +484,7 @@ const MarketDataPage: React.FC = () => {
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem>
-                  <BreadcrumbPage>Live Market Data</BreadcrumbPage>
+                  <BreadcrumbPage>Live Market Data - Ultra Fast</BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
               <ModeToggle />
@@ -436,12 +497,17 @@ const MarketDataPage: React.FC = () => {
             <CardContent className="p-4">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-medium">Market Data Watchlist</h3>
-                  <div className="flex items-center space-x-2">
-                    <span className={`inline-block w-2 h-2 rounded-full ${
-                      socketStatus.includes('Connected') ? 'bg-green-500' : 'bg-red-500'
-                    }`}></span>
-                    <span className="text-sm text-muted-foreground">{socketStatus}</span>
+                  <h3 className="text-lg font-medium">Ultra-Fast Market Data Watchlist</h3>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <span className={`inline-block w-2 h-2 rounded-full ${
+                        socketStatus.includes('Connected') ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+                      }`}></span>
+                      <span className="text-sm text-muted-foreground">{socketStatus}</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Updates: {updateFrequency}/sec
+                    </div>
                   </div>
                 </div>
                 
@@ -455,7 +521,7 @@ const MarketDataPage: React.FC = () => {
                   />
                 </div>
                 
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Selected:</span>
                     <div className="font-medium">
@@ -474,20 +540,24 @@ const MarketDataPage: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-muted-foreground">Data Points:</span>
-                    <div className="font-medium">{symbolHistory.length} historical / {dataCount} updates</div>
+                    <div className="font-medium">{symbolHistory.length} hist / {symbolChartUpdates.length} chart</div>
                   </div>
-                   {selectedCompany && selectedExchange && (
-                  <div className="flex items-center justify-center">
-                    <ViewInDashboardButton
-                      companyCode={selectedCompany}
-                      exchange={selectedExchange}
-                      watchlist={selectedWatchlist}
-                      interval="1h"
-                      variant="default"
-                      size="md"
-                    />
+                  <div>
+                    <span className="text-muted-foreground">Total Updates:</span>
+                    <div className="font-medium text-green-400">{dataCount}</div>
                   </div>
-                )}
+                  {selectedCompany && selectedExchange && (
+                    <div className="flex items-center justify-center">
+                      <ViewInDashboardButton
+                        companyCode={selectedCompany}
+                        exchange={selectedExchange}
+                        watchlist={selectedWatchlist}
+                        interval="1h"
+                        variant="default"
+                        size="md"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {watchlistError && (
@@ -504,18 +574,20 @@ const MarketDataPage: React.FC = () => {
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
                 <div className="lg:col-span-3">
                   <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-[600px]">
-                    {symbolHistory.length > 0 ? (
+                    {symbolHistory.length > 0 || symbolChartUpdates.length > 0 ? (
                       <PlotlyChart 
                         symbol={selectedSymbol} 
                         data={currentData} 
                         historicalData={symbolHistory}
                         ohlcData={symbolOhlc}
+                        chartUpdates={symbolChartUpdates} // ✨ Pass chart updates for ultra-smooth updates
                         tradingHours={tradingHours}
+                        updateFrequency={updateFrequency} // ✨ Pass update frequency
                       />
                     ) : (
                       <div className="h-full flex items-center justify-center">
                         <p className="text-zinc-400">
-                          {selectedSymbol ? `Loading historical data for ${selectedSymbol}...` : 'Select a company to view market data'}
+                          {selectedSymbol ? `Loading ultra-fast data for ${selectedSymbol}...` : 'Select a company to view market data'}
                         </p>
                       </div>
                     )}
@@ -525,28 +597,25 @@ const MarketDataPage: React.FC = () => {
                 <div className="bg-zinc-800 p-4 w-full rounded-lg shadow-lg">
                   {currentData ? (
                     <>
-                      <h2 className="text-xl font-semibold mb-2 text-white">{selectedSymbol}</h2>
+                      <div className="flex items-center justify-between mb-2">
+                        <h2 className="text-xl font-semibold text-white">{selectedSymbol}</h2>
+                        <div className="text-xs text-green-400 animate-pulse">
+                          LIVE • {updateFrequency} ups/sec
+                        </div>
+                      </div>
                       <div className="text-3xl font-bold mb-2 text-white">₹{formatPrice(currentData.ltp)}</div>
                       <div className={`text-lg ${getChangeClass(currentData.change)}`}>
                         {formatChange(currentData.change, currentData.changePercent)}
                       </div>
                       
-                      {/* Sentiment Indicator Div - Now controlled by toggle */}
                       {(() => {
                         const sentiment = getSentimentIndicator(gradientMode);
-                        // const Icon = sentiment.icon;
                         return (
                           <div className={`mt-3 p-3 rounded-lg border-2 ${sentiment.background} backdrop-blur-sm`}>
                             <div className="flex items-center gap-2">
-                              {/* <Icon className={`h-4 w-4 ${sentiment.text}`} /> */}
                               <span className={`text-sm font-medium ${sentiment.text}`}>
                                 {sentiment.label}
                               </span>
-                            </div>
-                            <div className="mt-1">
-                              {/* <span className="text-xs text-zinc-400">
-                                Market sentiment controlled by toggle
-                              </span> */}
                             </div>
                           </div>
                         );
@@ -587,7 +656,9 @@ const MarketDataPage: React.FC = () => {
                           </div>
                           <div>
                             <div className="text-xs text-zinc-400">Last Updated</div>
-                            <div>{new Date(currentData.timestamp * 1000).toLocaleTimeString()}</div>
+                            <div className="text-green-400 animate-pulse">
+                              {new Date(currentData.timestamp * 1000).toLocaleTimeString()}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -622,7 +693,7 @@ const MarketDataPage: React.FC = () => {
                   ) : (
                     <div className="text-center py-8">
                       <p className="text-zinc-400">
-                        {selectedSymbol ? 'Waiting for market data...' : 'Select a company to view data'}
+                        {selectedSymbol ? 'Connecting to ultra-fast stream...' : 'Select a company to view data'}
                       </p>
                     </div>
                   )}
@@ -640,11 +711,12 @@ const MarketDataPage: React.FC = () => {
               
               <div className="p-4 bg-zinc-800 rounded-lg shadow-lg">
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-lg font-semibold text-white">Raw Market Data</h3>
+                  <h3 className="text-lg font-semibold text-white">Ultra-Fast Market Data Stream</h3>
                   <div className="text-xs text-zinc-400">
                     {symbolHistory.length > 0 && tradingHours.start && (
                       <>
                         Trading Hours: {new Date(tradingHours.start).toLocaleTimeString()} - {new Date(tradingHours.end).toLocaleTimeString()}
+                        <span className="ml-2 text-green-400">• {updateFrequency} updates/sec</span>
                       </>
                     )}
                   </div>
@@ -654,7 +726,7 @@ const MarketDataPage: React.FC = () => {
                     {JSON.stringify(currentData, null, 2)}
                   </pre>
                 ) : (
-                  <p className="text-zinc-400">No data received yet. Check console for connection details.</p>
+                  <p className="text-zinc-400">Initializing ultra-fast data stream...</p>
                 )}
               </div>
             </div>
