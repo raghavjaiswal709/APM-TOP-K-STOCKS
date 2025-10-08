@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+// ✅ NEW IMPORT - LSTMAE Pipeline 2 Integration
+import { LSTMAEModal } from '../../components/lstmae/LSTMAEModal';
 
 interface NewsItem {
   id: string;
@@ -617,6 +619,9 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const [selectedNewsItem, setSelectedNewsItem] = useState<NewsItem | null>(null);
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
 
+  // ✅ NEW STATE - LSTMAE Pipeline 2 Modal
+  const [isLSTMAEModalOpen, setIsLSTMAEModalOpen] = useState(false);
+
   // Generate the same news items for headline carousel
   const generateRandomNews = useCallback(() => {
     const headlines = [
@@ -672,18 +677,6 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       setNewsItems(generateRandomNews());
     }
   }, [companyCode, generateRandomNews]);
-
-  // // Handle news click - open modal instead of Google search
-  // const handleNewsClick = (newsItem: NewsItem) => {
-  //   setSelectedNewsItem(newsItem);
-  //   setIsNewsModalOpen(true);
-  // };
-
-  // // Close news modal
-  // const handleCloseNewsModal = () => {
-  //   setIsNewsModalOpen(false);
-  //   setSelectedNewsItem(null);
-  // };
 
   // Handle news click - maximize view and set headline
   const handleNewsClick = (newsItem: NewsItem) => {
@@ -800,7 +793,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     return date.toISOString().split('T')[0];
   }, [selectedDate]);
 
-  // Generate image paths for all tabs including new ones
+  // ✅ MODIFIED - Generate image paths with Pipeline 2 Integration
   const generateImagePaths = useCallback(() => {
     if (!companyCode || !exchange) return [];
     
@@ -808,7 +801,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     const companyExchange = `${companyCode}_${exchange}`;
     const imageList: CarouselImage[] = [];
 
-    // Interday images
+    // Interday images (UNCHANGED)
     const pattern1Path = `/GraphsN/${dateString}/N1_Pattern_Plot/${companyExchange}/${companyExchange}_interday.png`;
     imageList.push({
       src: pattern1Path,
@@ -818,7 +811,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       exists: false
     });
 
-    // Intraday images
+    // Intraday images (UNCHANGED)
     ACTUAL_INDICES.forEach(index => {
       const pattern2Path = `/GraphsN/${dateString}/watchlist_comp_ind_90d_analysis_plot/${companyExchange}_${dateString}/${companyCode}_${index}_intraday.png`;
       imageList.push({
@@ -830,26 +823,49 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       });
     });
 
-    // LSTMAE images - Different path structure
-    const lstmaePath = `/GraphsN/${dateString}/LSTMAE_Analysis/${companyExchange}/${companyExchange}_LSTMAE_prediction.png`;
-    imageList.push({
-      src: lstmaePath,
-      name: `${companyCode} LSTM AutoEncoder`,
-      type: 'LSTM AutoEncoder Analysis',
-      chartType: 'LSTMAE',
-      exists: false
+    // ✅ LSTMAE images - Pipeline 2 Integration (MODIFIED)
+    const lstmaeBasePath = `/nvme1/production/PatternPoolLSTMAE/pipeline2/data/visualizations/${companyCode}`;
+    
+    // 4 Static PNG Visualizations (from document section 3.1)
+    const lstmaeVisualizations = [
+      {
+        filename: `${companyCode}_dominant_patterns.png`,
+        name: `${companyCode} Dominant Patterns`,
+        type: 'Pattern Timeline & Strength Analysis',
+        dimensions: { width: 1200, height: 800 }
+      },
+      {
+        filename: `${companyCode}_intraday_patterns.png`,
+        name: `${companyCode} Intraday Patterns`,
+        type: 'Median Price Movement Clusters',
+        dimensions: { width: 1400, height: 1200 }
+      },
+      {
+        filename: `${companyCode}_cluster_transitions.png`,
+        name: `${companyCode} Cluster Transitions`,
+        type: 'Network Graph - Transition Probabilities',
+        dimensions: { width: 1200, height: 800 }
+      },
+      {
+        filename: `${companyCode}_cluster_timeline.png`,
+        name: `${companyCode} Cluster Timeline`,
+        type: 'Temporal Cluster Assignment Scatter',
+        dimensions: { width: 1200, height: 800 }
+      }
+    ];
+
+    lstmaeVisualizations.forEach(viz => {
+      imageList.push({
+        src: `${lstmaeBasePath}/${viz.filename}`,
+        name: viz.name,
+        type: viz.type,
+        chartType: 'LSTMAE',
+        exists: false,
+        dimensions: viz.dimensions
+      });
     });
 
-    const lstmaePath2 = `/GraphsN/${dateString}/LSTMAE_Analysis/${companyExchange}/${companyExchange}_LSTMAE_anomaly.png`;
-    imageList.push({
-      src: lstmaePath2,
-      name: `${companyCode} Anomaly Detection`,
-      type: 'LSTM Anomaly Analysis',
-      chartType: 'LSTMAE',
-      exists: false
-    });
-
-    // SiPR images - Different path structure
+    // SiPR images (UNCHANGED)
     const siprPath = `/GraphsN/${dateString}/SiPR_Analysis/${companyExchange}/${companyExchange}_SiPR_signal.png`;
     imageList.push({
       src: siprPath,
@@ -868,7 +884,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       exists: false
     });
 
-    // MSAX images - Different path structure
+    // MSAX images (UNCHANGED)
     const msaxPath = `/GraphsN/${dateString}/MSAX_Analysis/${companyExchange}/${companyExchange}_MSAX_multi.png`;
     imageList.push({
       src: msaxPath,
@@ -986,7 +1002,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const currentImage = filteredImages[currentIndex];
   const currentHeadline = newsItems[currentHeadlineIndex];
 
-  // Function to render images based on active tab in maximized view
+  // ✅ MODIFIED - Function to render images with "Open Full Dashboard" button for LSTMAE
   const renderMaximizedImages = () => {
     let leftImages: CarouselImage[] = [];
     let rightImages: CarouselImage[] = [];
@@ -1009,7 +1025,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       case 'LSTMAE':
         leftImages = lstmaeImages;
         rightImages = [...siprImages, ...msaxImages];
-        leftTitle = 'LSTM AutoEncoder';
+        leftTitle = 'LSTM AutoEncoder - Pipeline 2';
         rightTitle = 'SiPR & MSAX Analysis';
         break;
       case 'SiPR':
@@ -1031,8 +1047,20 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         <div className="flex h-[100%]">
           {/* Left side images */}
           <div className="w-1/2 border-r border-zinc-700/50">
-            <div className="p-4 border-b border-zinc-700/50">
+            <div className="p-4 border-b border-zinc-700/50 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-white">{leftTitle}</h3>
+              
+              {/* ✅ NEW - Show "Open Full Dashboard" button only for LSTMAE tab */}
+              {activeTab === 'LSTMAE' && (
+                <Button
+                  onClick={() => setIsLSTMAEModalOpen(true)}
+                  size="sm"
+                  className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open Full Dashboard
+                </Button>
+              )}
             </div>
             <ScrollArea className="h-full">
               <div className="p-4 space-y-4">
@@ -1273,12 +1301,18 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                       <div className="p-3">
                         <div className="flex items-center justify-between">
                           <div>
-                            {/* <h3 className="text-sm font-medium text-white">
-                              {currentImage?.name || 'No Image Available'}
-                            </h3> */}
-                            {/* <p className="text-xs text-zinc-400 mt-1">
-                              {currentImage?.type || 'No analysis type'}
-                            </p> */}
+                            {/* ✅ OPTIONAL - Add quick access button in non-maximized view */}
+                            {activeTab === 'LSTMAE' && lstmaeImages.length > 0 && (
+                              <Button
+                                onClick={() => setIsLSTMAEModalOpen(true)}
+                                size="sm"
+                                variant="outline"
+                                className="gap-2"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                Full Dashboard
+                              </Button>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 mt-1">
@@ -1353,6 +1387,14 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         isOpen={isNewsModalOpen}
         onClose={handleCloseNewsModal}
         newsItem={selectedNewsItem}
+      />
+
+      {/* ✅ NEW - LSTMAE Pipeline 2 Modal */}
+      <LSTMAEModal
+        isOpen={isLSTMAEModalOpen}
+        onClose={() => setIsLSTMAEModalOpen(false)}
+        companyCode={companyCode}
+        companyName={`${companyCode} - ${exchange}`}
       />
     </>
   );
