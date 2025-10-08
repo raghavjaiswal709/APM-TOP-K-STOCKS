@@ -165,7 +165,7 @@ const MarketDataPage: React.FC = () => {
   // ============ FIXED: Event handlers defined at component level ============
   const handleConnect = useCallback(() => {
     console.log('✅ Connected to server');
-    setSocketStatus('Connected - Fixed');
+    setSocketStatus('Connected');
 
     if (socketRef.current) {
       socketRef.current.emit('get_trading_status', {}, (response: any) => {
@@ -539,15 +539,15 @@ const MarketDataPage: React.FC = () => {
                       }`}></span>
                       <span className="text-sm text-muted-foreground">{socketStatus}</span>
                     </div>
-                    <div className="text-sm text-muted-foreground">
+                    {/* <div className="text-sm text-muted-foreground">
                       Updates: {updateFrequency}/sec
-                    </div>
-                    <div className="flex items-center space-x-2">
+                    </div> */}
+                    {/* <div className="flex items-center space-x-2">
                       <Database className="h-4 w-4 text-blue-500" />
                       <span className="text-sm text-blue-400">
                         {backgroundDataPoints} pts
                       </span>
-                    </div>
+                    </div> */}
                   </div>
                 </div>
 
@@ -684,7 +684,8 @@ const MarketDataPage: React.FC = () => {
                       <div className="flex items-center justify-between mb-2">
                         <h2 className="text-xl font-semibold text-white">{selectedSymbol}</h2>
                         <div className="text-xs text-green-400 animate-pulse">
-                          LIVE • {updateFrequency} ups/sec
+                          LIVE • 
+                          {/* {updateFrequency} ups/sec */}
                         </div>
                       </div>
                       <div className="text-3xl font-bold mb-2 text-white">₹{formatPrice(currentData.ltp)}</div>
@@ -785,7 +786,7 @@ const MarketDataPage: React.FC = () => {
                 />
               </div>
 
-              <div className="p-4 bg-zinc-800 rounded-lg shadow-lg">
+              {/* <div className="p-4 bg-zinc-800 rounded-lg shadow-lg">
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-lg font-semibold text-white">Market Data Stream</h3>
                   <div className="text-xs text-zinc-400">
@@ -831,7 +832,7 @@ const MarketDataPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>
