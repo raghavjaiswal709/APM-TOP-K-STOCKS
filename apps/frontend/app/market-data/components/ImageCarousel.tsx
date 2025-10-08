@@ -1258,12 +1258,12 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                       <div className="p-3">
                         <div className="flex items-center justify-between">
                           <div>
-                            <h3 className="text-sm font-medium text-white">
+                            {/* <h3 className="text-sm font-medium text-white">
                               {currentImage?.name || 'No Image Available'}
-                            </h3>
-                            <p className="text-xs text-zinc-400 mt-1">
+                            </h3> */}
+                            {/* <p className="text-xs text-zinc-400 mt-1">
                               {currentImage?.type || 'No analysis type'}
-                            </p>
+                            </p> */}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 mt-1">
