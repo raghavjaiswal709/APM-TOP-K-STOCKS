@@ -673,10 +673,25 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     }
   }, [companyCode, generateRandomNews]);
 
-  // Handle news click - open modal instead of Google search
+  // // Handle news click - open modal instead of Google search
+  // const handleNewsClick = (newsItem: NewsItem) => {
+  //   setSelectedNewsItem(newsItem);
+  //   setIsNewsModalOpen(true);
+  // };
+
+  // // Close news modal
+  // const handleCloseNewsModal = () => {
+  //   setIsNewsModalOpen(false);
+  //   setSelectedNewsItem(null);
+  // };
+
+  // Handle news click - maximize view and set headline
   const handleNewsClick = (newsItem: NewsItem) => {
-    setSelectedNewsItem(newsItem);
-    setIsNewsModalOpen(true);
+    const newsIndex = newsItems.findIndex(item => item.id === newsItem.id);
+    if (newsIndex !== -1) {
+      setCurrentHeadlineIndex(newsIndex);
+      setIsMaximized(true);
+    }
   };
 
   // Close news modal
