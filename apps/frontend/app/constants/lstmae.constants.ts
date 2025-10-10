@@ -61,23 +61,31 @@ export const LSTMAE_CONSTANTS = {
     WINDOW_FEATURES: 'width=1400,height=900,resizable=yes,scrollbars=yes,status=yes',
   },
 
-  // Performance Settings (from document - section 8)
-  PERFORMANCE: {
-    CACHE_TTL_SECONDS: 3600, // 1 hour as per document
-    FIRST_REQUEST_TIMEOUT: 30000, // 30 seconds (10-20s expected)
-    CACHED_REQUEST_TIMEOUT: 5000, // 5 seconds (< 1s expected)
-    RETRY_ATTEMPTS: 3,
-    RETRY_DELAY: 1000,
-    IMAGE_LOAD_TIMEOUT: 15000,
-  },
+ // constants/lstmae.constants.ts
+
+PERFORMANCE: {
+  CACHE_TTL_SECONDS: 3600,
+  
+  // ✅ INCREASED TIMEOUTS FOR SLOW NETWORK
+  FIRST_REQUEST_TIMEOUT: 120000, // 2 minutes (was 30 seconds)
+  CACHED_REQUEST_TIMEOUT: 30000,  // 30 seconds (was 5 seconds)
+  
+  RETRY_ATTEMPTS: 2, // Reduced from 3 to avoid long waits
+  RETRY_DELAY: 2000, // 2 seconds between retries
+  IMAGE_LOAD_TIMEOUT: 30000, // 30 seconds for images
+},
+
 
   // API Endpoints (from document - section 4.6)
-  ENDPOINTS: {
-    HEALTH: '/health',
-    DASHBOARD: '/visualize/dashboard',
-    PLOT: (symbol: string, plotType: string) => `/visualize/${symbol}/plot/${plotType}`,
-    REPORT: (symbol: string) => `/visualize/${symbol}/report`,
-  },
+// constants/lstmae.constants.ts
+
+ENDPOINTS: {
+  HEALTH: '/health',
+  DASHBOARD: '/dashboard', // Changed from /visualize/dashboard
+  PLOT: (symbol: string, plotType: string) => `/${symbol}/plot/${plotType}`, // Changed
+  REPORT: (symbol: string) => `/${symbol}/report`, // Changed
+},
+
 
   // Error Codes (from document - section 7)
   ERROR_CODES: {

@@ -1,36 +1,25 @@
 // services/lstmaeService.ts
-import { lstmaeConfig, getApiUrl, getVisualizationPath, isValidSymbol } from '../config/lstmae.config';
-import { LSTMAE_CONSTANTS } from '../constants/lstmae.constants';
+import { lstmaeConfig, getApiUrl, getVisualizationPath, isValidSymbol } from '.././config/lstmae.config';
+import { LSTMAE_CONSTANTS } from '.././constants/lstmae.constants';
 import type {
   LSTMAEDashboardResponse,
   LSTMAEServiceHealth,
   LSTMAEError,
   ClusteringMethod,
-} from '../../app/types/lstmae.types';
+  PlotUrls,
+} from '.././types/lstmae.types';
 
-/**
- * LSTMAE Pipeline 2 API Service
- * Handles all communication with Pipeline 2 Visualization Engine (Port 8506)
- * Based on Pipeline 2 Integration Guide - Section 4.6
- */
 class LSTMAEService {
   private cache: Map<string, { data: any; timestamp: number }> = new Map();
 
-  /**
-   * Check if data is in cache and not expired
-   */
   private isCacheValid(key: string): boolean {
     const cached = this.cache.get(key);
     if (!cached) return false;
-
     const age = Date.now() - cached.timestamp;
-    const ttl = lstmaeConfig.cacheTTL * 1000; // Convert to milliseconds
+    const ttl = lstmaeConfig.cacheTTL * 1000;
     return age < ttl;
   }
 
-  /**
-   * Get data from cache
-   */
   private getFromCache<T>(key: string): T | null {
     if (this.isCacheValid(key)) {
       return this.cache.get(key)!.data as T;
@@ -38,9 +27,6 @@ class LSTMAEService {
     return null;
   }
 
-  /**
-   * Save data to cache
-   */
   private saveToCache(key: string, data: any): void {
     this.cache.set(key, {
       data,
@@ -48,9 +34,6 @@ class LSTMAEService {
     });
   }
 
-  /**
-   * Make API request with retry logic
-   */
   private async fetchWithRetry<T>(
     url: string,
     options: RequestInit = {},
@@ -84,9 +67,6 @@ class LSTMAEService {
     }
   }
 
-  /**
-   * Handle and format errors according to document section 7
-   */
   private handleError(error: any): LSTMAEError {
     const errorResponse: LSTMAEError = {
       code: LSTMAE_CONSTANTS.ERROR_CODES.NETWORK_ERROR,
@@ -118,10 +98,6 @@ class LSTMAEService {
     return errorResponse;
   }
 
-  /**
-   * Check service health
-   * Endpoint: GET /health (Section 4.6)
-   */
   async checkHealth(): Promise<LSTMAEServiceHealth> {
     const cacheKey = 'health_check';
     const cached = this.getFromCache<LSTMAEServiceHealth>(cacheKey);
@@ -143,115 +119,191 @@ class LSTMAEService {
     }
   }
 
-  /**
-   * Generate complete dashboard for a symbol
-   * Endpoint: POST /visualize/dashboard (Section 4.6)
-   * @param symbol - Stock symbol (e.g., "RELIANCE")
-   * @param method - Clustering method (default: "spectral")
-   * @param forceRefresh - Force regeneration even if cached
-   */
-  async generateDashboard(
-    symbol: string,
-    method: ClusteringMethod = LSTMAE_CONSTANTS.DEFAULT_CLUSTERING_METHOD,
-    forceRefresh = false
-  ): Promise<LSTMAEDashboardResponse> {
-    // Validate symbol
-    if (!isValidSymbol(symbol)) {
-      throw new Error(`Invalid symbol format: ${symbol}`);
-    }
+  // services/lstmaeService.ts
 
-    const cacheKey = `dashboard_${symbol}_${method}`;
+async getPlotViaEndpoint(
+  symbol: string,
+  plotType: 'dominant_patterns' | 'intraday_patterns' | 'cluster_transitions' | 'cluster_timeline' | 'anomalies' | 'seasonality' | 'transitions_alt',
+  method: ClusteringMethod = 'spectral'
+): Promise<string> {
+  const cacheKey = `plot_${symbol}_${plotType}_${method}`;
+  
+  const cached = this.getFromCache<string>(cacheKey);
+  if (cached) return cached;
 
-    // Check cache unless force refresh
-    if (!forceRefresh) {
-      const cached = this.getFromCache<LSTMAEDashboardResponse>(cacheKey);
-      if (cached) return cached;
-    }
-
-    try {
-      const url = getApiUrl(LSTMAE_CONSTANTS.ENDPOINTS.DASHBOARD);
-      const response = await this.fetchWithRetry<any>(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          symbol,
-          method,
-          ...(forceRefresh && { force_refresh: true }),
-        }),
-      });
-
-      // Transform API response to our interface format
-      const dashboardResponse: LSTMAEDashboardResponse = {
-        success: true,
-        symbol: response.symbol,
-        plotPaths: {
-          dominantPatterns: response.plot_paths?.dominant_patterns || '',
-          clusterTimeline: response.plot_paths?.cluster_timeline || '',
-          intraday: response.plot_paths?.intraday || '',
-          clusterTransitions: response.plot_paths?.cluster_transitions || '',
-        },
-        dashboardPath: response.dashboard_path || '',
-        reportPath: response.report_path || '',
-        nDominantPatterns: response.n_dominant_patterns || 0,
-        dominantPatterns: response.dominant_patterns || [],
-      };
-
-      this.saveToCache(cacheKey, dashboardResponse);
-      return dashboardResponse;
-    } catch (error) {
-      // Fallback to direct file paths if API fails and fallback is enabled
-      if (lstmaeConfig.fallbackEnabled) {
-        return this.generateFallbackResponse(symbol, method);
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Generate fallback response using direct file paths
-   * Used when API is unavailable (Section 3.2 - Option 1)
-   */
-  private generateFallbackResponse(
-    symbol: string,
-    method: ClusteringMethod
-  ): LSTMAEDashboardResponse {
-    return {
-      success: true,
-      symbol,
-      plotPaths: {
-        dominantPatterns: getVisualizationPath(symbol, `${symbol}_dominant_patterns.png`),
-        clusterTimeline: getVisualizationPath(symbol, `${symbol}_cluster_timeline.png`),
-        intraday: getVisualizationPath(symbol, `${symbol}_intraday_patterns.png`),
-        clusterTransitions: getVisualizationPath(symbol, `${symbol}_cluster_transitions.png`),
-      },
-      dashboardPath: getVisualizationPath(symbol, `${symbol}_interactive_dashboard.html`),
-      reportPath: getVisualizationPath(symbol, `${symbol}_analysis_report.json`),
-      nDominantPatterns: 0,
-      dominantPatterns: [],
+  try {
+    const plotTypeMap: Record<string, string> = {
+      'dominant_patterns': 'dominant_patterns',
+      'intraday_patterns': 'intraday',
+      'cluster_transitions': 'cluster_transitions',
+      'cluster_timeline': 'cluster_timeline',
+      'anomalies': 'anomalies',
+      'seasonality': 'seasonality',
+      'transitions_alt': 'transitions_alt',
     };
-  }
 
-  /**
-   * Get specific plot image
-   * Endpoint: GET /visualize/{symbol}/plot/{plot_type} (Section 4.6)
-   */
-  async getPlot(symbol: string, plotType: string, method: ClusteringMethod = 'spectral'): Promise<Blob> {
-    const url = `${getApiUrl(LSTMAE_CONSTANTS.ENDPOINTS.PLOT(symbol, plotType))}?method=${method}`;
-    const response = await fetch(url);
+    const apiPlotType = plotTypeMap[plotType] || plotType;
+    const url = `${getApiUrl(LSTMAE_CONSTANTS.ENDPOINTS.PLOT(symbol, apiPlotType))}?method=${method}`;
+    
+    console.log(`Fetching plot ${plotType} for ${symbol}... (timeout: ${lstmaeConfig.timeout}ms)`);
+    
+    // ✅ USE INCREASED TIMEOUT (2 minutes for slow network)
+    const response = await fetch(url, {
+      method: 'GET',
+      signal: AbortSignal.timeout(lstmaeConfig.timeout), // 120000ms = 2 minutes
+    });
 
     if (!response.ok) {
       throw new Error(`Failed to fetch plot: ${response.statusText}`);
     }
 
-    return await response.blob();
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    
+    this.saveToCache(cacheKey, blobUrl);
+    
+    console.log(`✓ Successfully fetched plot ${plotType} for ${symbol}`);
+    return blobUrl;
+  } catch (error) {
+    console.error(`✗ Error fetching plot ${plotType} for ${symbol}:`, error);
+    throw this.handleError(error);
+  }
+}
+
+
+  // services/lstmaeService.ts
+
+// services/lstmaeService.ts
+
+// services/lstmaeService.ts
+
+async getAllPlotsViaEndpoint(
+  symbol: string,
+  method: ClusteringMethod = 'spectral'
+): Promise<PlotUrls> {
+  // ✅ Use Promise.allSettled to handle missing plots gracefully
+  const results = await Promise.allSettled([
+    this.getPlotViaEndpoint(symbol, 'dominant_patterns', method),
+    this.getPlotViaEndpoint(symbol, 'intraday_patterns', method),
+    this.getPlotViaEndpoint(symbol, 'cluster_transitions', method), // Now works!
+    this.getPlotViaEndpoint(symbol, 'cluster_timeline', method),
+  ]);
+
+  const [dominantPatterns, intraday, clusterTransitions, clusterTimeline] = results.map(
+    (result) => {
+      if (result.status === 'fulfilled') {
+        return result.value;
+      } else {
+        console.warn('⚠️ Plot failed:', result.reason);
+        return '';
+      }
+    }
+  );
+
+  return {
+    dominantPatterns,
+    intraday,
+    clusterTransitions, // Should work now with correct API mapping
+    clusterTimeline,
+    anomalies: '',
+    seasonality: '',
+    transitionsAlt: '',
+  };
+}
+
+
+
+
+  async generateDashboard(
+  symbol: string,
+  method: ClusteringMethod = LSTMAE_CONSTANTS.DEFAULT_CLUSTERING_METHOD,
+  forceRefresh = false
+): Promise<LSTMAEDashboardResponse> {
+  if (!isValidSymbol(symbol)) {
+    throw new Error(`Invalid symbol format: ${symbol}`);
   }
 
-  /**
-   * Get analysis report
-   * Endpoint: GET /visualize/{symbol}/report (Section 4.6)
-   */
+  const cacheKey = `dashboard_${symbol}_${method}`;
+
+  if (!forceRefresh) {
+    const cached = this.getFromCache<LSTMAEDashboardResponse>(cacheKey);
+    if (cached) return cached;
+  }
+
+  try {
+    const url = getApiUrl(LSTMAE_CONSTANTS.ENDPOINTS.DASHBOARD);
+    const response = await this.fetchWithRetry<any>(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        symbol,
+        method,
+        ...(forceRefresh && { force_refresh: true }),
+      }),
+    });
+
+    console.log('Dashboard API response:', response);
+
+    // ✅ TRANSFORM: Ensure all paths are API routes, not filesystem paths
+    const dashboardResponse: LSTMAEDashboardResponse = {
+      success: true,
+      symbol: symbol,
+      plotPaths: {
+        // If response has plot_paths, use them, otherwise construct them
+        dominantPatterns: response.plot_paths?.dominant_patterns || `/api/lstmae/${symbol}/plot/dominant_patterns`,
+        clusterTimeline: response.plot_paths?.cluster_timeline || `/api/lstmae/${symbol}/plot/cluster_timeline`,
+        intraday: response.plot_paths?.intraday || `/api/lstmae/${symbol}/plot/intraday`,
+        clusterTransitions: response.plot_paths?.cluster_transitions || `/api/lstmae/${symbol}/plot/cluster_transitions`,
+      },
+      // ✅ CRITICAL: dashboard_path MUST be an API route
+      dashboardPath: response.dashboard_path?.startsWith('/api/') 
+        ? response.dashboard_path 
+        : `/api/lstmae/${symbol}/dashboard-html`,
+      reportPath: response.report_path || `/api/lstmae/${symbol}/report`,
+      nDominantPatterns: response.n_dominant_patterns || 0,
+      dominantPatterns: response.dominant_patterns || [],
+    };
+
+    console.log('Transformed dashboard response:', dashboardResponse);
+
+    this.saveToCache(cacheKey, dashboardResponse);
+    return dashboardResponse;
+  } catch (error) {
+    if (lstmaeConfig.fallbackEnabled) {
+      return this.generateFallbackResponse(symbol, method);
+    }
+    throw error;
+  }
+}
+
+  // services/lstmaeService.ts
+
+private generateFallbackResponse(
+  symbol: string,
+  method: ClusteringMethod
+): LSTMAEDashboardResponse {
+  return {
+    success: true,
+    symbol,
+    plotPaths: {
+      dominantPatterns: getVisualizationPath(symbol, `${symbol}_dominant_patterns.png`),
+      clusterTimeline: getVisualizationPath(symbol, `${symbol}_cluster_timeline.png`),
+      intraday: getVisualizationPath(symbol, `${symbol}_intraday_patterns.png`),
+      clusterTransitions: getVisualizationPath(symbol, `${symbol}_cluster_transitions.png`),
+      anomalies: getVisualizationPath(symbol, `${symbol}_anomalies.png`),
+      seasonality: getVisualizationPath(symbol, `${symbol}_seasonality.png`),
+      transitionsAlt: getVisualizationPath(symbol, `${symbol}.transitions.png`),
+    },
+    // ✅ Correct format
+    dashboardPath: `/api/lstmae/${symbol}/dashboard-html`, // This endpoint serves the HTML
+    reportPath: getVisualizationPath(symbol, `${symbol}_analysis_report.json`),
+    nDominantPatterns: 0,
+    dominantPatterns: [],
+  };
+}
+
   async getReport(symbol: string, method: ClusteringMethod = 'spectral'): Promise<any> {
     const cacheKey = `report_${symbol}_${method}`;
     const cached = this.getFromCache<any>(cacheKey);
@@ -264,9 +316,6 @@ class LSTMAEService {
     return response;
   }
 
-  /**
-   * Check if visualization files exist
-   */
   async checkVisualizationExists(symbol: string): Promise<boolean> {
     try {
       const dashboard = await this.generateDashboard(symbol);
@@ -276,16 +325,10 @@ class LSTMAEService {
     }
   }
 
-  /**
-   * Clear cache
-   */
   clearCache(): void {
     this.cache.clear();
   }
 
-  /**
-   * Clear cache for specific symbol
-   */
   clearSymbolCache(symbol: string): void {
     const keysToDelete: string[] = [];
     this.cache.forEach((_, key) => {
@@ -297,5 +340,4 @@ class LSTMAEService {
   }
 }
 
-// Export singleton instance
 export const lstmaeService = new LSTMAEService();

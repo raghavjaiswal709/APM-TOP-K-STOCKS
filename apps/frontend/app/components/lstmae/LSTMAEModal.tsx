@@ -10,22 +10,19 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LSTMAEVisualization } from './LSTMAEVisualization';
 import { LSTMAEInteractiveDashboard } from './LSTMAEInteractiveDashboard';
 import { useLSTMAEData } from '@/hooks/useLSTMAEData';
-import type { LSTMAEModalProps } from '@/types/lstmae.types';
+import type { LSTMAEModalProps } from '../../types/lstmae.types';
 
-/**
- * Full-screen modal for LSTMAE Pipeline 2 Dashboard
- * Displays all visualizations and provides access to interactive dashboard
- */
 export const LSTMAEModal: React.FC<LSTMAEModalProps> = ({
   isOpen,
   onClose,
   companyCode,
   companyName,
 }) => {
-  const { dashboard, health, loading, error, refresh, checkHealth } = useLSTMAEData(
+  const { dashboard, plotUrls, health, loading, error, refresh, checkHealth } = useLSTMAEData(
     companyCode,
     'spectral',
-    isOpen // Only fetch when modal is open
+    isOpen,
+    true
   );
 
   return (
@@ -75,7 +72,6 @@ export const LSTMAEModal: React.FC<LSTMAEModalProps> = ({
 
         <ScrollArea className="flex-1">
           <div className="space-y-6 p-6">
-            {/* Error Alert */}
             {error && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
@@ -86,7 +82,6 @@ export const LSTMAEModal: React.FC<LSTMAEModalProps> = ({
               </Alert>
             )}
 
-            {/* Loading State */}
             {loading === 'loading' && (
               <div className="flex items-center justify-center py-20">
                 <div className="text-center space-y-4">
@@ -99,11 +94,9 @@ export const LSTMAEModal: React.FC<LSTMAEModalProps> = ({
               </div>
             )}
 
-            {/* Dashboard Content */}
-            {dashboard && !error && loading !== 'loading' && (
+            {(dashboard || plotUrls) && !error && loading !== 'loading' && (
               <>
-                {/* Pattern Summary */}
-                {dashboard.dominantPatterns.length > 0 && (
+                {dashboard && dashboard.dominantPatterns.length > 0 && (
                   <div className="rounded-lg border bg-blue-50 p-4">
                     <h3 className="font-semibold text-blue-900 mb-2">
                       Dominant Patterns Detected: {dashboard.nDominantPatterns}
@@ -124,18 +117,15 @@ export const LSTMAEModal: React.FC<LSTMAEModalProps> = ({
                   </div>
                 )}
 
-                {/* Visualizations Grid */}
-                <LSTMAEVisualization dashboard={dashboard} />
+                <LSTMAEVisualization dashboard={dashboard || undefined} plotUrls={plotUrls || undefined} />
 
-                {/* Interactive Dashboard */}
-                {dashboard.dashboardPath && (
+                {dashboard?.dashboardPath && (
                   <LSTMAEInteractiveDashboard
                     dashboardPath={dashboard.dashboardPath}
                     symbol={companyCode}
                   />
                 )}
 
-                {/* Cache Info */}
                 <p className="text-xs text-center text-muted-foreground">
                   {loading === 'cached' ? '⚡ Loaded from cache' : '🔄 Freshly generated'} •
                   Cache TTL: 1 hour • Service: Port 8506

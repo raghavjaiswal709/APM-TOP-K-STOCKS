@@ -7,13 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LSTMAEModal } from './LSTMAEModal';
 import { LSTMAEErrorBoundary } from './LSTMAEErrorBoundary';
-import type { LSTMAEDashboardProps } from '@/types/lstmae.types';
+import type { LSTMAEDashboardProps } from '../../types/lstmae.types';
 
-/**
- * Main LSTMAE Dashboard Component
- * Entry point for Pipeline 2 Integration
- * Completely isolated from other features
- */
 export const LSTMAEDashboard: React.FC<LSTMAEDashboardProps> = ({
   companyCode,
   isMaximized = false,
@@ -81,7 +76,6 @@ export const LSTMAEDashboard: React.FC<LSTMAEDashboardProps> = ({
         </CardContent>
       </Card>
 
-      {/* Modal */}
       <LSTMAEModal
         isOpen={isModalOpen}
         onClose={handleCloseModal}

@@ -1,6 +1,7 @@
 // types/lstmae.types.ts
 export interface LSTMAEVisualization {
-  type: 'dominant_patterns' | 'intraday_patterns' | 'cluster_transitions' | 'cluster_timeline';
+  type: 'dominant_patterns' | 'intraday_patterns' | 'cluster_transitions' | 'cluster_timeline' 
+        | 'anomalies' | 'seasonality' | 'transitions_alt';
   filename: string;
   title: string;
   description: string;
@@ -19,6 +20,9 @@ export interface LSTMAEDashboardResponse {
     clusterTimeline: string;
     intraday: string;
     clusterTransitions: string;
+    anomalies?: string;
+    seasonality?: string;
+    transitionsAlt?: string;
   };
   dashboardPath: string;
   reportPath: string;
@@ -49,6 +53,7 @@ export interface LSTMAEConfig {
   timeout: number;
   retryAttempts: number;
   fallbackEnabled: boolean;
+  useEndpointMethod: boolean;
 }
 
 export interface LSTMAEImageStatus {
@@ -80,4 +85,14 @@ export interface LSTMAEError {
   message: string;
   suggestion?: string;
   timestamp: string;
+}
+
+export interface PlotUrls {
+  dominantPatterns: string;
+  intraday: string;
+  clusterTransitions: string;
+  clusterTimeline: string;
+  anomalies?: string;
+  seasonality?: string;
+  transitionsAlt?: string;
 }

@@ -6,8 +6,8 @@ import Image from 'next/image';
 import { Loader2, AlertCircle, ZoomIn } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LSTMAE_CONSTANTS } from '@/constants/lstmae.constants';
-import type { LSTMAEVisualization } from '@/types/lstmae.types';
+import { LSTMAE_CONSTANTS } from '../../constants/lstmae.constants';
+import type { LSTMAEVisualization } from '../../types/lstmae.types';
 
 interface LSTMAEImageCardProps {
   visualization: LSTMAEVisualization;
@@ -16,10 +16,6 @@ interface LSTMAEImageCardProps {
   priority?: boolean;
 }
 
-/**
- * Individual visualization image card
- * Handles loading, error states, and image display
- */
 export const LSTMAEImageCard: React.FC<LSTMAEImageCardProps> = ({
   visualization,
   imagePath,
@@ -31,6 +27,12 @@ export const LSTMAEImageCard: React.FC<LSTMAEImageCardProps> = ({
   const [imageExists, setImageExists] = useState(false);
 
   useEffect(() => {
+    if (!imagePath) {
+      setLoading(false);
+      setError(true);
+      return;
+    }
+
     let mounted = true;
     const controller = new AbortController();
 
@@ -39,7 +41,12 @@ export const LSTMAEImageCard: React.FC<LSTMAEImageCardProps> = ({
         setLoading(true);
         setError(false);
 
-        // Check if image exists
+        if (imagePath.startsWith('blob:')) {
+          setImageExists(true);
+          setLoading(false);
+          return;
+        }
+
         const response = await fetch(imagePath, {
           method: 'HEAD',
           signal: controller.signal,

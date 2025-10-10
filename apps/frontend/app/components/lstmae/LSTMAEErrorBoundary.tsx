@@ -17,10 +17,6 @@ interface State {
   errorInfo: React.ErrorInfo | null;
 }
 
-/**
- * Error Boundary for LSTMAE components
- * Prevents errors from breaking the entire application
- */
 export class LSTMAEErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);

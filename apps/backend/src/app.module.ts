@@ -7,6 +7,7 @@ import { LiveMarketModule } from './live-market/live-market.module';
 import { StockModule } from './stock/stocks.module';
 import { WatchlistModule } from './watchlist/watchlist.module';
 import { AuthModule } from './auth/auth.module'; // Add this import
+import { LstmaeModule } from './lstmae/lstmae.module';
 
 @Module({
   imports: [
@@ -15,7 +16,8 @@ import { AuthModule } from './auth/auth.module'; // Add this import
     LiveMarketModule,
     StockModule,
     WatchlistModule,
-    AuthModule, // Add AuthModule here
+    AuthModule, 
+    LstmaeModule
   ],
   controllers: [AppController],
   providers: [AppService],
