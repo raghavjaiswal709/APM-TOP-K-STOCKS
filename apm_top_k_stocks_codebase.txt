@@ -1,0 +1,5619 @@
+================================================================================
+APM-TOP-K-STOCKS PROJECT - COMPLETE CODEBASE EXTRACTION
+Generated on: 11-10-2025 18:44:47.72
+================================================================================
+
+PROJECT: Full-stack Stock Market Analytics and Real-time Trading Dashboard
+TECH STACK: NestJS Backend + Next.js Frontend + Python ML Services
+TARGET: Indian Equity Markets (NSE/BSE) with ML Pattern Discovery
+
+
+================================================================================
+PHASE 1 - BACKEND CORE (HIGH PRIORITY)
+================================================================================
+
+================================================================================
+FILE: apps/backend/src/lstmae/lstmae.module.ts
+================================================================================
+
+// apps/backend/src/lstmae/lstmae.module.ts
+import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
+import { LstmaeController } from './lstmae.controller';
+import { LstmaeService } from './lstmae.service';
+
+@Module({
+  imports: [HttpModule],
+  controllers: [LstmaeController],
+  providers: [LstmaeService],
+  exports: [LstmaeService],
+})
+export class LstmaeModule {}
+
+
+================================================================================
+FILE: apps/backend/src/lstmae/lstmae.service.ts
+================================================================================
+
+// apps/backend/src/lstmae/lstmae.service.ts
+import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
+import { AxiosResponse } from 'axios';
+
+@Injectable()
+export class LstmaeService {
+  private readonly PIPELINE2_API_URL = 'http://100.93.172.21:8506';
+  private readonly TIMEOUT = 120000; // 2 minutes
+
+  constructor(private readonly httpService: HttpService) {
+    console.log('🚀 LstmaeService initialized');
+    console.log('   Pipeline 2 API:', this.PIPELINE2_API_URL);
+  }
+
+  /**
+   * Health check
+   */
+  async checkHealth(): Promise<any> {
+    try {
+      console.log('Checking Pipeline 2 health...');
+      const response: AxiosResponse = await firstValueFrom(
+        this.httpService.get(`${this.PIPELINE2_API_URL}/health`, {
+          timeout: 5000,
+        })
+      );
+      console.log('✅ Health check successful');
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Health check failed:', error.message);
+      return {
+        service: 'visualization',
+        status: 'unhealthy',
+        timestamp: new Date().toISOString(),
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Generate dashboard
+   */
+  async generateDashboard(symbol: string, method: string, forceRefresh: boolean): Promise<any> {
+    try {
+      console.log(`📊 Generating dashboard for ${symbol}...`);
+      
+      const response: AxiosResponse = await firstValueFrom(
+        this.httpService.post(
+          `${this.PIPELINE2_API_URL}/visualize/dashboard`,
+          { symbol, method, force_refresh: forceRefresh },
+          { timeout: this.TIMEOUT }
+        )
+      );
+      
+      console.log('✅ Dashboard generated successfully');
+      
+      // Transform to backend API routes
+      return {
+        success: true,
+        symbol: symbol,
+        plot_paths: {
+          dominant_patterns: `/api/lstmae/${symbol}/plot/dominant_patterns`,
+          cluster_timeline: `/api/lstmae/${symbol}/plot/cluster_timeline`,
+          intraday: `/api/lstmae/${symbol}/plot/intraday`,
+          cluster_transitions: `/api/lstmae/${symbol}/plot/cluster_transitions`,
+        },
+        dashboard_path: `/api/lstmae/${symbol}/dashboard-html`,
+        report_path: `/api/lstmae/${symbol}/report`,
+        n_dominant_patterns: response.data.n_dominant_patterns || 0,
+        dominant_patterns: response.data.dominant_patterns || [],
+      };
+    } catch (error: any) {
+      console.error(`❌ Dashboard API failed: ${error.message}`);
+      
+      return {
+        success: true,
+        symbol,
+        plot_paths: {
+          dominant_patterns: `/api/lstmae/${symbol}/plot/dominant_patterns`,
+          cluster_timeline: `/api/lstmae/${symbol}/plot/cluster_timeline`,
+          intraday: `/api/lstmae/${symbol}/plot/intraday`,
+          cluster_transitions: `/api/lstmae/${symbol}/plot/cluster_transitions`,
+        },
+        dashboard_path: `/api/lstmae/${symbol}/dashboard-html`,
+        report_path: `/api/lstmae/${symbol}/report`,
+        n_dominant_patterns: 0,
+        dominant_patterns: [],
+      };
+    }
+  }
+
+  /**
+   * Get plot image - Maps to Python API plot types
+   */
+  async getPlot(symbol: string, plotType: string, method: string): Promise<Buffer> {
+    try {
+      console.log(`📈 Fetching plot ${plotType} for ${symbol}...`);
+      
+      // ✅ Map frontend plot types to Python API plot types
+      const plotTypeMap: Record<string, string> = {
+        'dominant_patterns': 'dominant_patterns',
+        'cluster_timeline': 'cluster_timeline',
+        'intraday': 'intraday',
+        'cluster_transitions': 'transitions',  // ✅ Python uses "transitions"
+        'seasonality': 'seasonality',
+        'anomalies': 'anomalies',
+        'embedding_evolution': 'embedding_evolution',
+      };
+      
+      const apiPlotType = plotTypeMap[plotType] || plotType;
+      console.log(`   Mapping: ${plotType} -> ${apiPlotType}`);
+      
+      const response: AxiosResponse<ArrayBuffer> = await firstValueFrom(
+        this.httpService.get(
+          `${this.PIPELINE2_API_URL}/visualize/${symbol}/plot/${apiPlotType}?method=${method}`,
+          {
+            responseType: 'arraybuffer',
+            timeout: this.TIMEOUT,
+          }
+        )
+      );
+      
+      console.log(`✅ Plot ${plotType} fetched (${response.data.byteLength} bytes)`);
+      return Buffer.from(response.data);
+    } catch (error: any) {
+      console.error(`❌ Failed to fetch plot ${plotType}:`, error.message);
+      throw new HttpException(
+        `Plot not found: ${plotType} for ${symbol}. API error: ${error.message}`,
+        HttpStatus.NOT_FOUND
+      );
+    }
+  }
+
+  /**
+   * Get analysis report
+   */
+  async getReport(symbol: string, method: string): Promise<any> {
+    try {
+      console.log(`📄 Fetching report for ${symbol}...`);
+      
+      const response: AxiosResponse = await firstValueFrom(
+        this.httpService.get(
+          `${this.PIPELINE2_API_URL}/visualize/${symbol}/report?method=${method}`,
+          { timeout: this.TIMEOUT }
+        )
+      );
+      
+      console.log('✅ Report fetched successfully');
+      return response.data;
+    } catch (error: any) {
+      console.error(`❌ Failed to fetch report:`, error.message);
+      throw new HttpException(
+        `Report not found for ${symbol}`,
+        HttpStatus.NOT_FOUND
+      );
+    }
+  }
+
+  /**
+   * Get interactive dashboard HTML
+   * ✅ Uses Python API endpoint: GET /visualize/{symbol}/dashboard
+   */
+  async getDashboardHtml(symbol: string): Promise<string> {
+    try {
+      console.log(`🌐 Fetching interactive dashboard HTML for ${symbol}...`);
+      
+      // ✅ Python API endpoint that returns HTML via FileResponse
+      const url = `${this.PIPELINE2_API_URL}/visualize/${symbol}/dashboard`;
+      console.log(`   URL: ${url}`);
+      
+      const response: AxiosResponse<string> = await firstValueFrom(
+        this.httpService.get(url, {
+          timeout: this.TIMEOUT,
+          responseType: 'text',
+          headers: {
+            'Accept': 'text/html',
+          },
+        })
+      );
+      
+      console.log(`✅ HTML dashboard fetched (${response.data.length} bytes)`);
+      return response.data;
+    } catch (error: any) {
+      console.error(`❌ Failed to fetch HTML dashboard:`, error.message);
+      
+      let errorMessage = `Dashboard HTML not found for ${symbol}.`;
+      
+      if (error.response?.status === 404) {
+        errorMessage += ' The dashboard may not have been generated yet. Try generating it first via POST /visualize/dashboard.';
+      } else if (error.code === 'ECONNREFUSED') {
+        errorMessage += ' Pipeline 2 service is not running on port 8506.';
+      } else if (error.code === 'ETIMEDOUT') {
+        errorMessage += ' Request timed out. The service may be overloaded.';
+      } else {
+        errorMessage += ` Error: ${error.message}`;
+      }
+      
+      throw new HttpException(errorMessage, HttpStatus.NOT_FOUND);
+    }
+  }
+}
+
+
+================================================================================
+FILE: apps/backend/src/lstmae/lstmae.controller.ts
+================================================================================
+
+// apps/backend/src/lstmae/lstmae.controller.ts
+import { 
+  Controller, 
+  Get, 
+  Post, 
+  Body, 
+  Param, 
+  Query, 
+  StreamableFile,
+  Res,
+  HttpException, 
+  HttpStatus 
+} from '@nestjs/common';
+import { Response } from 'express';
+import { LstmaeService } from './lstmae.service';
+
+@Controller('api/lstmae')
+export class LstmaeController {
+  constructor(private readonly lstmaeService: LstmaeService) {
+    console.log('✅ LstmaeController initialized');
+  }
+
+  @Get('health')
+  async checkHealth() {
+    console.log('✅ GET /api/lstmae/health');
+    try {
+      return await this.lstmaeService.checkHealth();
+    } catch (error) {
+      throw new HttpException(
+        'Pipeline 2 service unavailable',
+        HttpStatus.SERVICE_UNAVAILABLE
+      );
+    }
+  }
+
+  @Post('dashboard')
+  async generateDashboard(
+    @Body() body: { symbol: string; method?: string; force_refresh?: boolean }
+  ) {
+    const { symbol, method = 'spectral', force_refresh = false } = body;
+    console.log(`✅ POST /api/lstmae/dashboard - symbol: ${symbol}`);
+    
+    try {
+      return await this.lstmaeService.generateDashboard(symbol, method, force_refresh);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to generate dashboard',
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  @Get(':symbol/plot/:plotType')
+  async getPlot(
+    @Param('symbol') symbol: string,
+    @Param('plotType') plotType: string,
+    @Query('method') method: string = 'spectral'
+  ) {
+    console.log(`✅ GET /api/lstmae/${symbol}/plot/${plotType}`);
+    
+    try {
+      const imageBuffer = await this.lstmaeService.getPlot(symbol, plotType, method);
+      
+      return new StreamableFile(imageBuffer, {
+        type: 'image/png',
+        disposition: `inline; filename="${symbol}_${plotType}.png"`,
+      });
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to fetch plot',
+        HttpStatus.NOT_FOUND
+      );
+    }
+  }
+
+  @Get(':symbol/report')
+  async getReport(
+    @Param('symbol') symbol: string,
+    @Query('method') method: string = 'spectral'
+  ) {
+    console.log(`✅ GET /api/lstmae/${symbol}/report`);
+    
+    try {
+      return await this.lstmaeService.getReport(symbol, method);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to fetch report',
+        HttpStatus.NOT_FOUND
+      );
+    }
+  }
+
+  @Get(':symbol/dashboard-html')
+  async getDashboardHtml(
+    @Param('symbol') symbol: string,
+    @Res() res: Response
+  ) {
+    console.log(`✅ GET /api/lstmae/${symbol}/dashboard-html`);
+    
+    try {
+      const html = await this.lstmaeService.getDashboardHtml(symbol);
+      
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.send(html);
+    } catch (error) {
+      console.error(`❌ Error getting dashboard HTML:`, error.message);
+      throw new HttpException(
+        error.message || 'Failed to fetch dashboard HTML',
+        HttpStatus.NOT_FOUND
+      );
+    }
+  }
+}
+
+
+================================================================================
+FILE: apps/backend/src/market-data/market-data.service.ts
+================================================================================
+
+
+import { Injectable, Logger } from '@nestjs/common';
+
+@Injectable()
+export class MarketDataService {
+  private readonly logger = new Logger(MarketDataService.name);
+  private marketData = new Map<string, any>();
+
+  getAccessToken(): string {
+    const token = process.env.FYERS_ACCESS_TOKEN;
+    if (!token) {
+      this.logger.error('FYERS_ACCESS_TOKEN is not defined in environment');
+      throw new Error('Missing Fyers access token');
+    }
+    return token;
+  }
+
+  updateMarketData(symbol: string, data: any) {
+    this.marketData.set(symbol, data);
+    this.logger.debug(`Updated market data for ${symbol}`);
+  }
+
+  getMarketData(symbol: string) {
+    return this.marketData.get(symbol) || null;
+  }
+
+  isMarketCurrentlyOpen(): boolean {
+    const today = new Date().getDay();
+    if (today === 0 || today === 6) {
+      this.logger.warn('Today is a weekend. Markets are closed.');
+      return false;
+    }
+    
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const currentTime = hours * 100 + minutes;
+    
+    if (currentTime < 915 || currentTime > 1530) {
+      this.logger.warn('Outside market hours (9:15 AM - 3:30 PM IST). Real-time data may not be available.');
+      return false;
+    }
+    
+    return true;
+  }
+}
+
+
+================================================================================
+FILE: apps/backend/src/config/fyers.config.ts
+================================================================================
+
+export const fyersConfig = {
+    clientId: process.env.FYERS_CLIENT_ID || '',
+    secretId: process.env.FYERS_SECRET_ID || '',
+    redirectUri: process.env.FYERS_REDIRECT_URI || 'http://127.0.0.1:5000',
+    responseType: 'code',
+    state: 'fyers',
+    grantType: 'authorization_code',
+  };
+  
+
+================================================================================
+FILE: apps/backend/.env
+================================================================================
+
+
+# DB_HOST=100.93.172.21
+# DB_PORT=5432
+# DB_USERNAME=temp_raghav
+# DB_PASSWORD=password
+# DB_DATABASE=temp_db
+
+DB_HOST=100.93.172.21
+DB_PORT=5432
+DB_USERNAME=readonly_user
+DB_PASSWORD=db_read_5432
+DB_DATABASE=nse_hist_db
+
+
+
+
+
+
+FYERS_CLIENT_ID=150HUKJSWG-100
+
+
+FYERS_SECRET_ID=18YYNXCAS7
+# FYERS_REDIRECT_URI=https://daksphere.com/
+FYERS_REDIRECT_URI=https://raghavjaiswal709.github.io/DAKSphere_redirect/
+FYERS_ACCESS_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZDoxIiwiZDoyIiwieDowIiwieDoxIiwieDoyIl0sImF0X2hhc2giOiJnQUFBQUFCb0Z1eVBBNl9GQzdtcUVIRXNKMWhPUWdUSjBYTC1aMG9jN2hiR1hTNXp2cUFjVXNFUmRxeHNwdE15di1NRUU5YXZrUHBoTFN1MEpDRkt5T20xZzVDNmY5OGVXaGNhOVhMM243aTM4VElpS3RXT3pvYz0iLCJkaXNwbGF5X25hbWUiOiIiLCJvbXMiOiJLMSIsImhzbV9rZXkiOiIzNGQ2OTFmZmUyZjIzMjZjYTU3OWQ3ODljMGM2ZWVmYmVmOWQ2YTM3NzU5YjdmMmUzOGRjODhjZiIsImlzRGRwaUVuYWJsZWQiOiJOIiwiaXNNdGZFbmFibGVkIjoiTiIsImZ5X2lkIjoiRkFBMjQwNjciLCJhcHBUeXBlIjoxMDAsImV4cCI6MTc0NjQwNTAwMCwiaWF0IjoxNzQ2MzMyODE1LCJpc3MiOiJhcGkuZnllcnMuaW4iLCJuYmYiOjE3NDYzMzI4MTUsInN1YiI6ImFjY2Vzc190b2tlbiJ9.SZjiDs0riKHumlyYK4SphhQWzvS5hj1QgPCslWhXuU8
+PORT=5000
+
+
+
+
+================================================================================
+FILE: apps/backend/package.json
+================================================================================
+
+{
+    "name": "my-app",
+    "version": "0.0.1",
+    "description": "",
+    "author": "",
+    "private": true,
+    "license": "UNLICENSED",
+    "scripts": {
+        "build": "nest build",
+        "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+        "start": "nest start",
+        "start:dev": "cross-env NODE_ENV=development nest start --watch",
+        "start:debug": "nest start --debug --watch",
+        "start:prod": "node dist/main",
+        "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+        "test": "jest",
+        "test:watch": "jest --watch",
+        "test:cov": "jest --coverage",
+        "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+        "test:e2e": "jest --config ./test/jest-e2e.json"
+    },
+    "dependencies": {
+        "@nestjs/axios": "^4.0.1",
+        "@nestjs/common": "^11.0.10",
+        "@nestjs/core": "^11.0.10",
+        "@nestjs/platform-express": "^11.0.10",
+        "@nestjs/platform-socket.io": "^11.1.0",
+        "@nestjs/schedule": "^6.0.0",
+        "@nestjs/typeorm": "^11.0.0",
+        "@nestjs/websockets": "^11.1.0",
+        "axios": "^1.12.2",
+        "child_process": "^1.0.2",
+        "csv-parse": "^5.6.0",
+        "dotenv": "^16.5.0",
+        "fyers-api-v3": "^1.4.1",
+        "moment": "^2.30.1",
+        "mssql": "^10.0.4",
+        "pg": "^8.13.3",
+        "readline": "^1.3.0",
+        "reflect-metadata": "^0.2.2",
+        "rxjs": "^7.8.1",
+        "socket.io": "^4.8.1",
+        "socket.io-client": "^4.8.1",
+        "typeorm": "^0.3.20",
+        "ws": "^8.18.2"
+    },
+    "devDependencies": {
+        "@eslint/eslintrc": "^3.2.0",
+        "@eslint/js": "^9.18.0",
+        "@nestjs/cli": "^11.0.0",
+        "@nestjs/schematics": "^11.0.0",
+        "@nestjs/testing": "^11.0.1",
+        "@swc/cli": "^0.6.0",
+        "@swc/core": "^1.10.7",
+        "@types/express": "^5.0.0",
+        "@types/jest": "^29.5.14",
+        "@types/node": "^22.13.10",
+        "@types/supertest": "^6.0.2",
+        "cross-env": "^7.0.3",
+        "eslint": "^9.18.0",
+        "eslint-config-prettier": "^10.0.1",
+        "eslint-plugin-prettier": "^5.2.2",
+        "globals": "^15.14.0",
+        "jest": "^29.7.0",
+        "prettier": "^3.4.2",
+        "source-map-support": "^0.5.21",
+        "supertest": "^7.0.0",
+        "ts-jest": "^29.2.5",
+        "ts-loader": "^9.5.2",
+        "ts-node": "^10.9.2",
+        "tsconfig-paths": "^4.2.0",
+        "typescript": "^5.7.3",
+        "typescript-eslint": "^8.20.0"
+    },
+    "jest": {
+        "moduleFileExtensions": [
+            "js",
+            "json",
+            "ts"
+        ],
+        "rootDir": "src",
+        "testRegex": ".*\\.spec\\.ts$",
+        "transform": {
+            "^.+\\.(t|j)s$": "ts-jest"
+        },
+        "collectCoverageFrom": [
+            "**/*.(t|j)s"
+        ],
+        "coverageDirectory": "../coverage",
+        "testEnvironment": "node"
+    }
+}
+
+
+================================================================================
+PHASE 2 - FRONTEND INTEGRATION (HIGH PRIORITY)
+================================================================================
+
+================================================================================
+FILE: apps/frontend/app/services/lstmaeService.ts
+================================================================================
+
+// services/lstmaeService.ts
+import { lstmaeConfig, getApiUrl, getVisualizationPath, isValidSymbol } from '.././config/lstmae.config';
+import { LSTMAE_CONSTANTS } from '.././constants/lstmae.constants';
+import type {
+  LSTMAEDashboardResponse,
+  LSTMAEServiceHealth,
+  LSTMAEError,
+  ClusteringMethod,
+  PlotUrls,
+} from '.././types/lstmae.types';
+
+class LSTMAEService {
+  private cache: Map<string, { data: any; timestamp: number }> = new Map();
+
+  private isCacheValid(key: string): boolean {
+    const cached = this.cache.get(key);
+    if (!cached) return false;
+    const age = Date.now() - cached.timestamp;
+    const ttl = lstmaeConfig.cacheTTL * 1000;
+    return age < ttl;
+  }
+
+  private getFromCache<T>(key: string): T | null {
+    if (this.isCacheValid(key)) {
+      return this.cache.get(key)!.data as T;
+    }
+    return null;
+  }
+
+  private saveToCache(key: string, data: any): void {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+    });
+  }
+
+  private async fetchWithRetry<T>(
+    url: string,
+    options: RequestInit = {},
+    retries = lstmaeConfig.retryAttempts
+  ): Promise<T> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), lstmaeConfig.timeout);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeout);
+
+      if (retries > 0) {
+        await new Promise(resolve => setTimeout(resolve, LSTMAE_CONSTANTS.PERFORMANCE.RETRY_DELAY));
+        return this.fetchWithRetry<T>(url, options, retries - 1);
+      }
+
+      throw this.handleError(error);
+    }
+  }
+
+  private handleError(error: any): LSTMAEError {
+    const errorResponse: LSTMAEError = {
+      code: LSTMAE_CONSTANTS.ERROR_CODES.NETWORK_ERROR,
+      message: 'An error occurred',
+      timestamp: new Date().toISOString(),
+    };
+
+    if (error.name === 'AbortError') {
+      errorResponse.code = LSTMAE_CONSTANTS.ERROR_CODES.TIMEOUT;
+      errorResponse.message = 'Request timed out. The service may be under heavy load.';
+      errorResponse.suggestion = 'Please try again in a few moments.';
+    } else if (error.message.includes('EmbeddingNotFoundError')) {
+      errorResponse.code = LSTMAE_CONSTANTS.ERROR_CODES.EMBEDDING_NOT_FOUND;
+      errorResponse.message = error.message;
+      errorResponse.suggestion = 'Verify the symbol has been processed by Pipeline 1.';
+    } else if (error.message.includes('InsufficientDataError')) {
+      errorResponse.code = LSTMAE_CONSTANTS.ERROR_CODES.INSUFFICIENT_DATA;
+      errorResponse.message = error.message;
+      errorResponse.suggestion = `Minimum ${LSTMAE_CONSTANTS.MIN_DAYS_REQUIRED} days of data required.`;
+    } else if (error.message.includes('RedisConnectionError')) {
+      errorResponse.code = LSTMAE_CONSTANTS.ERROR_CODES.REDIS_CONNECTION_FAILED;
+      errorResponse.message = 'Redis connection failed, using fallback cache.';
+      errorResponse.suggestion = 'Performance may be degraded. Service continues with in-memory cache.';
+    } else {
+      errorResponse.message = error.message || 'Unknown error occurred';
+      errorResponse.suggestion = 'Check service health or contact support.';
+    }
+
+    return errorResponse;
+  }
+
+  async checkHealth(): Promise<LSTMAEServiceHealth> {
+    const cacheKey = 'health_check';
+    const cached = this.getFromCache<LSTMAEServiceHealth>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const url = getApiUrl(LSTMAE_CONSTANTS.ENDPOINTS.HEALTH);
+      const response = await this.fetchWithRetry<LSTMAEServiceHealth>(url);
+      this.saveToCache(cacheKey, response);
+      return response;
+    } catch (error) {
+      return {
+        service: 'visualization',
+        status: 'unhealthy',
+        cacheBackend: 'memory',
+        redisAvailable: false,
+        timestamp: new Date().toISOString(),
+      };
+    }
+  }
+
+  // services/lstmaeService.ts
+
+async getPlotViaEndpoint(
+  symbol: string,
+  plotType: 'dominant_patterns' | 'intraday_patterns' | 'cluster_transitions' | 'cluster_timeline' | 'anomalies' | 'seasonality' | 'transitions_alt',
+  method: ClusteringMethod = 'spectral'
+): Promise<string> {
+  const cacheKey = `plot_${symbol}_${plotType}_${method}`;
+  
+  const cached = this.getFromCache<string>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const plotTypeMap: Record<string, string> = {
+      'dominant_patterns': 'dominant_patterns',
+      'intraday_patterns': 'intraday',
+      'cluster_transitions': 'cluster_transitions',
+      'cluster_timeline': 'cluster_timeline',
+      'anomalies': 'anomalies',
+      'seasonality': 'seasonality',
+      'transitions_alt': 'transitions_alt',
+    };
+
+    const apiPlotType = plotTypeMap[plotType] || plotType;
+    const url = `${getApiUrl(LSTMAE_CONSTANTS.ENDPOINTS.PLOT(symbol, apiPlotType))}?method=${method}`;
+    
+    console.log(`Fetching plot ${plotType} for ${symbol}... (timeout: ${lstmaeConfig.timeout}ms)`);
+    
+    // ✅ USE INCREASED TIMEOUT (2 minutes for slow network)
+    const response = await fetch(url, {
+      method: 'GET',
+      signal: AbortSignal.timeout(lstmaeConfig.timeout), // 120000ms = 2 minutes
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch plot: ${response.statusText}`);
+    }
+
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    
+    this.saveToCache(cacheKey, blobUrl);
+    
+    console.log(`✓ Successfully fetched plot ${plotType} for ${symbol}`);
+    return blobUrl;
+  } catch (error) {
+    console.error(`✗ Error fetching plot ${plotType} for ${symbol}:`, error);
+    throw this.handleError(error);
+  }
+}
+
+
+  // services/lstmaeService.ts
+
+// services/lstmaeService.ts
+
+// services/lstmaeService.ts
+
+async getAllPlotsViaEndpoint(
+  symbol: string,
+  method: ClusteringMethod = 'spectral'
+): Promise<PlotUrls> {
+  // ✅ Use Promise.allSettled to handle missing plots gracefully
+  const results = await Promise.allSettled([
+    this.getPlotViaEndpoint(symbol, 'dominant_patterns', method),
+    this.getPlotViaEndpoint(symbol, 'intraday_patterns', method),
+    this.getPlotViaEndpoint(symbol, 'cluster_transitions', method), // Now works!
+    this.getPlotViaEndpoint(symbol, 'cluster_timeline', method),
+  ]);
+
+  const [dominantPatterns, intraday, clusterTransitions, clusterTimeline] = results.map(
+    (result) => {
+      if (result.status === 'fulfilled') {
+        return result.value;
+      } else {
+        console.warn('⚠️ Plot failed:', result.reason);
+        return '';
+      }
+    }
+  );
+
+  return {
+    dominantPatterns,
+    intraday,
+    clusterTransitions, // Should work now with correct API mapping
+    clusterTimeline,
+    anomalies: '',
+    seasonality: '',
+    transitionsAlt: '',
+  };
+}
+
+
+
+
+  async generateDashboard(
+  symbol: string,
+  method: ClusteringMethod = LSTMAE_CONSTANTS.DEFAULT_CLUSTERING_METHOD,
+  forceRefresh = false
+): Promise<LSTMAEDashboardResponse> {
+  if (!isValidSymbol(symbol)) {
+    throw new Error(`Invalid symbol format: ${symbol}`);
+  }
+
+  const cacheKey = `dashboard_${symbol}_${method}`;
+
+  if (!forceRefresh) {
+    const cached = this.getFromCache<LSTMAEDashboardResponse>(cacheKey);
+    if (cached) return cached;
+  }
+
+  try {
+    const url = getApiUrl(LSTMAE_CONSTANTS.ENDPOINTS.DASHBOARD);
+    const response = await this.fetchWithRetry<any>(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        symbol,
+        method,
+        ...(forceRefresh && { force_refresh: true }),
+      }),
+    });
+
+    console.log('Dashboard API response:', response);
+
+    // ✅ TRANSFORM: Ensure all paths are API routes, not filesystem paths
+    const dashboardResponse: LSTMAEDashboardResponse = {
+      success: true,
+      symbol: symbol,
+      plotPaths: {
+        // If response has plot_paths, use them, otherwise construct them
+        dominantPatterns: response.plot_paths?.dominant_patterns || `/api/lstmae/${symbol}/plot/dominant_patterns`,
+        clusterTimeline: response.plot_paths?.cluster_timeline || `/api/lstmae/${symbol}/plot/cluster_timeline`,
+        intraday: response.plot_paths?.intraday || `/api/lstmae/${symbol}/plot/intraday`,
+        clusterTransitions: response.plot_paths?.cluster_transitions || `/api/lstmae/${symbol}/plot/cluster_transitions`,
+      },
+      // ✅ CRITICAL: dashboard_path MUST be an API route
+      dashboardPath: response.dashboard_path?.startsWith('/api/') 
+        ? response.dashboard_path 
+        : `/api/lstmae/${symbol}/dashboard-html`,
+      reportPath: response.report_path || `/api/lstmae/${symbol}/report`,
+      nDominantPatterns: response.n_dominant_patterns || 0,
+      dominantPatterns: response.dominant_patterns || [],
+    };
+
+    console.log('Transformed dashboard response:', dashboardResponse);
+
+    this.saveToCache(cacheKey, dashboardResponse);
+    return dashboardResponse;
+  } catch (error) {
+    if (lstmaeConfig.fallbackEnabled) {
+      return this.generateFallbackResponse(symbol, method);
+    }
+    throw error;
+  }
+}
+
+  // services/lstmaeService.ts
+
+private generateFallbackResponse(
+  symbol: string,
+  method: ClusteringMethod
+): LSTMAEDashboardResponse {
+  return {
+    success: true,
+    symbol,
+    plotPaths: {
+      dominantPatterns: getVisualizationPath(symbol, `${symbol}_dominant_patterns.png`),
+      clusterTimeline: getVisualizationPath(symbol, `${symbol}_cluster_timeline.png`),
+      intraday: getVisualizationPath(symbol, `${symbol}_intraday_patterns.png`),
+      clusterTransitions: getVisualizationPath(symbol, `${symbol}_cluster_transitions.png`),
+      anomalies: getVisualizationPath(symbol, `${symbol}_anomalies.png`),
+      seasonality: getVisualizationPath(symbol, `${symbol}_seasonality.png`),
+      transitionsAlt: getVisualizationPath(symbol, `${symbol}.transitions.png`),
+    },
+    // ✅ Correct format
+    dashboardPath: `/api/lstmae/${symbol}/dashboard-html`, // This endpoint serves the HTML
+    reportPath: getVisualizationPath(symbol, `${symbol}_analysis_report.json`),
+    nDominantPatterns: 0,
+    dominantPatterns: [],
+  };
+}
+
+  async getReport(symbol: string, method: ClusteringMethod = 'spectral'): Promise<any> {
+    const cacheKey = `report_${symbol}_${method}`;
+    const cached = this.getFromCache<any>(cacheKey);
+    if (cached) return cached;
+
+    const url = `${getApiUrl(LSTMAE_CONSTANTS.ENDPOINTS.REPORT(symbol))}?method=${method}`;
+    const response = await this.fetchWithRetry<any>(url);
+
+    this.saveToCache(cacheKey, response);
+    return response;
+  }
+
+  async checkVisualizationExists(symbol: string): Promise<boolean> {
+    try {
+      const dashboard = await this.generateDashboard(symbol);
+      return dashboard.success;
+    } catch {
+      return false;
+    }
+  }
+
+  clearCache(): void {
+    this.cache.clear();
+  }
+
+  clearSymbolCache(symbol: string): void {
+    const keysToDelete: string[] = [];
+    this.cache.forEach((_, key) => {
+      if (key.includes(symbol)) {
+        keysToDelete.push(key);
+      }
+    });
+    keysToDelete.forEach(key => this.cache.delete(key));
+  }
+}
+
+export const lstmaeService = new LSTMAEService();
+
+
+================================================================================
+FILE: apps/frontend/app/types/lstmae.types.ts
+================================================================================
+
+// types/lstmae.types.ts
+export interface LSTMAEVisualization {
+  type: 'dominant_patterns' | 'intraday_patterns' | 'cluster_transitions' | 'cluster_timeline' 
+        | 'anomalies' | 'seasonality' | 'transitions_alt';
+  filename: string;
+  title: string;
+  description: string;
+  dimensions: {
+    width: number;
+    height: number;
+  };
+  dpi: number;
+}
+
+export interface LSTMAEDashboardResponse {
+  success: boolean;
+  symbol: string;
+  plotPaths: {
+    dominantPatterns: string;
+    clusterTimeline: string;
+    intraday: string;
+    clusterTransitions: string;
+    anomalies?: string;
+    seasonality?: string;
+    transitionsAlt?: string;
+  };
+  dashboardPath: string;
+  reportPath: string;
+  nDominantPatterns: number;
+  dominantPatterns: DominantPattern[];
+  error?: string;
+}
+
+export interface DominantPattern {
+  clusterId: number;
+  patternType: string;
+  strengthScore: number;
+  description?: string;
+}
+
+export interface LSTMAEServiceHealth {
+  service: string;
+  status: 'healthy' | 'unhealthy' | 'degraded';
+  cacheBackend: 'redis' | 'memory';
+  redisAvailable: boolean;
+  timestamp: string;
+}
+
+export interface LSTMAEConfig {
+  apiBaseUrl: string;
+  visualizationBasePath: string;
+  cacheTTL: number;
+  timeout: number;
+  retryAttempts: number;
+  fallbackEnabled: boolean;
+  useEndpointMethod: boolean;
+}
+
+export interface LSTMAEImageStatus {
+  url: string;
+  loaded: boolean;
+  error: boolean;
+  timestamp: number;
+}
+
+export interface LSTMAEModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  companyCode: string;
+  companyName?: string;
+}
+
+export interface LSTMAEDashboardProps {
+  companyCode: string;
+  isMaximized?: boolean;
+  onMaximize?: () => void;
+  onMinimize?: () => void;
+  className?: string;
+}
+
+export type LSTMAELoadingState = 'idle' | 'loading' | 'success' | 'error' | 'cached';
+
+export interface LSTMAEError {
+  code: string;
+  message: string;
+  suggestion?: string;
+  timestamp: string;
+}
+
+export interface PlotUrls {
+  dominantPatterns: string;
+  intraday: string;
+  clusterTransitions: string;
+  clusterTimeline: string;
+  anomalies?: string;
+  seasonality?: string;
+  transitionsAlt?: string;
+}
+
+
+================================================================================
+FILE: apps/frontend/hooks/useLSTMAEData.ts
+================================================================================
+
+// hooks/useLSTMAEData.ts
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { lstmaeService } from '../app/services/lstmaeService';
+import { lstmaeConfig } from '../app/config/lstmae.config';
+import type {
+  LSTMAEDashboardResponse,
+  LSTMAEServiceHealth,
+  LSTMAEError,
+  LSTMAELoadingState,
+  ClusteringMethod,
+  PlotUrls,
+} from '../app//types/lstmae.types';
+
+interface UseLSTMAEDataReturn {
+  dashboard: LSTMAEDashboardResponse | null;
+  plotUrls: PlotUrls | null;
+  health: LSTMAEServiceHealth | null;
+  loading: LSTMAELoadingState;
+  error: LSTMAEError | null;
+  refresh: () => Promise<void>;
+  checkHealth: () => Promise<void>;
+}
+
+export const useLSTMAEData = (
+  symbol: string,
+  method: ClusteringMethod = 'spectral',
+  autoFetch = true,
+  useEndpointMethod = lstmaeConfig.useEndpointMethod
+): UseLSTMAEDataReturn => {
+  const [dashboard, setDashboard] = useState<LSTMAEDashboardResponse | null>(null);
+  const [plotUrls, setPlotUrls] = useState<PlotUrls | null>(null);
+  const [health, setHealth] = useState<LSTMAEServiceHealth | null>(null);
+  const [loading, setLoading] = useState<LSTMAELoadingState>('idle');
+  const [error, setError] = useState<LSTMAEError | null>(null);
+
+  const fetchDashboard = useCallback(
+    async (forceRefresh = false) => {
+      if (!symbol) return;
+
+      setLoading('loading');
+      setError(null);
+
+      try {
+        if (useEndpointMethod) {
+          const plots = await lstmaeService.getAllPlotsViaEndpoint(symbol, method);
+          setPlotUrls(plots);
+          
+          const dashboardData = await lstmaeService.generateDashboard(symbol, method, forceRefresh);
+          setDashboard(dashboardData);
+        } else {
+          const data = await lstmaeService.generateDashboard(symbol, method, forceRefresh);
+          setDashboard(data);
+          setPlotUrls(null);
+        }
+        
+        setLoading(forceRefresh ? 'success' : 'cached');
+      } catch (err: any) {
+        const errorObj: LSTMAEError = {
+          code: err.code || 'UNKNOWN_ERROR',
+          message: err.message || 'Failed to load dashboard',
+          suggestion: err.suggestion,
+          timestamp: new Date().toISOString(),
+        };
+        setError(errorObj);
+        setLoading('error');
+      }
+    },
+    [symbol, method, useEndpointMethod]
+  );
+
+  const checkHealthStatus = useCallback(async () => {
+    try {
+      const healthStatus = await lstmaeService.checkHealth();
+      setHealth(healthStatus);
+    } catch (err) {
+      console.error('Health check failed:', err);
+    }
+  }, []);
+
+  const refresh = useCallback(async () => {
+    await fetchDashboard(true);
+  }, [fetchDashboard]);
+
+  useEffect(() => {
+    if (autoFetch && symbol) {
+      fetchDashboard(false);
+      checkHealthStatus();
+    }
+  }, [symbol, method, autoFetch, fetchDashboard, checkHealthStatus]);
+
+  return {
+    dashboard,
+    plotUrls,
+    health,
+    loading,
+    error,
+    refresh,
+    checkHealth: checkHealthStatus,
+  };
+};
+
+
+================================================================================
+FILE: apps/frontend/app/components/lstmae/LSTMAEDashboard.tsx
+================================================================================
+
+// components/lstmae/LSTMAEDashboard.tsx
+'use client';
+
+import React, { useState } from 'react';
+import { Maximize2, Minimize2, Activity } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { LSTMAEModal } from './LSTMAEModal';
+import { LSTMAEErrorBoundary } from './LSTMAEErrorBoundary';
+import type { LSTMAEDashboardProps } from '../../types/lstmae.types';
+
+export const LSTMAEDashboard: React.FC<LSTMAEDashboardProps> = ({
+  companyCode,
+  isMaximized = false,
+  onMaximize,
+  onMinimize,
+  className = '',
+}) => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleOpenModal = () => {
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+  };
+
+  return (
+    <LSTMAEErrorBoundary>
+      <Card className={`border-blue-200 ${className}`}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-blue-600" />
+              LSTMAE Pattern Discovery
+            </CardTitle>
+            <div className="flex gap-2">
+              {isMaximized ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onMinimize}
+                  className="gap-2"
+                >
+                  <Minimize2 className="h-4 w-4" />
+                  Minimize
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onMaximize}
+                  className="gap-2"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                  Maximize
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              View comprehensive pattern analysis, cluster transitions, and intraday movement patterns
+              powered by Pipeline 2 microservices architecture.
+            </p>
+            <Button
+              onClick={handleOpenModal}
+              className="w-full bg-blue-600 hover:bg-blue-700"
+            >
+              Open Dashboard
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <LSTMAEModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        companyCode={companyCode}
+      />
+    </LSTMAEErrorBoundary>
+  );
+};
+
+
+================================================================================
+FILE: apps/frontend/app/components/lstmae/LSTMAEInteractiveDashboard.tsx
+================================================================================
+
+// components/lstmae/LSTMAEInteractiveDashboard.tsx
+'use client';
+
+import React, { useCallback, useState } from 'react';
+import { ExternalLink, BarChart3, Loader2, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { LSTMAE_CONSTANTS } from '../../constants/lstmae.constants';
+
+interface LSTMAEInteractiveDashboardProps {
+  dashboardPath: string;
+  symbol: string;
+  className?: string;
+}
+
+export const LSTMAEInteractiveDashboard: React.FC<LSTMAEInteractiveDashboardProps> = ({
+  dashboardPath,
+  symbol,
+  className = '',
+}) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleOpenDashboard = useCallback(async () => {
+    if (!dashboardPath) {
+      setError('Dashboard path not available');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      console.log(`🌐 Fetching dashboard HTML from: ${dashboardPath}`);
+      
+      // Fetch HTML from backend API
+      const response = await fetch(dashboardPath);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const htmlContent = await response.text();
+      console.log(`✅ HTML fetched (${htmlContent.length} bytes)`);
+
+      // Open new window and write HTML
+      const newWindow = window.open(
+        '', 
+        `lstmae_dashboard_${symbol}`, 
+        LSTMAE_CONSTANTS.DASHBOARD.WINDOW_FEATURES
+      );
+      
+      if (!newWindow) {
+        throw new Error('Popup blocked. Please allow popups for this site.');
+      }
+
+      newWindow.document.open();
+      newWindow.document.write(htmlContent);
+      newWindow.document.close();
+      newWindow.focus();
+
+      console.log('✅ Dashboard opened successfully');
+
+    } catch (err: any) {
+      console.error('❌ Error opening dashboard:', err);
+      setError(err.message || 'Failed to open dashboard');
+    } finally {
+      setLoading(false);
+    }
+  }, [dashboardPath, symbol]);
+
+  return (
+    <div className={`flex flex-col gap-4 rounded-lg border bg-gradient-to-br from-blue-50 to-indigo-50 p-6 ${className}`}>
+      <div className="flex items-start gap-3">
+        <div className="rounded-lg bg-blue-100 p-2">
+          <BarChart3 className="h-6 w-6 text-blue-600" />
+        </div>
+        <div className="flex-1">
+          <h3 className="font-semibold text-gray-900">
+            {LSTMAE_CONSTANTS.DASHBOARD.TITLE}
+          </h3>
+          <p className="mt-1 text-sm text-gray-600">
+            Interactive Plotly dashboard with zoom, pan, and hover tooltips for detailed pattern analysis.
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <Button
+        onClick={handleOpenDashboard}
+        disabled={loading || !dashboardPath}
+        className="gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+        size="lg"
+      >
+        {loading ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading Dashboard...
+          </>
+        ) : (
+          <>
+            <ExternalLink className="h-4 w-4" />
+            {LSTMAE_CONSTANTS.UI.INTERACTIVE_DASHBOARD_BUTTON_TEXT}
+          </>
+        )}
+      </Button>
+
+      <p className="text-xs text-gray-500">
+        Opens in new window • Self-contained HTML • No external dependencies
+      </p>
+    </div>
+  );
+};
+
+
+================================================================================
+FILE: apps/frontend/.env
+================================================================================
+
+REACT_APP_BACKEND_URL=http://localhost:5000
+
+================================================================================
+FILE: apps/frontend/package.json
+================================================================================
+
+{
+  "name": "frontned",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "generate-manifest": "node scripts/generate-manifest.js",
+    "dev": "npm run generate-manifest && next dev",
+    "build": "npm run generate-manifest && next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@hookform/resolvers": "^5.2.1",
+    "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-scroll-area": "^1.2.6",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-toast": "^1.2.11",
+    "@syncfusion/ej2-react-charts": "^29.1.41",
+    "@types/react-plotly.js": "^2.6.3",
+    "apexcharts": "^4.7.0",
+    "autoprefixer": "^10.4.21",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "d3-format": "^3.1.0",
+    "d3-time-format": "^4.1.0",
+    "date-fns": "^4.1.0",
+    "lightweight-charts": "^5.0.6",
+    "lucide-react": "^0.479.0",
+    "next": "^15.1.8",
+    "next-themes": "^0.4.6",
+    "plotly.js": "^3.0.1",
+    "plotly.js-dist": "^3.0.1",
+    "radix-ui": "^1.1.3",
+    "react": "^19.1.0",
+    "react-apexcharts": "^1.7.0",
+    "react-day-picker": "^8.10.1",
+    "react-dom": "^19.1.0",
+    "react-financial-charts": "^2.0.1",
+    "react-hook-form": "^7.62.0",
+    "react-plotly.js": "^2.6.0",
+    "socket.io-client": "^4.8.1",
+    "swr": "^2.3.2",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20.19.13",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.1.7",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5"
+  }
+}
+
+
+================================================================================
+PHASE 3 - VISUALIZATION COMPONENTS (MEDIUM PRIORITY)
+================================================================================
+
+================================================================================
+FILE: apps/frontend/app/market-data/components/charts/PlotlyChart.tsx
+================================================================================
+
+'use client';
+import React, { useState, useEffect, useRef } from 'react';
+import Plot from 'react-plotly.js';
+import { ChevronRight, TrendingUp, BarChart3, LineChart, CandlestickChart, ArrowLeftRight, ShoppingCart, TrendingDown } from 'lucide-react';
+
+// Add Plotly import for restyle operations
+declare const Plotly: any;
+
+interface DataPoint {
+  ltp: number;
+  timestamp: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
+  change?: number;
+  changePercent?: number;
+  sma20?: number;
+  ema9?: number;
+  rsi14?: number;
+  bid?: number;
+  ask?: number;
+  buyVolume?: number;
+  sellVolume?: number;
+}
+
+interface OHLCPoint {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  buyVolume?: number;
+  sellVolume?: number;
+}
+
+// ✨ NEW: Ultra-fast chart update interface
+interface ChartUpdate {
+  symbol: string;
+  price: number;
+  timestamp: number;
+  volume: number;
+  change: number;
+  changePercent: number;
+}
+
+interface PlotlyChartProps {
+  symbol: string;
+  data: DataPoint | null;
+  historicalData: DataPoint[];
+  ohlcData?: OHLCPoint[];
+  chartUpdates: ChartUpdate[];        // ✨ NEW PROP
+  updateFrequency?: number;           // ✨ NEW PROP
+  tradingHours: {
+    start: string;
+    end: string;
+    current: string;
+    isActive: boolean;
+  };
+}
+
+const PlotlyChart: React.FC<PlotlyChartProps> = ({ 
+  symbol, 
+  data, 
+  historicalData, 
+  ohlcData = [], 
+  chartUpdates = [],          // ✨ NEW PROP
+  updateFrequency = 0,        // ✨ NEW PROP
+  tradingHours,
+}) => {
+  const chartRef = useRef<any>(null);
+  const spreadChartRef = useRef<any>(null);
+  const bidAskChartRef = useRef<any>(null);
+  const buySellVolumeChartRef = useRef<any>(null);
+  const buySellLineChartRef = useRef<any>(null);
+  const buySellSpreadChartRef = useRef<any>(null);
+  const volumeChartRef = useRef<any>(null);
+
+  const [initialized, setInitialized] = useState(false);
+  const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1D');
+  const [chartType, setChartType] = useState<'line' | 'candle'>('candle');
+  const [mainMode, setMainMode] = useState<'none' | 'bidAsk' | 'buySell'>('none');
+  const [secondaryView, setSecondaryView] = useState<'line' | 'spread' | 'std'>('line');
+  const [showIndicators, setShowIndicators] = useState({
+    sma20: false,
+    ema9: false,
+    rsi: false,
+    macd: false,
+    bb: false,
+    vwap: false,
+    volume: false,
+  });
+
+  const [preservedAxisRanges, setPreservedAxisRanges] = useState<{
+    xaxis?: [Date, Date];
+    yaxis?: [number, number];
+  }>({});
+
+  // ============ OPTIMIZED: Ultra-fast chart updates ============
+  const [isUpdating, setIsUpdating] = useState(false);
+  const lastUpdateRef = useRef<number>(0);
+  const chartDataRef = useRef<any[]>([]);
+
+  // Ultra-fast chart updates using chartUpdates prop
+  useEffect(() => {
+    if (!chartUpdates || chartUpdates.length === 0 || !chartRef.current) return;
+
+    const now = Date.now();
+    // Throttle updates to maximum 10 fps (100ms) to prevent browser lag
+    if (now - lastUpdateRef.current < 100) return;
+
+    const latestUpdate = chartUpdates[chartUpdates.length - 1];
+    const plotDiv = document.getElementById('plotly-chart');
+
+    if (plotDiv && !isUpdating) {
+      setIsUpdating(true);
+
+      try {
+        // For line charts - update the price trace
+        if (chartType === 'line') {
+          const timeValues = chartUpdates.map(update => new Date(update.timestamp * 1000));
+          const priceValues = chartUpdates.map(update => update.price);
+
+          // Use Plotly.restyle for ultra-fast updates
+          if (typeof Plotly !== 'undefined' && Plotly.restyle) {
+            Plotly.restyle(plotDiv, {
+              'x': [timeValues],
+              'y': [priceValues]
+            }, [0]); // Update first trace (LTP line)
+          }
+        }
+        // For candlestick charts - just update the last candle close price
+        else if (data && ohlcData && ohlcData.length > 0) {
+          const lastCandle = ohlcData[ohlcData.length - 1];
+          if (lastCandle && latestUpdate.price !== lastCandle.close) {
+            // Update the last candle's close price in real-time
+            const updatedClose = [...ohlcData.map(candle => candle.close)];
+            updatedClose[updatedClose.length - 1] = latestUpdate.price;
+
+            if (typeof Plotly !== 'undefined' && Plotly.restyle) {
+              Plotly.restyle(plotDiv, {
+                'close': [updatedClose]
+              }, [0]); // Update candlestick trace
+            }
+          }
+        }
+
+        lastUpdateRef.current = now;
+      } catch (error) {
+        console.error('Ultra-fast chart update error:', error);
+      } finally {
+        setIsUpdating(false);
+      }
+    }
+  }, [chartUpdates, chartType, data, ohlcData, isUpdating]);
+
+  // ✨ OPTIONAL: Performance monitoring
+  useEffect(() => {
+    if (chartUpdates.length > 0) {
+      const fps = updateFrequency;
+      if (fps > 15) {
+        console.warn(`High chart update frequency: ${fps} fps - consider throttling`);
+      }
+    }
+  }, [chartUpdates, updateFrequency]);
+
+  // ============ YOUR EXISTING CALCULATION FUNCTIONS (Keep all as is) ============
+  const calculateBuySellVolume = (dataPoint: DataPoint | OHLCPoint) => {
+    let buyVolume = 0;
+    let sellVolume = 0;
+    const totalVolume = dataPoint.volume || 0;
+
+    if ('buyVolume' in dataPoint && 'sellVolume' in dataPoint) {
+      buyVolume = dataPoint.buyVolume || 0;
+      sellVolume = dataPoint.sellVolume || 0;
+    } else {
+      let priceChange = 0;
+      if ('open' in dataPoint && 'close' in dataPoint) {
+        priceChange = (dataPoint.close - dataPoint.open) / dataPoint.open;
+      } else if ('ltp' in dataPoint) {
+        const currentIndex = historicalData.findIndex(p => p.timestamp === dataPoint.timestamp);
+        if (currentIndex > 0) {
+          const prevPrice = historicalData[currentIndex - 1].ltp;
+          priceChange = (dataPoint.ltp - prevPrice) / prevPrice;
+        }
+      }
+
+      const buyRatio = Math.max(0, Math.min(1, 0.5 + priceChange * 2));
+      buyVolume = totalVolume * buyRatio;
+      sellVolume = totalVolume * (1 - buyRatio);
+    }
+
+    return { buyVolume, sellVolume };
+  };
+
+  const calculateBuySellPrices = (dataPoint: DataPoint | OHLCPoint, index: number) => {
+    let currentPrice = 0;
+    if ('ltp' in dataPoint) {
+      currentPrice = dataPoint.ltp;
+    } else if ('close' in dataPoint) {
+      currentPrice = dataPoint.close;
+    }
+
+    // Calculate spread based on volatility and volume
+    const windowSize = 20;
+    let prices: number[] = [];
+    
+    if (chartType === 'line') {
+      const startIndex = Math.max(0, index - windowSize + 1);
+      prices = historicalData.slice(startIndex, index + 1).map(p => p.ltp);
+    } else {
+      const startIndex = Math.max(0, index - windowSize + 1);
+      prices = ohlcData.slice(startIndex, index + 1).map(c => c.close);
+    }
+    
+    // Calculate volatility (standard deviation)
+    if (prices.length > 1) {
+      const mean = prices.reduce((sum, p) => sum + p, 0) / prices.length;
+      const squaredDiffs = prices.map(p => Math.pow(p - mean, 2));
+      const avgSquaredDiff = squaredDiffs.reduce((sum, sq) => sum + sq, 0) / squaredDiffs.length;
+      const volatility = Math.sqrt(avgSquaredDiff);
+      
+      // Spread based on volatility (typically 0.1% to 1% of price)
+      const spreadPercent = Math.min(Math.max(volatility / currentPrice, 0.001), 0.01);
+      const halfSpread = currentPrice * spreadPercent / 2;
+      
+      return {
+        buyPrice: currentPrice + halfSpread,
+        sellPrice: currentPrice - halfSpread
+      };
+    }
+    
+    // Fallback to simple 0.1% spread
+    const defaultSpread = currentPrice * 0.001;
+    return {
+      buyPrice: currentPrice + defaultSpread,
+      sellPrice: currentPrice - defaultSpread
+    };
+  };
+
+  // ============ ENHANCED: prepareLineChartData with chartUpdates integration ============
+  const prepareLineChartData = () => {
+    const allData = [...historicalData];
+
+    // ✨ ENHANCED: Merge chart updates for ultra-smooth line
+    if (chartUpdates && chartUpdates.length > 0) {
+      const latestHistoricalTime = historicalData.length > 0 ? 
+        historicalData[historicalData.length - 1].timestamp : 0;
+
+      // Add chart updates that are newer than historical data
+      const recentUpdates = chartUpdates
+        .filter(update => update.timestamp > latestHistoricalTime)
+        .map(update => ({
+          symbol: update.symbol,
+          ltp: update.price,
+          timestamp: update.timestamp,
+          volume: update.volume,
+          change: update.change,
+          changePercent: update.changePercent
+        }));
+
+      allData.push(...recentUpdates);
+    } else if (data && data.ltp) {
+      const lastPoint = historicalData.length > 0 ? historicalData[historicalData.length - 1] : null;
+      if (!lastPoint || lastPoint.timestamp !== data.timestamp) {
+        allData.push(data);
+      }
+    }
+
+    allData.sort((a, b) => a.timestamp - b.timestamp);
+
+    const x = allData.map(point => new Date(point.timestamp * 1000));
+    const y = allData.map(point => point.ltp);
+    const bid = allData.map(point => point.bid || null);
+    const ask = allData.map(point => point.ask || null);
+
+    const spread = allData.map(point => {
+      if (point.ask && point.bid) {
+        return point.ask - point.bid;
+      }
+      return null;
+    });
+
+    const sma20 = allData.map(point => point.sma20 || null);
+    const ema9 = allData.map(point => point.ema9 || null);
+    const rsi = allData.map(point => point.rsi14 || null);
+
+    const buyVolumes = allData.map(point => calculateBuySellVolume(point).buyVolume);
+    const sellVolumes = allData.map(point => calculateBuySellVolume(point).sellVolume);
+
+    // Calculate buy/sell prices (simplified calculation)
+    const buyPrices = allData.map(point => point.ltp * 1.001); // Slightly above LTP
+    const sellPrices = allData.map(point => point.ltp * 0.999); // Slightly below LTP
+
+    const buySellSpreads = allData.map((point, index) => buyPrices[index] - sellPrices[index]);
+
+    return {
+      x,
+      y,
+      allData,
+      sma20,
+      ema9,
+      rsi,
+      bid,
+      ask,
+      spread,
+      buyVolumes,
+      sellVolumes,
+      buyPrices,
+      sellPrices,
+      buySellSpreads
+    };
+  };
+
+  const calculateStandardDeviation = (values: number[], usePopulation = false) => {
+    if (values.length === 0) return 0;
+    const mean = values.reduce((acc, val) => acc + val, 0) / values.length;
+    const sumOfSquaredDifferences = values.reduce((acc, val) => acc + (val - mean) ** 2, 0);
+    return Math.sqrt(sumOfSquaredDifferences / (values.length - (usePopulation ? 0 : 1)));
+  };
+
+  const calculateVolumeStandardDeviation = (dataPoint: DataPoint | OHLCPoint, index: number) => {
+    const windowSize = 20;
+    let volumes: number[] = [];
+    if (chartType === 'line') {
+      const startIndex = Math.max(0, index - windowSize + 1);
+      volumes = historicalData.slice(startIndex, index + 1)
+        .map(point => point.volume || 0)
+        .filter(vol => vol > 0);
+    } else {
+      const startIndex = Math.max(0, index - windowSize + 1);
+      volumes = ohlcData.slice(startIndex, index + 1)
+        .map(candle => candle.volume || 0)
+        .filter(vol => vol > 0);
+    }
+    return volumes.length > 1 ? calculateStandardDeviation(volumes) : 0;
+  };
+
+  const calculateBidAskStandardDeviation = () => {
+    const { bid, ask, x } = prepareLineChartData();
+    const windowSize = 20;
+    const bidStdDev = [];
+    const askStdDev = [];
+    for (let i = 0; i < bid.length; i++) {
+      const startIndex = Math.max(0, i - windowSize + 1);
+      const bidWindow = bid.slice(startIndex, i + 1).filter(b => b !== null && b !== undefined) as number[];
+      const askWindow = ask.slice(startIndex, i + 1).filter(a => a !== null && a !== undefined) as number[];
+      bidStdDev.push(bidWindow.length > 1 ? calculateStandardDeviation(bidWindow) : 0);
+      askStdDev.push(askWindow.length > 1 ? calculateStandardDeviation(askWindow) : 0);
+    }
+    return { x, bidStdDev, askStdDev };
+  };
+
+  const calculateBuySellStandardDeviation = () => {
+    let x: Date[] = [];
+    let buyPrices: number[] = [];
+    let sellPrices: number[] = [];
+    if (chartType === 'line') {
+      const data = prepareLineChartData();
+      x = data.x;
+      buyPrices = data.buyPrices;
+      sellPrices = data.sellPrices;
+    } else {
+      const data = prepareCandlestickData();
+      x = data.x;
+      buyPrices = data.buyPrices;
+      sellPrices = data.sellPrices;
+    }
+    const windowSize = 20;
+    const buyStdDev = [];
+    const sellStdDev = [];
+    for (let i = 0; i < buyPrices.length; i++) {
+      const startIndex = Math.max(0, i - windowSize + 1);
+      const buyWindow = buyPrices.slice(startIndex, i + 1).filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
+      const sellWindow = sellPrices.slice(startIndex, i + 1).filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
+      buyStdDev.push(buyWindow.length > 1 ? calculateStandardDeviation(buyWindow) : 0);
+      sellStdDev.push(sellWindow.length > 1 ? calculateStandardDeviation(sellWindow) : 0);
+    }
+    return { x, buyStdDev, sellStdDev };
+  };
+
+  const calculateSMA = (prices: number[], period: number) => {
+    if (prices.length < period) return [];
+    const smaValues = [];
+    for (let i = period - 1; i < prices.length; i++) {
+      const sum = prices.slice(i - period + 1, i + 1).reduce((acc, val) => acc + val, 0);
+      smaValues.push(sum / period);
+    }
+    return smaValues;
+  };
+
+  const calculateEMA = (prices: number[], period: number) => {
+    if (prices.length < period) return [];
+    const multiplier = 2 / (period + 1);
+    const emaValues = [];
+    const firstSMA = prices.slice(0, period).reduce((acc, val) => acc + val, 0) / period;
+    emaValues.push(firstSMA);
+
+    for (let i = period; i < prices.length; i++) {
+      const ema = (prices[i] * multiplier) + (emaValues[emaValues.length - 1] * (1 - multiplier));
+      emaValues.push(ema);
+    }
+    return emaValues;
+  };
+
+  const calculateRSI = (prices: number[], period: number) => {
+    if (prices.length < period + 1) return [];
+    const gains = [];
+    const losses = [];
+    for (let i = 1; i < prices.length; i++) {
+      const change = prices[i] - prices[i - 1];
+      gains.push(change > 0 ? change : 0);
+      losses.push(change < 0 ? Math.abs(change) : 0);
+    }
+
+    const rsiValues = [];
+    for (let i = period - 1; i < gains.length; i++) {
+      const avgGain = gains.slice(i - period + 1, i + 1).reduce((acc, val) => acc + val, 0) / period;
+      const avgLoss = losses.slice(i - period + 1, i + 1).reduce((acc, val) => acc + val, 0) / period;
+      if (avgLoss === 0) {
+        rsiValues.push(100);
+      } else {
+        const rs = avgGain / avgLoss;
+        const rsi = 100 - (100 / (1 + rs));
+        rsiValues.push(rsi);
+      }
+    }
+    return rsiValues;
+  };
+
+  const calculateBollingerBands = (prices: number[], period: number, stdDev: number) => {
+    if (prices.length < period) return null;
+    const smaValues = calculateSMA(prices, period);
+    const upper = [];
+    const middle = [];
+    const lower = [];
+
+    for (let i = 0; i < smaValues.length; i++) {
+      const startIndex = i + period - 1;
+      const slice = prices.slice(startIndex - period + 1, startIndex + 1);
+      const std = calculateStandardDeviation(slice);
+      middle.push(smaValues[i]);
+      upper.push(smaValues[i] + (std * stdDev));
+      lower.push(smaValues[i] - (std * stdDev));
+    }
+    return { upper, middle, lower };
+  };
+
+  const calculateMACD = (prices: number[], fastPeriod: number, slowPeriod: number, signalPeriod: number) => {
+    if (prices.length < slowPeriod) return null;
+    const fastEMA = calculateEMA(prices, fastPeriod);
+    const slowEMA = calculateEMA(prices, slowPeriod);
+    if (fastEMA.length === 0 || slowEMA.length === 0) return null;
+
+    const macdLine = [];
+    const startIndex = slowPeriod - fastPeriod;
+    for (let i = 0; i < slowEMA.length; i++) {
+      macdLine.push(fastEMA[i + startIndex] - slowEMA[i]);
+    }
+
+    const signalLine = calculateEMA(macdLine, signalPeriod);
+    const histogram = [];
+    for (let i = signalPeriod - 1; i < macdLine.length; i++) {
+      histogram.push(macdLine[i] - signalLine[i - signalPeriod + 1]);
+    }
+
+    return { macdLine, signalLine, histogram };
+  };
+
+  const calculateVWAP = (close: number[], high: number[], low: number[], volume: number[]) => {
+    const vwapValues = [];
+    let cumulativePriceVolume = 0;
+    let cumulativeVolume = 0;
+
+    for (let i = 0; i < close.length; i++) {
+      const typicalPrice = (high[i] + low[i] + close[i]) / 3;
+      cumulativePriceVolume += typicalPrice * volume[i];
+      cumulativeVolume += volume[i];
+      vwapValues.push(cumulativeVolume > 0 ? cumulativePriceVolume / cumulativeVolume : typicalPrice);
+    }
+    return vwapValues;
+  };
+
+  const prepareCandlestickData = () => {
+    if (!ohlcData || ohlcData.length === 0) {
+      return { x: [], open: [], high: [], low: [], close: [], volume: [], volumeStdDev: [], buyVolumes: [], sellVolumes: [], buyPrices: [], sellPrices: [], buySellSpreads: [] };
+    }
+
+    const validOhlcData = ohlcData.filter(candle => 
+      candle.open !== null && candle.open !== undefined &&
+      candle.high !== null && candle.high !== undefined &&
+      candle.low !== null && candle.low !== undefined &&
+      candle.close !== null && candle.close !== undefined
+    );
+
+    if (validOhlcData.length === 0) {
+      return { x: [], open: [], high: [], low: [], close: [], volume: [], volumeStdDev: [], buyVolumes: [], sellVolumes: [], buyPrices: [], sellPrices: [], buySellSpreads: [] };
+    }
+
+    const sortedData = [...validOhlcData].sort((a, b) => a.timestamp - b.timestamp);
+    const buyVolumes = sortedData.map(candle => calculateBuySellVolume(candle).buyVolume);
+    const sellVolumes = sortedData.map(candle => calculateBuySellVolume(candle).sellVolume);
+    const volumeStdDev = sortedData.map((candle, index) => 
+      calculateVolumeStandardDeviation(candle, index)
+    );
+    const buyPrices = sortedData.map((candle, index) => calculateBuySellPrices(candle, index).buyPrice);
+    const sellPrices = sortedData.map((candle, index) => calculateBuySellPrices(candle, index).sellPrice);
+    const buySellSpreads = sortedData.map((candle, index) => {
+      const { buyPrice, sellPrice } = calculateBuySellPrices(candle, index);
+      return buyPrice - sellPrice;
+    });
+
+    const processedVolume = sortedData.map(candle => {
+      const vol = candle.volume;
+      if (vol === null || vol === undefined || isNaN(vol)) {
+        return 0;
+      }
+      return Number(vol);
+    });
+
+    return {
+      x: sortedData.map(candle => new Date(candle.timestamp * 1000)),
+      open: sortedData.map(candle => Number(candle.open)),
+      high: sortedData.map(candle => Number(candle.high)),
+      low: sortedData.map(candle => Number(candle.low)),
+      close: sortedData.map(candle => Number(candle.close)),
+      volume: processedVolume,
+      volumeStdDev: volumeStdDev,
+      buyVolumes,
+      sellVolumes,
+      buyPrices,
+      sellPrices,
+      buySellSpreads
+    };
+  };
+
+  const calculateYAxisRange = () => {
+    const timeRange = getTimeRange();
+    if (!timeRange) return undefined;
+    const startTime = timeRange[0].getTime() / 1000;
+    const endTime = timeRange[1].getTime() / 1000;
+
+    if (chartType === 'line') {
+      if (historicalData.length === 0) return undefined;
+      const visibleData = historicalData.filter(
+        point => point.timestamp >= startTime && point.timestamp <= endTime
+      );
+      if (visibleData.length === 0) return undefined;
+      const prices = visibleData.map(point => point.ltp).filter(p => p !== null && p !== undefined);
+      if (prices.length === 0) return undefined;
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      const padding = (maxPrice - minPrice) * 0.05;
+      return [minPrice - padding, maxPrice + padding];
+    } else {
+      if (!ohlcData || ohlcData.length === 0) return undefined;
+      const visibleCandles = ohlcData.filter(
+        candle => candle.timestamp >= startTime && candle.timestamp <= endTime
+      );
+      if (visibleCandles.length === 0) return undefined;
+      const validCandles = visibleCandles.filter(candle => 
+        candle.high !== null && candle.high !== undefined &&
+        candle.low !== null && candle.low !== undefined
+      );
+      if (validCandles.length === 0) return undefined;
+      const highPrices = validCandles.map(candle => Number(candle.high));
+      const lowPrices = validCandles.map(candle => Number(candle.low));
+      const minPrice = Math.min(...lowPrices);
+      const maxPrice = Math.max(...highPrices);
+      const padding = (maxPrice - minPrice) * 0.05;
+      return [minPrice - padding, maxPrice + padding];
+    }
+  };
+
+  const calculateBidAskRange = () => {
+    const { bid, ask } = prepareLineChartData();
+    const validBids = bid.filter(b => b !== null && b !== undefined) as number[];
+    const validAsks = ask.filter(a => a !== null && a !== undefined) as number[];
+    if (validBids.length === 0 || validAsks.length === 0) return undefined;
+    const minBid = Math.min(...validBids);
+    const maxAsk = Math.max(...validAsks);
+    const padding = (maxAsk - minBid) * 0.05;
+    return [minBid - padding, maxAsk + padding];
+  };
+
+  const calculateBuySellRange = () => {
+    let buyPrices: number[] = [];
+    let sellPrices: number[] = [];
+    if (chartType === 'line') {
+      const { buyPrices: bp, sellPrices: sp } = prepareLineChartData();
+      buyPrices = bp.filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
+      sellPrices = sp.filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
+    } else {
+      const { buyPrices: bp, sellPrices: sp } = prepareCandlestickData();
+      buyPrices = bp.filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
+      sellPrices = sp.filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
+    }
+    if (buyPrices.length === 0 || sellPrices.length === 0) return undefined;
+    const minPrice = Math.min(...sellPrices);
+    const maxPrice = Math.max(...buyPrices);
+    const padding = (maxPrice - minPrice) * 0.05;
+    return [minPrice - padding, maxPrice + padding];
+  };
+
+  const calculateSpreadRange = () => {
+    const { spread } = prepareLineChartData();
+    const validSpreads = spread.filter(s => s !== null && s !== undefined) as number[];
+    if (validSpreads.length === 0) return [0, 1];
+    const minSpread = Math.min(...validSpreads);
+    const maxSpread = Math.max(...validSpreads);
+    const padding = Math.max((maxSpread - minSpread) * 0.1, 0.01);
+    return [Math.max(0, minSpread - padding), maxSpread + padding];
+  };
+
+  const calculateBuySellSpreadRange = () => {
+    let buySellSpreads: number[] = [];
+    if (chartType === 'line') {
+      const { buySellSpreads: bss } = prepareLineChartData();
+      buySellSpreads = bss.filter(s => s !== null && s !== undefined && !isNaN(s)) as number[];
+    } else {
+      const { buySellSpreads: bss } = prepareCandlestickData();
+      buySellSpreads = bss.filter(s => s !== null && s !== undefined && !isNaN(s)) as number[];
+    }
+    if (buySellSpreads.length === 0) return [0, 1];
+    const minSpread = Math.min(...buySellSpreads);
+    const maxSpread = Math.max(...buySellSpreads);
+    const padding = Math.max((maxSpread - minSpread) * 0.1, 0.01);
+    return [Math.max(0, minSpread - padding), maxSpread + padding];
+  };
+
+  const calculateVolumeRange = () => {
+    let volumes: number[] = [];
+    if (chartType === 'line') {
+      volumes = historicalData.map(point => point.volume || 0).filter(v => v > 0);
+    } else {
+      const { volume } = prepareCandlestickData();
+      volumes = volume.filter(v => v > 0);
+    }
+    if (volumes.length === 0) return [0, 1000];
+    const maxVolume = Math.max(...volumes);
+    return [0, maxVolume * 1.1];
+  };
+
+  const calculateBuySellVolumeRange = () => {
+    let buyVolumes: number[] = [];
+    let sellVolumes: number[] = [];
+    if (chartType === 'line') {
+      const { buyVolumes: bv, sellVolumes: sv } = prepareLineChartData();
+      buyVolumes = bv.filter(v => v !== null && v !== undefined) as number[];
+      sellVolumes = sv.filter(v => v !== null && v !== undefined) as number[];
+    } else {
+      const { buyVolumes: bv, sellVolumes: sv } = prepareCandlestickData();
+      buyVolumes = bv.filter(v => v !== null && v !== undefined) as number[];
+      sellVolumes = sv.filter(v => v !== null && v !== undefined) as number[];
+    }
+    if (buyVolumes.length === 0 && sellVolumes.length === 0) return [0, 1000];
+    const maxBuyVolume = buyVolumes.length > 0 ? Math.max(...buyVolumes) : 0;
+    const maxSellVolume = sellVolumes.length > 0 ? Math.max(...sellVolumes) : 0;
+    const maxVolume = Math.max(maxBuyVolume, maxSellVolume);
+    return [0, maxVolume * 1.1];
+  };
+
+  const getTimeRange = () => {
+    const dataToUse = chartType === 'line' ? historicalData : ohlcData;
+    if (!dataToUse || dataToUse.length === 0) return undefined;
+
+    const now = data?.timestamp 
+      ? new Date(data.timestamp * 1000) 
+      : new Date();
+
+    let startTime = new Date(now);
+    switch (selectedTimeframe) {
+      case '1m':
+        startTime.setMinutes(now.getMinutes() - 1);
+        break;
+      case '5m':
+        startTime.setMinutes(now.getMinutes() - 5);
+        break;
+      case '10m':
+        startTime.setMinutes(now.getMinutes() - 10);
+        break;
+      case '30m':
+        startTime.setMinutes(now.getMinutes() - 30);
+        break;
+      case '1H':
+        startTime.setHours(now.getHours() - 1);
+        break;
+      case '6H':
+        startTime.setHours(now.getHours() - 6);
+        break;
+      case '12H':
+        startTime.setHours(now.getHours() - 12);
+        break;
+      case '1D':
+      default:
+        try {
+          const tradingStart = new Date(tradingHours.start);
+          return [tradingStart, now > new Date(tradingHours.end) ? new Date(tradingHours.end) : now];
+        } catch (e) {
+          startTime.setHours(now.getHours() - 24);
+        }
+    }
+    return [startTime, now];
+  };
+
+  const getColorTheme = () => {
+    return {
+      bg: '#18181b',
+      paper: '#18181b',
+      text: '#e4e4e7',
+      grid: '#27272a',
+      line: getLineColor(),
+      upColor: '#22c55e',
+      downColor: '#ef4444',
+      button: {
+        bg: '#27272a',
+        bgActive: '#3b82f6',
+        text: '#e4e4e7'
+      },
+      indicator: {
+        sma20: '#f97316',
+        ema9: '#8b5cf6',
+        rsi: '#06b6d4',
+        macd: '#3b82f6',
+        bb: '#64748b',
+        vwap: '#06b6d4',
+        bid: '#22c55e',
+        ask: '#ef4444',
+        spread: '#3b82f6',
+        buyVolume: '#22c55e',
+        sellVolume: '#ef4444',
+        buyPrice: '#10b981',
+        sellPrice: '#f59e0b',
+        buySellSpread: '#8b5cf6',
+        volume: '#64748b',
+        std: '#f97316'
+      }
+    };
+  };
+
+  const getLineColor = () => {
+    const { y } = prepareLineChartData();
+    if (y.length < 2) return '#22d3ee';
+    const lastPrice = y[y.length - 1];
+    const prevPrice = y[y.length - 2];
+    return lastPrice >= prevPrice ? '#22c55e' : '#ef4444';
+  };
+
+  const toggleMainMode = (mode: 'bidAsk' | 'buySell') => {
+    if (mainMode === mode) {
+      setMainMode('none');
+    } else {
+      setMainMode(mode);
+      setSecondaryView('line');
+    }
+  };
+
+  const toggleSecondaryView = (view: 'line' | 'spread' | 'std') => {
+    setSecondaryView(view);
+  };
+
+  const handleTimeframeChange = (timeframe: string) => {
+    // ✨ ADD THIS - Prevent updates during timeframe changes
+    setIsUpdating(true);
+
+    setSelectedTimeframe(timeframe);
+    setPreservedAxisRanges({});
+
+    if (!chartRef.current) return;
+    const plotDiv = document.getElementById('plotly-chart');
+    if (!plotDiv) return;
+
+    try {
+      const newTimeRange = getTimeRange();
+      const newYRange = calculateYAxisRange();
+
+      if (typeof Plotly !== 'undefined' && Plotly.relayout) {
+        Plotly.relayout(plotDiv, {
+          'xaxis.range': newTimeRange,
+          'xaxis.autorange': false,
+          'yaxis.range': newYRange,
+          'yaxis.autorange': newYRange ? false : true
+        });
+      }
+
+      const spreadDiv = document.getElementById('spread-chart');
+      if (spreadDiv && mainMode === 'bidAsk' && secondaryView === 'spread' && typeof Plotly !== 'undefined') {
+        Plotly.relayout(spreadDiv, {
+          'xaxis.range': newTimeRange,
+          'xaxis.autorange': false,
+          'yaxis.range': calculateSpreadRange(),
+          'yaxis.autorange': false
+        });
+      }
+
+      const bidAskDiv = document.getElementById('bid-ask-chart');
+      if (bidAskDiv && mainMode === 'bidAsk' && secondaryView === 'line' && typeof Plotly !== 'undefined') {
+        Plotly.relayout(bidAskDiv, {
+          'xaxis.range': newTimeRange,
+          'xaxis.autorange': false,
+          'yaxis.range': calculateBidAskRange(),
+          'yaxis.autorange': false
+        });
+      }
+
+      const volumeDiv = document.getElementById('volume-chart');
+      if (volumeDiv && showIndicators.volume && typeof Plotly !== 'undefined') {
+        Plotly.relayout(volumeDiv, {
+          'xaxis.range': newTimeRange,
+          'xaxis.autorange': false,
+          'yaxis.range': calculateVolumeRange(),
+          'yaxis.autorange': false
+        });
+      }
+
+      const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
+      if (buySellVolumeDiv && mainMode !== 'none' && secondaryView === 'std' && typeof Plotly !== 'undefined') {
+        Plotly.relayout(buySellVolumeDiv, {
+          'xaxis.range': newTimeRange,
+          'xaxis.autorange': false,
+          'yaxis.range': calculateBuySellVolumeRange(),
+          'yaxis.autorange': false
+        });
+      }
+
+      const buySellLineDiv = document.getElementById('buy-sell-line-chart');
+      if (buySellLineDiv && mainMode === 'buySell' && secondaryView === 'line' && typeof Plotly !== 'undefined') {
+        Plotly.relayout(buySellLineDiv, {
+          'xaxis.range': newTimeRange,
+          'xaxis.autorange': false,
+          'yaxis.range': calculateBuySellRange(),
+          'yaxis.autorange': false
+        });
+      }
+
+      const buySellSpreadDiv = document.getElementById('buy-sell-spread-chart');
+      if (buySellSpreadDiv && mainMode === 'buySell' && secondaryView === 'spread' && typeof Plotly !== 'undefined') {
+        Plotly.relayout(buySellSpreadDiv, {
+          'xaxis.range': newTimeRange,
+          'xaxis.autorange': false,
+          'yaxis.range': calculateBuySellSpreadRange(),
+          'yaxis.autorange': false
+        });
+      }
+    } catch (err) {
+      console.error('Error updating timeframe:', err);
+      setTimeout(() => {
+        try {
+          if (chartRef.current) {
+            const plotDiv = document.getElementById('plotly-chart');
+            if (plotDiv && typeof Plotly !== 'undefined') {
+              Plotly.react(plotDiv, createPlotData(), createLayout());
+            }
+          }
+        } catch (fallbackErr) {
+          console.error('Fallback chart update failed:', fallbackErr);
+        }
+      }, 100);
+    }
+
+    // ✨ ADD THIS AT THE END
+    setTimeout(() => setIsUpdating(false), 200);
+  };
+
+  const toggleChartType = () => {
+    const plotDiv = document.getElementById('plotly-chart');
+    if (plotDiv && (plotDiv as any).layout) {
+      const currentLayout = (plotDiv as any).layout;
+      setPreservedAxisRanges({
+        xaxis: currentLayout.xaxis?.range ? [
+          new Date(currentLayout.xaxis.range[0]), 
+          new Date(currentLayout.xaxis.range[1])
+        ] : undefined,
+        yaxis: currentLayout.yaxis?.range ? [
+          currentLayout.yaxis.range[0], 
+          currentLayout.yaxis.range[1]
+        ] : undefined
+      });
+    }
+    setChartType(prev => prev === 'line' ? 'candle' : 'line');
+  };
+
+  const toggleIndicator = (indicator: 'sma20' | 'ema9' | 'rsi' | 'macd' | 'bb' | 'vwap' | 'volume') => {
+    setShowIndicators(prev => ({
+      ...prev,
+      [indicator]: !prev[indicator]
+    }));
+  };
+
+  const handleRelayout = (eventData: any) => {
+    if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
+      const startDate = new Date(eventData['xaxis.range[0]']);
+      const endDate = new Date(eventData['xaxis.range[1]']);
+      const startTime = startDate.getTime() / 1000;
+      const endTime = endDate.getTime() / 1000;
+
+      let minValue, maxValue;
+      if (chartType === 'line') {
+        const visibleData = historicalData.filter(
+          point => point.timestamp >= startTime && point.timestamp <= endTime
+        );
+        if (visibleData.length > 0) {
+          const prices = visibleData.map(point => point.ltp).filter(p => p !== null && p !== undefined);
+          if (prices.length > 0) {
+            minValue = Math.min(...prices);
+            maxValue = Math.max(...prices);
+          }
+        }
+      } else {
+        const visibleData = ohlcData.filter(
+          candle => candle.timestamp >= startTime && candle.timestamp <= endTime
+        );
+        if (visibleData.length > 0) {
+          const validCandles = visibleData.filter(candle => 
+            candle.high !== null && candle.high !== undefined &&
+            candle.low !== null && candle.low !== undefined
+          );
+          if (validCandles.length > 0) {
+            const highPrices = validCandles.map(candle => Number(candle.high));
+            const lowPrices = validCandles.map(candle => Number(candle.low));
+            minValue = Math.min(...lowPrices);
+            maxValue = Math.max(...highPrices);
+          }
+        }
+      }
+
+      if (minValue !== undefined && maxValue !== undefined) {
+        const padding = (maxValue - minValue) * 0.05;
+        const yRange = [minValue - padding, maxValue + padding];
+        const plotDiv = document.getElementById('plotly-chart');
+        if (plotDiv && typeof Plotly !== 'undefined') {
+          Plotly.relayout(plotDiv, {
+            'yaxis.range': yRange,
+            'yaxis.autorange': false
+          });
+        }
+
+        const bidAskDiv = document.getElementById('bid-ask-chart');
+        if (bidAskDiv && typeof Plotly !== 'undefined') {
+          Plotly.relayout(bidAskDiv, {
+            'xaxis.range': [startDate, endDate],
+            'xaxis.autorange': false
+          });
+        }
+
+        const spreadDiv = document.getElementById('spread-chart');
+        if (spreadDiv && typeof Plotly !== 'undefined') {
+          Plotly.relayout(spreadDiv, {
+            'xaxis.range': [startDate, endDate],
+            'xaxis.autorange': false
+          });
+        }
+
+        const volumeDiv = document.getElementById('volume-chart');
+        if (volumeDiv && typeof Plotly !== 'undefined') {
+          Plotly.relayout(volumeDiv, {
+            'xaxis.range': [startDate, endDate],
+            'xaxis.autorange': false
+          });
+        }
+
+        const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
+        if (buySellVolumeDiv && typeof Plotly !== 'undefined') {
+          Plotly.relayout(buySellVolumeDiv, {
+            'xaxis.range': [startDate, endDate],
+            'xaxis.autorange': false
+          });
+        }
+
+        const buySellLineDiv = document.getElementById('buy-sell-line-chart');
+        if (buySellLineDiv && typeof Plotly !== 'undefined') {
+          Plotly.relayout(buySellLineDiv, {
+            'xaxis.range': [startDate, endDate],
+            'xaxis.autorange': false
+          });
+        }
+
+        const buySellSpreadDiv = document.getElementById('buy-sell-spread-chart');
+        if (buySellSpreadDiv && typeof Plotly !== 'undefined') {
+          Plotly.relayout(buySellSpreadDiv, {
+            'xaxis.range': [startDate, endDate],
+            'xaxis.autorange': false
+          });
+        }
+      }
+    }
+  };
+
+  // ============ ENHANCED: Main chart rendering with chartUpdates dependency ============
+  useEffect(() => {
+    if (!chartRef.current) return;
+    const plotDiv = document.getElementById('plotly-chart');
+    if (!plotDiv) return;
+
+    if (!initialized) {
+      setInitialized(true);
+      return;
+    }
+
+    try {
+      if (chartType === 'line') {
+        const { x, y } = prepareLineChartData();
+        if (x.length === 0 || y.length === 0) return;
+        if (typeof Plotly !== 'undefined' && Plotly.react) {
+          Plotly.react(plotDiv, createPlotData(), createLayout());
+        }
+      } else {
+        const { x, open, high, low, close } = prepareCandlestickData();
+        if (x.length === 0) return;
+        if (typeof Plotly !== 'undefined' && Plotly.react) {
+          Plotly.react(plotDiv, createPlotData(), createLayout());
+        }
+      }
+
+      if (mainMode === 'bidAsk' && secondaryView === 'line') {
+        const bidAskDiv = document.getElementById('bid-ask-chart');
+        if (bidAskDiv && typeof Plotly !== 'undefined') {
+          const { x, bid, ask } = prepareLineChartData();
+          Plotly.react(bidAskDiv, createBidAskData(), createBidAskLayout());
+        }
+      }
+
+      if (mainMode === 'bidAsk' && secondaryView === 'spread') {
+        const spreadDiv = document.getElementById('spread-chart');
+        if (spreadDiv && typeof Plotly !== 'undefined') {
+          const { x, spread } = prepareLineChartData();
+          Plotly.react(spreadDiv, createSpreadData(), createSpreadLayout());
+        }
+      }
+
+      if (showIndicators.volume) {
+        const volumeDiv = document.getElementById('volume-chart');
+        if (volumeDiv && typeof Plotly !== 'undefined') {
+          Plotly.react(volumeDiv, createVolumeData(), createVolumeLayout());
+        }
+      }
+
+      if (mainMode !== 'none' && secondaryView === 'std') {
+        const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
+        if (buySellVolumeDiv && typeof Plotly !== 'undefined') {
+          Plotly.react(buySellVolumeDiv, createStdData(), createStdLayout());
+        }
+      }
+
+      if (mainMode === 'buySell' && secondaryView === 'line') {
+        const buySellLineDiv = document.getElementById('buy-sell-line-chart');
+        if (buySellLineDiv && typeof Plotly !== 'undefined') {
+          Plotly.react(buySellLineDiv, createBuySellLineData(), createBuySellLineLayout());
+        }
+      }
+
+      if (mainMode === 'buySell' && secondaryView === 'spread') {
+        const buySellSpreadDiv = document.getElementById('buy-sell-spread-chart');
+        if (buySellSpreadDiv && typeof Plotly !== 'undefined') {
+          Plotly.react(buySellSpreadDiv, createBuySellSpreadData(), createBuySellSpreadLayout());
+        }
+      }
+    } catch (err) {
+      console.error('Error updating chart:', err);
+    }
+  }, [data, historicalData, ohlcData, chartUpdates, initialized, selectedTimeframe, chartType, showIndicators, mainMode, secondaryView]);
+
+  const createPlotData = () => {
+    const colors = getColorTheme();
+    let plotData: any[] = [];
+
+    if (chartType === 'line') {
+      if (historicalData && historicalData.length > 0) {
+        const validData = historicalData.filter(point => 
+          point.ltp !== null && 
+          point.ltp !== undefined && 
+          point.ltp > 0 && 
+          !isNaN(point.ltp) &&
+          point.timestamp !== null &&
+          point.timestamp !== undefined
+        );
+
+        if (validData.length === 0) return plotData;
+
+        const sortedData = [...validData].sort((a, b) => a.timestamp - b.timestamp);
+        const timeValues = sortedData.map(point => new Date(point.timestamp * 1000));
+        const priceValues = sortedData.map(point => Number(point.ltp));
+
+        plotData.push({
+          x: timeValues,
+          y: priceValues,
+          type: 'scatter',
+          mode: 'lines',
+          name: 'LTP',
+          line: {
+            color: colors.line || '#3B82F6',
+            width: 2,
+            shape: 'linear'
+          },
+          connectgaps: false,
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Price: ₹%{y:.2f}<br>' +
+                        '<extra></extra>',
+          showlegend: true
+        });
+
+        const volumeValues = sortedData.map(point => point.volume || 0);
+        const volumeColors = [];
+        for (let i = 0; i < sortedData.length; i++) {
+          if (i === 0) {
+            volumeColors.push(colors.upColor);
+          } else {
+            const currentPrice = priceValues[i];
+            const prevPrice = priceValues[i - 1];
+            volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
+          }
+        }
+
+        if (volumeValues.some(v => v > 0)) {
+          plotData.push({
+            x: timeValues,
+            y: volumeValues,
+            type: 'histogram',
+            histfunc: 'sum',
+            name: 'Volume',
+            marker: {
+              color: volumeColors,
+              opacity: 0.9,
+              line: {
+                width: 0.5,
+                color: 'rgba(255,255,255,0.1)'
+              }
+            },
+            xbins: {
+              size: 60000
+            },
+            yaxis: 'y3',
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'Volume: %{y:,.0f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+        }
+
+        if (showIndicators.sma20 && priceValues.length >= 20) {
+          const sma20Values = calculateSMA(priceValues, 20);
+          if (sma20Values && sma20Values.length > 0) {
+            plotData.push({
+              x: timeValues.slice(19),
+              y: sma20Values,
+              type: 'scatter',
+              mode: 'lines',
+              name: 'SMA 20',
+              line: {
+                color: colors.indicator?.sma20 || '#f59e0b',
+                width: 1.5,
+                dash: 'dot'
+              },
+              connectgaps: false,
+              hovertemplate: '<b>%{fullData.name}</b><br>' +
+                            'Time: %{x|%H:%M:%S}<br>' +
+                            'SMA20: ₹%{y:.2f}<br>' +
+                            '<extra></extra>',
+              showlegend: true
+            });
+          }
+        }
+
+        if (showIndicators.ema9 && priceValues.length >= 9) {
+          const ema9Values = calculateEMA(priceValues, 9);
+          if (ema9Values && ema9Values.length > 0) {
+            plotData.push({
+              x: timeValues,
+              y: ema9Values,
+              type: 'scatter',
+              mode: 'lines',
+              name: 'EMA 9',
+              line: {
+                color: colors.indicator?.ema9 || '#8b5cf6',
+                width: 1.5,
+                dash: 'dash'
+              },
+              connectgaps: false,
+              hovertemplate: '<b>%{fullData.name}</b><br>' +
+                            'Time: %{x|%H:%M:%S}<br>' +
+                            'EMA9: ₹%{y:.2f}<br>' +
+                            '<extra></extra>',
+              showlegend: true
+            });
+          }
+        }
+
+        if (showIndicators.bb && priceValues.length >= 20) {
+          const bbData = calculateBollingerBands(priceValues, 20, 2);
+          if (bbData && bbData.upper && bbData.middle && bbData.lower) {
+            plotData.push({
+              x: timeValues.slice(19),
+              y: bbData.upper,
+              type: 'scatter',
+              mode: 'lines',
+              name: 'BB Upper',
+              line: {
+                color: colors.indicator?.bb || '#64748b',
+                width: 1,
+                dash: 'dashdot'
+              },
+              connectgaps: false,
+              hovertemplate: '<b>%{fullData.name}</b><br>' +
+                            'Time: %{x|%H:%M:%S}<br>' +
+                            'Upper: ₹%{y:.2f}<br>' +
+                            '<extra></extra>',
+              showlegend: true
+            });
+
+            plotData.push({
+              x: timeValues.slice(19),
+              y: bbData.middle,
+              type: 'scatter',
+              mode: 'lines',
+              name: 'BB Middle',
+              line: {
+                color: colors.indicator?.bb || '#64748b',
+                width: 1
+              },
+              connectgaps: false,
+              hovertemplate: '<b>%{fullData.name}</b><br>' +
+                            'Time: %{x|%H:%M:%S}<br>' +
+                            'Middle: ₹%{y:.2f}<br>' +
+                            '<extra></extra>',
+              showlegend: true
+            });
+
+            plotData.push({
+              x: timeValues.slice(19),
+              y: bbData.lower,
+              type: 'scatter',
+              mode: 'lines',
+              name: 'BB Lower',
+              line: {
+                color: colors.indicator?.bb || '#64748b',
+                width: 1,
+                dash: 'dashdot'
+              },
+              fill: 'tonexty',
+              fillcolor: 'rgba(100, 116, 139, 0.1)',
+              connectgaps: false,
+              hovertemplate: '<b>%{fullData.name}</b><br>' +
+                            'Time: %{x|%H:%M:%S}<br>' +
+                            'Lower: ₹%{y:.2f}<br>' +
+                            '<extra></extra>',
+              showlegend: true
+            });
+          }
+        }
+      }
+    } else {
+      const { x, open, high, low, close, volume, volumeStdDev, buyVolumes, sellVolumes } = prepareCandlestickData();
+      if (x.length === 0) return plotData;
+
+      const hoverText = x.map((date, i) => 
+        `${date.toLocaleDateString()} ${date.toLocaleTimeString()}<br>` +
+        `Open: ${open[i]?.toFixed(2) || 'N/A'}<br>` +
+        `High: ${high[i]?.toFixed(2) || 'N/A'}<br>` +
+        `Low: ${low[i]?.toFixed(2) || 'N/A'}<br>` +
+        `Close: ${close[i]?.toFixed(2) || 'N/A'}<br>` +
+        `Volume: ${(volume[i] || 0).toLocaleString()}`
+      );
+
+      plotData.push({
+        x: x,
+        open: open,
+        high: high,
+        low: low,
+        close: close,
+        type: 'candlestick',
+        name: 'OHLC',
+        text: hoverText,
+        hoverinfo: 'text',
+        increasing: {
+          line: { color: colors.upColor || '#10b981', width: 1 },
+          fillcolor: colors.upColor || '#10b981'
+        },
+        decreasing: {
+          line: { color: colors.downColor || '#ef4444', width: 1 },
+          fillcolor: colors.downColor || '#ef4444'
+        },
+        showlegend: true
+      });
+
+      if (showIndicators.sma20 && close.length >= 20) {
+        const sma20Values = calculateSMA(close, 20);
+        if (sma20Values && sma20Values.length > 0) {
+          plotData.push({
+            x: x.slice(19),
+            y: sma20Values,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'SMA 20',
+            line: {
+              color: colors.indicator?.sma20 || '#f59e0b',
+              width: 2,
+              dash: 'dot'
+            },
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'SMA20: ₹%{y:.2f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+        }
+      }
+
+      if (showIndicators.ema9 && close.length >= 9) {
+        const ema9Values = calculateEMA(close, 9);
+        if (ema9Values && ema9Values.length > 0) {
+          plotData.push({
+            x: x,
+            y: ema9Values,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'EMA 9',
+            line: {
+              color: colors.indicator?.ema9 || '#8b5cf6',
+              width: 2,
+              dash: 'dash'
+            },
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'EMA9: ₹%{y:.2f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+        }
+      }
+
+      if (showIndicators.bb && close.length >= 20) {
+        const bbData = calculateBollingerBands(close, 20, 2);
+        if (bbData && bbData.upper && bbData.middle && bbData.lower) {
+          plotData.push({
+            x: x.slice(19),
+            y: bbData.upper,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'BB Upper',
+            line: {
+              color: colors.indicator?.bb || '#64748b',
+              width: 1,
+              dash: 'dashdot'
+            },
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'Upper: ₹%{y:.2f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+
+          plotData.push({
+            x: x.slice(19),
+            y: bbData.middle,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'BB Middle',
+            line: {
+              color: colors.indicator?.bb || '#64748b',
+              width: 1
+            },
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'Middle: ₹%{y:.2f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+
+          plotData.push({
+            x: x.slice(19),
+            y: bbData.lower,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'BB Lower',
+            line: {
+              color: colors.indicator?.bb || '#64748b',
+              width: 1,
+              dash: 'dashdot'
+            },
+            fill: 'tonexty',
+            fillcolor: 'rgba(100, 116, 139, 0.1)',
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'Lower: ₹%{y:.2f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+        }
+      }
+
+      if (showIndicators.vwap && close.length > 0 && volume && volume.length > 0) {
+        const vwapValues = calculateVWAP(close, high, low, volume);
+        if (vwapValues && vwapValues.length > 0) {
+          plotData.push({
+            x: x,
+            y: vwapValues,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'VWAP',
+            line: {
+              color: colors.indicator?.vwap || '#06b6d4',
+              width: 2,
+              dash: 'solid'
+            },
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'VWAP: ₹%{y:.2f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+        }
+      }
+    }
+
+    if (showIndicators.rsi) {
+      let priceData: number[] = [];
+      let timeData: Date[] = [];
+
+      if (chartType === 'line') {
+        const validData = historicalData?.filter(point => 
+          point.ltp !== null && 
+          point.ltp !== undefined && 
+          point.ltp > 0 && 
+          !isNaN(point.ltp)
+        ) || [];
+        priceData = validData.map(point => Number(point.ltp));
+        timeData = validData.slice(14).map(point => new Date(point.timestamp * 1000));
+      } else {
+        const { close: candleClose, x: candleX } = prepareCandlestickData();
+        if (Array.isArray(candleClose)) {
+          priceData = candleClose.filter(price => 
+            price !== null && price !== undefined && !isNaN(price)
+          );
+          timeData = Array.isArray(candleX) ? candleX.slice(14) : [];
+        }
+      }
+
+      if (priceData.length >= 15) {
+        const rsiValues = calculateRSI(priceData, 14);
+        if (rsiValues && rsiValues.length > 0 && timeData.length === rsiValues.length) {
+          plotData.push({
+            x: timeData,
+            y: rsiValues,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'RSI',
+            line: {
+              color: colors.indicator?.rsi || '#ec4899',
+              width: 2
+            },
+            yaxis: 'y2',
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'RSI: %{y:.2f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+
+          plotData.push({
+            x: timeData,
+            y: Array(timeData.length).fill(70),
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Overbought (70)',
+            line: {
+              color: '#ef4444',
+              width: 1,
+              dash: 'dash'
+            },
+            yaxis: 'y2',
+            showlegend: false,
+            hoverinfo: 'skip'
+          });
+
+          plotData.push({
+            x: timeData,
+            y: Array(timeData.length).fill(30),
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Oversold (30)',
+            line: {
+              color: '#10b981',
+              width: 1,
+              dash: 'dash'
+            },
+            yaxis: 'y2',
+            showlegend: false,
+            hoverinfo: 'skip'
+          });
+
+          plotData.push({
+            x: timeData,
+            y: Array(timeData.length).fill(50),
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Midline (50)',
+            line: {
+              color: '#64748b',
+              width: 1,
+              dash: 'dot'
+            },
+            yaxis: 'y2',
+            showlegend: false,
+            hoverinfo: 'skip'
+          });
+        }
+      }
+    }
+
+    if (showIndicators.macd) {
+      let priceData: number[] = [];
+      let timeDataMACD: Date[] = [];
+      let timeDataSignal: Date[] = [];
+
+      if (chartType === 'line') {
+        const validData = historicalData?.filter(point => 
+          point.ltp !== null && 
+          point.ltp !== undefined && 
+          point.ltp > 0 && 
+          !isNaN(point.ltp)
+        ) || [];
+        priceData = validData.map(point => Number(point.ltp));
+        timeDataMACD = validData.slice(25).map(point => new Date(point.timestamp * 1000));
+        timeDataSignal = validData.slice(33).map(point => new Date(point.timestamp * 1000));
+      } else {
+        const { close: candleClose, x: candleX } = prepareCandlestickData();
+        if (Array.isArray(candleClose)) {
+          priceData = candleClose.filter(price => 
+            price !== null && price !== undefined && !isNaN(price)
+          );
+          timeDataMACD = Array.isArray(candleX) ? candleX.slice(25) : [];
+          timeDataSignal = Array.isArray(candleX) ? candleX.slice(33) : [];
+        }
+      }
+
+      if (priceData.length >= 35) {
+        const macdData = calculateMACD(priceData, 12, 26, 9);
+        if (macdData && macdData.macdLine && macdData.signalLine && macdData.histogram && 
+            timeDataMACD.length === macdData.macdLine.length && 
+            timeDataSignal.length === macdData.signalLine.length) {
+          plotData.push({
+            x: timeDataMACD,
+            y: macdData.macdLine,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'MACD',
+            line: {
+              color: colors.indicator?.macd || '#3b82f6',
+              width: 2
+            },
+            yaxis: showIndicators.rsi ? 'y4' : 'y2',
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'MACD: %{y:.4f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+
+          plotData.push({
+            x: timeDataSignal,
+            y: macdData.signalLine,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Signal',
+            line: {
+              color: '#f59e0b',
+              width: 1,
+              dash: 'dash'
+            },
+            yaxis: showIndicators.rsi ? 'y4' : 'y2',
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'Signal: %{y:.4f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+
+          plotData.push({
+            x: timeDataSignal,
+            y: macdData.histogram,
+            type: 'bar',
+            name: 'MACD Histogram',
+            marker: {
+              color: macdData.histogram.map(val => val >= 0 ? '#10b981' : '#ef4444'),
+              opacity: 0.7
+            },
+            yaxis: showIndicators.rsi ? 'y4' : 'y2',
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Time: %{x|%H:%M:%S}<br>' +
+                          'Histogram: %{y:.4f}<br>' +
+                          '<extra></extra>',
+            showlegend: true
+          });
+        }
+      }
+    }
+
+    return plotData;
+  };
+
+  const createSpreadData = () => {
+    const colors = getColorTheme();
+    const { x, spread } = prepareLineChartData();
+
+    return [{
+      x,
+      y: spread,
+      type: 'scatter',
+      mode: 'lines',
+      fill: 'tozeroy',
+      line: { color: colors.indicator.spread, width: 1.5 },
+      name: 'Bid-Ask Spread',
+      hoverinfo: 'y+name',
+    }];
+  };
+
+  const createBidAskData = () => {
+    const colors = getColorTheme();
+
+    if (secondaryView === 'std') {
+      const { x, bidStdDev, askStdDev } = calculateBidAskStandardDeviation();
+      return [
+        {
+          x,
+          y: bidStdDev,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.bid, width: 2 },
+          name: 'Bid Std Dev',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Std Dev: %{y:.4f}<br>' +
+                        '<extra></extra>',
+        },
+        {
+          x,
+          y: askStdDev,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.ask, width: 2 },
+          name: 'Ask Std Dev',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Std Dev: %{y:.4f}<br>' +
+                        '<extra></extra>',
+        }
+      ];
+    } else {
+      const { x, bid, ask } = prepareLineChartData();
+      return [
+        {
+          x,
+          y: bid,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.bid, width: 2 },
+          name: 'Bid Price',
+          hoverinfo: 'y+name',
+        },
+        {
+          x,
+          y: ask,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.ask, width: 2 },
+          name: 'Ask Price',
+          hoverinfo: 'y+name',
+        }
+      ];
+    }
+  };
+
+  const createBuySellLineData = () => {
+    const colors = getColorTheme();
+
+    if (secondaryView === 'std') {
+      const { x, buyStdDev, sellStdDev } = calculateBuySellStandardDeviation();
+      return [
+        {
+          x,
+          y: buyStdDev,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.buyPrice, width: 2 },
+          name: 'Buy Price Std Dev',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Std Dev: %{y:.4f}<br>' +
+                        '<extra></extra>',
+        },
+        {
+          x,
+          y: sellStdDev,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.sellPrice, width: 2 },
+          name: 'Sell Price Std Dev',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Std Dev: %{y:.4f}<br>' +
+                        '<extra></extra>',
+        }
+      ];
+    } else {
+      let x: Date[] = [];
+      let buyPrices: number[] = [];
+      let sellPrices: number[] = [];
+
+      if (chartType === 'line') {
+        const data = prepareLineChartData();
+        x = data.x;
+        buyPrices = data.buyPrices;
+        sellPrices = data.sellPrices;
+      } else {
+        const data = prepareCandlestickData();
+        x = data.x;
+        buyPrices = data.buyPrices;
+        sellPrices = data.sellPrices;
+      }
+
+      return [
+        {
+          x,
+          y: buyPrices,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.buyPrice, width: 2 },
+          name: 'Buy Price',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Price: ₹%{y:.2f}<br>' +
+                        '<extra></extra>',
+        },
+        {
+          x,
+          y: sellPrices,
+          type: 'scatter',
+          mode: 'lines',
+          line: { color: colors.indicator.sellPrice, width: 2 },
+          name: 'Sell Price',
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Price: ₹%{y:.2f}<br>' +
+                        '<extra></extra>',
+        }
+      ];
+    }
+  };
+
+  const createBuySellSpreadData = () => {
+    const colors = getColorTheme();
+    let x: Date[] = [];
+    let buySellSpreads: number[] = [];
+
+    if (chartType === 'line') {
+      const data = prepareLineChartData();
+      x = data.x;
+      buySellSpreads = data.buySellSpreads;
+    } else {
+      const data = prepareCandlestickData();
+      x = data.x;
+      buySellSpreads = data.buySellSpreads;
+    }
+
+    return [{
+      x,
+      y: buySellSpreads,
+      type: 'scatter',
+      mode: 'lines',
+      fill: 'tozeroy',
+      line: { color: colors.indicator.buySellSpread, width: 1.5 },
+      name: 'Buy-Sell Spread',
+      hovertemplate: '<b>%{fullData.name}</b><br>' +
+                    'Time: %{x|%H:%M:%S}<br>' +
+                    'Spread: ₹%{y:.4f}<br>' +
+                    '<extra></extra>',
+    }];
+  };
+
+  const createVolumeData = () => {
+    const colors = getColorTheme();
+    let x: Date[] = [];
+    let volumes: number[] = [];
+    let volumeColors: string[] = [];
+
+    if (chartType === 'line') {
+      const data = prepareLineChartData();
+      x = data.x;
+      volumes = data.allData.map(point => point.volume || 0);
+
+      for (let i = 0; i < data.allData.length; i++) {
+        if (i === 0) {
+          volumeColors.push(colors.upColor);
+        } else {
+          const currentPrice = data.allData[i].ltp;
+          const prevPrice = data.allData[i - 1].ltp;
+          volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
+        }
+      }
+    } else {
+      const data = prepareCandlestickData();
+      x = data.x;
+      volumes = data.volume;
+
+      for (let i = 0; i < data.close.length; i++) {
+        volumeColors.push(data.close[i] >= data.open[i] ? colors.upColor : colors.downColor);
+      }
+    }
+
+    return [{
+      x,
+      y: volumes,
+      type: 'bar',
+      name: 'Volume',
+      marker: { 
+        color: volumeColors,
+        opacity: 0.8 
+      },
+      hovertemplate: '<b>%{fullData.name}</b><br>' +
+                    'Time: %{x|%H:%M:%S}<br>' +
+                    'Volume: %{y:,.0f}<br>' +
+                    '<extra></extra>',
+    }];
+  };
+
+  const createStdData = () => {
+    const colors = getColorTheme();
+
+    if (mainMode === 'bidAsk') {
+      const { x, bidStdDev, askStdDev } = calculateBidAskStandardDeviation();
+      return [
+        {
+          x,
+          y: bidStdDev,
+          type: 'bar',
+          name: 'Bid Volume Std Dev',
+          marker: { 
+            color: colors.indicator.bid,
+            opacity: 0.8 
+          },
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Bid Std Dev: %{y:.4f}<br>' +
+                        '<extra></extra>',
+        },
+        {
+          x,
+          y: askStdDev,
+          type: 'bar',
+          name: 'Ask Volume Std Dev',
+          marker: { 
+            color: colors.indicator.ask,
+            opacity: 0.8 
+          },
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Ask Std Dev: %{y:.4f}<br>' +
+                        '<extra></extra>',
+        }
+      ];
+    } else if (mainMode === 'buySell') {
+      const { x, buyStdDev, sellStdDev } = calculateBuySellStandardDeviation();
+      return [
+        {
+          x,
+          y: buyStdDev,
+          type: 'bar',
+          name: 'Buy Volume Std Dev',
+          marker: { 
+            color: colors.indicator.buyPrice,
+            opacity: 0.8 
+          },
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Buy Std Dev: %{y:.4f}<br>' +
+                        '<extra></extra>',
+        },
+        {
+          x,
+          y: sellStdDev,
+          type: 'bar',
+          name: 'Sell Volume Std Dev',
+          marker: { 
+            color: colors.indicator.sellPrice,
+            opacity: 0.8 
+          },
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Sell Std Dev: %{y:.4f}<br>' +
+                        '<extra></extra>',
+        }
+      ];
+    } else {
+      let x: Date[] = [];
+      let volumeStdDev: number[] = [];
+
+      if (chartType === 'line') {
+        const data = prepareLineChartData();
+        x = data.x;
+        volumeStdDev = data.allData.map((point, index) => 
+          calculateVolumeStandardDeviation(point, index)
+        );
+      } else {
+        const data = prepareCandlestickData();
+        x = data.x;
+        volumeStdDev = data.volumeStdDev;
+      }
+
+      return [{
+        x,
+        y: volumeStdDev,
+        type: 'bar',
+        name: 'Volume Std Dev',
+        marker: { 
+          color: colors.indicator.std,
+          opacity: 0.8 
+        },
+        hovertemplate: '<b>%{fullData.name}</b><br>' +
+                      'Time: %{x|%H:%M:%S}<br>' +
+                      'Std Dev: %{y:.4f}<br>' +
+                      '<extra></extra>',
+      }];
+    }
+  };
+
+  const createLayout = () => {
+    const colors = getColorTheme();
+    const timeRange = preservedAxisRanges.xaxis ? 
+      [preservedAxisRanges.xaxis[0], preservedAxisRanges.xaxis[1]] : 
+      getTimeRange();
+    const yRange = preservedAxisRanges.yaxis ? 
+      [preservedAxisRanges.yaxis[0], preservedAxisRanges.yaxis[1]] : 
+      calculateYAxisRange();
+
+    let mainChartDomain = [0, 1];
+    let volumeDomain = [0, 0.2];
+
+    if (chartType === 'line') {
+      if (showIndicators.rsi && showIndicators.macd) {
+        mainChartDomain = [0.6, 1];           // Changed from [0.5, 1]
+        volumeDomain = [0.25, 0.55];          // Changed from [0.3, 0.45] - increased height
+      } else if (showIndicators.rsi || showIndicators.macd) {
+        mainChartDomain = [0.45, 1];          // Changed from [0.35, 1]
+        volumeDomain = [0.1, 0.4];            // Changed from [0.15, 0.3] - increased height
+      } else {
+        mainChartDomain = [0.35, 1];          // Changed from [0.2, 1]
+        volumeDomain = [0, 0.3];              // Changed from [0, 0.15] - doubled the height
+      }
+    } else {
+      if (showIndicators.rsi && showIndicators.macd) {
+        mainChartDomain = [0.5, 1];
+      } else if (showIndicators.rsi || showIndicators.macd) {
+        mainChartDomain = [0.3, 1];
+      }
+    }
+
+    const layout: any = {
+      autosize: true,
+      margin: { l: 50, r: 50, t: 40, b: 40 },
+      title: {
+        text: `${symbol} ${chartType === 'line' ? 'LTP' : 'OHLC'} Chart`,
+        font: { size: 16, color: colors.text },
+      },
+      xaxis: {
+        title: 'Time',
+        type: 'date',
+        range: timeRange,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+        rangeslider: { visible: false },
+        fixedrange: false,
+      },
+      yaxis: {
+        title: 'Price (₹)',
+        range: yRange,
+        autorange: yRange ? false : true,
+        fixedrange: false,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+        side: 'left',
+        domain: mainChartDomain,
+      },
+      hovermode: 'closest',
+      showlegend: true,
+      legend: {
+        orientation: 'h',
+        y: 1.1,
+        font: { color: colors.text },
+        bgcolor: 'rgba(0,0,0,0)',
+      },
+      plot_bgcolor: colors.bg,
+      paper_bgcolor: colors.paper,
+      font: { family: 'Arial, sans-serif', color: colors.text },
+    };
+
+    if (chartType === 'line') {
+      layout.yaxis3 = {
+        title: 'Volume',
+        height: 180,
+        titlefont: { color: colors.text },
+        tickfont: { color: colors.text },
+        domain: volumeDomain,
+        showgrid: false,
+        side: 'right'
+      };
+    }
+
+    if (showIndicators.rsi) {
+      layout.yaxis2 = {
+        title: 'RSI',
+        titlefont: { color: colors.text },
+        tickfont: { color: colors.text },
+        domain: showIndicators.macd ? [0.25, 0.45] : [0, 0.25],
+        range: [0, 100],
+        showgrid: false,
+      };
+    }
+
+    if (showIndicators.macd) {
+      layout.yaxis4 = {
+        title: 'MACD',
+        titlefont: { color: colors.text },
+        tickfont: { color: colors.text },
+        domain: [0, 0.2],
+        showgrid: false,
+      };
+    }
+
+    return layout;
+  };
+
+  const createSpreadLayout = () => {
+    const colors = getColorTheme();
+    const timeRange = getTimeRange();
+    const spreadRange = calculateSpreadRange();
+
+    return {
+      autosize: true,
+      height: 150,
+      margin: { l: 50, r: 50, t: 30, b: 30 },
+      title: {
+        text: 'Bid-Ask Spread',
+        font: { size: 14, color: colors.text },
+      },
+      xaxis: {
+        title: '',
+        type: 'date',
+        range: timeRange,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+        rangeslider: { visible: false },
+        fixedrange: false,
+      },
+      yaxis: {
+        title: 'Spread (₹)',
+        range: spreadRange,
+        autorange: false,
+        fixedrange: false,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+      },
+      hovermode: 'closest',
+      showlegend: false,
+      plot_bgcolor: colors.bg,
+      paper_bgcolor: colors.paper,
+      font: { family: 'Arial, sans-serif', color: colors.text },
+    };
+  };
+
+  const createBidAskLayout = () => {
+    const colors = getColorTheme();
+    const timeRange = getTimeRange();
+    let yRange, title;
+
+    if (secondaryView === 'std') {
+      const { bidStdDev, askStdDev } = calculateBidAskStandardDeviation();
+      const allStdDev = [...bidStdDev, ...askStdDev].filter(v => v !== null && v !== undefined && !isNaN(v));
+      const maxStdDev = allStdDev.length > 0 ? Math.max(...allStdDev) : 1;
+      yRange = [0, maxStdDev * 1.1];
+      title = 'Bid-Ask Standard Deviation';
+    } else {
+      yRange = calculateBidAskRange();
+      title = 'Bid-Ask Prices';
+    }
+
+    return {
+      autosize: true,
+      height: 200,
+      margin: { l: 50, r: 50, t: 30, b: 30 },
+      title: {
+        text: title,
+        font: { size: 14, color: colors.text },
+      },
+      xaxis: {
+        title: '',
+        type: 'date',
+        range: timeRange,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+        rangeslider: { visible: false },
+        fixedrange: false,
+      },
+      yaxis: {
+        title: secondaryView === 'std' ? 'Std Deviation' : 'Price (₹)',
+        range: yRange,
+        autorange: false,
+        fixedrange: false,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+      },
+      hovermode: 'closest',
+      showlegend: true,
+      legend: {
+        orientation: 'h',
+        y: 1.1,
+        font: { color: colors.text },
+        bgcolor: 'rgba(0,0,0,0)',
+      },
+      plot_bgcolor: colors.bg,
+      paper_bgcolor: colors.paper,
+      font: { family: 'Arial, sans-serif', color: colors.text },
+    };
+  };
+
+  const createBuySellLineLayout = () => {
+    const colors = getColorTheme();
+    const timeRange = getTimeRange();
+    let yRange, title;
+
+    if (secondaryView === 'std') {
+      const { buyStdDev, sellStdDev } = calculateBuySellStandardDeviation();
+      const allStdDev = [...buyStdDev, ...sellStdDev].filter(v => v !== null && v !== undefined && !isNaN(v));
+      const maxStdDev = allStdDev.length > 0 ? Math.max(...allStdDev) : 1;
+      yRange = [0, maxStdDev * 1.1];
+      title = 'Buy-Sell Standard Deviation';
+    } else {
+      yRange = calculateBuySellRange();
+      title = 'Buy-Sell Prices';
+    }
+
+    return {
+      autosize: true,
+      height: 200,
+      margin: { l: 50, r: 50, t: 30, b: 30 },
+      title: {
+        text: title,
+        font: { size: 14, color: colors.text },
+      },
+      xaxis: {
+        title: '',
+        type: 'date',
+        range: timeRange,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+        rangeslider: { visible: false },
+        fixedrange: false,
+      },
+      yaxis: {
+        title: secondaryView === 'std' ? 'Std Deviation' : 'Price (₹)',
+        range: yRange,
+        autorange: false,
+        fixedrange: false,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+      },
+      hovermode: 'closest',
+      showlegend: true,
+      legend: {
+        orientation: 'h',
+        y: 1.1,
+        font: { color: colors.text },
+        bgcolor: 'rgba(0,0,0,0)',
+      },
+      plot_bgcolor: colors.bg,
+      paper_bgcolor: colors.paper,
+      font: { family: 'Arial, sans-serif', color: colors.text },
+    };
+  };
+
+  const createBuySellSpreadLayout = () => {
+    const colors = getColorTheme();
+    const timeRange = getTimeRange();
+    const buySellSpreadRange = calculateBuySellSpreadRange();
+
+    return {
+      autosize: true,
+      height: 150,
+      margin: { l: 50, r: 50, t: 30, b: 30 },
+      title: {
+        text: 'Buy-Sell Spread',
+        font: { size: 14, color: colors.text },
+      },
+      xaxis: {
+        title: '',
+        type: 'date',
+        range: timeRange,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+        rangeslider: { visible: false },
+        fixedrange: false,
+      },
+      yaxis: {
+        title: 'Spread (₹)',
+        range: buySellSpreadRange,
+        autorange: false,
+        fixedrange: false,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+      },
+      hovermode: 'closest',
+      showlegend: false,
+      plot_bgcolor: colors.bg,
+      paper_bgcolor: colors.paper,
+      font: { family: 'Arial, sans-serif', color: colors.text },
+    };
+  };
+
+  const createVolumeLayout = () => {
+    const colors = getColorTheme();
+    const timeRange = getTimeRange();
+    const volumeRange = calculateVolumeRange();
+
+    return {
+      autosize: true,
+      height: 180,
+      margin: { l: 50, r: 50, t: 30, b: 30 },
+      title: {
+        text: 'Volume',
+        font: { size: 14, color: colors.text },
+      },
+      xaxis: {
+        title: '',
+        type: 'date',
+        range: timeRange,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+        rangeslider: { visible: false },
+        fixedrange: false,
+      },
+      yaxis: {
+        title: 'Volume',
+        range: volumeRange,
+        autorange: false,
+        fixedrange: false,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+      },
+      hovermode: 'closest',
+      showlegend: true,
+      legend: {
+        orientation: 'h',
+        y: 1.1,
+        font: { color: colors.text },
+        bgcolor: 'rgba(0,0,0,0)',
+      },
+      plot_bgcolor: colors.bg,
+      paper_bgcolor: colors.paper,
+      font: { family: 'Arial, sans-serif', color: colors.text },
+    };
+  };
+
+  const createStdLayout = () => {
+    const colors = getColorTheme();
+    const timeRange = getTimeRange();
+    let yRange, title;
+
+    if (mainMode === 'bidAsk') {
+      const { bidStdDev, askStdDev } = calculateBidAskStandardDeviation();
+      const allStdDev = [...bidStdDev, ...askStdDev].filter(v => v !== null && v !== undefined && !isNaN(v));
+      const maxStdDev = allStdDev.length > 0 ? Math.max(...allStdDev) : 1;
+      yRange = [0, maxStdDev * 1.1];
+      title = 'Bid-Ask Volume Standard Deviation';
+    } else if (mainMode === 'buySell') {
+      const { buyStdDev, sellStdDev } = calculateBuySellStandardDeviation();
+      const allStdDev = [...buyStdDev, ...sellStdDev].filter(v => v !== null && v !== undefined && !isNaN(v));
+      const maxStdDev = allStdDev.length > 0 ? Math.max(...allStdDev) : 1;
+      yRange = [0, maxStdDev * 1.1];
+      title = 'Buy-Sell Volume Standard Deviation';
+    } else {
+      let volumeStdDev: number[] = [];
+      if (chartType === 'line') {
+        volumeStdDev = historicalData.map((point, index) => 
+          calculateVolumeStandardDeviation(point, index)
+        );
+      } else {
+        const { volumeStdDev: stdDev } = prepareCandlestickData();
+        volumeStdDev = stdDev;
+      }
+      const validStdDev = volumeStdDev.filter(v => v !== null && v !== undefined && !isNaN(v));
+      const maxStdDev = validStdDev.length > 0 ? Math.max(...validStdDev) : 1;
+      yRange = [0, maxStdDev * 1.1];
+      title = 'Volume Standard Deviation';
+    }
+
+    return {
+      autosize: true,
+      height: 180,
+      margin: { l: 50, r: 50, t: 30, b: 30 },
+      title: {
+        text: title,
+        font: { size: 14, color: colors.text },
+      },
+      xaxis: {
+        title: '',
+        type: 'date',
+        range: timeRange,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+        rangeslider: { visible: false },
+        fixedrange: false,
+      },
+      yaxis: {
+        title: 'Std Deviation',
+        range: yRange,
+        autorange: false,
+        fixedrange: false,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+      },
+      hovermode: 'closest',
+      showlegend: true,
+      legend: {
+        orientation: 'h',
+        y: 1.1,
+        font: { color: colors.text },
+        bgcolor: 'rgba(0,0,0,0)',
+      },
+      plot_bgcolor: colors.bg,
+      paper_bgcolor: colors.paper,
+      font: { family: 'Arial, sans-serif', color: colors.text },
+    };
+  };
+
+  const timeframeButtons = [
+    { label: '1m', value: '1m' },
+    { label: '5m', value: '5m' },
+    { label: '10m', value: '10m' },
+    { label: '30m', value: '30m' },
+    { label: '1H', value: '1H' },
+    { label: '6H', value: '6H' },
+    { label: '12H', value: '12H' },
+    { label: '1D', value: '1D' },
+  ];
+
+  return (
+    <div className="w-full h-full flex flex-col">
+      {/* Controls */}
+      <div className="flex justify-between mb-2 space-x-2">
+        {/* Timeframe Buttons */}
+        <div className="flex space-x-1 bg-zinc-900 p-1 rounded-md border border-zinc-700">
+          {timeframeButtons.map((button) => (
+            <button
+              key={button.value}
+              className={`px-2 py-1 text-xs rounded ${
+                selectedTimeframe === button.value
+                  ? `bg-blue-600 text-white`
+                  : `bg-zinc-800 text-zinc-300 hover:bg-zinc-700`
+              }`}
+              onClick={() => handleTimeframeChange(button.value)}
+            >
+              {button.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex space-x-4">
+          {/* Chart Type Toggle */}
+          <div className="flex space-x-1 bg-zinc-800 p-1 rounded-md border border-zinc-600">
+            <button
+              className={`p-1 rounded ${
+                chartType === 'line' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+              }`}
+              onClick={() => setChartType('line')}
+              title="Line Chart (LTP)"
+            >
+              <LineChart className="h-5 w-5" />
+            </button>
+            <button
+              className={`p-1 rounded ${
+                chartType === 'candle' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+              }`}
+              onClick={() => setChartType('candle')}
+              title="Candlestick Chart (OHLC)"
+            >
+              <CandlestickChart className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Indicator Toggles */}
+          <div className="flex space-x-1 bg-slate-800 p-1 rounded-md border border-slate-600">
+            <button
+              className={`p-1 rounded ${
+                showIndicators.sma20 ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+              onClick={() => toggleIndicator('sma20')}
+              title="SMA 20"
+            >
+              <span className="text-xs font-bold">SMA</span>
+            </button>
+            <button
+              className={`p-1 rounded ${
+                showIndicators.ema9 ? 'bg-purple-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+              onClick={() => toggleIndicator('ema9')}
+              title="EMA 9"
+            >
+              <span className="text-xs font-bold">EMA</span>
+            </button>
+            <button
+              className={`p-1 rounded ${
+                showIndicators.rsi ? 'bg-pink-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+              onClick={() => toggleIndicator('rsi')}
+              title="RSI"
+            >
+              <span className="text-xs font-bold">RSI</span>
+            </button>
+            <button
+              className={`p-1 rounded ${
+                showIndicators.macd ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+              onClick={() => toggleIndicator('macd')}
+              title="MACD"
+            >
+              <span className="text-xs font-bold">MACD</span>
+            </button>
+            <button
+              className={`p-1 rounded ${
+                showIndicators.bb ? 'bg-slate-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+              onClick={() => toggleIndicator('bb')}
+              title="Bollinger Bands"
+            >
+              <span className="text-xs font-bold">BB</span>
+            </button>
+            {chartType === 'candle' && (
+              <button
+                className={`p-1 rounded ${
+                  showIndicators.vwap ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+                onClick={() => toggleIndicator('vwap')}
+                title="VWAP"
+              >
+                <span className="text-xs font-bold">VWAP</span>
+              </button>
+            )}
+          </div>
+
+          {/* Advanced Analysis Modes */}
+          <div className="flex space-x-1 bg-emerald-900 p-1 rounded-md border border-emerald-700">
+            <button
+              className={`p-1 rounded ${
+                mainMode === 'bidAsk' ? 'bg-green-600 text-white' : 'bg-emerald-800 text-emerald-300 hover:bg-emerald-700'
+              }`}
+              onClick={() => toggleMainMode('bidAsk')}
+              title="Bid/Ask Analysis"
+            >
+              <span className="text-xs font-bold">B/A</span>
+            </button>
+            <button
+              className={`p-1 rounded ${
+                mainMode === 'buySell' ? 'bg-emerald-600 text-white' : 'bg-emerald-800 text-emerald-300 hover:bg-emerald-700'
+              }`}
+              onClick={() => toggleMainMode('buySell')}
+              title="Buy/Sell Analysis"
+            >
+              <span className="text-xs font-bold">B/S</span>
+            </button>
+
+            {/* Secondary View Options */}
+            {mainMode !== 'none' && (
+              <>
+                <div className="w-px h-6 bg-emerald-600 mx-1"></div>
+                <button
+                  className={`p-1 rounded ${
+                    secondaryView === 'line' ? 'bg-blue-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
+                  }`}
+                  onClick={() => toggleSecondaryView('line')}
+                  title="Line View"
+                >
+                  <span className="text-xs font-bold">Line</span>
+                </button>
+                <button
+                  className={`p-1 rounded ${
+                    secondaryView === 'spread' ? 'bg-purple-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
+                  }`}
+                  onClick={() => toggleSecondaryView('spread')}
+                  title="Spread View"
+                >
+                  <span className="text-xs font-bold">Spread</span>
+                </button>
+                <button
+                  className={`p-1 rounded ${
+                    secondaryView === 'std' ? 'bg-orange-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
+                  }`}
+                  onClick={() => toggleSecondaryView('std')}
+                  title="Standard Deviation View"
+                >
+                  <span className="text-xs font-bold">STD</span>
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Volume Toggle */}
+          <div className="flex space-x-1 bg-amber-900 p-1 rounded-md border border-amber-700">
+            <button
+              className={`p-1 rounded ${
+                showIndicators.volume ? 'bg-amber-600 text-white' : 'bg-amber-800 text-amber-300 hover:bg-amber-700'
+              }`}
+              onClick={() => toggleIndicator('volume')}
+              title="Volume Chart"
+            >
+              VOL
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Chart */}
+      <div className="flex-1">
+        <Plot
+          ref={chartRef}
+          divId="plotly-chart"
+          data={createPlotData()}
+          layout={createLayout()}
+          config={{
+            responsive: true,
+            displayModeBar: false,
+            scrollZoom: true,
+            doubleClick: 'reset',
+          }}
+          useResizeHandler={true}
+          style={{ width: '100%', height: '100%' }}
+          onRelayout={handleRelayout}
+        />
+      </div>
+
+      {/* Secondary Charts */}
+      {mainMode === 'bidAsk' && secondaryView === 'line' && (
+        <div className="mt-2">
+          <Plot
+                        ref={bidAskChartRef}
+            divId="bid-ask-chart"
+            data={createBidAskData()}
+            layout={createBidAskLayout()}
+            config={{
+              responsive: true,
+              displayModeBar: false,
+              scrollZoom: true,
+              doubleClick: 'reset',
+            }}
+            useResizeHandler={true}
+            style={{ width: '100%', height: '200px' }}
+          />
+        </div>
+      )}
+
+      {mainMode === 'bidAsk' && secondaryView === 'spread' && (
+        <div className="mt-2">
+          <Plot
+            ref={spreadChartRef}
+            divId="spread-chart"
+            data={createSpreadData()}
+            layout={createSpreadLayout()}
+            config={{
+              responsive: true,
+              displayModeBar: false,
+              scrollZoom: true,
+              doubleClick: 'reset',
+            }}
+            useResizeHandler={true}
+            style={{ width: '100%', height: '150px' }}
+          />
+        </div>
+      )}
+
+      {mainMode === 'buySell' && secondaryView === 'line' && (
+        <div className="mt-2">
+          <Plot
+            ref={buySellLineChartRef}
+            divId="buy-sell-line-chart"
+            data={createBuySellLineData()}
+            layout={createBuySellLineLayout()}
+            config={{
+              responsive: true,
+              displayModeBar: false,
+              scrollZoom: true,
+              doubleClick: 'reset',
+            }}
+            useResizeHandler={true}
+            style={{ width: '100%', height: '200px' }}
+          />
+        </div>
+      )}
+
+      {mainMode === 'buySell' && secondaryView === 'spread' && (
+        <div className="mt-2">
+          <Plot
+            ref={buySellSpreadChartRef}
+            divId="buy-sell-spread-chart"
+            data={createBuySellSpreadData()}
+            layout={createBuySellSpreadLayout()}
+            config={{
+              responsive: true,
+              displayModeBar: false,
+              scrollZoom: true,
+              doubleClick: 'reset',
+            }}
+            useResizeHandler={true}
+            style={{ width: '100%', height: '150px' }}
+          />
+        </div>
+      )}
+
+      {mainMode !== 'none' && secondaryView === 'std' && (
+        <div className="mt-2">
+          <Plot
+            ref={buySellVolumeChartRef}
+            divId="buy-sell-volume-chart"
+            data={createStdData()}
+            layout={createStdLayout()}
+            config={{
+              responsive: true,
+              displayModeBar: false,
+              scrollZoom: true,
+              doubleClick: 'reset',
+            }}
+            useResizeHandler={true}
+            style={{ width: '100%', height: '180px' }}
+          />
+        </div>
+      )}
+
+      {showIndicators.volume && (
+        <div className="mt-2">
+          <Plot
+            ref={volumeChartRef}
+            divId="volume-chart"
+            data={createVolumeData()}
+            layout={createVolumeLayout()}
+            config={{
+              responsive: true,
+              displayModeBar: false,
+              scrollZoom: true,
+              doubleClick: 'reset',
+            }}
+            useResizeHandler={true}
+            style={{ width: '100%', height: '180px' }}
+          />
+        </div>
+      )}
+
+      {/* ✨ ENHANCED: Status Display with Ultra-Fast Updates */}
+      <div className="mt-2 flex items-center space-x-4 text-sm">
+        <div className={`flex items-center space-x-2 ${tradingHours.isActive ? 'text-green-400' : 'text-red-400'}`}>
+          <div className={`w-2 h-2 rounded-full ${tradingHours.isActive ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
+          <span>{tradingHours.isActive ? 'Market Open' : 'Market Closed'}</span>
+        </div>
+
+        {/* ✨ Real-time update frequency display */}
+        {/* <div className="flex items-center space-x-2">
+          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+          <span className="text-blue-400">
+            {updateFrequency > 0 ? `${updateFrequency} ups/sec` : 'Connecting...'}
+          </span>
+        </div> */}
+
+        {/* ✨ Chart update count */}
+        {/* <div className="text-zinc-400">
+          Chart: {chartUpdates.length} pts
+        </div> */}
+
+        {/* Trading Hours Display */}
+        {/* {tradingHours.start && tradingHours.end && (
+          <div className="text-zinc-400">
+            Trading: {new Date(tradingHours.start).toLocaleTimeString()} - {new Date(tradingHours.end).toLocaleTimeString()}
+          </div>
+        )} */}
+
+        {/* Current Timeframe */}
+        {/* <div className="text-zinc-400">
+          Timeframe: {selectedTimeframe}
+        </div> */}
+
+        {/* Chart Type */}
+        {/* <div className="text-zinc-400">
+          Type: {chartType === 'line' ? 'LTP Line' : 'OHLC Candles'}
+        </div> */}
+
+        {/* Data Points Count */}
+        {/* <div className="text-zinc-400">
+          Data: {chartType === 'line' ? historicalData.length : ohlcData.length} points
+        </div> */}
+
+        {/* Current Market Data */}
+        {/* {data && (
+          <>
+            <div className="text-zinc-400">
+              LTP: ₹{data.ltp?.toFixed(2) || 'N/A'}
+            </div>
+            {data.change !== undefined && (
+              <div className={`flex items-center space-x-1 ${data.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {data.change >= 0 ? (
+                  <TrendingUp className="h-4 w-4" />
+                ) : (
+                  <TrendingDown className="h-4 w-4" />
+                )}
+                <span>
+                  {data.change >= 0 ? '+' : ''}
+                  {data.change.toFixed(2)}
+                  {data.changePercent !== undefined && ` (${data.changePercent >= 0 ? '+' : ''}${data.changePercent.toFixed(2)}%)`}
+                </span>
+              </div>
+            )}
+          </>
+        )} */}
+
+        {/* Volume Information */}
+        {/* {data && data.volume && (
+          <div className="text-zinc-400">
+            Vol: {data.volume.toLocaleString()}
+          </div>
+        )} */}
+
+        {/* Technical Indicators Status */}
+        {/* {Object.values(showIndicators).some(indicator => indicator) && (
+          <div className="text-zinc-400">
+            Indicators: {
+              Object.entries(showIndicators)
+                .filter(([key, value]) => value)
+                .map(([key]) => key.toUpperCase())
+                .join(', ')
+            }
+          </div>
+        )} */}
+
+        {/* Advanced Analysis Mode Status */}
+        {/* {mainMode !== 'none' && (
+          <div className="text-emerald-400">
+            Mode: {mainMode === 'bidAsk' ? 'Bid/Ask' : 'Buy/Sell'} - {secondaryView.toUpperCase()}
+          </div>
+        )} */}
+
+        {/* Last Update Time */}
+        {/* <div className="text-zinc-500 text-xs">
+          Last Update: {new Date().toLocaleTimeString()}
+        </div> */}
+      </div>
+
+      {/* ✨ Performance Metrics Display */}
+      {/* <div className="mt-1 flex items-center justify-between text-xs text-zinc-500">
+        <div className="flex items-center space-x-4">
+          <span>Chart Performance:</span>
+          <span className={`${updateFrequency > 10 ? 'text-green-400' : updateFrequency > 5 ? 'text-yellow-400' : 'text-red-400'}`}>
+            {updateFrequency} FPS
+          </span>
+          {isUpdating && (
+            <span className="text-blue-400 animate-pulse">Updating...</span>
+          )}
+        </div>
+        
+        <div className="flex items-center space-x-4">
+          <span>Memory: {chartUpdates.length}/1000 updates</span>
+          <span>History: {historicalData.length}/10000 points</span>
+          {ohlcData.length > 0 && (
+            <span>OHLC: {ohlcData.length} candles</span>
+          )}
+        </div>
+      </div> */}
+
+      {/* ✨ Debug Information (only in development) */}
+      {/* {process.env.NODE_ENV === 'development' && (
+        <div className="mt-2 p-2 bg-zinc-800 rounded text-xs text-zinc-400">
+          <div className="grid grid-cols-4 gap-2">
+            <div>Symbol: {symbol}</div>
+            <div>Initialized: {initialized ? 'Yes' : 'No'}</div>
+            <div>Chart Updates: {chartUpdates.length}</div>
+            <div>Last Update: {lastUpdateRef.current}</div>
+            <div>Historical Points: {historicalData.length}</div>
+            <div>OHLC Candles: {ohlcData.length}</div>
+            <div>Trading Active: {tradingHours.isActive ? 'Yes' : 'No'}</div>
+            <div>Update Throttle: 100ms</div>
+          </div>
+        </div>
+      )} */}
+    </div>
+  );
+};
+
+export default PlotlyChart;
+
+
+================================================================================
+FILE: apps/frontend/app/components/lstmae/LSTMAEVisualization.tsx
+================================================================================
+
+// components/lstmae/LSTMAEVisualization.tsx
+'use client';
+
+import React, { useMemo } from 'react';
+import { LSTMAEImageCard } from './LSTMAEImageCard';
+import { LSTMAE_CONSTANTS } from '../../constants/lstmae.constants';
+import type { LSTMAEDashboardResponse, PlotUrls } from '../../types/lstmae.types';
+
+interface LSTMAEVisualizationProps {
+  dashboard?: LSTMAEDashboardResponse;
+  plotUrls?: PlotUrls;
+  onImageClick?: (visualizationType: string) => void;
+}
+
+export const LSTMAEVisualization: React.FC<LSTMAEVisualizationProps> = ({
+  dashboard,
+  plotUrls,
+  onImageClick,
+}) => {
+  const visualizations = useMemo(() => {
+    return LSTMAE_CONSTANTS.VISUALIZATIONS.map((viz) => {
+      let imagePath = '';
+
+      if (plotUrls) {
+        switch (viz.type) {
+          case 'dominant_patterns':
+            imagePath = plotUrls.dominantPatterns;
+            break;
+          case 'intraday_patterns':
+            imagePath = plotUrls.intraday;
+            break;
+          case 'cluster_transitions':
+            imagePath = plotUrls.clusterTransitions;
+            break;
+          case 'cluster_timeline':
+            imagePath = plotUrls.clusterTimeline;
+            break;
+          case 'anomalies':
+            imagePath = plotUrls.anomalies || '';
+            break;
+          case 'seasonality':
+            imagePath = plotUrls.seasonality || '';
+            break;
+          case 'transitions_alt':
+            imagePath = plotUrls.transitionsAlt || '';
+            break;
+        }
+      } else if (dashboard) {
+        switch (viz.type) {
+          case 'dominant_patterns':
+            imagePath = dashboard.plotPaths.dominantPatterns;
+            break;
+          case 'intraday_patterns':
+            imagePath = dashboard.plotPaths.intraday;
+            break;
+          case 'cluster_transitions':
+            imagePath = dashboard.plotPaths.clusterTransitions;
+            break;
+          case 'cluster_timeline':
+            imagePath = dashboard.plotPaths.clusterTimeline;
+            break;
+          case 'anomalies':
+            imagePath = dashboard.plotPaths.anomalies || '';
+            break;
+          case 'seasonality':
+            imagePath = dashboard.plotPaths.seasonality || '';
+            break;
+          case 'transitions_alt':
+            imagePath = dashboard.plotPaths.transitionsAlt || '';
+            break;
+        }
+      }
+
+      return {
+        visualization: viz,
+        imagePath,
+      };
+    });
+  }, [dashboard, plotUrls]);
+
+  return (
+    <div
+      className="grid gap-4"
+      style={{
+        gridTemplateColumns: `repeat(${LSTMAE_CONSTANTS.UI.GRID_LAYOUT.COLS}, 1fr)`,
+        gap: `${LSTMAE_CONSTANTS.UI.GRID_LAYOUT.GAP}px`,
+      }}
+    >
+      {visualizations.map(({ visualization, imagePath }, index) => (
+        imagePath && (
+          <LSTMAEImageCard
+            key={visualization.type}
+            visualization={visualization}
+            imagePath={imagePath}
+            onImageClick={onImageClick ? () => onImageClick(visualization.type) : undefined}
+            priority={index === 0}
+          />
+        )
+      ))}
+    </div>
+  );
+};
+
+
+================================================================================
+FILE: apps/frontend/app/config/lstmae.config.ts
+================================================================================
+
+// config/lstmae.config.ts
+import { LSTMAE_CONSTANTS } from '.././constants/lstmae.constants';
+import type { LSTMAEConfig } from '.././types/lstmae.types';
+
+
+
+export const lstmaeConfig: LSTMAEConfig = {
+  // ✅ USE YOUR NESTJS BACKEND INSTEAD OF DIRECT CONNECTION
+  apiBaseUrl: '/api/lstmae', // This goes through your NestJS backend
+  
+  visualizationBasePath: LSTMAE_CONSTANTS.PATHS.VISUALIZATIONS,
+  cacheTTL: LSTMAE_CONSTANTS.PERFORMANCE.CACHE_TTL_SECONDS,
+  timeout: 120000,
+  retryAttempts: 2,
+  fallbackEnabled: true,
+  
+  // ✅ ENABLE API ENDPOINT METHOD - Now it works through your backend
+  useEndpointMethod: true,
+};
+// config/lstmae.config.ts
+
+export const getVisualizationPath = (symbol: string, filename: string): string => {
+  // When called with: getVisualizationPath('ABCAPITAL', 'ABCAPITAL_interactive_dashboard.html')
+  // Returns: /api/lstmae/ABCAPITAL/plot/ABCAPITAL_interactive_dashboard.html
+  return `/api/lstmae/${symbol}/plot/${filename}`;
+};
+
+export const getApiUrl = (endpoint: string): string => {
+  return `${lstmaeConfig.apiBaseUrl}${endpoint}`;
+};
+
+export const isValidSymbol = (symbol: string): boolean => {
+  return /^[A-Z0-9]+$/.test(symbol);
+};
+
+
+================================================================================
+PHASE 4 - DATA INTEGRATION (MEDIUM PRIORITY)
+================================================================================
+
+================================================================================
+FILE: apps/backend/data/data_fetch.py
+================================================================================
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from datetime import datetime, timedelta
+import argparse
+import sys
+import json
+import time
+import logging
+
+# Configure logging with proper levels
+logging.basicConfig(
+    level=logging.INFO,
+    format='INFO: %(message)s',
+    stream=sys.stderr
+)
+
+logger = logging.getLogger(__name__)
+
+def main():
+    parser = argparse.ArgumentParser(description='Fetch and aggregate stock data.')
+    parser.add_argument('--company_code', type=str, required=True, help='Company code to fetch data for')
+    parser.add_argument('--exchange', type=str, default='NSE,BSE', help='Exchange filter (NSE, BSE, or NSE,BSE)')
+    parser.add_argument('--start_date', type=str, default='2024-02-22 00:00:00', help='Start date and time (ISO format or YYYY-MM-DD HH:MM:SS)')
+    parser.add_argument('--end_date', type=str, default='2024-04-16 00:00:00', help='End date and time (ISO format or YYYY-MM-DD HH:MM:SS)')
+    parser.add_argument('--interval', type=str, default='10m', help='Interval for aggregation (e.g., 1m, 5m, 10m, 15m, 30m, 1h)')
+    parser.add_argument('--first_fifteen_minutes', type=str, default='false', 
+                       choices=['true', 'false'],
+                       help='Filter to first 15 minutes of trading day')
+    parser.add_argument('--fetch_all_data', type=str, default='false',
+                       choices=['true', 'false'],
+                       help='Fetch all available data for the company (ignores date range)')
+    
+    # Enhanced arguments for the new StockService
+    parser.add_argument('--limit', type=int, default=2500, help='Maximum number of records to return')
+    parser.add_argument('--enable_cache', type=str, default='false', 
+                       choices=['true', 'false'],
+                       help='Enable caching (future feature)')
+    parser.add_argument('--compression', type=str, default='false',
+                       choices=['true', 'false'], 
+                       help='Enable compression (future feature)')
+    parser.add_argument('--validate_data', type=str, default='true',
+                       choices=['true', 'false'],
+                       help='Enable data validation')
+    parser.add_argument('--optimize_for_range', type=str, default='false',
+                       choices=['true', 'false'],
+                       help='Optimize query for date range requests')
+    parser.add_argument('--buffer_minutes', type=int, default=30,
+                       help='Buffer minutes to add around date range')
+    parser.add_argument('--indicators', type=str, default='',
+                       help='Comma-separated list of indicators (future feature)')
+    parser.add_argument('--parallel_processing', type=str, default='false',
+                       choices=['true', 'false'],
+                       help='Enable parallel processing (future feature)')
+    
+    args = parser.parse_args()
+    
+    # Parse boolean arguments
+    first_fifteen_minutes = args.first_fifteen_minutes.lower() == 'true'
+    fetch_all_data = args.fetch_all_data.lower() == 'true'
+    enable_cache = args.enable_cache.lower() == 'true'
+    compression = args.compression.lower() == 'true'
+    validate_data = args.validate_data.lower() == 'true'
+    optimize_for_range = args.optimize_for_range.lower() == 'true'
+    parallel_processing = args.parallel_processing.lower() == 'true'
+    
+    # Parse indicators
+    indicators = [ind.strip() for ind in args.indicators.split(',') if ind.strip()] if args.indicators else []
+    
+    if fetch_all_data:
+        start_date = None
+        end_date = None
+        logger.info(f"Fetching all available data for company_code={args.company_code} on exchanges={args.exchange} (limit={args.limit})")
+    else:
+        try:
+            start_date = parse_date_string(args.start_date)
+            end_date = parse_date_string(args.end_date)
+            
+            # Apply buffer for range optimization
+            if optimize_for_range and args.buffer_minutes > 0:
+                buffer_delta = timedelta(minutes=args.buffer_minutes)
+                start_date = start_date - buffer_delta
+                end_date = end_date + buffer_delta
+                logger.info(f"Applied {args.buffer_minutes}min buffer: {start_date} to {end_date}")
+            
+            if first_fifteen_minutes:
+                start_date, end_date = adjust_for_first_fifteen_minutes(start_date, end_date)
+                
+        except ValueError as e:
+            logger.error(f"Date parsing error: {e}")
+            sys.exit(1)
+    
+    # Interval mapping with enhanced support
+    interval_map = {
+        '1m': 1,
+        '5m': 5,
+        '10m': 10,
+        '15m': 15,
+        '30m': 30,
+        '1h': 60,
+        '2h': 120,
+        '4h': 240,
+        '1d': 1440
+    }
+    
+    interval_minutes = interval_map.get(args.interval, 10)
+    
+    # Database connection parameters
+    db_params = {
+        'dbname': 'nse_hist_db',
+        'user': 'readonly_user',
+        'password': 'db_read_5432',
+        'host': '100.93.172.21',
+        'port': '5432',
+    }
+    
+
+
+
+    start_time = time.time()
+    
+    try:
+        # Connect to database with improved error handling
+        try:
+            conn = psycopg2.connect(**db_params)
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+        except psycopg2.Error as e:
+            logger.error(f"Database connection failed: {e}")
+            sys.exit(1)
+
+        # Set timezone
+        cur.execute("SET TIME ZONE 'Asia/Kolkata';")
+
+        # Parse exchanges
+        exchanges = [ex.strip() for ex in args.exchange.split(',') if ex.strip()]
+        exchange_placeholders = ','.join(['%s'] * len(exchanges))
+
+        # Company lookup with enhanced error handling
+        company_lookup_query = f"""
+        SELECT company_id, company_code, name, exchange
+        FROM companies
+        WHERE company_code = %s
+        AND exchange IN ({exchange_placeholders})
+        """
+        
+        company_params = [args.company_code] + exchanges
+        logger.info(f"Looking up company: {args.company_code} on exchanges: {args.exchange}")
+        
+        cur.execute(company_lookup_query, company_params)
+        company_records = cur.fetchall()
+        
+        if not company_records:
+            logger.error(f"No company found with code '{args.company_code}' on exchanges {args.exchange}")
+            sys.exit(1)
+        
+        company_ids = [record['company_id'] for record in company_records]
+        company_id_placeholders = ','.join(['%s'] * len(company_ids))
+        
+        logger.info(f"Found {len(company_records)} company records")
+        for record in company_records:
+            logger.info(f"  - {record['company_code']} ({record['name']}) on {record['exchange']} [ID: {record['company_id']}]")
+
+        # Build optimized query based on request type
+        if fetch_all_data:
+            if optimize_for_range:
+                # Optimized query for large datasets
+                stock_data_query = f"""
+                SELECT timestamp, open, high, low, close, volume, company_id
+                FROM company_data
+                WHERE company_id IN ({company_id_placeholders})
+                ORDER BY timestamp DESC
+                LIMIT %s
+                """
+                query_params = company_ids + [args.limit]
+                logger.info(f"Querying RECENT {args.limit} records for company_ids: {company_ids}")
+            else:
+                stock_data_query = f"""
+                SELECT timestamp, open, high, low, close, volume, company_id
+                FROM company_data
+                WHERE company_id IN ({company_id_placeholders})
+                ORDER BY timestamp
+                """
+                query_params = company_ids
+                logger.info(f"Querying ALL stock data for company_ids: {company_ids}")
+        else:
+            if optimize_for_range:
+                # Optimized range query with indexes
+                stock_data_query = f"""
+                SELECT timestamp, open, high, low, close, volume, company_id
+                FROM company_data
+                WHERE company_id IN ({company_id_placeholders})
+                AND timestamp >= %s
+                AND timestamp < %s
+                ORDER BY timestamp
+                LIMIT %s
+                """
+                query_params = company_ids + [start_date, end_date, args.limit]
+            else:
+                stock_data_query = f"""
+                SELECT timestamp, open, high, low, close, volume, company_id
+                FROM company_data
+                WHERE company_id IN ({company_id_placeholders})
+                AND timestamp >= %s
+                AND timestamp < %s
+                ORDER BY timestamp
+                """
+                query_params = company_ids + [start_date, end_date]
+            
+            logger.info(f"Querying stock data for company_ids: {company_ids}, date range: {start_date} to {end_date}")
+        
+        # Execute query with timing
+        query_start = time.time()
+        cur.execute(stock_data_query, query_params)
+        rows = cur.fetchall()
+        query_time = time.time() - query_start
+        
+        logger.info(f"Query executed in {query_time:.2f}s, fetched {len(rows)} raw records")
+        
+        if not rows:
+            if fetch_all_data:
+                logger.info(f"No stock data found for company_code='{args.company_code}' on exchanges={args.exchange}")
+            else:
+                logger.info(f"No stock data found for company_code='{args.company_code}' on exchanges={args.exchange} in date range {start_date} to {end_date}")
+            sys.exit(0)
+
+        # Apply limit for all data requests (if not already limited in query)
+        if fetch_all_data and not optimize_for_range and len(rows) > args.limit:
+            logger.info(f"Large dataset detected ({len(rows)} records). Limiting to most recent {args.limit} records.")
+            rows = rows[-args.limit:]
+
+        # Data aggregation with enhanced error handling
+        def get_interval_start(dt):
+            minute = dt.minute
+            interval_minute = (minute // interval_minutes) * interval_minutes
+            return dt.replace(minute=interval_minute, second=0, microsecond=0)
+
+        # Process data into intervals
+        processing_start = time.time()
+        interval_data = {}
+        invalid_records = 0
+        
+        for row in rows:
+            # Data validation if enabled
+            if validate_data:
+                if not validate_ohlcv_data(row):
+                    invalid_records += 1
+                    continue
+            
+            interval_start = get_interval_start(row['timestamp'])
+            if interval_start not in interval_data:
+                interval_data[interval_start] = []
+            interval_data[interval_start].append(row)
+
+        if invalid_records > 0:
+            logging.warning(f"Skipped {invalid_records} invalid records during validation")
+
+        # Aggregate intervals
+        results = []
+        for interval_start in sorted(interval_data.keys()):
+            interval_rows = interval_data[interval_start]
+            if interval_rows:
+                interval_rows.sort(key=lambda x: x['timestamp'])
+                
+                try:
+                    open_price = float(interval_rows[0]['open'])
+                    high_price = max(float(row['high']) for row in interval_rows)
+                    low_price = min(float(row['low']) for row in interval_rows)
+                    close_price = float(interval_rows[-1]['close'])
+                    volume_sum = sum(int(row['volume']) for row in interval_rows)
+                    
+                    # Additional validation for aggregated data
+                    if validate_data and not validate_aggregated_ohlc(open_price, high_price, low_price, close_price):
+                        logging.warning(f"Invalid OHLC relationship at {interval_start}, skipping")
+                        continue
+                    
+                    results.append({
+                        'interval_start': interval_start,
+                        'open': round(open_price, 2),
+                        'high': round(high_price, 2),
+                        'low': round(low_price, 2),
+                        'close': round(close_price, 2),
+                        'volume': volume_sum
+                    })
+                except (ValueError, TypeError) as e:
+                    logging.warning(f"Error processing interval {interval_start}: {e}")
+                    continue
+
+        processing_time = time.time() - processing_start
+        logger.info(f"Data processing completed in {processing_time:.2f}s")
+
+        # Apply first fifteen minutes filter for all data requests
+        if first_fifteen_minutes and fetch_all_data:
+            filtered_results = []
+            for result in results:
+                timestamp = result['interval_start']
+                if timestamp.hour == 9 and 15 <= timestamp.minute <= 30:
+                    filtered_results.append(result)
+            results = filtered_results
+            logger.info(f"Filtered to first 15 minutes: {len(results)} data points")
+
+        # Sort results by timestamp (important for chart rendering)
+        results.sort(key=lambda x: x['interval_start'])
+
+        # Output results in the expected format
+        for result in results:
+            print(f"Interval:{result['interval_start'].isoformat()},Open:{result['open']},High:{result['high']},Low:{result['low']},Close:{result['close']},Volume:{result['volume']}")
+        
+        total_time = time.time() - start_time
+        
+        if fetch_all_data:
+            logger.info(f"Successfully fetched ALL available data: {len(results)} data points in {total_time:.2f}s")
+        else:
+            logger.info(f"Successfully fetched {len(results)} data points for date range in {total_time:.2f}s")
+
+        # Performance statistics
+        if len(results) > 0:
+            logger.info(f"Data range: {results[0]['interval_start']} to {results[-1]['interval_start']}")
+            
+        # Future: Indicator calculations
+        if indicators:
+            logger.info(f"Note: Indicators requested but not yet implemented: {indicators}")
+
+    except psycopg2.Error as e:
+        logger.error(f"Database error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if 'conn' in locals():
+            conn.close()
+
+def parse_date_string(date_str):
+    """Parse date string in various formats with enhanced support"""
+    try:
+        # Handle ISO format with timezone
+        if 'T' in date_str:
+            if date_str.endswith('Z'):
+                date_str = date_str[:-1] + '+00:00'
+            # Try to parse with timezone info
+            try:
+                dt = datetime.fromisoformat(date_str)
+                # Convert to naive datetime in IST
+                if dt.tzinfo is not None:
+                    import pytz
+                    ist = pytz.timezone('Asia/Kolkata')
+                    dt = dt.astimezone(ist).replace(tzinfo=None)
+                return dt
+            except:
+                # Fallback to naive parsing
+                return datetime.fromisoformat(date_str.replace('+00:00', '').replace('Z', ''))
+        else:
+            return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+    except ValueError:
+        # Try multiple formats
+        formats = [
+            '%Y-%m-%d',
+            '%Y-%m-%dT%H:%M:%S',
+            '%Y-%m-%dT%H:%M:%S.%f',
+            '%Y-%m-%d %H:%M',
+            '%d/%m/%Y %H:%M:%S',
+            '%d-%m-%Y %H:%M:%S'
+        ]
+        
+        for fmt in formats:
+            try:
+                return datetime.strptime(date_str, fmt)
+            except ValueError:
+                continue
+        
+        raise ValueError(f"Unable to parse date string: {date_str}")
+
+def adjust_for_first_fifteen_minutes(start_date, end_date):
+    """Adjust dates for first 15 minutes of trading day with enhanced logic"""
+    # Handle timezone conversion
+    if start_date.tzinfo is not None:
+        ist_offset = timedelta(hours=5, minutes=30)
+        start_date = start_date.replace(tzinfo=None) + ist_offset
+    
+    # Market opens at 9:15 AM, so first 15 minutes is 9:15 to 9:30
+    market_start = start_date.replace(hour=9, minute=15, second=0, microsecond=0)
+    market_end = market_start + timedelta(minutes=15)  # Corrected: 15 minutes, not 375
+    
+    logger.info(f"Adjusted for first 15 minutes: {market_start} to {market_end}")
+    
+    return market_start, market_end
+
+def validate_ohlcv_data(row):
+    """Validate individual OHLCV data record"""
+    try:
+        open_price = float(row['open'])
+        high_price = float(row['high'])
+        low_price = float(row['low'])
+        close_price = float(row['close'])
+        volume = int(row['volume'])
+        
+        # Basic validation rules
+        if any(x <= 0 for x in [open_price, high_price, low_price, close_price]):
+            return False
+        
+        if volume < 0:
+            return False
+            
+        if high_price < max(open_price, close_price) or low_price > min(open_price, close_price):
+            return False
+            
+        # Check for extreme values (possible data errors)
+        if high_price / low_price > 2.0:  # More than 100% intraday move
+            return False
+            
+        return True
+    except (ValueError, TypeError, KeyError):
+        return False
+
+def validate_aggregated_ohlc(open_price, high_price, low_price, close_price):
+    """Validate aggregated OHLC data"""
+    try:
+        # High must be >= max(open, close)
+        if high_price < max(open_price, close_price):
+            return False
+            
+        # Low must be <= min(open, close)
+        if low_price > min(open_price, close_price):
+            return False
+            
+        # All prices must be positive
+        if any(x <= 0 for x in [open_price, high_price, low_price, close_price]):
+            return False
+            
+        return True
+    except (ValueError, TypeError):
+        return False
+
+if __name__ == "__main__":
+    main()
+
+
+================================================================================
+FILE: apps/backend/data/company_master.csv (First 50 lines)
+================================================================================
+
+company_id,NAME OF COMPANY,company_code,Exchange,Marker
+1,20 Microns Limited,20MICRONS,NSE,EQ
+2,21st Century Management Services Limited,21STCENMGM,NSE,BE
+3,360 ONE WAM LIMITED,360ONE,NSE,EQ
+4,3i Infotech Limited,3IINFOLTD,NSE,EQ
+5,3M India Limited,3MINDIA,NSE,EQ
+6,3P Land Holdings Limited,3PLAND,NSE,BE
+7,5Paisa Capital Limited,5PAISA,NSE,EQ
+8,63 moons technologies limited,63MOONS,NSE,EQ
+9,A2Z Infra Engineering Limited,A2ZINFRA,NSE,BE
+10,AAA Technologies Limited,AAATECH,NSE,EQ
+11,Aadhar Housing Finance Limited,AADHARHFC,NSE,EQ
+12,Aakash Exploration Services Limited,AAKASH,NSE,EQ
+13,Aarey Drugs & Pharmaceuticals Limited,AAREYDRUGS,NSE,EQ
+14,Aaron Industries Limited,AARON,NSE,EQ
+15,Aartech Solonics Limited,AARTECH,NSE,BE
+16,Aarti Drugs Limited,AARTIDRUGS,NSE,EQ
+17,Aarti Industries Limited,AARTIIND,NSE,EQ
+18,Aarti Pharmalabs Limited,AARTIPHARM,NSE,EQ
+19,Aarti Surfactants Limited,AARTISURF,NSE,EQ
+20,Aarvee Denims & Exports Limited,AARVEEDEN,NSE,BE
+21,Aarvi Encon Limited,AARVI,NSE,EQ
+22,Aavas Financiers Limited,AAVAS,NSE,EQ
+23,Aban Offshore Limited,ABAN,NSE,BE
+24,ABB India Limited,ABB,NSE,EQ
+25,Abbott India Limited,ABBOTINDIA,NSE,EQ
+26,Aditya Birla Capital Limited,ABCAPITAL,NSE,EQ
+27,Allied Blenders and Distillers Limited,ABDL,NSE,EQ
+28,Aditya Birla Fashion and Retail Limited,ABFRL,NSE,EQ
+29,A B Infrabuild Limited,ABINFRA,NSE,EQ
+30,ABM International Limited,ABMINTLLTD,NSE,EQ
+31,Aditya Birla Real Estate Limited,ABREL,NSE,EQ
+32,Aditya Birla Sun Life AMC Limited,ABSLAMC,NSE,EQ
+33,ACC Limited,ACC,NSE,EQ
+34,Accelya Solutions India Limited,ACCELYA,NSE,EQ
+35,Accuracy Shipping Limited,ACCURACY,NSE,EQ
+36,Action Construction Equipment Limited,ACE,NSE,EQ
+37,Ace Integrated Solutions Limited,ACEINTEG,NSE,EQ
+38,Archean Chemical Industries Limited,ACI,NSE,EQ
+39,Andhra Cements Limited,ACL,NSE,EQ
+40,Allcargo Gati Limited,ACLGATI,NSE,EQ
+41,Acme Solar Holdings Limited,ACMESOLAR,NSE,EQ
+42,Adani Energy Solutions Limited,ADANIENSOL,NSE,EQ
+43,Adani Enterprises Limited,ADANIENT,NSE,EQ
+44,Adani Green Energy Limited,ADANIGREEN,NSE,EQ
+45,Adani Ports and Special Economic Zone Limited,ADANIPORTS,NSE,EQ
+46,Adani Power Limited,ADANIPOWER,NSE,EQ
+47,ADF Foods Limited,ADFFOODS,NSE,EQ
+48,Archidply Decor Limited,ADL,NSE,EQ
+49,Ador Welding Limited,ADORWELD,NSE,EQ
+
+
+================================================================================
+FILE: apps/backend/src/stock/stocks.service.ts
+================================================================================
+
+import { Injectable, InternalServerErrorException, RequestTimeoutException, Logger, BadRequestException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { StockData } from './entities/stock.entity';
+import { StockDataDto, StockDataRequestDto } from './dto/stock-data.dto';
+import { exec } from 'child_process';
+import * as path from 'path';
+
+interface CacheEntry {
+  data: StockDataDto[];
+  timestamp: number;
+  startDate: Date;
+  endDate: Date;
+  interval: string;
+  companyCode: string;
+}
+
+interface DataGap {
+  start: Date;
+  end: Date;
+  type: 'before' | 'after' | 'within';
+}
+
+@Injectable()
+export class StockService {
+  private readonly logger = new Logger(StockService.name);
+  private readonly dataCache = new Map<string, CacheEntry>();
+  private readonly cacheTTL = 5 * 60 * 1000; // 5 minutes cache TTL
+  private readonly maxCacheSize = 100; // Maximum cache entries
+  private readonly pendingRequests = new Map<string, Promise<StockDataDto[]>>();
+
+  constructor(
+    @InjectRepository(StockData)
+    private stockRepository: Repository<StockData>,
+  ) {
+    setInterval(() => this.cleanupCache(), 60 * 1000); // Every minute
+  }
+
+ 
+  async getTop5Companies() {
+    return this.stockRepository
+      .createQueryBuilder('stock')
+      .select('stock.company_code', 'companyCode')
+      .addSelect('stock.exchange', 'exchange')
+      .addSelect('AVG(stock.close)', 'averageClose')
+      .where('stock.exchange IN (:...exchanges)', { exchanges: ['NSE', 'BSE'] })
+      .groupBy('stock.company_code, stock.exchange')
+      .orderBy('"averageClose"', 'DESC')
+      .limit(5)
+      .getRawMany();
+  }
+
+  async getCompanyHistory(companyCode: string, exchange?: string) {
+    const queryBuilder = this.stockRepository
+      .createQueryBuilder('stock')
+      .where('stock.company_code = :companyCode', { companyCode });
+    
+    if (exchange) {
+      queryBuilder.andWhere('stock.exchange = :exchange', { exchange });
+    } else {
+      queryBuilder.andWhere('stock.exchange IN (:...exchanges)', { exchanges: ['NSE', 'BSE'] });
+    }
+    
+    return queryBuilder
+      .orderBy('stock.date', 'ASC')
+      .getMany();
+  }
+
+
+  async getStockDataFromPython(params: StockDataRequestDto): Promise<StockDataDto[]> {
+    try {
+      this.validateRequest(params);
+      
+      const startTime = Date.now();
+      this.logger.log(`Fetching stock data for ${params.companyCode} from ${params.startDate} to ${params.endDate}`);
+
+      const cachedData = this.getCachedData(params);
+      if (cachedData) {
+        this.logger.log(`Serving data from cache for ${params.companyCode}`);
+        return cachedData;
+      }
+
+      const requestKey = this.generateRequestKey(params);
+      const pendingRequest = this.pendingRequests.get(requestKey);
+      if (pendingRequest) {
+        this.logger.log(`Request already pending for ${requestKey}, waiting...`);
+        return await pendingRequest;
+      }
+
+      const dataPromise = this.executeStockDataFetch(params);
+      this.pendingRequests.set(requestKey, dataPromise);
+
+      try {
+        const data = await dataPromise;
+        
+        this.setCachedData(params, data);
+        
+        this.logger.log(`Successfully fetched ${data.length} data points for ${params.companyCode} in ${Date.now() - startTime}ms`);
+        return data;
+        
+      } finally {
+        this.pendingRequests.delete(requestKey);
+      }
+
+    } catch (error) {
+      this.logger.error(`Error fetching stock data for ${params.companyCode}:`, error);
+      throw error;
+    }
+  }
+
+
+  private async executeStockDataFetch(params: StockDataRequestDto): Promise<StockDataDto[]> {
+    return new Promise((resolve, reject) => {
+      const scriptPath = path.resolve(__dirname, '../../data/data_fetch.py');
+      
+      let command = `python ${scriptPath} --company_code=${params.companyCode} --interval=${params.interval}`;
+      
+      if (params.exchange) {
+        command += ` --exchange=${params.exchange}`;
+      } else {
+        command += ` --exchange=NSE,BSE`;
+      }
+      
+      if (params.startDate && params.endDate) {
+        const startIST = new Date(params.startDate.getTime() + 5.5 * 60 * 60 * 1000);
+        const endIST = new Date(params.endDate.getTime() + 5.5 * 60 * 60 * 1000);
+        
+        command += ` --start_date="${startIST.toISOString()}" --end_date="${endIST.toISOString()}"`;
+        command += ' --optimize_for_range=true'; // Range optimization flag
+        
+        const bufferMinutes = this.getBufferMinutes(params.interval);
+        command += ` --buffer_minutes=${bufferMinutes}`;
+        
+        if (params.firstFifteenMinutes) {
+          command += ' --first_fifteen_minutes=true';
+        }
+      } else {
+        command += ' --fetch_all_data=true';
+        command += ' --limit=2500'; // Prevent excessive data
+      }
+      
+      command += ' --enable_cache=true';
+      command += ' --compression=true';
+      command += ' --validate_data=true';
+      
+      if (params.indicators && params.indicators.length > 0) {
+        command += ` --indicators="${params.indicators.join(',')}"`;
+      }
+      
+      this.logger.debug(`Executing optimized command: ${command}`);
+      
+      const timeout = this.getTimeoutForRange(params);
+      
+      const timeoutId = setTimeout(() => {
+        this.logger.error(`Python script execution timed out after ${timeout}ms`);
+        reject(new RequestTimeoutException('Data fetch request timed out. Please try a smaller date range.'));
+      }, timeout);
+      
+      const childProcess = exec(command, { 
+        maxBuffer: 1024 * 1024 * 100, 
+        timeout: timeout,
+        cwd: path.resolve(__dirname, '../../data')
+      }, (error, stdout, stderr) => {
+        clearTimeout(timeoutId);
+        
+        if (error) {
+          this.logger.error(`Python script execution failed: ${error.message}`);
+          
+          if (typeof error.code === 'string' && error.code === 'ENOENT') {
+            return reject(new InternalServerErrorException('Python environment not configured properly'));
+          }
+          
+          if (error.signal === 'SIGTERM') {
+            return reject(new RequestTimeoutException('Request was cancelled due to timeout'));
+          }
+          
+          return reject(new InternalServerErrorException(`Failed to fetch stock data: ${error.message}`));
+        }
+        
+        if (stderr) {
+          const lines = stderr.split('\n').filter(line => line.trim());
+          
+        const actualErrors: string[] = [];
+const warnings: string[] = [];
+const infoMessages: string[] = [];
+
+          
+          for (const line of lines) {
+            const lowerLine = line.toLowerCase();
+            
+            if (lowerLine.includes('error:') || 
+                lowerLine.includes('traceback') || 
+                lowerLine.includes('exception:') ||
+                lowerLine.includes('failed:') ||
+                lowerLine.includes('critical:') ||
+                lowerLine.includes('database connection failed') ||
+                lowerLine.includes('no company found') ||
+                lowerLine.startsWith('error ')) {
+              actualErrors.push(line);
+            }
+            else if (lowerLine.includes('warning') || 
+                     lowerLine.includes('userwarning') ||
+                     lowerLine.includes('deprecation') ||
+                     lowerLine.includes('skipped') && lowerLine.includes('invalid')) {
+              warnings.push(line);
+            }
+            else if (lowerLine.includes('fetching') ||
+                     lowerLine.includes('data range:') ||
+                     lowerLine.includes('successfully') ||
+                     lowerLine.includes('query executed') ||
+                     lowerLine.includes('found') && lowerLine.includes('company') ||
+                     lowerLine.includes('looking up') ||
+                     lowerLine.includes('applied') && lowerLine.includes('buffer') ||
+                     lowerLine.includes('processing') ||
+                     lowerLine.includes('completed') ||
+                     lowerLine.includes('data points') ||
+                     lowerLine.includes('querying') ||
+                     lowerLine.includes('filtered to') ||
+                     lowerLine.includes('adjusted for') ||
+                     lowerLine.includes('records for company') ||
+                     lowerLine.includes('in ') && lowerLine.includes('s')) {
+              infoMessages.push(line);
+            }
+            else if (line.trim()) {
+              warnings.push(line);
+            }
+          }
+          
+          if (infoMessages.length > 0) {
+            this.logger.log(`Python script info: ${infoMessages.join('; ')}`);
+          }
+          
+          if (warnings.length > 0) {
+            this.logger.warn(`Python script warnings: ${warnings.join('; ')}`);
+          }
+          
+          if (actualErrors.length > 0) {
+            this.logger.error(`Python script errors: ${actualErrors.join('; ')}`);
+            return reject(new InternalServerErrorException('Data processing failed with errors'));
+          }
+        }
+        
+        try {
+          const results = this.parseOptimizedOutput(stdout, params);
+          
+          if (results.length === 0) {
+            this.logger.warn(`No data found for ${params.companyCode} in the specified range`);
+            return resolve([]);
+          }
+          
+          const processedResults = this.processAndValidateData(results, params);
+          
+          this.logger.log(`Successfully processed ${processedResults.length} data points for ${params.companyCode}`);
+          resolve(processedResults);
+          
+        } catch (parseError) {
+          this.logger.error(`Error parsing Python script output:`, parseError);
+          this.logger.debug(`Raw stdout: ${stdout.substring(0, 1000)}...`);
+          reject(new InternalServerErrorException('Failed to parse stock data. Data format may be invalid.'));
+        }
+      });
+      
+      childProcess.on('error', (error) => {
+        clearTimeout(timeoutId);
+        this.logger.error(`Child process error: ${error.message}`);
+        reject(new InternalServerErrorException(`Data fetch process failed: ${error.message}`));
+      });
+      
+      childProcess.on('exit', (code, signal) => {
+        if (code !== 0 && code !== null) {
+          this.logger.error(`Python script exited with code ${code}`);
+        }
+        if (signal) {
+          this.logger.warn(`Python script terminated by signal ${signal}`);
+        }
+      });
+    });
+  }
+
+  
+  private parseOptimizedOutput(stdout: string, params: StockDataRequestDto): StockDataDto[] {
+    const lines = stdout.trim().split('\n');
+    const results: StockDataDto[] = [];
+    let errorCount = 0;
+    const maxErrors = 10; 
+    
+    for (const line of lines) {
+      if (line.startsWith('Interval:')) {
+        try {
+          const parts = line.split(',');
+          
+          if (parts.length < 6) {
+            throw new Error(`Insufficient data fields: expected 6, got ${parts.length}`);
+          }
+          
+          const intervalPart = parts[0].replace('Interval:', '').trim();
+          const openPart = parseFloat(parts[1].replace('Open:', '').trim());
+          const highPart = parseFloat(parts[2].replace('High:', '').trim());
+          const lowPart = parseFloat(parts[3].replace('Low:', '').trim());
+          const closePart = parseFloat(parts[4].replace('Close:', '').trim());
+          const volumePart = parts[5] ? parseFloat(parts[5].replace('Volume:', '').trim()) : 0;
+          
+          if (isNaN(openPart) || isNaN(highPart) || isNaN(lowPart) || isNaN(closePart)) {
+            throw new Error('Invalid numeric values detected');
+          }
+          
+          if (highPart < Math.max(openPart, closePart) || lowPart > Math.min(openPart, closePart)) {
+            throw new Error('Invalid OHLC relationship');
+          }
+          
+          const timestamp = new Date(intervalPart);
+          if (isNaN(timestamp.getTime())) {
+            throw new Error('Invalid timestamp format');
+          }
+          
+          if (params.startDate && params.endDate) {
+            if (timestamp < params.startDate || timestamp > params.endDate) {
+              continue; 
+            }
+          }
+          
+          results.push({
+            interval_start: timestamp,
+            open: this.roundToDecimalPlaces(openPart, 2),
+            high: this.roundToDecimalPlaces(highPart, 2),
+            low: this.roundToDecimalPlaces(lowPart, 2),
+            close: this.roundToDecimalPlaces(closePart, 2),
+            volume: Math.max(0, Math.round(volumePart)), 
+          });
+          
+        } catch (err) {
+          errorCount++;
+          this.logger.warn(`Skipping invalid data line (${errorCount}/${maxErrors}): ${line.substring(0, 100)} - Error: ${(err as Error).message}`);
+          
+          if (errorCount >= maxErrors) {
+            throw new Error(`Too many parsing errors (${errorCount}). Data quality may be poor.`);
+          }
+        }
+      } else if (line.startsWith('ERROR:') || line.startsWith('FATAL:')) {
+        throw new Error(`Python script error: ${line}`);
+      }
+    }
+    
+    if (errorCount > 0) {
+      this.logger.warn(`Parsed data with ${errorCount} errors for ${params.companyCode}`);
+    }
+    
+    return results;
+  }
+
+ 
+  private processAndValidateData(data: StockDataDto[], params: StockDataRequestDto): StockDataDto[] {
+    if (data.length === 0) return data;
+    
+    data.sort((a, b) => a.interval_start.getTime() - b.interval_start.getTime());
+    
+    const uniqueData = data.filter((item, index, array) => 
+      index === 0 || item.interval_start.getTime() !== array[index - 1].interval_start.getTime()
+    );
+    
+    if (params.firstFifteenMinutes && uniqueData.length > 0) {
+      const startTime = new Date(uniqueData[0].interval_start);
+      const endTime = new Date(startTime.getTime() + 15 * 60 * 1000); 
+      
+      const filteredResults = uniqueData.filter(item => {
+        const itemTime = new Date(item.interval_start);
+        return itemTime >= startTime && itemTime <= endTime;
+      });
+      
+      this.logger.log(`Filtered to first 15 minutes: ${filteredResults.length} data points`);
+      return filteredResults;
+    }
+    
+    const gaps = this.detectDataGaps(uniqueData, params.interval);
+    if (gaps.length > 0) {
+      this.logger.warn(`Detected ${gaps.length} data gaps for ${params.companyCode}`);
+    }
+    
+    return uniqueData;
+  }
+
+ 
+  private generateRequestKey(params: StockDataRequestDto): string {
+    const dateKey = params.startDate && params.endDate 
+      ? `${params.startDate.getTime()}-${params.endDate.getTime()}`
+      : 'all';
+    
+    const firstFifteenKey = params.firstFifteenMinutes ? '_first15' : '';
+    const indicatorsKey = params.indicators?.length > 0 ? `_${params.indicators.join(',')}` : '';
+    
+    return `${params.companyCode}_${params.interval}_${params.exchange || 'NSE-BSE'}_${dateKey}${firstFifteenKey}${indicatorsKey}`;
+  }
+
+  private getCachedData(params: StockDataRequestDto): StockDataDto[] | null {
+    const key = this.generateRequestKey(params);
+    const cached = this.dataCache.get(key);
+    
+    if (!cached) return null;
+    
+    if (Date.now() - cached.timestamp > this.cacheTTL) {
+      this.dataCache.delete(key);
+      return null;
+    }
+    
+    if (params.startDate && params.endDate) {
+      if (cached.startDate > params.startDate || cached.endDate < params.endDate) {
+        return null; 
+      }
+    }
+    
+    return cached.data;
+  }
+
+  private setCachedData(params: StockDataRequestDto, data: StockDataDto[]): void {
+    if (data.length === 0) return;
+    
+    const key = this.generateRequestKey(params);
+    
+    if (this.dataCache.size >= this.maxCacheSize) {
+      const oldestKey = this.dataCache.keys().next().value;
+      this.dataCache.delete(oldestKey);
+    }
+    
+    const cacheEntry: CacheEntry = {
+      data,
+      timestamp: Date.now(),
+      startDate: params.startDate || data[0].interval_start,
+      endDate: params.endDate || data[data.length - 1].interval_start,
+      interval: params.interval,
+      companyCode: params.companyCode
+    };
+    
+    this.dataCache.set(key, cacheEntry);
+  }
+
+  private cleanupCache(): void {
+    const now = Date.now();
+    const keysToDelete: string[] = [];
+    
+    for (const [key, entry] of this.dataCache.entries()) {
+      if (now - entry.timestamp > this.cacheTTL) {
+        keysToDelete.push(key);
+      }
+    }
+    
+    keysToDelete.forEach(key => this.dataCache.delete(key));
+    
+    if (keysToDelete.length > 0) {
+      this.logger.debug(`Cleaned up ${keysToDelete.length} expired cache entries`);
+    }
+  }
+
+  /**
+   * Data analysis and validation methods
+   */
+  private detectDataGaps(data: StockDataDto[], interval: string): DataGap[] {
+    if (data.length < 2) return [];
+    
+    const gaps: DataGap[] = [];
+    const expectedInterval = this.getIntervalInMs(interval);
+    
+    for (let i = 1; i < data.length; i++) {
+      const timeDiff = data[i].interval_start.getTime() - data[i-1].interval_start.getTime();
+      
+      if (timeDiff > expectedInterval * 1.5) { 
+        gaps.push({
+          start: data[i-1].interval_start,
+          end: data[i].interval_start,
+          type: 'within'
+        });
+      }
+    }
+    
+    return gaps;
+  }
+
+  private validateRequest(params: StockDataRequestDto): void {
+    if (!params.companyCode) {
+      throw new BadRequestException('Company code is required');
+    }
+    
+    if (!params.interval) {
+      throw new BadRequestException('Interval is required');
+    }
+    
+    if (params.startDate && params.endDate && params.startDate >= params.endDate) {
+      throw new BadRequestException('Start date must be before end date');
+    }
+    
+    if (params.startDate && params.endDate) {
+      const daysDiff = (params.endDate.getTime() - params.startDate.getTime()) / (1000 * 60 * 60 * 24);
+      const maxDays = this.getMaxDaysForInterval(params.interval);
+      
+      if (daysDiff > maxDays) {
+        throw new BadRequestException(`Date range too large for interval ${params.interval}. Maximum ${maxDays} days allowed.`);
+      }
+    }
+  }
+
+  private getBufferMinutes(interval: string): number {
+    const bufferMap: { [key: string]: number } = {
+      '1m': 15,
+      '5m': 60,
+      '15m': 180,
+      '1h': 720,
+      '1d': 1440
+    };
+    return bufferMap[interval] || 30;
+  }
+
+  private getTimeoutForRange(params: StockDataRequestDto): number {
+    const baseTimeout = 60000; 
+    
+    if (!params.startDate || !params.endDate) {
+      return 300000; 
+    }
+    
+    const daysDiff = (params.endDate.getTime() - params.startDate.getTime()) / (1000 * 60 * 60 * 24);
+    return Math.round(Math.min(baseTimeout + (daysDiff * 2000), 300000));
+  }
+
+  private getMaxDaysForInterval(interval: string): number {
+    const maxDaysMap: { [key: string]: number } = {
+      '1m': 365,
+      '5m': 365,
+      '15m': 365,
+      '1h': 365,
+      '1d': 1825 // 5 years
+    };
+    return maxDaysMap[interval] || 30;
+  }
+
+  private getIntervalInMs(interval: string): number {
+    const intervalMap: { [key: string]: number } = {
+      '1m': 60 * 1000,
+      '5m': 5 * 60 * 1000,
+      '15m': 15 * 60 * 1000,
+      '1h': 60 * 60 * 1000,
+      '1d': 24 * 60 * 60 * 1000
+    };
+    return intervalMap[interval] || 60 * 1000;
+  }
+
+  private roundToDecimalPlaces(value: number, places: number): number {
+    return Math.round(value * Math.pow(10, places)) / Math.pow(10, places);
+  }
+
+
+  public clearCache(): void {
+    this.dataCache.clear();
+    this.pendingRequests.clear();
+    this.logger.log('Stock data cache and pending requests cleared');
+  }
+
+  public getCacheStats(): any {
+    return {
+      size: this.dataCache.size,
+      maxSize: this.maxCacheSize,
+      ttl: this.cacheTTL,
+      pendingRequests: this.pendingRequests.size,
+      entries: Array.from(this.dataCache.entries()).map(([key, entry]) => ({
+        key,
+        companyCode: entry.companyCode,
+        interval: entry.interval,
+        dataPoints: entry.data.length,
+        age: Date.now() - entry.timestamp,
+        dateRange: `${entry.startDate.toISOString()} - ${entry.endDate.toISOString()}`
+      }))
+    };
+  }
+
+ 
+  async getIncrementalData(
+    companyCode: string,
+    startDate: Date,
+    endDate: Date,
+    interval: string,
+    exchange?: string,
+    indicators: string[] = []
+  ): Promise<StockDataDto[]> {
+    const params: StockDataRequestDto = {
+      companyCode,
+      startDate,
+      endDate,
+      interval,
+      exchange,
+      firstFifteenMinutes: false,
+      indicators
+    };
+
+    return this.getStockDataFromPython(params);
+  }
+}
+
+
+================================================================================
+PHASE 5 - DEPLOYMENT (LOW PRIORITY)
+================================================================================
+
+================================================================================
+FILE: docker-compose.yml
+================================================================================
+
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "5000:5000"
+    env_file:
+      - apps/backend/.env
+    volumes:
+      - ./apps/backend:/app
+      - /app/node_modules
+    depends_on:
+      database:
+        condition: service_healthy
+    command: ["npm", "run", "start"]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules
+    depends_on:
+      backend:
+        condition: service_started
+    command: ["npm", "run", "dev"]
+
+  database:
+    image: postgres:latest
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d mydb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  python-services:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    stdin_open: true
+    tty: true
+      
+    volumes:
+      - ./apps/backend/data:/app/data
+    depends_on:
+      - database
+      - backend
+
+volumes:
+  postgres_data:
+
+
+================================================================================
+FILE: Dockerfile.python
+================================================================================
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copy Python scripts
+COPY apps/backend/data /app/data
+COPY apps/backend/fyers_data.py /app/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir eventlet python-socketio numpy pytz requests fyers-apiv3 setuptools wheel psycopg2-binary
+
+# Run the Python script
+CMD ["python", "-u", "fyers_data.py"]
+
+
+================================================================================
+END OF FILES - APM-TOP-K-STOCKS CODEBASE EXTRACTION COMPLETE
+================================================================================
+
+SUMMARY BY DEVELOPMENT PHASES:
+
+PHASE 1 (Backend Core): LSTMAE Module, Market Data Service, Fyers Config, Environment
+PHASE 2 (Frontend Integration): LSTMAE Services, Types, Hooks, Dashboard Components
+PHASE 3 (Visualization): Chart Components, LSTMAE Visualization, Configuration
+PHASE 4 (Data Integration): Python Data Scripts, Master Data, Stock Services
+PHASE 5 (Deployment): Docker Configuration, Python Container Setup
+
+PROJECT ARCHITECTURE: Full-stack monorepo with ML pattern discovery
+BACKEND: NestJS + TypeScript + PostgreSQL + WebSocket
+FRONTEND: Next.js + React + Tailwind + Multiple Chart Libraries
+ML/AI: Python services with LSTM AutoEncoder pattern analysis
+DEPLOYMENT: Docker containerization with multi-service orchestration
+
+Generated on: 11-10-2025 18:44:48.17
+================================================================================

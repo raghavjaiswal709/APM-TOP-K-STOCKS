@@ -1,0 +1,680 @@
+# APM-TOP-K-STOCKS: Complete Project Structure
+
+## 🏗️ PROJECT OVERVIEW
+APM-TOP-K-STOCKS is a comprehensive full-stack monorepo for stock market analytics and real-time trading dashboard. It's designed for Indian equity markets (NSE/BSE) with advanced charting, live data streaming, and ML-based pattern discovery.
+
+## 📁 ROOT PROJECT STRUCTURE
+
+APM-TOP-K-STOCKS/                         # Root monorepo directory
+├── 🐳 DEPLOYMENT & ORCHESTRATION
+│   ├── docker-compose.yml                # Multi-service Docker orchestration
+│   ├── Dockerfile.backend                # Backend containerization
+│   ├── Dockerfile.frontend               # Frontend containerization  
+│   ├── Dockerfile.python                 # Python services containerization
+│   ├── setup.sh                          # Project setup script
+│   └── no-docker.sh                      # Non-Docker setup script
+│
+├── 📋 CONFIGURATION & DOCS
+│   ├── package.json                      # Monorepo workspace config
+│   ├── package-lock.json                 # Dependency lock file
+│   ├── PROJECT_DOCUMENTATION.md          # Comprehensive project docs
+│   ├── project-structure.txt             # Project structure reference
+│   ├── PROJECT_STRUCTURE_COMPLETE.txt    # This complete structure file
+│   ├── .gitignore                        # Git ignore rules
+│   └── .dockerignore                     # Docker ignore rules
+│
+└── 🏢 APPLICATIONS
+    └── apps/                              # Main applications directory
+        ├── 🔧 BACKEND (NestJS + Python)  # Server-side applications
+        └── 🎨 FRONTEND (Next.js)         # Client-side application
+
+## 🔧 BACKEND APPLICATION (apps/backend/)
+
+### Technology Stack:
+- Framework: NestJS (TypeScript)
+- Database: PostgreSQL with TypeORM
+- Real-time: WebSocket (Socket.IO)
+- External APIs: Fyers API integration
+- Python Integration: Data fetching & analytics scripts
+
+apps/backend/
+├── 📂 CONFIGURATION & SETUP
+│   ├── package.json                      # Backend dependencies & scripts
+│   ├── package-lock.json                 # Dependency lock
+│   ├── tsconfig.json                     # TypeScript configuration
+│   ├── tsconfig.build.json               # Build-specific TS config
+│   ├── eslint.config.mjs                 # ESLint configuration
+│   ├── .prettierrc                       # Prettier formatting rules
+│   ├── .env                              # Environment variables
+│   ├── .gitignore                        # Backend-specific ignores
+│   └── README.md                         # Backend documentation
+│
+├── 🗂️ DATA & STORAGE
+│   └── data/                             # Data files & storage
+│       ├── 🐍 PYTHON SCRIPTS
+│       │   ├── data_fetch.py             # Main data fetching script
+│       │   ├── 2.py                      # Additional data processing
+│       │   ├── fyers_data.py             # Fyers API integration (root level)
+│       │   ├── fyers_service_5001.py     # Fyers service on port 5001
+│       │   ├── fyers_service_5010.py     # Fyers service on port 5010
+│       │   └── multi_company_live_data.py # Multi-company live data fetcher
+│       │
+│       ├── 🔐 AUTHENTICATION
+│       │   ├── auth_status.json          # Authentication status
+│       │   ├── fyers_data_auth.json      # Fyers data auth tokens
+│       │   ├── fyers_token.json          # Fyers API tokens
+│       │   └── multi_company_live_data_auth.json # Multi-company auth
+│       │
+│       ├── 📊 MARKET DATA
+│       │   ├── company_master.csv        # Company master data
+│       │   ├── market_data_2025-08-05_NSE # Daily market data files
+│       │   ├── market_data_2025-08-06_NSE
+│       │   ├── market_data_2025-08-07_NSE
+│       │   ├── ohlc_data_2025-08-05_NSE  # OHLC data files
+│       │   ├── ohlc_data_2025-08-06_NSE
+│       │   └── ohlc_data_2025-08-07_NSE
+│       │
+│       └── 📋 WATCHLISTS
+│           └── watchlists/
+│               ├── watchlist_A_2025-06-05.csv
+│               ├── watchlist_B_2025-06-05.csv
+│               ├── watchlist_C_2025-06-05.csv
+│               └── atchlist_A_2025-06-05.csv
+│
+├── 💻 SOURCE CODE
+│   └── src/                              # TypeScript source code
+│       ├── 🏠 CORE APPLICATION
+│       │   ├── main.ts                   # Application entry point
+│       │   ├── app.module.ts             # Root module
+│       │   ├── app.controller.ts         # Root controller
+│       │   ├── app.service.ts            # Root service
+│       │   └── app.controller.spec.ts    # Unit tests
+│       │
+│       ├── 🔐 AUTHENTICATION
+│       │   └── auth/
+│       │       ├── auth.module.ts        # Auth module
+│       │       └── fyers-auth.controller.ts # Fyers auth controller
+│       │
+│       ├── ⚙️ CONFIGURATION
+│       │   └── config/
+│       │       └── fyers.config.ts       # Fyers API configuration
+│       │
+│       ├── 🗄️ DATABASE
+│       │   ├── database/
+│       │   │   └── database.module.ts    # Main database module
+│       │   └── database-test/
+│       │       └── database-test.module.ts # Test database module
+│       │
+│       ├── 📈 MARKET DATA MODULE
+│       │   └── market-data/
+│       │       ├── dto/
+│       │       │   └── market-data.dto.ts # Data transfer objects
+│       │       ├── entities/
+│       │       │   └── market-data.entity.ts # Database entities
+│       │       ├── services/
+│       │       │   └── fyers-auth.service.ts # Fyers auth service
+│       │       ├── websocket/
+│       │       │   ├── market-data.gateway.ts # WebSocket gateway
+│       │       │   └── python-bridge.gateway.ts # Python bridge
+│       │       ├── market-data.controller.ts # REST API controller
+│       │       ├── market-data.module.ts # Module definition
+│       │       └── market-data.service.ts # Business logic
+│       │
+│       ├── 📊 LIVE MARKET MODULE  
+│       │   └── live-market/
+│       │       ├── dto/
+│       │       │   └── live-market.dto.ts # Live market DTOs
+│       │       ├── websocket/
+│       │       │   └── live-market.gateway.ts # Live data gateway
+│       │       ├── live-market.controller.ts # REST controller
+│       │       ├── live-market.module.ts # Module definition
+│       │       └── live-market.service.ts # Live market service
+│       │
+│       ├── 🧠 LSTMAE (AI/ML PATTERNS)
+│       │   └── lstmae/
+│       │       ├── lstmae.controller.ts  # LSTM AutoEncoder controller
+│       │       ├── lstmae.module.ts      # LSTM module
+│       │       └── lstmae.service.ts     # Pattern discovery service
+│       │
+│       ├── 🏢 STOCK MODULE
+│       │   └── stock/
+│       │       ├── dto/
+│       │       │   ├── stock-data.dto.ts # Stock data DTOs
+│       │       │   ├── stock-filter.dto.ts # Filter DTOs
+│       │       │   └── stock-response.dto.ts # Response DTOs
+│       │       ├── entities/
+│       │       │   └── stock.entity.ts   # Stock database entity
+│       │       ├── stocks.controller.ts  # Stock REST API
+│       │       ├── stocks.module.ts      # Stock module
+│       │       └── stocks.service.ts     # Stock business logic
+│       │
+│       └── 📋 WATCHLIST MODULE
+│           └── watchlist/
+│               ├── watchlist.controller.ts # Watchlist REST API
+│               ├── watchlist.module.ts   # Watchlist module
+│               └── watchlist.service.ts  # Watchlist service
+│
+└── 🧪 TESTING
+    └── test/
+        ├── app.e2e-spec.ts               # End-to-end tests
+        └── jest-e2e.json                 # E2E test configuration
+
+## 🎨 FRONTEND APPLICATION (apps/frontend/)
+
+### Technology Stack:
+- Framework: Next.js 15 (React 19)
+- Styling: Tailwind CSS + Radix UI
+- Charts: Plotly.js, ApexCharts, Syncfusion, Financial Charts
+- Real-time: Socket.IO client
+- State Management: SWR for server state
+- UI Components: Custom + Radix UI primitives
+
+apps/frontend/
+├── 📂 CONFIGURATION & SETUP
+│   ├── package.json                      # Frontend dependencies & scripts
+│   ├── package-lock.json                 # Dependency lock
+│   ├── tsconfig.json                     # TypeScript configuration
+│   ├── next.config.ts                    # Next.js configuration
+│   ├── next-env.d.ts                     # Next.js TypeScript definitions
+│   ├── eslint.config.mjs                 # ESLint configuration
+│   ├── tailwind.config.js                # Tailwind CSS configuration
+│   ├── postcss.config.js                 # PostCSS configuration
+│   ├── postcss.config.mjs                # PostCSS ES module config
+│   ├── components.json                   # shadcn/ui components config
+│   ├── .env                              # Environment variables
+│   ├── .gitignore                        # Frontend-specific ignores
+│   └── README.md                         # Frontend documentation
+│
+├── 🎯 APPLICATION CORE
+│   └── app/                              # Next.js App Router structure
+│       ├── 🏠 ROOT LAYOUT & PAGES
+│       │   ├── layout.tsx                # Root layout component
+│       │   ├── page.tsx                  # Home page
+│       │   ├── globals.css               # Global CSS styles
+│       │   └── favicon.ico               # Site favicon
+│       │
+│       ├── 🔗 API ROUTES
+│       │   └── api/
+│       │       └── auth/
+│       │           └── fyers/
+│       │               ├── notify/
+│       │               │   └── route.ts  # Fyers notification endpoint
+│       │               ├── start/
+│       │               │   └── route.ts  # Start Fyers auth
+│       │               ├── status/
+│       │               │   └── route.ts  # Auth status check
+│       │               └── token/
+│       │                   └── route.ts  # Token management
+│       │
+│       ├── 🔐 AUTHENTICATION PAGES
+│       │   └── auth/
+│       │       └── fyers/
+│       │           └── callback/
+│       │               └── page.tsx      # Fyers OAuth callback
+│       │
+│       ├── 📊 FEATURE PAGES
+│       │   ├── dashboard/
+│       │   │   └── page.tsx              # Main dashboard
+│       │   ├── live-market/
+│       │   │   ├── page.tsx              # Live market page
+│       │   │   └── components/
+│       │   │       ├── CompanySelector.tsx
+│       │   │       ├── GridChart.tsx
+│       │   │       └── LiveMarketGrid.tsx
+│       │   ├── market-data/
+│       │   │   ├── page.tsx              # Market data page
+│       │   │   └── components/
+│       │   │       ├── charts/
+│       │   │       │   ├── ApexChart.tsx
+│       │   │       │   ├── FinancialChart.tsx
+│       │   │       │   ├── FinancialChartComponents.tsx
+│       │   │       │   ├── PlotlyChart.tsx
+│       │   │       │   ├── SyncfusionChart.tsx
+│       │   │       │   └── SyncfusionChartComponents.tsx
+│       │   │       ├── ImageCarousel.tsx
+│       │   │       ├── MarketChart.tsx
+│       │   │       ├── MarketDataTable.tsx
+│       │   │       ├── SymbolSearch.tsx
+│       │   │       └── WatchlistManager.tsx
+│       │   ├── recommendations/
+│       │   │   ├── page.tsx              # Recommendations page
+│       │   │   └── components/
+│       │   │       ├── charts/           # Same chart components as market-data
+│       │   │       │   ├── ApexChart.tsx
+│       │   │       │   ├── FinancialChart.tsx
+│       │   │       │   ├── FinancialChartComponents.tsx
+│       │   │       │   ├── PlotlyChart.tsx
+│       │   │       │   ├── SyncfusionChart.tsx
+│       │   │       │   └── SyncfusionChartComponents.tsx
+│       │   │       ├── MarketChart.tsx
+│       │   │       ├── MarketDataTable.tsx
+│       │   │       ├── PlotlyChart.tsx
+│       │   │       ├── SymbolSearch.tsx
+│       │   │       └── WatchlistManager.tsx
+│       │   └── watchlist/
+│       │       └── page.tsx              # Watchlist management page
+│       │
+│       ├── 🧩 SHARED COMPONENTS
+│       │   └── components/
+│       │       ├── 🎨 UI COMPONENTS
+│       │       │   ├── app-sidebar.tsx   # Main application sidebar
+│       │       │   ├── shared-layout.tsx # Shared layout wrapper
+│       │       │   ├── theme-provider.tsx # Theme context provider
+│       │       │   ├── nav-main.tsx      # Main navigation
+│       │       │   ├── nav-projects.tsx  # Project navigation
+│       │       │   ├── nav-secondary.tsx # Secondary navigation
+│       │       │   ├── nav-user.tsx      # User navigation
+│       │       │   ├── options.tsx       # Options component
+│       │       │   ├── toggleButton.tsx  # Toggle button component
+│       │       │   ├── ViewInDashboardButton.tsx # Dashboard view button
+│       │       │   ├── FyersAuthStatus.tsx # Fyers auth status
+│       │       │   └── ImageCarousel.tsx # Image carousel component
+│       │       │
+│       │       ├── 📈 CHART COMPONENTS
+│       │       │   └── charts/
+│       │       │       └── StockChart.tsx # Stock chart component
+│       │       │
+│       │       ├── 🎛️ CONTROLLERS
+│       │       │   └── controllers/
+│       │       │       ├── CalendarForm.tsx
+│       │       │       ├── DateSelector.tsx
+│       │       │       ├── RecordedCompanySelector.tsx
+│       │       │       ├── SelectIndicators.tsx
+│       │       │       ├── SelectInterval.tsx
+│       │       │       ├── WatchlistSelector/
+│       │       │       │   ├── index.tsx
+│       │       │       │   ├── MultiSelectScrollable.tsx
+│       │       │       │   ├── MultiSelectWatchlistSelector.tsx
+│       │       │       │   ├── RadioGroup.tsx
+│       │       │       │   ├── SelectScrollable.tsx
+│       │       │       │   └── WatchlistSelector.tsx
+│       │       │       └── WatchlistSelector2/
+│       │       │           ├── index.tsx
+│       │       │           ├── FilterModal.tsx
+│       │       │           ├── MultiSelectScrollable.tsx
+│       │       │           ├── MultiSelectWatchlistSelector.tsx
+│       │       │           ├── RadioGroup.tsx
+│       │       │           ├── SelectScrollable.tsx
+│       │       │           └── WatchlistSelector.tsx
+│       │       │
+│       │       └── 🧠 LSTMAE (AI/ML) COMPONENTS
+│       │           └── lstmae/
+│       │               ├── LSTMAEDashboard.tsx # Main LSTM dashboard
+│       │               ├── LSTMAEErrorBoundary.tsx # Error handling
+│       │               ├── LSTMAEImageCard.tsx # Image display card
+│       │               ├── LSTMAEInteractiveDashboard.tsx # Interactive dashboard
+│       │               ├── LSTMAEModal.tsx    # LSTM modal component
+│       │               └── LSTMAEVisualization.tsx # LSTM visualizations
+│       │
+│       ├── ⚙️ CONFIGURATION
+│       │   └── config/
+│       │       └── lstmae.config.ts      # LSTM configuration
+│       │
+│       ├── 📋 CONSTANTS
+│       │   └── constants/
+│       │       └── lstmae.constants.ts   # LSTM constants
+│       │
+│       ├── 🌐 SERVICES
+│       │   └── services/
+│       │       └── lstmaeService.ts      # LSTM service layer
+│       │
+│       └── 🏷️ TYPE DEFINITIONS
+│           └── types/
+│               └── lstmae.types.ts       # LSTM TypeScript types
+│
+├── 🧩 REUSABLE COMPONENTS
+│   └── components/
+│       └── ui/                           # shadcn/ui components
+│           ├── alert.tsx                 # Alert component
+│           ├── avatar.tsx                # Avatar component
+│           ├── badge.tsx                 # Badge component
+│           ├── breadcrumb.tsx            # Breadcrumb navigation
+│           ├── button.tsx                # Button component
+│           ├── calendar.tsx              # Calendar component
+│           ├── card.tsx                  # Card component
+│           ├── collapsible.tsx           # Collapsible component
+│           ├── combobox.tsx              # Combobox component
+│           ├── command.tsx               # Command palette
+│           ├── dialog.tsx                # Dialog/Modal component
+│           ├── dropdown-menu.tsx         # Dropdown menu
+│           ├── form.tsx                  # Form components
+│           ├── input.tsx                 # Input component
+│           ├── label.tsx                 # Label component
+│           ├── popover.tsx               # Popover component
+│           ├── radio-group.tsx           # Radio group
+│           ├── scroll-area.tsx           # Scroll area
+│           ├── select.tsx                # Select component
+│           ├── separator.tsx             # Separator component
+│           ├── sheet.tsx                 # Sheet component
+│           ├── sidebar.tsx               # Sidebar component
+│           ├── skeleton.tsx              # Skeleton loader
+│           ├── toast.tsx                 # Toast notifications
+│           ├── toaster.tsx               # Toast container
+│           └── tooltip.tsx               # Tooltip component
+│
+├── 🎣 CUSTOM HOOKS
+│   └── hooks/
+│       ├── useLiveMarket.ts              # Live market data hook
+│       ├── useLSTMAEData.ts              # LSTM data hook
+│       ├── useMarketData.ts              # Market data hook
+│       ├── useRecordedData.ts            # Recorded data hook
+│       ├── useStockData.ts               # Stock data hook
+│       ├── useWatchlist.ts               # Watchlist hook
+│       ├── use-mobile.tsx                # Mobile detection hook
+│       └── use-toast.ts                  # Toast notification hook
+│
+├── 🛠️ UTILITIES
+│   └── lib/
+│       ├── indicators.ts                 # Technical indicators
+│       ├── socket.ts                     # Socket.IO client setup
+│       ├── utils.ts                      # Utility functions
+│       └── shadcn-preset.js              # shadcn preset configuration
+│
+├── 🌐 PUBLIC ASSETS
+│   └── public/
+│       ├── 📊 DATA FILES
+│       │   ├── data-manifest.json        # Data manifest
+│       │   └── recorded_data/            # Historical recorded data
+│       │       ├── 2025-06-10/
+│       │       │   ├── GPIL-NSE.json
+│       │       │   ├── IDBI-NSE.json
+│       │       │   ├── KIRIINDUS-NSE.json
+│       │       │   ├── NORTHARC-NSE.json
+│       │       │   ├── RPOWER-NSE.json
+│       │       │   └── SCI-NSE.json
+│       │       └── 2025-06-17/
+│       │           ├── GPIL-NSE.json
+│       │           ├── IDBI-NSE.json
+│       │           ├── KIRIINDUS-NSE.json
+│       │           ├── NORTHARC-NSE.json
+│       │           ├── RPOWER-NSE.json
+│       │           └── SCI-NSE.json
+│       │
+│       ├── 📈 GENERATED CHARTS/GRAPHS
+│       │   ├── Graphs/                   # Chart visualizations
+│       │   │   └── 2025-07-01/
+│       │   │       ├── N1_Pattern_Plot/  # Pattern plots for each stock
+│       │   │       │   ├── ABCAPITAL_NSE/
+│       │   │       │   ├── ADANIGREEN_NSE/
+│       │   │       │   ├── APOLLO_NSE/
+│       │   │       │   ├── [100+ stock directories]
+│       │   │       │   └── ZEEMEDIA_NSE/
+│       │   │       └── watchlist_comp_ind_90d_analysis_plot/
+│       │   │           ├── 360ONE_NSE_2025-07-01/
+│       │   │           ├── ABCAPITAL_NSE_2025-07-01/
+│       │   │           ├── [200+ analysis directories]
+│       │   │           └── ZENTEC_NSE_2025-07-01/
+│       │   └── GraphsN/                  # Normalized charts
+│       │       └── 2025-07-01/
+│       │           ├── N1_Pattern_Plot/
+│       │           └── watchlist_comp_ind_90d_analysis_plot/
+│       │
+│       └── 🖼️ STATIC ASSETS
+│           ├── file.svg                  # File icon
+│           ├── globe.svg                 # Globe icon
+│           ├── next.svg                  # Next.js logo
+│           ├── vercel.svg                # Vercel logo
+│           └── window.svg                # Window icon
+│
+└── 🔧 SCRIPTS
+    └── scripts/
+        └── generate-manifest.js          # Manifest generation script
+
+## 🔄 DATA FLOW ARCHITECTURE
+
+📊 DATA SOURCES (Fyers API, Market Data)
+    ↓
+🐍 PYTHON SERVICES (Data Fetching & Processing)
+    │   ├── fyers_data.py
+    │   ├── fyers_service_5001.py
+    │   ├── fyers_service_5010.py
+    │   ├── multi_company_live_data.py
+    │   └── data_fetch.py
+    ↓
+🗄️ DATABASE/FILES (PostgreSQL + JSON Storage)
+    │   ├── PostgreSQL Database (TypeORM)
+    │   ├── JSON Auth Files
+    │   ├── CSV Market Data
+    │   └── Generated Chart Images
+    ↓
+🔧 NESTJS BACKEND (REST API + WebSocket)
+    │   ├── Market Data Module
+    │   ├── Live Market Module
+    │   ├── LSTMAE Module
+    │   ├── Stock Module
+    │   └── Watchlist Module
+    ↓
+🌐 API LAYER (REST + WebSocket)
+    │   ├── /api/market-data/*
+    │   ├── /api/live-market/*
+    │   ├── /api/lstmae/*
+    │   ├── /api/stocks/*
+    │   └── /api/watchlist/*
+    ↓
+🎨 NEXT.JS FRONTEND (React Components + Hooks)
+    │   ├── Dashboard Pages
+    │   ├── Chart Components
+    │   ├── Real-time Updates
+    │   └── Interactive UI
+    ↓
+👤 USER INTERFACE (Browser)
+
+## 🎯 KEY FEATURES BY MODULE
+
+### 📈 Market Data Module
+- Real-time market data streaming via WebSocket
+- Historical data analysis and storage
+- OHLC (Open, High, Low, Close) data processing
+- Technical indicators calculation
+- RESTful API endpoints for data retrieval
+- Integration with Fyers API for live data
+
+### 🧠 LSTMAE Module (AI/ML Pattern Discovery)
+- LSTM AutoEncoder for pattern discovery
+- Spectral analysis of stock price patterns
+- Interactive pattern visualization dashboards
+- Cluster analysis and pattern classification
+- Machine learning-based predictions
+- Real-time pattern detection service on port 8506
+
+### 📊 Live Market Module
+- Real-time stock price streaming
+- Live data grid with multi-stock monitoring
+- WebSocket-based real-time updates
+- Company selector for targeted monitoring
+- Grid chart visualization
+- Live market data aggregation
+
+### 🏢 Stock Module
+- Comprehensive stock information management
+- Company master data integration
+- Advanced stock filtering and search capabilities
+- Stock data aggregation and analysis
+- Entity relationship management
+- Performance metrics calculation
+
+### 📋 Watchlist Module
+- Custom watchlist creation and management
+- Portfolio tracking and analysis
+- Watchlist sharing capabilities
+- Performance monitoring
+- Multi-watchlist support (A, B, C categories)
+- CSV import/export functionality
+
+## 🔐 AUTHENTICATION & SECURITY FLOW
+
+User Authentication Request
+    ↓
+Frontend Auth Service
+    ↓
+Fyers OAuth Integration
+    ↓
+Backend Auth Controller
+    ↓
+JWT Token Generation
+    ↓
+Secure Token Storage
+    ↓
+API Authorization Middleware
+    ↓
+Protected Resource Access
+
+## 🌐 API ENDPOINTS STRUCTURE
+
+### Authentication Endpoints
+- POST   /api/auth/fyers/start     # Initiate Fyers OAuth
+- GET    /api/auth/fyers/status    # Check auth status
+- POST   /api/auth/fyers/token     # Token management
+- POST   /api/auth/fyers/notify    # OAuth notifications
+
+### Market Data Endpoints
+- GET    /api/market-data          # Get market data
+- GET    /api/market-data/:symbol  # Get specific stock data
+- WS     /market-data              # WebSocket for real-time data
+
+### Live Market Endpoints
+- GET    /api/live-market          # Get live market data
+- WS     /live-market              # WebSocket for live updates
+
+### Stock Endpoints
+- GET    /api/stocks               # Get stock list
+- GET    /api/stocks/:id           # Get specific stock
+- POST   /api/stocks/filter        # Filter stocks
+
+### Watchlist Endpoints
+- GET    /api/watchlist            # Get watchlists
+- POST   /api/watchlist            # Create watchlist
+- PUT    /api/watchlist/:id        # Update watchlist
+- DELETE /api/watchlist/:id        # Delete watchlist
+
+### LSTMAE Endpoints
+- GET    /api/lstmae/:symbol       # Get LSTM analysis
+- POST   /api/lstmae/generate      # Generate new analysis
+- GET    /api/lstmae/health        # Service health check
+
+## 🚀 DEPLOYMENT ARCHITECTURE
+
+### Docker Compose Services
+```
+┌─────────────────────────────────────────────┐
+│                Docker Compose               │
+├─────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐           │
+│  │  Frontend   │  │   Backend   │           │
+│  │  (Next.js)  │  │  (NestJS)   │           │
+│  │  Port: 3000 │  │  Port: 5000 │           │
+│  └─────────────┘  └─────────────┘           │
+│         │                │                  │
+│  ┌─────────────┐  ┌─────────────┐           │
+│  │   Python    │  │ PostgreSQL  │           │
+│  │  Services   │  │  Database   │           │
+│  │  Port: 8506 │  │  Port: 5432 │           │
+│  └─────────────┘  └─────────────┘           │
+└─────────────────────────────────────────────┘
+```
+
+### Service Dependencies
+- Frontend depends on Backend API
+- Backend depends on PostgreSQL Database
+- Python services provide data to Backend
+- All services communicate via Docker network
+
+## 📦 DEPENDENCY OVERVIEW
+
+### Backend Dependencies (NestJS)
+- Core: @nestjs/common, @nestjs/core, @nestjs/platform-express
+- Database: @nestjs/typeorm, typeorm, pg
+- WebSocket: @nestjs/websockets, @nestjs/platform-socket.io, socket.io
+- External APIs: @nestjs/axios, axios, fyers-api-v3
+- Utilities: moment, csv-parse, dotenv
+
+### Frontend Dependencies (Next.js)
+- Core: next, react, react-dom
+- UI: @radix-ui/*, tailwindcss, lucide-react
+- Charts: plotly.js, react-plotly.js, apexcharts, @syncfusion/ej2-react-charts
+- State: swr, react-hook-form
+- Utilities: date-fns, clsx, zod
+
+### Development Tools
+- TypeScript: typescript, @types/*
+- Linting: eslint, prettier
+- Testing: jest, supertest
+- Build: swc, webpack
+
+## 🔧 DEVELOPMENT WORKFLOW
+
+### Setup Commands
+```bash
+# Clone and setup
+git clone <repository>
+cd APM-TOP-K-STOCKS
+
+# Docker deployment
+docker-compose up --build
+
+# Local development
+cd apps/frontend && npm run dev    # Frontend on :3000
+cd apps/backend && npm run start:dev  # Backend on :5000
+```
+
+### File Modification Workflow
+1. Edit source files in respective app directories
+2. TypeScript compilation happens automatically
+3. Hot reload for frontend development
+4. Backend auto-restart on changes
+5. Database migrations via TypeORM
+
+## 🎨 UI/UX ARCHITECTURE
+
+### Component Hierarchy
+```
+App Layout (layout.tsx)
+├── Sidebar Navigation
+├── Main Content Area
+│   ├── Dashboard Pages
+│   ├── Market Data Visualizations
+│   ├── Live Market Grids
+│   ├── LSTMAE Analytics
+│   └── Watchlist Management
+└── Theme Provider
+```
+
+### Styling System
+- Tailwind CSS for utility-first styling
+- Radix UI for accessible primitives
+- Custom theme with dark/light mode support
+- Responsive design for mobile/desktop
+- shadcn/ui component system
+
+## 📊 DATA MODELS
+
+### Market Data Entity
+- symbol: string
+- timestamp: Date
+- open, high, low, close: number
+- volume: number
+- exchange: string (NSE/BSE)
+
+### Stock Entity
+- id: string
+- companyName: string
+- symbol: string
+- sector: string
+- marketCap: number
+- lastPrice: number
+
+### Watchlist Entity
+- id: string
+- name: string
+- symbols: string[]
+- createdAt: Date
+- userId: string
+
+### LSTMAE Pattern Entity
+- symbol: string
+- patternType: string
+- clusterId: number
+- strengthScore: number
+- analysisDate: Date
+
+This comprehensive structure provides a complete understanding of the APM-TOP-K-STOCKS project architecture, enabling efficient development, maintenance, and scaling of the stock market analytics platform.
