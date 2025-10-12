@@ -1,12 +1,14 @@
 'use client'
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Loader2, ExternalLink, Clock, TrendingUp, TrendingDown, Minus, X, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Loader2, ExternalLink, Clock, TrendingUp, TrendingDown, Minus, X, Calendar, Activity } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-// ✅ NEW IMPORT - LSTMAE Pipeline 2 Integration
+// ✅ LSTMAE Pipeline 2 Integration
 import { LSTMAEModal } from '../../components/lstmae/LSTMAEModal';
+// ✅ NEW - SIPR Pattern Analysis Integration
+import { SiprDashboard } from '../../components/sipr/SiprDashboard';
 
 interface NewsItem {
   id: string;
@@ -326,33 +328,6 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     }
   };
 
-  const getSentimentIndicator = (sentiment: NewsItem['sentiment']) => {
-    switch (sentiment) {
-      case 'positive':
-        return (
-          <div className="flex items-center gap-1">
-            <TrendingUp className="h-3 w-3 text-green-400" />
-            <span className="text-xs text-green-400 font-medium">Positive</span>
-          </div>
-        );
-      case 'negative':
-        return (
-          <div className="flex items-center gap-1">
-            <TrendingDown className="h-3 w-3 text-red-400" />
-            <span className="text-xs text-red-400 font-medium">Negative</span>
-          </div>
-        );
-      case 'neutral':
-      default:
-        return (
-          <div className="flex items-center gap-1">
-            <Minus className="h-3 w-3 text-zinc-400" />
-            <span className="text-xs text-zinc-400 font-medium">Neutral</span>
-          </div>
-        );
-    }
-  };
-
   const generateRandomNews = useCallback(() => {
     const headlines = [
       `Lorem ipsum dolor sit amet consectetur adipiscing elit`,
@@ -421,24 +396,6 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     if (diffInHours < 1) return 'Just now';
     if (diffInHours < 24) return `${diffInHours}h ago`;
     return `${Math.floor(diffInHours / 24)}d ago`;
-  };
-
-  const getCategoryColor = (category: NewsItem['category']) => {
-    switch (category) {
-      case 'market': return 'bg-blue-500/20 text-blue-400';
-      case 'company': return 'bg-green-500/20 text-green-400';
-      case 'sector': return 'bg-purple-500/20 text-purple-400';
-      case 'economy': return 'bg-orange-500/20 text-orange-400';
-      default: return 'bg-zinc-500/20 text-zinc-400';
-    }
-  };
-
-  const getRelevanceIcon = (relevance: NewsItem['relevance']) => {
-    switch (relevance) {
-      case 'high': return <TrendingUp className="h-3 w-3 text-red-400" />;
-      case 'medium': return <TrendingUp className="h-3 w-3 text-yellow-400" />;
-      case 'low': return <TrendingUp className="h-3 w-3 text-zinc-400" />;
-    }
   };
 
   if (!companyCode) {
@@ -619,8 +576,12 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const [selectedNewsItem, setSelectedNewsItem] = useState<NewsItem | null>(null);
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
 
-  // ✅ NEW STATE - LSTMAE Pipeline 2 Modal
+  // ✅ LSTMAE Pipeline 2 Modal
   const [isLSTMAEModalOpen, setIsLSTMAEModalOpen] = useState(false);
+  
+  // ✅ NEW - SIPR Pattern Analysis Modal State
+  const [isSiprModalOpen, setIsSiprModalOpen] = useState(false);
+  const [siprMonths, setSiprMonths] = useState(3);
 
   // Generate the same news items for headline carousel
   const generateRandomNews = useCallback(() => {
@@ -793,7 +754,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     return date.toISOString().split('T')[0];
   }, [selectedDate]);
 
-  // ✅ MODIFIED - Generate image paths with Pipeline 2 Integration
+  // Generate image paths with Pipeline 2 Integration
   const generateImagePaths = useCallback(() => {
     if (!companyCode || !exchange) return [];
     
@@ -823,10 +784,10 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       });
     });
 
-    // ✅ LSTMAE images - Pipeline 2 Integration (MODIFIED)
+    // LSTMAE images - Pipeline 2 Integration
     const lstmaeBasePath = `/nvme1/production/PatternPoolLSTMAE/pipeline2/data/visualizations/${companyCode}`;
     
-    // 4 Static PNG Visualizations (from document section 3.1)
+    // 4 Static PNG Visualizations
     const lstmaeVisualizations = [
       {
         filename: `${companyCode}_dominant_patterns.png`,
@@ -865,23 +826,41 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       });
     });
 
-    // SiPR images (UNCHANGED)
-    const siprPath = `/GraphsN/${dateString}/SiPR_Analysis/${companyExchange}/${companyExchange}_SiPR_signal.png`;
-    imageList.push({
-      src: siprPath,
-      name: `${companyCode} Signal Processing`,
-      type: 'SiPR Signal Analysis',
-      chartType: 'SiPR',
-      exists: false
-    });
+    // ✅ NEW - SiPR images (Pattern Analysis visualizations)
+    // Note: These are placeholder paths - adjust based on actual SIPR output location
+    const siprBasePath = `/GraphsN/${dateString}/SiPR_Analysis/${companyExchange}`;
+    
+    const siprVisualizations = [
+      {
+        filename: `${companyExchange}_top3_patterns.png`,
+        name: `${companyCode} Top 3 Patterns`,
+        type: 'Most Recurring Pattern Analysis'
+      },
+      {
+        filename: `${companyExchange}_time_series_segmentation.png`,
+        name: `${companyCode} Time Series Segmentation`,
+        type: 'Temporal Segmentation with Cluster Labels'
+      },
+      {
+        filename: `${companyExchange}_pattern_cluster.png`,
+        name: `${companyCode} Pattern Clusters`,
+        type: 'Cluster Distribution & Silhouette Analysis'
+      },
+      {
+        filename: `${companyExchange}_centroid_shapes.png`,
+        name: `${companyCode} Centroid Shapes`,
+        type: 'Representative Pattern Shapes'
+      }
+    ];
 
-    const siprPath2 = `/GraphsN/${dateString}/SiPR_Analysis/${companyExchange}/${companyExchange}_SiPR_pattern.png`;
-    imageList.push({
-      src: siprPath2,
-      name: `${companyCode} Pattern Recognition`,
-      type: 'SiPR Pattern Analysis',
-      chartType: 'SiPR',
-      exists: false
+    siprVisualizations.forEach(viz => {
+      imageList.push({
+        src: `${siprBasePath}/${viz.filename}`,
+        name: viz.name,
+        type: viz.type,
+        chartType: 'SiPR',
+        exists: false
+      });
     });
 
     // MSAX images (UNCHANGED)
@@ -1002,12 +981,14 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const currentImage = filteredImages[currentIndex];
   const currentHeadline = newsItems[currentHeadlineIndex];
 
-  // ✅ MODIFIED - Function to render images with "Open Full Dashboard" button for LSTMAE
+  // ✅ MODIFIED - Function to render images with "Open Full Dashboard" button for LSTMAE & SIPR
   const renderMaximizedImages = () => {
     let leftImages: CarouselImage[] = [];
     let rightImages: CarouselImage[] = [];
     let leftTitle = '';
     let rightTitle = '';
+    let showLSTMAEButton = false;
+    let showSiprButton = false;
 
     switch (activeTab) {
       case 'intraday':
@@ -1027,12 +1008,14 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         rightImages = [...siprImages, ...msaxImages];
         leftTitle = 'LSTM AutoEncoder - Pipeline 2';
         rightTitle = 'SiPR & MSAX Analysis';
+        showLSTMAEButton = true;
         break;
       case 'SiPR':
         leftImages = siprImages;
         rightImages = [...lstmaeImages, ...msaxImages];
-        leftTitle = 'Signal Processing';
+        leftTitle = 'SiPR Pattern Analysis';
         rightTitle = 'LSTMAE & MSAX Analysis';
+        showSiprButton = true;
         break;
       case 'MSAX':
         leftImages = msaxImages;
@@ -1050,16 +1033,39 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             <div className="p-4 border-b border-zinc-700/50 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-white">{leftTitle}</h3>
               
-              {/* ✅ NEW - Show "Open Full Dashboard" button only for LSTMAE tab */}
-              {activeTab === 'LSTMAE' && (
+              {/* ✅ Show "Open Full Dashboard" button for LSTMAE tab */}
+              {showLSTMAEButton && (
                 <Button
                   onClick={() => setIsLSTMAEModalOpen(true)}
                   size="sm"
                   className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   <ExternalLink className="h-4 w-4" />
-                  Open Full Dashboard
+                  Open LSTMAE Dashboard
                 </Button>
+              )}
+              
+              {/* ✅ NEW - Show "Open SIPR Dashboard" button for SiPR tab */}
+              {showSiprButton && (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={siprMonths}
+                    onChange={(e) => setSiprMonths(Number(e.target.value))}
+                    className="px-2 py-1 text-sm rounded bg-zinc-700 text-white border border-zinc-600"
+                  >
+                    {[1, 2, 3, 6, 9, 12].map(m => (
+                      <option key={m} value={m}>{m} Month{m > 1 ? 's' : ''}</option>
+                    ))}
+                  </select>
+                  <Button
+                    onClick={() => setIsSiprModalOpen(true)}
+                    size="sm"
+                    className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+                  >
+                    <Activity className="h-4 w-4" />
+                    Open SIPR Dashboard
+                  </Button>
+                </div>
               )}
             </div>
             <ScrollArea className="h-full">
@@ -1300,8 +1306,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                     <div className="border-b border-zinc-700/50 bg-zinc-700/20">
                       <div className="p-3">
                         <div className="flex items-center justify-between">
-                          <div>
-                            {/* ✅ OPTIONAL - Add quick access button in non-maximized view */}
+                          <div className="flex items-center gap-2">
+                            {/* ✅ Quick access button for LSTMAE in non-maximized view */}
                             {activeTab === 'LSTMAE' && lstmaeImages.length > 0 && (
                               <Button
                                 onClick={() => setIsLSTMAEModalOpen(true)}
@@ -1310,12 +1316,34 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                                 className="gap-2"
                               >
                                 <ExternalLink className="h-3 w-3" />
-                                Full Dashboard
+                                Full LSTMAE Dashboard
                               </Button>
                             )}
+                            
+                            {/* ✅ NEW - Quick access button for SIPR in non-maximized view */}
+                            {activeTab === 'SiPR' && siprImages.length > 0 && (
+                              <>
+                                <select
+                                  value={siprMonths}
+                                  onChange={(e) => setSiprMonths(Number(e.target.value))}
+                                  className="px-2 py-1 text-xs rounded bg-zinc-700 text-white border border-zinc-600"
+                                >
+                                  {[1, 2, 3, 6, 9, 12].map(m => (
+                                    <option key={m} value={m}>{m}M</option>
+                                  ))}
+                                </select>
+                                <Button
+                                  onClick={() => setIsSiprModalOpen(true)}
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-2"
+                                >
+                                  <Activity className="h-3 w-3" />
+                                  Full SIPR Dashboard
+                                </Button>
+                              </>
+                            )}
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
                         </div>
                       </div>
                     </div>
@@ -1389,13 +1417,45 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         newsItem={selectedNewsItem}
       />
 
-      {/* ✅ NEW - LSTMAE Pipeline 2 Modal */}
+      {/* ✅ LSTMAE Pipeline 2 Modal */}
       <LSTMAEModal
         isOpen={isLSTMAEModalOpen}
         onClose={() => setIsLSTMAEModalOpen(false)}
         companyCode={companyCode}
         companyName={`${companyCode} - ${exchange}`}
       />
+
+      {/* ✅ NEW - SIPR Pattern Analysis Modal */}
+      <Dialog open={isSiprModalOpen} onOpenChange={setIsSiprModalOpen}>
+        <DialogContent className="max-w-7xl w-[95vw] h-[95vh] p-0 bg-zinc-950 border border-purple-700/50">
+          <DialogHeader className="p-6 border-b border-zinc-700/50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Activity className="h-6 w-6 text-purple-400" />
+                <DialogTitle className="text-2xl font-bold text-white">
+                  SIPR Pattern Analysis - {companyCode}
+                </DialogTitle>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsSiprModalOpen(false)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-auto p-6">
+            <SiprDashboard
+              companyCode={`${companyCode}_${exchange}`}
+              months={siprMonths}
+              className="h-full"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

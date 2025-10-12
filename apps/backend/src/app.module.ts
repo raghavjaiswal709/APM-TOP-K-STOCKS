@@ -8,6 +8,7 @@ import { StockModule } from './stock/stocks.module';
 import { WatchlistModule } from './watchlist/watchlist.module';
 import { AuthModule } from './auth/auth.module'; // Add this import
 import { LstmaeModule } from './lstmae/lstmae.module';
+import { SiprModule } from './sipr/sipr.module';
 
 @Module({
   imports: [
@@ -17,7 +18,8 @@ import { LstmaeModule } from './lstmae/lstmae.module';
     StockModule,
     WatchlistModule,
     AuthModule, 
-    LstmaeModule
+    LstmaeModule,
+    SiprModule
   ],
   controllers: [AppController],
   providers: [AppService],

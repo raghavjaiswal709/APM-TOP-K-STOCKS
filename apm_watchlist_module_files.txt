@@ -1,0 +1,1560 @@
+================================================================================
+APM-TOP-K-STOCKS - WATCHLIST MODULE CODEBASE EXTRACTION
+Generated on: 12-10-2025 11:42:39.14
+================================================================================
+
+MODULE FOCUS: Watchlist Management System
+ARCHITECTURE: NestJS Backend + Next.js Frontend + TypeORM Database
+FUNCTIONALITY: Portfolio tracking, watchlist CRUD, real-time updates
+
+
+================================================================================
+BACKEND FILES (NESTJS) - CORE WATCHLIST FUNCTIONALITY
+================================================================================
+
+================================================================================
+FILE: apps/backend/src/watchlist/watchlist.service.ts
+================================================================================
+
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+import { parse } from 'csv-parse';
+import * as moment from 'moment';
+
+export interface CompanyMaster {
+  company_id: number;
+  company_code: string;
+  name: string;
+  exchange: string;
+  marker: string;
+}
+
+export interface CompanyData {
+  company_code: string;
+  name: string;
+  exchange: string;
+  total_valid_days?: number;
+  avg_daily_high_low_range?: number;
+  median_daily_volume?: number;
+  avg_trading_capital?: number;
+  pe_ratio?: number;
+  N1_Pattern_count?: number;
+}
+
+export interface MergedCompany {
+  company_id?: number;
+  company_code: string;
+  name: string;
+  exchange: string;
+  marker: string;
+  total_valid_days?: number;
+  avg_daily_high_low_range?: number;
+  median_daily_volume?: number;
+  avg_trading_capital?: number;
+  pe_ratio?: number;
+  N1_Pattern_count?: number;
+}
+
+@Injectable()
+export class WatchlistService {
+  private readonly logger = new Logger(WatchlistService.name);
+  private readonly basePath = path.resolve(process.cwd(), 'data', 'watchlists');
+  private readonly masterDataPath = path.resolve(process.cwd(), 'data', 'company_master.csv');
+  
+  private companyMasterCache: CompanyMaster[] = [];
+  private cacheLastUpdated: number = 0;
+  private readonly cacheValidityMs = 30 * 60 * 1000;
+
+  async getWatchlistData(watchlist: string, date?: string): Promise<MergedCompany[]> {
+    const targetDate = date || moment().format('YYYY-MM-DD');
+    
+    try {
+      const companyMaster = await this.loadCompanyMaster();
+      const watchlistData = await this.loadWatchlistCSV(watchlist, targetDate);
+      const mergedData = this.mergeCompanyData(companyMaster, watchlistData);
+      
+      this.logger.log(`Merged ${mergedData.length} companies for watchlist ${watchlist}`);
+      return mergedData;
+      
+    } catch (error) {
+      this.logger.error(`Error loading watchlist ${watchlist}:`, error);
+      throw new NotFoundException(`Failed to load watchlist ${watchlist}: ${error.message}`);
+    }
+  }
+
+  private async loadCompanyMaster(): Promise<CompanyMaster[]> {
+    const now = Date.now();
+    if (this.companyMasterCache.length > 0 && (now - this.cacheLastUpdated) < this.cacheValidityMs) {
+      return this.companyMasterCache;
+    }
+
+    return new Promise((resolve, reject) => {
+      if (!fs.existsSync(this.masterDataPath)) {
+        this.logger.error(`Company master file not found: ${this.masterDataPath}`);
+        return reject(new Error('Company master data file not found'));
+      }
+
+      const results: CompanyMaster[] = [];
+
+      fs.createReadStream(this.masterDataPath)
+        .pipe(parse({
+          delimiter: ',',
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+        }))
+        .on('data', (data) => {
+          try {
+            // Handle both possible column name formats
+            const company: CompanyMaster = {
+              company_id: parseInt(data.company_id) || 0,
+              company_code: String(data.company_code || '').trim().toUpperCase(),
+              name: String(data['NAME OF COMPANY'] || data.name || '').trim(),
+              exchange: String(data.Exchange || data.exchange || 'NSE').trim().toUpperCase(),
+              marker: String(data.Marker || data.marker || 'EQ').trim().toUpperCase()
+            };
+
+            if (company.company_code && company.name) {
+              results.push(company);
+              this.logger.debug(`Loaded company: ${company.company_code} - ${company.name}`);
+            }
+          } catch (error) {
+            this.logger.warn(`Skipping invalid company master row: ${JSON.stringify(data)}`);
+          }
+        })
+        .on('end', () => {
+          this.companyMasterCache = results;
+          this.cacheLastUpdated = Date.now();
+          this.logger.log(`Loaded ${results.length} companies from master data`);
+          resolve(results);
+        })
+        .on('error', (error) => {
+          this.logger.error(`Error reading company master CSV: ${error}`);
+          reject(error);
+        });
+    });
+  }
+
+  private async loadWatchlistCSV(watchlist: string, date: string): Promise<CompanyData[]> {
+    const fileName = `watchlist_${watchlist}_${date}.csv`;
+    const filePath = path.join(this.basePath, fileName);
+
+    return new Promise((resolve, reject) => {
+      if (!fs.existsSync(filePath)) {
+        this.logger.warn(`Watchlist file not found: ${filePath}, trying fallback dates...`);
+        
+        const fallbackDates = this.generateFallbackDates(date);
+        this.tryFallbackDates(watchlist, fallbackDates)
+          .then(resolve)
+          .catch(reject);
+        return;
+      }
+
+      const results: CompanyData[] = [];
+
+      fs.createReadStream(filePath)
+        .pipe(parse({
+          delimiter: ',',
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+        }))
+        .on('data', (data) => {
+          try {
+            const company: CompanyData = {
+              company_code: String(data.company_code || '').trim().toUpperCase(),
+              name: String(data.name || '').trim(),
+              exchange: String(data.exchange || 'NSE').trim().toUpperCase(),
+              total_valid_days: data.total_valid_days ? Number(data.total_valid_days) : undefined,
+              avg_daily_high_low_range: data.avg_daily_high_low_range ? Number(data.avg_daily_high_low_range) : undefined,
+              median_daily_volume: data.median_daily_volume ? Number(data.median_daily_volume) : undefined,
+              avg_trading_capital: data.avg_trading_capital ? Number(data.avg_trading_capital) : undefined,
+              pe_ratio: data.pe_ratio ? Number(data.pe_ratio) : undefined,
+              N1_Pattern_count: data.N1_Pattern_count ? Number(data.N1_Pattern_count) : undefined
+            };
+
+            if (company.company_code) {
+              results.push(company);
+              this.logger.debug(`Loaded watchlist company: ${company.company_code} - ${company.name}`);
+            }
+          } catch (error) {
+            this.logger.warn(`Skipping invalid watchlist row: ${JSON.stringify(data)}`);
+          }
+        })
+        .on('end', () => {
+          this.logger.log(`Loaded ${results.length} companies from watchlist CSV: ${fileName}`);
+          resolve(results);
+        })
+        .on('error', (error) => {
+          this.logger.error(`Error reading watchlist CSV: ${error}`);
+          reject(error);
+        });
+    });
+  }
+
+  private async tryFallbackDates(watchlist: string, fallbackDates: string[]): Promise<CompanyData[]> {
+    for (const fallbackDate of fallbackDates) {
+      const fileName = `watchlist_${watchlist}_${fallbackDate}.csv`;
+      const filePath = path.join(this.basePath, fileName);
+      
+      if (fs.existsSync(filePath)) {
+        this.logger.log(`Using fallback date ${fallbackDate} for watchlist ${watchlist}`);
+        return this.loadWatchlistCSV(watchlist, fallbackDate);
+      }
+    }
+    
+    throw new Error(`No watchlist data found for ${watchlist} on any fallback dates`);
+  }
+
+  private generateFallbackDates(targetDate: string): string[] {
+    const date = moment(targetDate);
+    const fallbacks: string[] = [];
+    
+    for (let i = 1; i <= 10; i++) {
+      fallbacks.push(date.clone().subtract(i, 'days').format('YYYY-MM-DD'));
+    }
+    
+    return fallbacks;
+  }
+
+  private mergeCompanyData(masterData: CompanyMaster[], watchlistData: CompanyData[]): MergedCompany[] {
+    const mergedResults: MergedCompany[] = [];
+    const masterMap = new Map<string, CompanyMaster[]>();
+
+    // Create a map of master data by company_code
+    masterData.forEach(master => {
+      const key = master.company_code;
+      if (!masterMap.has(key)) {
+        masterMap.set(key, []);
+      }
+      masterMap.get(key)!.push(master);
+    });
+
+    this.logger.log(`Master data map has ${masterMap.size} unique company codes`);
+
+    // Merge watchlist data with master data
+    watchlistData.forEach(watchlistItem => {
+      const masterEntries = masterMap.get(watchlistItem.company_code) || [];
+      
+      if (masterEntries.length === 0) {
+        // No master data found, create entry with default marker
+        const merged: MergedCompany = {
+          company_code: watchlistItem.company_code,
+          name: watchlistItem.name,
+          exchange: watchlistItem.exchange,
+          marker: 'EQ', // Default marker
+          total_valid_days: watchlistItem.total_valid_days,
+          avg_daily_high_low_range: watchlistItem.avg_daily_high_low_range,
+          median_daily_volume: watchlistItem.median_daily_volume,
+          avg_trading_capital: watchlistItem.avg_trading_capital,
+          pe_ratio: watchlistItem.pe_ratio,
+          N1_Pattern_count: watchlistItem.N1_Pattern_count
+        };
+        mergedResults.push(merged);
+        this.logger.warn(`No master data found for company_code: ${watchlistItem.company_code}`);
+      } else {
+        // Find exact exchange match or use first available
+        let masterEntry = masterEntries.find(m => m.exchange === watchlistItem.exchange);
+        if (!masterEntry) {
+          masterEntry = masterEntries[0];
+        }
+
+        const merged: MergedCompany = {
+          company_id: masterEntry.company_id,
+          company_code: watchlistItem.company_code,
+          name: masterEntry.name || watchlistItem.name,
+          exchange: watchlistItem.exchange,
+          marker: masterEntry.marker,
+          total_valid_days: watchlistItem.total_valid_days,
+          avg_daily_high_low_range: watchlistItem.avg_daily_high_low_range,
+          median_daily_volume: watchlistItem.median_daily_volume,
+          avg_trading_capital: watchlistItem.avg_trading_capital,
+          pe_ratio: watchlistItem.pe_ratio,
+          N1_Pattern_count: watchlistItem.N1_Pattern_count
+        };
+        
+        mergedResults.push(merged);
+        this.logger.debug(`Merged: ${merged.company_code} with marker ${merged.marker}`);
+      }
+    });
+
+    return mergedResults.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async getAllCompaniesWithExchange(watchlist: string, date?: string): Promise<MergedCompany[]> {
+    const companies = await this.getWatchlistData(watchlist, date);
+    
+    return companies.filter(company => 
+      company.company_code && 
+      company.name && 
+      company.exchange &&
+      ['NSE', 'BSE'].includes(company.exchange.toUpperCase())
+    );
+  }
+
+  async checkWatchlistExists(watchlist: string, date?: string): Promise<boolean> {
+    const targetDate = date || moment().format('YYYY-MM-DD');
+    const fileName = `watchlist_${watchlist}_${targetDate}.csv`;
+    const filePath = path.join(this.basePath, fileName);
+    
+    if (fs.existsSync(filePath)) {
+      return true;
+    }
+    
+    const fallbackDates = this.generateFallbackDates(targetDate);
+    return fallbackDates.some(fallbackDate => {
+      const fallbackFileName = `watchlist_${watchlist}_${fallbackDate}.csv`;
+      const fallbackPath = path.join(this.basePath, fallbackFileName);
+      return fs.existsSync(fallbackPath);
+    });
+  }
+
+  async getAvailableWatchlists(): Promise<string[]> {
+    try {
+      const files = fs.readdirSync(this.basePath);
+      const watchlistPattern = /^watchlist_([A-Z])_\d{4}-\d{2}-\d{2}\.csv$/;
+      const watchlists = new Set<string>();
+      
+      files.forEach(file => {
+        const match = file.match(watchlistPattern);
+        if (match) {
+          watchlists.add(match[1]);
+        }
+      });
+      
+      return Array.from(watchlists).sort();
+    } catch (error) {
+      this.logger.error('Error reading watchlist directory:', error);
+      return [];
+    }
+  }
+
+  async refreshCompanyMasterCache(): Promise<void> {
+    this.companyMasterCache = [];
+    this.cacheLastUpdated = 0;
+    await this.loadCompanyMaster();
+  }
+
+  async getCompanyByCode(companyCode: string, exchange?: string): Promise<MergedCompany | null> {
+    const masterData = await this.loadCompanyMaster();
+    
+    let matches = masterData.filter(company => 
+      company.company_code.toUpperCase() === companyCode.toUpperCase()
+    );
+    
+    if (exchange) {
+      const exchangeMatch = matches.find(company => 
+        company.exchange.toUpperCase() === exchange.toUpperCase()
+      );
+      if (exchangeMatch) {
+        return {
+          company_id: exchangeMatch.company_id,
+          company_code: exchangeMatch.company_code,
+          name: exchangeMatch.name,
+          exchange: exchangeMatch.exchange,
+          marker: exchangeMatch.marker
+        };
+      }
+    }
+    
+    if (matches.length > 0) {
+      const match = matches[0];
+      return {
+        company_id: match.company_id,
+        company_code: match.company_code,
+        name: match.name,
+        exchange: match.exchange,
+        marker: match.marker
+      };
+    }
+    
+    return null;
+  }
+}
+
+
+================================================================================
+FILE: apps/backend/src/watchlist/watchlist.controller.ts
+================================================================================
+
+import { Controller, Get, Param, Query, Post } from '@nestjs/common';
+import { WatchlistService, MergedCompany } from './watchlist.service';
+
+@Controller('api/watchlist')
+export class WatchlistController {
+  constructor(private readonly watchlistService: WatchlistService) {}
+
+  @Get(':watchlist')
+  async getWatchlist(
+    @Param('watchlist') watchlist: string,
+    @Query('date') date?: string,
+    @Query('exchange') exchange?: string,
+  ): Promise<{ companies: MergedCompany[], exists: boolean, total: number }> {
+    try {
+      const allCompanies = await this.watchlistService.getAllCompaniesWithExchange(watchlist, date);
+      
+      // Filter by exchange if specified
+      let companies = allCompanies;
+      if (exchange) {
+        const exchanges = exchange.split(',').map(ex => ex.trim().toUpperCase());
+        companies = allCompanies.filter(company => 
+          exchanges.includes(company.exchange.toUpperCase())
+        );
+      }
+      
+      console.log(`Retrieved ${companies.length} companies from watchlist ${watchlist} for exchanges: ${exchange || 'ALL'}`);
+      return { 
+        companies, 
+        exists: true, 
+        total: companies.length 
+      };
+    } catch (error) {
+      console.error(`Error fetching watchlist ${watchlist}:`, error);
+      return { 
+        companies: [], 
+        exists: false, 
+        total: 0 
+      };
+    }
+  }
+
+  @Get(':watchlist/check')
+  async checkWatchlist(
+    @Param('watchlist') watchlist: string,
+    @Query('date') date?: string,
+  ): Promise<{ exists: boolean }> {
+    const exists = await this.watchlistService.checkWatchlistExists(watchlist, date);
+    return { exists };
+  }
+
+  @Get(':watchlist/exchanges')
+  async getWatchlistExchanges(
+    @Param('watchlist') watchlist: string,
+    @Query('date') date?: string,
+  ): Promise<{ exchanges: string[] }> {
+    try {
+      const companies = await this.watchlistService.getWatchlistData(watchlist, date);
+      const exchanges = [...new Set(companies.map(c => c.exchange).filter(Boolean))];
+      return { exchanges };
+    } catch (error) {
+      return { exchanges: [] };
+    }
+  }
+
+  @Get()
+  async getAvailableWatchlists(): Promise<{ watchlists: string[] }> {
+    const watchlists = await this.watchlistService.getAvailableWatchlists();
+    return { watchlists };
+  }
+
+  @Get('company/:companyCode')
+  async getCompanyByCode(
+    @Param('companyCode') companyCode: string,
+    @Query('exchange') exchange?: string,
+  ): Promise<{ company: MergedCompany | null }> {
+    const company = await this.watchlistService.getCompanyByCode(companyCode, exchange);
+    return { company };
+  }
+
+  @Post('refresh-cache')
+  async refreshCache(): Promise<{ message: string }> {
+    await this.watchlistService.refreshCompanyMasterCache();
+    return { message: 'Company master cache refreshed successfully' };
+  }
+}
+
+
+================================================================================
+FILE: apps/backend/src/watchlist/watchlist.module.ts
+================================================================================
+
+// src/watchlist/watchlist.module.ts
+import { Module } from '@nestjs/common';
+import { WatchlistController } from './watchlist.controller';
+import { WatchlistService } from './watchlist.service';
+
+@Module({
+  controllers: [WatchlistController],
+  providers: [WatchlistService],
+   exports: [WatchlistService],
+})
+export class WatchlistModule {}
+
+
+================================================================================
+FILE: apps/backend/src/watchlist/entities/watchlist.entity.ts
+================================================================================
+
+[FILE NOT FOUND OR EMPTY] 
+
+
+================================================================================
+WATCHLIST DATA TRANSFER OBJECTS (DTOs)
+================================================================================
+
+================================================================================
+FILE: apps/backend/src/watchlist/dto/create-watchlist.dto.ts
+================================================================================
+
+[FILE NOT FOUND OR EMPTY] 
+
+
+================================================================================
+FILE: apps/backend/src/watchlist/dto/update-watchlist.dto.ts
+================================================================================
+
+[FILE NOT FOUND OR EMPTY] 
+
+
+================================================================================
+FILE: apps/backend/src/watchlist/dto/watchlist-filter.dto.ts
+================================================================================
+
+[FILE NOT FOUND OR EMPTY] 
+
+
+================================================================================
+FILE: apps/backend/src/watchlist/dto/watchlist-response.dto.ts
+================================================================================
+
+[FILE NOT FOUND OR EMPTY] 
+
+
+================================================================================
+FILE: apps/backend/src/database/database.module.ts
+================================================================================
+
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { StockData } from '../stock/entities/stock.entity';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
+
+@Module({
+  imports: [
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432'),
+      username: process.env.DB_USERNAME || 'postgres',
+      password: process.env.DB_PASSWORD || '8709',
+      database: process.env.DB_DATABASE || 'StockDashboard',
+      entities: [StockData],
+      synchronize: false,
+      ssl: process.env.NODE_ENV === 'production'
+        ? { rejectUnauthorized: false }
+        : false,
+      logging: process.env.NODE_ENV !== 'production',
+      retryAttempts: 3,
+      retryDelay: 300000,
+      autoLoadEntities: true,
+    }),
+  ],
+})
+export class DatabaseModule {}
+
+
+================================================================================
+FRONTEND FILES (NEXT.JS) - HOOKS AND COMPONENTS
+================================================================================
+
+================================================================================
+FILE: apps/frontend/hooks/useWatchlist.ts
+================================================================================
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+
+interface MergedCompany {
+  company_id?: number;
+  company_code: string;
+  name: string;
+  exchange: string;
+  marker: string;
+  total_valid_days?: number;
+  avg_daily_high_low_range?: number;
+  median_daily_volume?: number;
+  avg_trading_capital?: number;
+  pe_ratio?: number;
+  N1_Pattern_count?: number;
+}
+
+interface WatchlistResponse {
+  companies: MergedCompany[];
+  exists: boolean;
+  total: number;
+}
+
+interface UseWatchlistOptions {
+  externalWatchlist?: string;
+}
+
+export function useWatchlist(options: UseWatchlistOptions = {}) {
+  const BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
+  
+  const [selectedWatchlist, setSelectedWatchlist] = useState('A');
+  const [companies, setCompanies] = useState<MergedCompany[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [exists, setExists] = useState(true);
+  const [availableExchanges, setAvailableExchanges] = useState<string[]>([]);
+  const [totalCompanies, setTotalCompanies] = useState(0);
+  const [availableMarkers, setAvailableMarkers] = useState<string[]>([]);
+  const prevExternalWatchlist = useRef(options.externalWatchlist);
+  const activeWatchlist = options.externalWatchlist || selectedWatchlist;
+
+  useEffect(() => {
+    if (options.externalWatchlist &&
+        options.externalWatchlist !== prevExternalWatchlist.current &&
+        options.externalWatchlist !== selectedWatchlist) {
+      console.log(`[useWatchlist] External watchlist changed from ${prevExternalWatchlist.current} to ${options.externalWatchlist}`);
+      prevExternalWatchlist.current = options.externalWatchlist;
+      setSelectedWatchlist(options.externalWatchlist);
+    }
+  }, [options.externalWatchlist, selectedWatchlist]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    async function fetchWatchlist() {
+      console.log(`[useWatchlist] Starting to fetch watchlist: ${activeWatchlist}`);
+      setLoading(true);
+      setError(null);
+      try {
+        const today = "2025-06-05";
+        const apiUrl = `${BASE_URL}/api/watchlist/${activeWatchlist}?date=${today}`;
+        console.log(`[useWatchlist] Fetching from: ${apiUrl}`);
+        
+        try {
+          const healthCheck = await fetch(`${BASE_URL}/health`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(5000)
+          });
+          console.log(`[useWatchlist] Backend health check: ${healthCheck.status}`);
+        } catch (healthError) {
+          console.error(`[useWatchlist] Backend health check failed:`, healthError);
+          throw new Error(`Backend server is not running on ${BASE_URL}. Please start the backend server.`);
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        
+        const response = await fetch(apiUrl, {
+          signal: controller.signal,
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache'
+          },
+          mode: 'cors'
+        });
+
+        clearTimeout(timeoutId);
+        console.log(`[useWatchlist] Response status: ${response.status}`);
+        console.log(`[useWatchlist] Response headers:`, Object.fromEntries(response.headers.entries()));
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[useWatchlist] Error response body:`, errorText);
+          if (response.status === 404) {
+            throw new Error(`Watchlist ${activeWatchlist} not found for date ${today}. Check if the endpoint exists.`);
+          } else if (response.status === 500) {
+            throw new Error(`Server error (${response.status}): ${errorText || 'Internal server error'}`);
+          } else {
+            throw new Error(`HTTP error ${response.status}: ${errorText || response.statusText}`);
+          }
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          const responseText = await response.text();
+          console.error(`[useWatchlist] Non-JSON response:`, responseText);
+          throw new Error('Server returned non-JSON response. Check API endpoint.');
+        }
+
+        const data: WatchlistResponse = await response.json();
+        if (isCancelled) return;
+
+        console.log(`[useWatchlist] Raw API response for watchlist ${activeWatchlist}:`, data);
+
+        if (!data || typeof data !== 'object') {
+          throw new Error('Invalid response format from server');
+        }
+
+        if (!Array.isArray(data.companies)) {
+          console.warn(`[useWatchlist] No companies array in response:`, data);
+          setCompanies([]);
+          setExists(false);
+          setTotalCompanies(0);
+          setAvailableExchanges([]);
+          setAvailableMarkers([]);
+          setError(`No companies found for watchlist ${activeWatchlist} on ${today}`);
+          return;
+        }
+
+        const validCompanies = data.companies.filter((company: MergedCompany) => {
+          const isValid = company.company_code &&
+                          company.name &&
+                          company.exchange &&
+                          company.marker;
+          if (!isValid) {
+            console.warn(`[useWatchlist] Invalid company filtered out:`, company);
+          }
+          return isValid;
+        });
+
+        console.log(`[useWatchlist] Valid companies after filtering for ${activeWatchlist}: ${validCompanies.length} out of ${data.companies.length}`);
+
+        setCompanies(validCompanies);
+        setExists(data.exists !== false);
+        setTotalCompanies(data.total || validCompanies.length);
+        
+        const exchanges = [...new Set(validCompanies.map((c: MergedCompany) => c.exchange))];
+        const markers = [...new Set(validCompanies.map((c: MergedCompany) => c.marker))];
+        setAvailableExchanges(exchanges);
+        setAvailableMarkers(markers);
+
+        console.log(`[useWatchlist] Successfully loaded ${validCompanies.length} companies from watchlist ${activeWatchlist}`);
+        console.log(`[useWatchlist] Available exchanges: ${exchanges.join(', ')}`);
+
+      } catch (err: any) {
+        if (isCancelled) return;
+
+        console.error(`[useWatchlist] Error fetching watchlist ${activeWatchlist}:`, err);
+        console.error(`[useWatchlist] Error details:`, {
+          name: err.name,
+          message: err.message,
+          stack: err.stack
+        });
+
+        let errorMessage = 'Failed to fetch watchlist data.';
+        if (err.name === 'AbortError') {
+          errorMessage = 'Request timed out. Please try again.';
+        } else if (err.message.includes('Backend server is not running')) {
+          errorMessage = err.message;
+        } else if (err.message.includes('Failed to fetch') || err.name === 'TypeError') {
+          errorMessage = `Cannot connect to backend server. Please ensure:\n1. Backend is running on ${BASE_URL}\n2. No firewall blocking the connection\n3. CORS is properly configured`;
+        } else if (err.message.includes('not found')) {
+          errorMessage = err.message;
+        } else {
+          errorMessage = `Error: ${err.message}`;
+        }
+
+        setError(errorMessage);
+        setCompanies([]);
+        setExists(false);
+        setAvailableExchanges([]);
+        setAvailableMarkers([]);
+        setTotalCompanies(0);
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchWatchlist();
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeWatchlist, BASE_URL]);
+
+  const getCompanyByCode = useCallback(async (companyCode: string, exchange?: string): Promise<MergedCompany | null> => {
+    try {
+      const queryParams = new URLSearchParams({ companyCode });
+      if (exchange) {
+        queryParams.append('exchange', exchange);
+      }
+     
+      const response = await fetch(`${BASE_URL}/api/watchlist/company/${companyCode}?${queryParams}`);
+     
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      const data = await response.json();
+      return data.company;
+    } catch (error) {
+      console.error('[useWatchlist] Error fetching company by code:', error);
+      return null;
+    }
+  }, [BASE_URL]);
+
+  const getFilteredCompanies = useCallback((filters: {
+    exchange?: string;
+    marker?: string;
+    minValidDays?: number;
+  }) => {
+    return companies.filter(company => {
+      if (filters.exchange && company.exchange.toUpperCase() !== filters.exchange.toUpperCase()) {
+        return false;
+      }
+      if (filters.marker && company.marker.toUpperCase() !== filters.marker.toUpperCase()) {
+        return false;
+      }
+      if (filters.minValidDays && (!company.total_valid_days || company.total_valid_days < filters.minValidDays)) {
+        return false;
+      }
+      return true;
+    });
+  }, [companies]);
+
+  return {
+    selectedWatchlist: activeWatchlist,
+    setSelectedWatchlist,
+    companies,
+    loading,
+    error,
+    exists,
+    availableExchanges,
+    availableMarkers,
+    totalCompanies,
+    getCompanyByCode,
+    getFilteredCompanies
+  };
+}
+
+
+================================================================================
+FILE: apps/frontend/app/market-data/components/WatchlistManager.tsx
+================================================================================
+
+'use client';
+import React, { useState, useEffect } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/card';
+import { Button } from '../../../components/ui/button';
+import { Input } from '../../../components/ui/input';
+interface WatchlistManagerProps {
+  subscribedSymbols: string[];
+  onSymbolSelect: (symbol: string) => void;
+  onAddSymbol: (symbol: string) => void;
+  onRemoveSymbol: (symbol: string) => void;
+}
+const predefinedWatchlists = {
+  'Indices': [
+    'NSE:NIFTY50-INDEX',
+    'NSE:BANKNIFTY-INDEX',
+    'NSE:FINNIFTY-INDEX',
+    'NSE:NIFTYIT-INDEX',
+    'NSE:NIFTYPHARMA-INDEX',
+  ],
+  'Large Cap': [
+    'NSE:RELIANCE-EQ',
+    'NSE:TCS-EQ',
+    'NSE:HDFCBANK-EQ',
+    'NSE:INFY-EQ',
+    'NSE:ICICIBANK-EQ',
+  ],
+  'IT Stocks': [
+    'NSE:TCS-EQ',
+    'NSE:INFY-EQ',
+    'NSE:WIPRO-EQ',
+    'NSE:HCLTECH-EQ',
+    'NSE:TECHM-EQ',
+  ],
+};
+const WatchlistManager: React.FC<WatchlistManagerProps> = ({
+  subscribedSymbols,
+  onSymbolSelect,
+  onAddSymbol,
+  onRemoveSymbol,
+}) => {
+  const [newSymbol, setNewSymbol] = useState('');
+  const [savedWatchlists, setSavedWatchlists] = useState<Record<string, string[]>>({});
+  const [newWatchlistName, setNewWatchlistName] = useState('');
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  // Load saved watchlists from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('marketDataWatchlists');
+    if (saved) {
+      setSavedWatchlists(JSON.parse(saved));
+    }
+  }, []);
+  const handleAddSymbol = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newSymbol && !subscribedSymbols.includes(newSymbol)) {
+      onAddSymbol(newSymbol);
+      setNewSymbol('');
+    }
+  };
+  const handleSaveWatchlist = () => {
+    if (newWatchlistName) {
+      const updatedWatchlists = {
+        ...savedWatchlists,
+        [newWatchlistName]: [...subscribedSymbols],
+      };
+      setSavedWatchlists(updatedWatchlists);
+      localStorage.setItem('marketDataWatchlists', JSON.stringify(updatedWatchlists));
+      setNewWatchlistName('');
+      setShowSaveDialog(false);
+    }
+  };
+  const handleLoadWatchlist = (watchlist: string[]) => {
+    subscribedSymbols.forEach(symbol => onRemoveSymbol(symbol));
+    // Add all symbols from the selected watchlist
+    watchlist.forEach(symbol => onAddSymbol(symbol));
+  };
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Add Symbol</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleAddSymbol} className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                placeholder="NSE:SYMBOL-EQ"
+                value={newSymbol}
+                onChange={(e) => setNewSymbol(e.target.value)}
+                className="flex-1"
+              />
+              <Button type="submit">Add</Button>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Format: Exchange:Symbol-Type (e.g., NSE:RELIANCE-EQ)
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Predefined Watchlists</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {Object.entries(predefinedWatchlists).map(([name, symbols]) => (
+            <div key={name} className="flex justify-between items-center">
+              <div>
+                <div className="font-medium">{name}</div>
+                <div className="text-sm text-muted-foreground">
+                  {symbols.length} symbols
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handleLoadWatchlist(symbols)}
+              >
+                Load
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+      {Object.keys(savedWatchlists).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Your Watchlists</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {Object.entries(savedWatchlists).map(([name, symbols]) => (
+              <div key={name} className="flex justify-between items-center">
+                <div>
+                  <div className="font-medium">{name}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {symbols.length} symbols
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleLoadWatchlist(symbols)}
+                  >
+                    Load
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="text-red-500"
+                    onClick={() => {
+                      const { [name]: _, ...rest } = savedWatchlists;
+                      setSavedWatchlists(rest);
+                      localStorage.setItem('marketDataWatchlists', JSON.stringify(rest));
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Manage Watchlist</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button 
+            variant="outline" 
+            className="w-full"
+            onClick={() => setShowSaveDialog(!showSaveDialog)}
+          >
+            Save Current Watchlist
+          </Button>
+          {showSaveDialog && (
+            <div className="space-y-2">
+              <Input
+                type="text"
+                placeholder="Watchlist name"
+                value={newWatchlistName}
+                onChange={(e) => setNewWatchlistName(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <Button 
+                  variant="default" 
+                  className="flex-1"
+                  onClick={handleSaveWatchlist}
+                >
+                  Save
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowSaveDialog(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+export default WatchlistManager;
+
+
+
+================================================================================
+FILE: apps/frontend/app/components/controllers/WatchlistSelector/WatchlistSelector.tsx
+================================================================================
+
+'use client'
+import * as React from "react";
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { RadioGroupDemo } from "./RadioGroup";
+import { SelectScrollable } from "./SelectScrollable";
+interface WatchlistSelectorProps {
+  onCompanySelect?: (companyCode: string | null, exchange?: string, marker?: string) => void;
+  selectedWatchlist?: string;
+  onWatchlistChange?: (watchlist: string) => void;
+  showExchangeFilter?: boolean;
+  showMarkerFilter?: boolean;
+}
+export const WatchlistSelector = React.memo(({ 
+  onCompanySelect,
+  selectedWatchlist: externalSelectedWatchlist,
+  onWatchlistChange,
+  showExchangeFilter = true,
+  showMarkerFilter = true
+}: WatchlistSelectorProps) => {
+  const [currentWatchlist, setCurrentWatchlist] = React.useState(() => 
+    externalSelectedWatchlist || 'A'
+  );
+  const prevExternalWatchlist = React.useRef(externalSelectedWatchlist);
+  React.useEffect(() => {
+    if (externalSelectedWatchlist && 
+        externalSelectedWatchlist !== prevExternalWatchlist.current && 
+        externalSelectedWatchlist !== currentWatchlist) {
+      console.log(`[WatchlistSelector] External watchlist changed to: ${externalSelectedWatchlist}`);
+      prevExternalWatchlist.current = externalSelectedWatchlist;
+      setCurrentWatchlist(externalSelectedWatchlist);
+    }
+  }, [externalSelectedWatchlist, currentWatchlist]);
+  const {
+    selectedWatchlist,
+    setSelectedWatchlist,
+    companies,
+    loading,
+    error,
+    exists,
+    availableExchanges,
+    availableMarkers,
+    totalCompanies,
+    getFilteredCompanies
+  } = useWatchlist({ externalWatchlist: currentWatchlist });
+  const [selectedExchange, setSelectedExchange] = React.useState<string>('');
+  const [selectedMarker, setSelectedMarker] = React.useState<string>('');
+  const handleWatchlistChange = React.useCallback((value: string) => {
+    console.log(`[WatchlistSelector] Watchlist changed to: ${value}`);
+    if (value === currentWatchlist) {
+      return;
+    }
+    setSelectedExchange('');
+    setSelectedMarker('');
+    setCurrentWatchlist(value);
+    if (onWatchlistChange) {
+      onWatchlistChange(value);
+    }
+  }, [currentWatchlist, onWatchlistChange]);
+  const handleCompanySelect = React.useCallback((companyCode: string | null) => {
+    if (!companyCode) {
+      if (onCompanySelect) {
+        onCompanySelect(null);
+      }
+      return;
+    }
+    const selectedCompany = companies.find(c => c.company_code === companyCode);
+    console.log(`[WatchlistSelector] Selected company: ${companyCode}`, selectedCompany);
+    if (onCompanySelect && selectedCompany) {
+      onCompanySelect(companyCode, selectedCompany.exchange, selectedCompany.marker);
+    }
+  }, [companies, onCompanySelect]);
+  const filteredCompanies = React.useMemo(() => {
+    const filters: any = {};
+    if (selectedExchange) filters.exchange = selectedExchange;
+    if (selectedMarker) filters.marker = selectedMarker;
+    const filtered = getFilteredCompanies(filters);
+    console.log(`[WatchlistSelector] Filtered companies: ${filtered.length} out of ${companies.length}`);
+    return filtered;
+  }, [companies, selectedExchange, selectedMarker, getFilteredCompanies]);
+  const handleExchangeChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedExchange(e.target.value);
+    setSelectedMarker('');
+  }, []);
+  const handleMarkerChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedMarker(e.target.value);
+  }, []);
+  console.log(`[WatchlistSelector] Render - currentWatchlist: ${currentWatchlist}, selectedWatchlist: ${selectedWatchlist}, companies: ${companies.length}, loading: ${loading}`);
+  return (
+    <div className="flex gap-4">
+      {}
+      <div className="flex gap-5 items-center">
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium">Watchlist</label>
+          <RadioGroupDemo
+            value={currentWatchlist} 
+            onChange={handleWatchlistChange}
+          />
+          <div className="flex flex-col gap-2">
+         <div className="flex gap-4 text-xs text-muted-foreground">
+  <div>
+    {loading && `Loading watchlist ${currentWatchlist}...`}
+    {!loading && exists && `${totalCompanies} companies (${currentWatchlist})`}
+    {!loading && !exists && `No data available for watchlist ${currentWatchlist}`}
+  </div>
+  {/* {availableExchanges.length > 0 && (
+    <div>
+      Exchanges: {availableExchanges.join(', ')}
+    </div>
+  )} */}
+</div>
+        </div>
+        </div>
+        
+        {/* Status Information */}
+        
+      </div>
+
+      {/* Filters */}
+      {/* Filters */}
+{(showExchangeFilter || showMarkerFilter) && availableExchanges.length > 0 && (
+  <div className="flex flex-col gap-2 justify-center">
+    {/* Exchange Filter */}
+    {showExchangeFilter && (
+      <div className="flex flex-col">
+        <select
+          value={selectedExchange}
+          onChange={handleExchangeChange}
+          className="px-2 py-1 text-xs border rounded m-0"
+        >
+          <option value="">All Exchanges</option>
+          {availableExchanges.map(exchange => (
+            <option key={exchange} value={exchange}>
+              {exchange}
+            </option>
+          ))}
+        </select>
+      </div>
+    )}
+
+    {/* Marker Filter */}
+    {showMarkerFilter && availableMarkers.length > 0 && (
+      <div className="flex flex-col">
+        <select
+          value={selectedMarker}
+          onChange={handleMarkerChange}
+          className="px-2 py-1 text-xs border rounded m-0"
+        >
+          <option value="">All Markers</option>
+          {availableMarkers.map(marker => (
+            <option key={marker} value={marker}>
+              {marker}
+            </option>
+          ))}
+        </select>
+      </div>
+    )}
+
+    {/* Filter Results Count - Only render when there's content */}
+    {filteredCompanies.length !== companies.length && (
+      <div className="text-xs text-muted-foreground">
+        {`${filteredCompanies.length} of ${companies.length} shown`}
+      </div>
+    )}
+  </div>
+)}
+
+
+      {/* Error Display */}
+      {error && (
+        <div className="text-destructive text-xs bg-destructive/10 px-2 py-1 rounded">
+          {error}
+        </div>
+      )}
+      
+      {/* Company Selection */}
+      <div>
+        <SelectScrollable
+          companies={filteredCompanies}
+          loading={loading}
+          exists={exists}
+          onCompanySelect={handleCompanySelect}
+        />
+      </div>
+    </div>
+  );
+});
+WatchlistSelector.displayName = 'WatchlistSelector';
+
+
+
+================================================================================
+FILE: apps/frontend/app/components/controllers/WatchlistSelector/index.tsx
+================================================================================
+
+// src/components/WatchlistSelector/index.tsx
+export { WatchlistSelector } from './WatchlistSelector';
+export { MultiSelectWatchlistSelector } from './MultiSelectWatchlistSelector';
+
+
+
+================================================================================
+FILE: apps/frontend/app/components/controllers/WatchlistSelector/MultiSelectWatchlistSelector.tsx
+================================================================================
+
+'use client'
+import * as React from "react";
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { RadioGroupDemo } from "./RadioGroup";
+import { MultiSelectScrollable } from "./MultiSelectScrollable";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Building2, X } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+interface Company {
+  company_code: string;
+  name: string;
+  exchange: string;
+  marker: string;
+}
+interface MultiSelectWatchlistSelectorProps {
+  onCompaniesSelect?: (companies: Company[]) => void;
+  selectedWatchlist?: string;
+  onWatchlistChange?: (watchlist: string) => void;
+  maxSelection?: number;
+  selectedCompanies?: Company[];
+  showExchangeFilter?: boolean;
+  showMarkerFilter?: boolean;
+}
+export const MultiSelectWatchlistSelector = React.memo(({ 
+  onCompaniesSelect,
+  selectedWatchlist: externalSelectedWatchlist,
+  onWatchlistChange,
+  maxSelection = 6,
+  selectedCompanies = [],
+  showExchangeFilter = true,
+  showMarkerFilter = true
+}: MultiSelectWatchlistSelectorProps) => {
+  const [currentWatchlist, setCurrentWatchlist] = React.useState(() => 
+    externalSelectedWatchlist || 'A'
+  );
+  const {
+    companies,
+    loading,
+    error,
+    exists,
+    availableExchanges,
+    availableMarkers,
+    totalCompanies,
+    getFilteredCompanies
+  } = useWatchlist({ externalWatchlist: currentWatchlist });
+  const [selectedExchange, setSelectedExchange] = React.useState<string>('');
+  const [selectedMarker, setSelectedMarker] = React.useState<string>('');
+  const handleWatchlistChange = React.useCallback((value: string) => {
+    console.log(`[MultiSelectWatchlistSelector] Watchlist changed to: ${value}`);
+    if (value === currentWatchlist) return;
+    setSelectedExchange('');
+    setSelectedMarker('');
+    setCurrentWatchlist(value);
+    if (onCompaniesSelect) {
+      onCompaniesSelect([]);
+    }
+    if (onWatchlistChange) {
+      onWatchlistChange(value);
+    }
+  }, [currentWatchlist, onWatchlistChange, onCompaniesSelect]);
+  const handleCompaniesSelect = React.useCallback((newSelectedCompanies: Company[]) => {
+    console.log(`[MultiSelectWatchlistSelector] Selected companies:`, newSelectedCompanies);
+    if (onCompaniesSelect) {
+      onCompaniesSelect(newSelectedCompanies);
+    }
+  }, [onCompaniesSelect]);
+  const handleRemoveCompany = React.useCallback((companyToRemove: Company) => {
+    const newSelection = selectedCompanies.filter(c => c.company_code !== companyToRemove.company_code);
+    handleCompaniesSelect(newSelection);
+  }, [selectedCompanies, handleCompaniesSelect]);
+  const handleClearAll = React.useCallback(() => {
+    handleCompaniesSelect([]);
+  }, [handleCompaniesSelect]);
+  const filteredCompanies = React.useMemo(() => {
+    const filters: any = {};
+    if (selectedExchange) filters.exchange = selectedExchange;
+    if (selectedMarker) filters.marker = selectedMarker;
+    return getFilteredCompanies(filters);
+  }, [companies, selectedExchange, selectedMarker, getFilteredCompanies]);
+  const handleExchangeChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedExchange(e.target.value);
+    setSelectedMarker('');
+  }, []);
+  const handleMarkerChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedMarker(e.target.value);
+  }, []);
+  return (
+    <Card className=" flex gap-4 px-4 py-4 ">
+      {/* Watchlist Selection */}
+      <div className="flex gap-4 ">
+        <div className="flex gap-5 items-center">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">Watchlist</label>
+            <RadioGroupDemo
+              value={currentWatchlist} 
+              onChange={handleWatchlistChange}
+            />
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-4 text-xs text-muted-foreground">
+                <div>
+                  {loading && `Loading watchlist ${currentWatchlist}...`}
+                  {!loading && exists && `${totalCompanies} companies (${currentWatchlist})`}
+                  {!loading && !exists && `No data available for watchlist ${currentWatchlist}`}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        {(showExchangeFilter || showMarkerFilter) && availableExchanges.length > 0 && (
+          <div className="flex flex-col gap-2 justify-center">
+            {showExchangeFilter && (
+              <div className="flex flex-col">
+                <select
+                  value={selectedExchange}
+                  onChange={handleExchangeChange}
+                  className="px-2 py-1 text-xs border rounded m-0"
+                >
+                  <option value="">All Exchanges</option>
+                  {availableExchanges.map(exchange => (
+                    <option key={exchange} value={exchange}>
+                      {exchange}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {showMarkerFilter && availableMarkers.length > 0 && (
+              <div className="flex flex-col">
+                <select
+                  value={selectedMarker}
+                  onChange={handleMarkerChange}
+                  className="px-2 py-1 text-xs border rounded m-0"
+                >
+                  <option value="">All Markers</option>
+                  {availableMarkers.map(marker => (
+                    <option key={marker} value={marker}>
+                      {marker}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {filteredCompanies.length !== companies.length && (
+              <div className="text-xs text-muted-foreground">
+                {`${filteredCompanies.length} of ${companies.length} shown`}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Selected Companies Tags */}
+      {selectedCompanies.length > 0 && (
+        <div className="space-y-2 max-w-96">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">
+              Selected ({selectedCompanies.length}/{maxSelection})
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearAll}
+              className="h-6 px-2 text-xs"
+            >
+              Clear All
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {selectedCompanies.map((company) => (
+              <Badge
+                key={`${company.company_code}-${company.exchange}`}
+                variant="default"
+                className="flex items-center gap-1 pr-1"
+              >
+                <Building2 className="w-3 h-3" />
+                <span>{company.company_code}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleRemoveCompany(company)}
+                  className="h-4 w-4 p-0 hover:bg-transparent"
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {error && (
+        <div className="text-destructive text-xs bg-destructive/10 px-2 py-1 rounded">
+          {error}
+        </div>
+      )}
+      
+      {/* Multi-Select Company Dropdown */}
+      <div>
+        <MultiSelectScrollable
+          companies={filteredCompanies}
+          loading={loading}
+          exists={exists}
+          onCompaniesSelect={handleCompaniesSelect}
+          selectedCompanies={selectedCompanies}
+          maxSelection={maxSelection}
+        />
+      </div>
+    </Card>
+  );
+});
+MultiSelectWatchlistSelector.displayName = 'MultiSelectWatchlistSelector';
+
+
+
+================================================================================
+FILE: apps/frontend/services/watchlistService.ts
+================================================================================
+
+[FILE NOT FOUND OR EMPTY] 
+
+
+================================================================================
+FILE: apps/frontend/app/services/watchlistService.ts
+================================================================================
+
+[FILE NOT FOUND OR EMPTY] 
+
+
+================================================================================
+CONFIGURATION FILES - DATABASE AND ENVIRONMENT
+================================================================================
+
+================================================================================
+FILE: apps/backend/.env
+================================================================================
+
+
+# DB_HOST=100.93.172.21
+# DB_PORT=5432
+# DB_USERNAME=temp_raghav
+# DB_PASSWORD=password
+# DB_DATABASE=temp_db
+
+DB_HOST=100.93.172.21
+DB_PORT=5432
+DB_USERNAME=readonly_user
+DB_PASSWORD=db_read_5432
+DB_DATABASE=nse_hist_db
+
+# ... existing variables ...
+
+# SIPR Pattern Analysis API
+SIPR_API_URL=http://100.93.172.21:8510
+
+
+
+
+
+
+
+FYERS_CLIENT_ID=150HUKJSWG-100
+
+
+FYERS_SECRET_ID=18YYNXCAS7
+# FYERS_REDIRECT_URI=https://daksphere.com/
+FYERS_REDIRECT_URI=https://raghavjaiswal709.github.io/DAKSphere_redirect/
+FYERS_ACCESS_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZDoxIiwiZDoyIiwieDowIiwieDoxIiwieDoyIl0sImF0X2hhc2giOiJnQUFBQUFCb0Z1eVBBNl9GQzdtcUVIRXNKMWhPUWdUSjBYTC1aMG9jN2hiR1hTNXp2cUFjVXNFUmRxeHNwdE15di1NRUU5YXZrUHBoTFN1MEpDRkt5T20xZzVDNmY5OGVXaGNhOVhMM243aTM4VElpS3RXT3pvYz0iLCJkaXNwbGF5X25hbWUiOiIiLCJvbXMiOiJLMSIsImhzbV9rZXkiOiIzNGQ2OTFmZmUyZjIzMjZjYTU3OWQ3ODljMGM2ZWVmYmVmOWQ2YTM3NzU5YjdmMmUzOGRjODhjZiIsImlzRGRwaUVuYWJsZWQiOiJOIiwiaXNNdGZFbmFibGVkIjoiTiIsImZ5X2lkIjoiRkFBMjQwNjciLCJhcHBUeXBlIjoxMDAsImV4cCI6MTc0NjQwNTAwMCwiaWF0IjoxNzQ2MzMyODE1LCJpc3MiOiJhcGkuZnllcnMuaW4iLCJuYmYiOjE3NDYzMzI4MTUsInN1YiI6ImFjY2Vzc190b2tlbiJ9.SZjiDs0riKHumlyYK4SphhQWzvS5hj1QgPCslWhXuU8
+PORT=5000
+
+
+
+
+================================================================================
+FILE: apps/backend/src/config/database.config.ts
+================================================================================
+
+[FILE NOT FOUND OR EMPTY] 
+
+
+================================================================================
+FILE: apps/backend/src/config/typeorm.config.ts
+================================================================================
+
+[FILE NOT FOUND OR EMPTY] 
+
+
+================================================================================
+END OF FILES - WATCHLIST MODULE EXTRACTION COMPLETE
+================================================================================
+
+WATCHLIST MODULE SUMMARY:
+
+BACKEND FUNCTIONALITY:
+- NestJS service layer with TypeORM entities
+- RESTful API endpoints for CRUD operations
+- Data transfer objects for request/response validation
+- Database integration with PostgreSQL
+
+FRONTEND FUNCTIONALITY:  
+- React hooks for watchlist state management
+- Interactive UI components for watchlist management
+- Multi-select watchlist selector with filtering
+- Service layer for API communication
+
+CONFIGURATION:
+- Database connection and TypeORM configuration
+- Environment variables for database settings
+- Module dependency injection setup
+
+FEATURES COVERED:
+- Create, read, update, delete watchlists
+- Portfolio tracking and analysis
+- Multi-watchlist support (A, B, C categories)
+- Real-time updates and filtering
+- CSV import/export capabilities
+
+Generated on: 12-10-2025 11:42:39.30
+================================================================================
