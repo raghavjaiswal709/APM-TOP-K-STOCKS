@@ -78,9 +78,9 @@ export const LSTMAEInteractiveDashboard: React.FC<LSTMAEInteractiveDashboardProp
           <h3 className="font-semibold text-gray-900">
             {LSTMAE_CONSTANTS.DASHBOARD.TITLE}
           </h3>
-          <p className="mt-1 text-sm text-gray-600">
+          {/* <p className="mt-1 text-sm text-gray-600">
             Interactive Plotly dashboard with zoom, pan, and hover tooltips for detailed pattern analysis.
-          </p>
+          </p> */}
         </div>
       </div>
 
@@ -110,9 +110,9 @@ export const LSTMAEInteractiveDashboard: React.FC<LSTMAEInteractiveDashboardProp
         )}
       </Button>
 
-      <p className="text-xs text-gray-500">
+      {/* <p className="text-xs text-gray-500">
         Opens in new window • Self-contained HTML • No external dependencies
-      </p>
+      </p> */}
     </div>
   );
 };

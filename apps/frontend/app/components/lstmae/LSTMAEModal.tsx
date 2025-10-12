@@ -87,16 +87,16 @@ export const LSTMAEModal: React.FC<LSTMAEModalProps> = ({
                 <div className="text-center space-y-4">
                   <RefreshCw className="h-12 w-12 animate-spin text-blue-600 mx-auto" />
                   <p className="text-lg font-medium">Generating Dashboard...</p>
-                  <p className="text-sm text-muted-foreground">
+                  {/* <p className="text-sm text-muted-foreground">
                     First request: 10-20 seconds • Subsequent: &lt;1 second (cached)
-                  </p>
+                  </p> */}
                 </div>
               </div>
             )}
 
             {(dashboard || plotUrls) && !error && loading !== 'loading' && (
               <>
-                {dashboard && dashboard.dominantPatterns.length > 0 && (
+                {/* {dashboard && dashboard.dominantPatterns.length > 0 && (
                   <div className="rounded-lg border bg-blue-50 p-4">
                     <h3 className="font-semibold text-blue-900 mb-2">
                       Dominant Patterns Detected: {dashboard.nDominantPatterns}
@@ -115,7 +115,7 @@ export const LSTMAEModal: React.FC<LSTMAEModalProps> = ({
                       ))}
                     </div>
                   </div>
-                )}
+                )} */}
 
                 <LSTMAEVisualization dashboard={dashboard || undefined} plotUrls={plotUrls || undefined} />
 
@@ -126,10 +126,10 @@ export const LSTMAEModal: React.FC<LSTMAEModalProps> = ({
                   />
                 )}
 
-                <p className="text-xs text-center text-muted-foreground">
+                {/* <p className="text-xs text-center text-muted-foreground">
                   {loading === 'cached' ? '⚡ Loaded from cache' : '🔄 Freshly generated'} •
                   Cache TTL: 1 hour • Service: Port 8506
-                </p>
+                </p> */}
               </>
             )}
           </div>
