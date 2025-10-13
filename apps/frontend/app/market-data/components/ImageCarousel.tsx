@@ -508,6 +508,7 @@ interface ChartTabsProps {
   msaxCount: number;
 }
 
+// ✅ MODIFIED: ChartTabs now always visible, no conditional rendering
 const ChartTabs: React.FC<ChartTabsProps> = ({ 
   activeTab, 
   onTabChange, 
@@ -827,7 +828,6 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     });
 
     // ✅ NEW - SiPR images (Pattern Analysis visualizations)
-    // Note: These are placeholder paths - adjust based on actual SIPR output location
     const siprBasePath = `/GraphsN/${dateString}/SiPR_Analysis/${companyExchange}`;
     
     const siprVisualizations = [
@@ -982,6 +982,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const currentHeadline = newsItems[currentHeadlineIndex];
 
   // ✅ MODIFIED - Function to render images with "Open Full Dashboard" button for LSTMAE & SIPR
+  // ✅ ALWAYS show buttons even if no images available
   const renderMaximizedImages = () => {
     let leftImages: CarouselImage[] = [];
     let rightImages: CarouselImage[] = [];
@@ -1033,7 +1034,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             <div className="p-4 border-b border-zinc-700/50 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-white">{leftTitle}</h3>
               
-              {/* ✅ Show "Open Full Dashboard" button for LSTMAE tab */}
+              {/* ✅ Show "Open Full Dashboard" button for LSTMAE tab - ALWAYS VISIBLE */}
               {showLSTMAEButton && (
                 <Button
                   onClick={() => setIsLSTMAEModalOpen(true)}
@@ -1045,7 +1046,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 </Button>
               )}
               
-              {/* ✅ NEW - Show "Open SIPR Dashboard" button for SiPR tab */}
+              {/* ✅ NEW - Show "Open SIPR Dashboard" button for SiPR tab - ALWAYS VISIBLE */}
               {showSiprButton && (
                 <div className="flex items-center gap-2">
                   <select
@@ -1242,18 +1243,16 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             
             {/* Right side controls */}
             <div className="flex items-center gap-4">
-              {/* Chart Type Tabs - Show in both views */}
-              {!isLoading && allImages.length > 0 && (
-                <ChartTabs 
-                  activeTab={activeTab} 
-                  onTabChange={setActiveTab}
-                  intradayCount={intradayCount}
-                  interdayCount={interdayCount}
-                  lstmaeCount={lstmaeCount}
-                  siprCount={siprCount}
-                  msaxCount={msaxCount}
-                />
-              )}
+              {/* ✅ MODIFIED: Chart Type Tabs - ALWAYS VISIBLE, regardless of images */}
+              <ChartTabs 
+                activeTab={activeTab} 
+                onTabChange={setActiveTab}
+                intradayCount={intradayCount}
+                interdayCount={interdayCount}
+                lstmaeCount={lstmaeCount}
+                siprCount={siprCount}
+                msaxCount={msaxCount}
+              />
               
               {/* Sentiment Display or Gradient Mode Toggle */}
               {isMaximized ? (
@@ -1285,17 +1284,6 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                   </p>
                 </div>
               </div>
-            ) : allImages.length === 0 ? (
-              <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
-                <div className="text-center">
-                  <p className="text-zinc-400 mb-2">
-                    No graphs found for {companyCode}
-                  </p>
-                  <p className="text-sm text-zinc-500">
-                    Date: {getCurrentDateString()}
-                  </p>
-                </div>
-              </div>
             ) : (
               <>
                 {isMaximized ? (
@@ -1303,12 +1291,13 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 ) : (
                   // Non-maximized view
                   <>
+                    {/* ✅ MODIFIED: Quick access buttons ALWAYS visible */}
                     <div className="border-b border-zinc-700/50 bg-zinc-700/20">
                       <div className="p-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            {/* ✅ Quick access button for LSTMAE in non-maximized view */}
-                            {activeTab === 'LSTMAE' && lstmaeImages.length > 0 && (
+                            {/* ✅ Quick access button for LSTMAE - ALWAYS VISIBLE */}
+                            {activeTab === 'LSTMAE' && (
                               <Button
                                 onClick={() => setIsLSTMAEModalOpen(true)}
                                 size="sm"
@@ -1320,8 +1309,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                               </Button>
                             )}
                             
-                            {/* ✅ NEW - Quick access button for SIPR in non-maximized view */}
-                            {activeTab === 'SiPR' && siprImages.length > 0 && (
+                            {/* ✅ NEW - Quick access button for SIPR - ALWAYS VISIBLE */}
+                            {activeTab === 'SiPR' && (
                               <>
                                 <select
                                   value={siprMonths}
@@ -1348,47 +1337,68 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                       </div>
                     </div>
                     
-                    <div className={`relative overflow-hidden rounded-lg bg-gradient-to-br ${
-                      gradientMode === 'profit' ? 'from-green-950/20 to-zinc-900' :
-                      gradientMode === 'loss' ? 'from-red-950/20 to-zinc-900' : 
-                      'from-zinc-900 to-zinc-900'
-                    } min-h-[400px]`}>
-                      {imageLoading[currentIndex] && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
-                          <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-                        </div>
-                      )}
-                      {currentImage && (
-                        <img
-                          src={currentImage.src}
-                          alt={currentImage.name}
-                          className="w-full h-auto block"
-                          style={{ 
-                            maxWidth: '100%',
-                            height: 'auto',
-                            display: 'block'
-                          }}
-                          onLoadStart={() => handleImageLoadStart(currentIndex)}
-                          onLoad={() => handleImageLoad(currentIndex)}
-                          onError={() => handleImageLoad(currentIndex)}
-                        />
-                      )}
-                    </div>
-                    
-                    {filteredImages.length > 1 && (
-                      <div className="p-2 border-t border-zinc-700/50 bg-zinc-700/20">
-                        <div className="flex justify-center gap-1">
-                          {filteredImages.map((_, index) => (
-                            <button
-                              key={index}
-                              className={`w-2 h-2 rounded-full transition-colors ${
-                                index === currentIndex ? 'bg-blue-500' : 'bg-zinc-600'
-                              }`}
-                              onClick={() => setCurrentIndex(index)}
-                            />
-                          ))}
+                    {/* ✅ MODIFIED: Show content or no-image message */}
+                    {filteredImages.length === 0 ? (
+                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
+                        <div className="text-center">
+                          <p className="text-zinc-400 mb-2">
+                            No {activeTab} graphs found for {companyCode}
+                          </p>
+                          <p className="text-sm text-zinc-500">
+                            Date: {getCurrentDateString()}
+                          </p>
+                          {(activeTab === 'LSTMAE' || activeTab === 'SiPR') && (
+                            <p className="text-xs text-zinc-600 mt-2">
+                              Dashboard functionality available regardless of images
+                            </p>
+                          )}
                         </div>
                       </div>
+                    ) : (
+                      <>
+                        <div className={`relative overflow-hidden rounded-lg bg-gradient-to-br ${
+                          gradientMode === 'profit' ? 'from-green-950/20 to-zinc-900' :
+                          gradientMode === 'loss' ? 'from-red-950/20 to-zinc-900' : 
+                          'from-zinc-900 to-zinc-900'
+                        } min-h-[400px]`}>
+                          {imageLoading[currentIndex] && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
+                              <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                            </div>
+                          )}
+                          {currentImage && (
+                            <img
+                              src={currentImage.src}
+                              alt={currentImage.name}
+                              className="w-full h-auto block"
+                              style={{ 
+                                maxWidth: '100%',
+                                height: 'auto',
+                                display: 'block'
+                              }}
+                              onLoadStart={() => handleImageLoadStart(currentIndex)}
+                              onLoad={() => handleImageLoad(currentIndex)}
+                              onError={() => handleImageLoad(currentIndex)}
+                            />
+                          )}
+                        </div>
+                        
+                        {filteredImages.length > 1 && (
+                          <div className="p-2 border-t border-zinc-700/50 bg-zinc-700/20">
+                            <div className="flex justify-center gap-1">
+                              {filteredImages.map((_, index) => (
+                                <button
+                                  key={index}
+                                  className={`w-2 h-2 rounded-full transition-colors ${
+                                    index === currentIndex ? 'bg-blue-500' : 'bg-zinc-600'
+                                  }`}
+                                  onClick={() => setCurrentIndex(index)}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </>
                 )}
@@ -1426,36 +1436,39 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       />
 
       {/* ✅ NEW - SIPR Pattern Analysis Modal */}
-      <Dialog open={isSiprModalOpen} onOpenChange={setIsSiprModalOpen}>
-        <DialogContent className="max-w-7xl w-[95vw] h-[95vh] p-0 bg-zinc-950 border border-purple-700/50">
-          <DialogHeader className="p-6 border-b border-zinc-700/50">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Activity className="h-6 w-6 text-purple-400" />
-                <DialogTitle className="text-2xl font-bold text-white">
-                  SIPR Pattern Analysis - {companyCode}
-                </DialogTitle>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsSiprModalOpen(false)}
-                className="text-zinc-400 hover:text-white"
-              >
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-          </DialogHeader>
-          
-          <div className="flex-1 overflow-auto p-6">
-            <SiprDashboard
-              companyCode={`${companyCode}_${exchange}`}
-              months={siprMonths}
-              className="h-full"
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ✅ SIPR Pattern Analysis Modal */}
+<Dialog open={isSiprModalOpen} onOpenChange={setIsSiprModalOpen}>
+  <DialogContent className="max-w-7xl w-[95vw] h-[95vh] p-0 bg-zinc-950 border border-purple-700/50">
+    <DialogHeader className="p-6 border-b border-zinc-700/50">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Activity className="h-6 w-6 text-purple-400" />
+          <DialogTitle className="text-2xl font-bold text-white">
+            SIPR Pattern Analysis - {companyCode}
+          </DialogTitle>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsSiprModalOpen(false)}
+          className="text-zinc-400 hover:text-white"
+        >
+          <X className="h-5 w-5" />
+        </Button>
+      </div>
+    </DialogHeader>
+    
+    <div className="flex-1 overflow-auto p-6">
+      {/* ✅ MODIFIED: Pass companyCode_exchange but SiprDashboard will extract company name only */}
+      <SiprDashboard
+        companyCode={`${companyCode}_${exchange}`}
+        months={siprMonths}
+        className="h-full"
+      />
+    </div>
+  </DialogContent>
+</Dialog>
+
     </>
   );
 };

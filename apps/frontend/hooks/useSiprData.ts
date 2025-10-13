@@ -35,8 +35,12 @@ export const useSiprData = (
 
   const fetchData = useCallback(
     async (forceRefresh = false) => {
-      if (!companyCode) return;
+      if (!companyCode) {
+        console.warn('⚠️ useSiprData: No company code provided');
+        return;
+      }
 
+      console.log(`📊 useSiprData: Fetching data for ${companyCode} (${months} months)`);
       setLoading('loading');
       setError(null);
 
@@ -50,10 +54,12 @@ export const useSiprData = (
           siprService.getPatternReport(companyCode, months),
         ]);
 
+        console.log('✅ useSiprData: Data fetched successfully', { top3Data, reportData });
         setTop3Patterns(top3Data);
         setPatternReport(reportData);
         setLoading('success');
       } catch (err: any) {
+        console.error('❌ useSiprData: Failed to fetch data', err);
         const errorObj: SiprError = {
           code: err.code || 'UNKNOWN_ERROR',
           message: err.message || 'Failed to load pattern data',
@@ -71,14 +77,16 @@ export const useSiprData = (
     try {
       const healthStatus = await siprService.checkHealth();
       setHealth(healthStatus);
+      console.log('✅ SIPR health check:', healthStatus);
     } catch (err) {
-      console.error('SIPR health check failed:', err);
+      console.error('❌ SIPR health check failed:', err);
     }
   }, []);
 
   const refresh = useCallback(async () => {
+    console.log('🔄 Refreshing SIPR data for', companyCode);
     await fetchData(true);
-  }, [fetchData]);
+  }, [fetchData, companyCode]);
 
   useEffect(() => {
     if (autoFetch && companyCode) {

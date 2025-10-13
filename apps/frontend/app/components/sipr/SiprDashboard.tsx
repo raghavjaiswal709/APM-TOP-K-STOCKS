@@ -9,11 +9,20 @@ import { Badge } from '@/components/ui/badge';
 import { useSiprData } from '../../../hooks/useSiprData';
 import type { SiprDashboardProps } from '../../types/sipr.types';
 
+// ✅ NEW: Helper to extract company code without exchange
+const extractCompanyCode = (fullCode: string): string => {
+  // Remove _NSE, _BSE, etc. from the end
+  return fullCode.replace(/_(NSE|BSE|MCX|NCDEX)$/, '');
+};
+
 export const SiprDashboard: React.FC<SiprDashboardProps> = ({
-  companyCode,
+  companyCode: fullCompanyCode,
   months = 3,
   className = '',
 }) => {
+  // ✅ Extract company code without exchange
+  const companyCode = extractCompanyCode(fullCompanyCode);
+  
   const { top3Patterns, patternReport, loading, error, refresh } = useSiprData(
     companyCode,
     months
@@ -53,7 +62,7 @@ export const SiprDashboard: React.FC<SiprDashboardProps> = ({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <Activity className="h-5 w-5 text-purple-600" />
-            SIPR Pattern Analysis
+            SIPR Pattern Analysis - {companyCode}
           </CardTitle>
           <div className="flex gap-2">
             <Button
@@ -104,7 +113,7 @@ export const SiprDashboard: React.FC<SiprDashboardProps> = ({
           )}
 
           {/* Top 3 Patterns */}
-          {top3Patterns && top3Patterns.top_3_patterns.length > 0 && (
+          {top3Patterns && top3Patterns.top_3_patterns && top3Patterns.top_3_patterns.length > 0 && (
             <div className="space-y-2">
               <h3 className="font-semibold flex items-center gap-2">
                 <TrendingUp className="h-4 w-4" />
@@ -122,7 +131,7 @@ export const SiprDashboard: React.FC<SiprDashboardProps> = ({
                       </Badge>
                       <div>
                         <p className="font-medium">
-                          Pattern {pattern.cluster_label} 
+                          Pattern {pattern.cluster_label || pattern.pattern_id}
                           <span className="text-sm text-gray-500 ml-2">
                             ({pattern.occurrence_count} occurrences)
                           </span>
@@ -132,16 +141,8 @@ export const SiprDashboard: React.FC<SiprDashboardProps> = ({
                         </p>
                       </div>
                     </div>
-                    <Badge 
-                      variant={
-                        pattern.shape_characteristics.trend === 'increasing' 
-                          ? 'default' 
-                          : pattern.shape_characteristics.trend === 'decreasing'
-                          ? 'destructive'
-                          : 'secondary'
-                      }
-                    >
-                      {pattern.shape_characteristics.trend}
+                    <Badge variant="default">
+                      {pattern.shape_characteristics?.trend || 'stable'}
                     </Badge>
                   </div>
                 ))}
