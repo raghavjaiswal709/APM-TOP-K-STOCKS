@@ -1,100 +1,75 @@
 // apps/frontend/app/types/sipr.types.ts
 
-export interface SiprPattern {
-  pattern_id: number;
-  cluster_label: number;
-  segment_length: number;
-  avg_segment_length: number;
-  occurrence_count: number;
-  percentage_of_total: number;
-  shape_characteristics: {
-    mean: number;
-    std: number;
-    min: number;
-    max: number;
-    trend: 'increasing' | 'decreasing' | 'stable';
-  };
+export interface SiprAnalysisPeriod {
+  start_date: string;  // Format: "YYYY-MM-DD"
+  end_date: string;    // Format: "YYYY-MM-DD"
+  months: string;
+}
+
+export interface SiprPatternInfo {
+  pattern_id: number;           // 1-indexed pattern identifier
+  frequency: number;            // Occurrences in analyzed period
+  percentage: number;           // % of total segments (2 decimal places)
+  avg_length: number;           // Average length in time steps
+  std_length: number;           // Standard deviation of length
+  min_length: number;           // Minimum observed length
+  max_length: number;           // Maximum observed length
+  avg_distance: number;         // Average DTW distance (4 decimal places)
+  overall_frequency: number;    // Total occurrences in full dataset
+  overall_percentage: number;   // % in full dataset (2 decimal places)
+  avg_time_minutes: number;     // Average duration in minutes
+  time_found_range: string | null;      // e.g., "08:00 - 18:00"
+  most_prominent_range: string | null;  // e.g., "14:00 - 15:00"
 }
 
 export interface SiprTop3Response {
   company_code: string;
-  analysis_months: number;
+  analysis_period: SiprAnalysisPeriod;
+  top_patterns: SiprPatternInfo[];
   total_segments: number;
-  unique_patterns: number;
-  top_3_patterns: SiprPattern[];
-  analysis_timestamp: string;
 }
 
-export interface SiprTimeSeriesPoint {
-  timestamp: string;
-  value: number;
-  segment_id: number;
-  cluster_label: number;
+export interface SiprSegmentInfo {
+  start_idx: number;
+  end_idx: number;
+  pattern_id: number;
+  frequency: number;
+  percentage: number;
+  avg_length: number;
+  start_time: string;          // Format: "YYYY-MM-DD HH:MM:SS"
+  end_time: string;            // Format: "YYYY-MM-DD HH:MM:SS"
+  avg_time_minutes: number;
 }
 
 export interface SiprSegmentationResponse {
   company_code: string;
   analysis_months: number;
-  time_series_data: SiprTimeSeriesPoint[];
-  segment_boundaries: number[];
-  cluster_assignments: number[];
-  analysis_timestamp: string;
-}
-
-export interface SiprClusterData {
-  cluster_id: number;
-  size: number;
-  centroid: number[];
-  members: number[];
-  characteristics: {
-    avg_length: number;
-    variance: number;
-    dominant_trend: string;
-  };
+  figure: any;  // Plotly figure JSON
+  segments: SiprSegmentInfo[];
 }
 
 export interface SiprClusterResponse {
   company_code: string;
   analysis_months: number;
-  n_clusters: number;
-  clusters: SiprClusterData[];
-  silhouette_score: number;
-  analysis_timestamp: string;
-}
-
-export interface SiprCentroidShape {
-  cluster_id: number;
-  shape: number[];
-  length: number;
-  characteristics: {
-    peak_value: number;
-    trough_value: number;
-    volatility: number;
-    trend_direction: string;
-  };
+  figure: any;  // Plotly figure JSON
 }
 
 export interface SiprCentroidResponse {
   company_code: string;
   analysis_months: number;
-  centroids: SiprCentroidShape[];
-  analysis_timestamp: string;
+  figure: any;  // Plotly figure JSON
 }
 
 export interface SiprPatternReport {
   company_code: string;
-  analysis_period: {
-    months: number;
-    start_date: string;
-    end_date: string;
-  };
+  analysis_period: SiprAnalysisPeriod;
   summary: {
     total_segments: number;
     unique_patterns: number;
     avg_segment_length: number;
     most_common_pattern: number;
   };
-  top_patterns: SiprPattern[];
+  top_patterns: SiprPatternInfo[];
   cluster_distribution: {
     [cluster_id: number]: number;
   };
