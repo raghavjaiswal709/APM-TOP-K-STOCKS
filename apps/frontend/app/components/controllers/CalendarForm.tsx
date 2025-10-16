@@ -189,13 +189,13 @@ export function CalendarForm({
         >
           {loading ? (
             <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              Fetching...
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black mr-2"></div>
+              
             </>
           ) : (
             <>
               <Search className="h-4 w-4 mr-2" />
-              Fetch Data
+              {/* Fetch Data */}
             </>
           )}
         </Button>
@@ -205,17 +205,17 @@ export function CalendarForm({
           onClick={handleFetchAllClick}
           disabled={loading}
           variant="secondary"
-          className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium"
+          className="px-6 py-2 bg-white hover:bg-white/50 text-black font-medium"
         >
           {loading ? (
             <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              Loading...
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 black-white mr-2"></div>
+              
             </>
           ) : (
             <>
               <BarChart3 className="h-4 w-4 mr-2" />
-              Fetch All Data
+              {/* Fetch All Data */}
             </>
           )}
         </Button>

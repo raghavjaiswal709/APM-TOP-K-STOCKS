@@ -1,227 +1,165 @@
-"use client"
+'use client'
 import * as React from "react"
-import { Check, ChevronsUpDown, Building2, Search } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
+
 interface Company {
-  company_code: string;
-  name: string;
-  exchange: string;
-  marker: string;
-}
-interface MergedCompany {
   company_id?: number;
   company_code: string;
   name: string;
   exchange: string;
-  marker: string;
-  total_valid_days?: number;
-  avg_daily_high_low_range?: number;
-  median_daily_volume?: number;
-  avg_trading_capital?: number;
-  pe_ratio?: number;
-  N1_Pattern_count?: number;
+  marker?: string;
 }
+
 interface MultiSelectScrollableProps {
-  companies: MergedCompany[];
+  companies: Company[];
   loading: boolean;
   exists: boolean;
-  onCompaniesSelect: (companies: Company[]) => void;
+  onCompaniesSelect?: (companies: Company[]) => void;
   selectedCompanies: Company[];
-  maxSelection: number;
+  maxSelection?: number;
+  disabled?: boolean;
 }
+
 export function MultiSelectScrollable({ 
   companies, 
   loading, 
   exists, 
   onCompaniesSelect,
   selectedCompanies,
-  maxSelection
+  maxSelection = 6,
+  disabled = false
 }: MultiSelectScrollableProps) {
-  const [open, setOpen] = React.useState(false)
-  const [searchTerm, setSearchTerm] = React.useState("")
-  React.useEffect(() => {
-    console.log(`[MultiSelectScrollable] Companies changed. New count: ${companies.length}`);
-    setSearchTerm("")
-  }, [companies]);
-  React.useEffect(() => {
-    const handleClickOutside = () => {
-      if (open) {
-        setOpen(false)
-        setSearchTerm("")
-      }
-    }
-    if (open) {
-      document.addEventListener('click', handleClickOutside)
-      return () => document.removeEventListener('click', handleClickOutside)
-    }
-  }, [open])
-  const handleSelect = (company: MergedCompany) => {
-    console.log(`[MultiSelectScrollable] handleSelect called with company:`, company);
-    const companyObj: Company = {
-      company_code: company.company_code,
-      name: company.name,
-      exchange: company.exchange,
-      marker: company.marker
-    };
-    const isSelected = selectedCompanies.some(c => 
-      c.company_code === company.company_code && c.exchange === company.exchange
-    );
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  const isCompanySelected = React.useCallback((companyCode: string) => {
+    return selectedCompanies.some(c => c.company_code === companyCode);
+  }, [selectedCompanies]);
+
+  const handleCompanyToggle = React.useCallback((company: Company) => {
+    if (disabled) return;
+
+    const isSelected = isCompanySelected(company.company_code);
+    let newSelection: Company[];
+
     if (isSelected) {
-      // Remove from selection
-      const newSelection = selectedCompanies.filter(c => 
-        !(c.company_code === company.company_code && c.exchange === company.exchange)
-      );
-      onCompaniesSelect(newSelection);
+      newSelection = selectedCompanies.filter(c => c.company_code !== company.company_code);
     } else {
-      if (selectedCompanies.length < maxSelection) {
-        const newSelection = [...selectedCompanies, companyObj];
-        onCompaniesSelect(newSelection);
+      if (selectedCompanies.length >= maxSelection) {
+        console.warn(`Maximum selection of ${maxSelection} companies reached`);
+        return;
       }
+      newSelection = [...selectedCompanies, company];
     }
-  }
-  const handleButtonClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    setOpen(!open)
-    if (!open) {
-      setSearchTerm("")
+
+    console.log('[MultiSelectScrollable] New selection:', newSelection);
+    if (onCompaniesSelect) {
+      onCompaniesSelect(newSelection);
     }
-  }
-  const filteredCompanies = React.useMemo(() => {
-    if (!searchTerm) return companies;
-    const searchLower = searchTerm.toLowerCase();
-    return companies.filter(company =>
-      company.company_code.toLowerCase().includes(searchLower) ||
-      company.name.toLowerCase().includes(searchLower) ||
-      company.exchange.toLowerCase().includes(searchLower) ||
-      company.marker.toLowerCase().includes(searchLower)
-    );
-  }, [companies, searchTerm]);
-  const isSelectionFull = selectedCompanies.length >= maxSelection;
+  }, [selectedCompanies, maxSelection, onCompaniesSelect, isCompanySelected, disabled]);
+
   if (loading) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground min-h-[40px]">
-        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
-        Loading companies...
-      </div>
+      <Select disabled>
+        <SelectTrigger className="w-[280px]">
+          <SelectValue placeholder="Loading companies..." />
+        </SelectTrigger>
+      </Select>
     );
   }
+
   if (!exists || companies.length === 0) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground min-h-[40px]">
-        <Building2 className="h-4 w-4" />
-        {!exists ? 'Watchlist not available' : 'No companies found'}
-      </div>
+      <Select disabled>
+        <SelectTrigger className="w-[280px]">
+          <SelectValue placeholder="No companies available" />
+        </SelectTrigger>
+      </Select>
     );
   }
+
   return (
-    <div className="relative">
-      <Button
-        variant="outline"
-        onClick={handleButtonClick}
-        className="w-[400px] justify-between h-20"
-      >
-        <span className="text-muted-foreground">
-          {selectedCompanies.length > 0 
-            ? `${selectedCompanies.length} companies selected` 
-            : `Select companies... (${companies.length} available)`}
-        </span>
-        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-      </Button>
-      {open && (
-        <div 
-          className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-[500px] "
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="p-2 border-b border-border ">
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search companies..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 h-8"
-                autoFocus
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
-            <div className="flex justify-between items-center mt-2 text-xs text-muted-foreground">
-              <div>
-                {filteredCompanies.length !== companies.length && 
-                  `Showing ${filteredCompanies.length} of ${companies.length} companies`}
-              </div>
-              <div>
-                {selectedCompanies.length}/{maxSelection} selected
-              </div>
-            </div>
-          </div>
-          <ScrollArea className="max-h-[300px] overflow-auto">
-            {filteredCompanies.length === 0 ? (
-              <div className="p-3 text-sm text-muted-foreground text-center">
-                {searchTerm ? 'No companies match your search' : 'No companies found'}
-              </div>
-            ) : (
-              filteredCompanies.map((company, index) => {
-                const uniqueKey = `${company.company_code}-${company.exchange}-${index}`;
-                const isSelected = selectedCompanies.some(c => 
-                  c.company_code === company.company_code && c.exchange === company.exchange
-                );
-                const canSelect = !isSelected && !isSelectionFull;
-                return (
-                  <div
-                    key={uniqueKey}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (canSelect || isSelected) {
-                        handleSelect(company);
-                      }
-                    }}
-                    className={cn(
-                      "flex flex-col gap-1 p-3 cursor-pointer hover:bg-accent transition-colors border-b border-border last:border-b-0",
-                      isSelected && "bg-accent",
-                      !canSelect && !isSelected && "opacity-50 cursor-not-allowed"
-                    )}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Check
-                          className={cn(
-                            "h-4 w-4 flex-shrink-0",
-                            isSelected ? "opacity-100 text-primary" : "opacity-0"
-                          )}
-                        />
-                        <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                        <span className="font-medium">
-                          {company.company_code}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-xs font-medium">
-                          {company.exchange}
-                        </span>
-                        <span className="bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-xs font-medium">
-                          {company.marker}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-sm text-muted-foreground truncate w-full ml-6">
-                      {company.name}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </ScrollArea>
-          {isSelectionFull && (
-            <div className="p-2 bg-yellow-50 border-t border-yellow-200 text-xs text-yellow-800">
-              Maximum {maxSelection} companies selected. Remove a company to select another.
+    <Select open={isOpen} onOpenChange={setIsOpen}>
+      <SelectTrigger className="w-[280px]" disabled={disabled}>
+        <SelectValue>
+          {selectedCompanies.length === 0 ? (
+            "Select companies"
+          ) : (
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-xs">
+                {selectedCompanies.length}/{maxSelection}
+              </Badge>
+              <span className="text-sm">
+                {selectedCompanies.length === 1 
+                  ? selectedCompanies[0].company_code
+                  : `${selectedCompanies.length} selected`
+                }
+              </span>
             </div>
           )}
-        </div>
-      )}
-    </div>
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          <SelectLabel className="flex items-center justify-between px-2">
+            <span>Companies ({companies.length})</span>
+            {selectedCompanies.length >= maxSelection && (
+              <Badge variant="secondary" className="text-xs">
+                Max {maxSelection}
+              </Badge>
+            )}
+          </SelectLabel>
+          <div className="max-h-[300px] overflow-y-auto">
+            {companies.map((company) => {
+              const isSelected = isCompanySelected(company.company_code);
+              const isDisabled = !isSelected && selectedCompanies.length >= maxSelection;
+
+              return (
+                <div
+                  key={`${company.company_code}-${company.exchange}`}
+                  className={`flex items-center space-x-2 px-3 py-2 cursor-pointer hover:bg-muted ${
+                    isDisabled ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  onClick={() => !isDisabled && handleCompanyToggle(company)}
+                >
+                  <Checkbox
+                    checked={isSelected}
+                    disabled={isDisabled}
+                    onCheckedChange={() => !isDisabled && handleCompanyToggle(company)}
+                  />
+                  <div className="flex-1 flex items-center justify-between gap-2 min-w-0">
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="font-medium text-sm">{company.company_code}</span>
+                      <span className="text-xs text-muted-foreground truncate">
+                        {company.name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Badge variant="outline" className="text-xs">
+                        {company.exchange}
+                      </Badge>
+                      {company.marker && (
+                        <Badge variant="secondary" className="text-xs">
+                          {company.marker}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   );
 }
-

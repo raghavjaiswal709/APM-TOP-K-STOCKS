@@ -19,7 +19,6 @@ import { ModeToggle } from "../components/toggleButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import LiveMarketGrid from './components/LiveMarketGrid';
 import { MultiSelectWatchlistSelector } from '../components/controllers/WatchlistSelector/MultiSelectWatchlistSelector';
 import { FyersAuthStatus } from '../components/FyersAuthStatus';
@@ -34,19 +33,23 @@ import {
   CheckCircle,
   XCircle 
 } from 'lucide-react';
+
 interface Company {
+  company_id?: number;
   company_code: string;
   name: string;
   exchange: string;
-  marker: string;
-  symbol: string;
+  marker?: string;
+  symbol?: string;
 }
+
 interface AuthStatus {
   authenticated: boolean;
   token_valid: boolean;
   expires_at: string | null;
   services_notified: string[];
 }
+
 const LiveMarketPage: React.FC = () => {
   const {
     availableCompanies,
@@ -60,10 +63,12 @@ const LiveMarketPage: React.FC = () => {
     unsubscribeAll,
     isConnected
   } = useLiveMarket();
+
   const [selectedCompanies, setSelectedCompanies] = useState<Company[]>([]);
-  const [selectedWatchlist, setSelectedWatchlist] = useState('A');
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+
   const fetchAuthStatus = useCallback(async () => {
     try {
       setAuthLoading(true);
@@ -77,18 +82,22 @@ const LiveMarketPage: React.FC = () => {
       setAuthLoading(false);
     }
   }, []);
+
   useEffect(() => {
     fetchAuthStatus();
     const interval = setInterval(fetchAuthStatus, 30000);
     return () => clearInterval(interval);
   }, [fetchAuthStatus]);
+
   const handleCompaniesSelect = useCallback((companies: Company[]) => {
     console.log('🔍 Companies selected in LiveMarketPage:', companies);
     setSelectedCompanies(companies);
+
     if (!authStatus?.authenticated || !authStatus?.token_valid) {
       console.warn('⚠️ Cannot subscribe: Fyers authentication required');
       return;
     }
+
     if (companies.length > 0) {
       console.log('📡 Subscribing to companies:', companies);
       subscribeToCompanies(companies);
@@ -97,23 +106,27 @@ const LiveMarketPage: React.FC = () => {
       unsubscribeAll();
     }
   }, [subscribeToCompanies, unsubscribeAll, authStatus]);
-  const handleWatchlistChange = useCallback((watchlist: string) => {
-    console.log('Watchlist changed to:', watchlist);
-    setSelectedWatchlist(watchlist);
+
+  const handleDateChange = useCallback((date: string) => {
+    console.log('Date changed to:', date);
+    setSelectedDate(date);
     setSelectedCompanies([]);
     unsubscribeAll();
   }, [unsubscribeAll]);
+
   const handleClearSelection = useCallback(() => {
     console.log('📡 Clearing all selections');
     setSelectedCompanies([]);
     unsubscribeAll();
   }, [unsubscribeAll]);
+
   const gridSelectedCompanies = React.useMemo(() => {
     return selectedCompanies.map(company => ({
       ...company,
-      symbol: company.symbol || `${company.exchange}:${company.company_code}-${company.marker}`
+      symbol: company.symbol || `${company.exchange}:${company.company_code}-${company.marker || 'EQ'}`
     }));
   }, [selectedCompanies]);
+
   useEffect(() => {
     console.log('🔍 LiveMarketPage State Update:', {
       selectedCompanies: selectedCompanies.length,
@@ -122,9 +135,11 @@ const LiveMarketPage: React.FC = () => {
       isConnected,
       loading,
       error,
-      authStatus: authStatus?.authenticated
+      authStatus: authStatus?.authenticated,
+      selectedDate
     });
-  }, [selectedCompanies, liveMarketSelectedCompanies, marketData, isConnected, loading, error, authStatus]);
+  }, [selectedCompanies, liveMarketSelectedCompanies, marketData, isConnected, loading, error, authStatus, selectedDate]);
+
   const getAuthStatusDisplay = () => {
     if (authLoading) {
       return { icon: Activity, color: 'text-blue-500', text: 'Checking...' };
@@ -140,8 +155,10 @@ const LiveMarketPage: React.FC = () => {
       return { icon: XCircle, color: 'text-red-500', text: 'Required' };
     }
   };
+
   const authDisplay = getAuthStatusDisplay();
   const AuthIcon = authDisplay.icon;
+
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -154,7 +171,7 @@ const LiveMarketPage: React.FC = () => {
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block">
                   <BreadcrumbLink href="#">
-                    Building Your Application
+                    Real-Time Market Data
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
@@ -166,10 +183,8 @@ const LiveMarketPage: React.FC = () => {
             </Breadcrumb>
           </div>
         </header>
+
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          {}
-          {}
-          {}
           <Card className="w-full">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -178,10 +193,18 @@ const LiveMarketPage: React.FC = () => {
                     <TrendingUp className="h-5 w-5" />
                     Live Market Data Grid
                   </CardTitle>
-                  {}
+                  {selectedDate && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Showing data for {new Date(selectedDate).toLocaleDateString('en-IN', { 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      })}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-6">
-                  {}
+                  {/* Auth Status */}
                   <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50">
                     <Shield className="w-4 h-4 text-muted-foreground" />
                     <AuthIcon className={`w-4 h-4 ${authDisplay.color}`} />
@@ -189,7 +212,8 @@ const LiveMarketPage: React.FC = () => {
                       Auth: {authDisplay.text}
                     </span>
                   </div>
-                  {}
+
+                  {/* Connection Status */}
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${
                       isConnected ? 'bg-green-500' : 'bg-red-500'
@@ -198,9 +222,10 @@ const LiveMarketPage: React.FC = () => {
                       {connectionStatus}
                     </span>
                   </div>
-                  {}
+
+                  {/* Market Status */}
                   {marketStatus?.trading_active && (
-                    <Badge variant="default" className="bg-green-100 text-green-800">
+                    <Badge variant="default" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
                       <Activity className="w-3 h-3 mr-1" />
                       Market Open
                     </Badge>
@@ -210,16 +235,15 @@ const LiveMarketPage: React.FC = () => {
                       Market Closed
                     </Badge>
                   )}
-                  {}
                 </div>
               </div>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                {}
+                {/* Main Content Area */}
                 <div className="lg:col-span-3 space-y-4">
                   <div className="flex justify-between items-center">
-                    {}
+                    {/* Selection Stats */}
                     {selectedCompanies.length > 0 && (
                       <div className="flex items-center gap-4">
                         <div className="flex flex-col items-end gap-1 text-sm text-muted-foreground">
@@ -243,44 +267,50 @@ const LiveMarketPage: React.FC = () => {
                       </div>
                     )}
                   </div>
+
                   <MultiSelectWatchlistSelector
                     onCompaniesSelect={handleCompaniesSelect}
-                    selectedWatchlist={selectedWatchlist}
-                    onWatchlistChange={handleWatchlistChange}
+                    onDateChange={handleDateChange}
                     maxSelection={6}
                     selectedCompanies={selectedCompanies}
                     showExchangeFilter={true}
                     showMarkerFilter={true}
+                    showDateSelector={true}
                     disabled={!authStatus?.authenticated || !authStatus?.token_valid}
                   />
-                  {}
+
+                  {/* Auth Warning */}
                   {(!authStatus?.authenticated || !authStatus?.token_valid) && (
-                    <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-3 py-2 rounded-md text-sm">
+                    <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 px-3 py-2 rounded-md text-sm">
                       ⚠️ Authentication required to select companies and view live data
                     </div>
                   )}
-                  {}
+
+                  {/* Loading Indicator */}
                   {loading && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
                       <span>Subscribing to market data...</span>
                     </div>
                   )}
-                  {}
+
+                  {/* Error Display */}
                   {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
+                    <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-2 rounded-md text-sm">
                       ❌ {error}
                     </div>
                   )}
                 </div>
-                {}
+
+                {/* Sidebar - Auth Status */}
                 <div className="lg:col-span-1">
                   <FyersAuthStatus />
                 </div>
               </div>
             </CardContent>
           </Card>
-          {}
+
+          {/* Live Market Grid - When Companies Selected and Authenticated */}
           {selectedCompanies.length > 0 && authStatus?.authenticated && authStatus?.token_valid && (
             <LiveMarketGrid
               selectedCompanies={gridSelectedCompanies}
@@ -289,7 +319,8 @@ const LiveMarketPage: React.FC = () => {
               loading={loading}
             />
           )}
-          {}
+
+          {/* Auth Required Message */}
           {selectedCompanies.length > 0 && (!authStatus?.authenticated || !authStatus?.token_valid) && (
             <Card className="w-full">
               <CardContent className="flex flex-col items-center justify-center py-12">
@@ -304,25 +335,24 @@ const LiveMarketPage: React.FC = () => {
               </CardContent>
             </Card>
           )}
-          {}
+
+          {/* Empty State */}
           {selectedCompanies.length === 0 && (
             <Card className="w-full">
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <TrendingUp className="h-12 w-12 text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium mb-2">No Companies Selected</h3>
                 <p className="text-sm text-muted-foreground text-center max-w-md">
-                  Select 1-6 companies from your watchlist above to start monitoring their real-time market data in an interactive grid layout.
+                  Select a date and choose 1-6 companies from your watchlist above to start monitoring their real-time market data in an interactive grid layout.
                   {!authStatus?.authenticated && " Note: Fyers authentication is required for live data."}
                 </p>
               </CardContent>
             </Card>
           )}
-          {}
-          {}
         </div>
       </SidebarInset>
     </SidebarProvider>
   );
 };
-export default LiveMarketPage;
 
+export default LiveMarketPage;

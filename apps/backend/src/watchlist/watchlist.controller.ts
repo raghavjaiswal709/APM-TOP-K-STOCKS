@@ -1,73 +1,80 @@
-import { Controller, Get, Param, Query, Post } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { WatchlistService, MergedCompany } from './watchlist.service';
 
 @Controller('api/watchlist')
 export class WatchlistController {
   constructor(private readonly watchlistService: WatchlistService) {}
 
-  @Get(':watchlist')
+  /**
+   * Get available dates
+   * GET /api/watchlist/dates
+   */
+  @Get('dates')
+  async getAvailableDates(): Promise<{ dates: string[] }> {
+    const dates = await this.watchlistService.getAvailableDates();
+    return { dates };
+  }
+
+  /**
+   * Get watchlist companies
+   * GET /api/watchlist?date=YYYY-MM-DD&exchange=NSE,BSE
+   * 
+   * Note: Since your DB doesn't have A/B/C concept, we removed that parameter
+   */
+  @Get()
   async getWatchlist(
-    @Param('watchlist') watchlist: string,
     @Query('date') date?: string,
     @Query('exchange') exchange?: string,
-  ): Promise<{ companies: MergedCompany[], exists: boolean, total: number }> {
+  ): Promise<{ companies: MergedCompany[], exists: boolean, total: number, date: string }> {
     try {
-      const allCompanies = await this.watchlistService.getAllCompaniesWithExchange(watchlist, date);
+      const companies = await this.watchlistService.getAllCompaniesWithExchange(date, exchange);
       
-      // Filter by exchange if specified
-      let companies = allCompanies;
-      if (exchange) {
-        const exchanges = exchange.split(',').map(ex => ex.trim().toUpperCase());
-        companies = allCompanies.filter(company => 
-          exchanges.includes(company.exchange.toUpperCase())
-        );
-      }
-      
-      console.log(`Retrieved ${companies.length} companies from watchlist ${watchlist} for exchanges: ${exchange || 'ALL'}`);
+      console.log(`Retrieved ${companies.length} companies for exchanges: ${exchange || 'ALL'}`);
       return { 
         companies, 
         exists: true, 
-        total: companies.length 
+        total: companies.length,
+        date: date || new Date().toISOString().split('T')[0]
       };
     } catch (error) {
-      console.error(`Error fetching watchlist ${watchlist}:`, error);
+      console.error(`Error fetching watchlist:`, error);
       return { 
         companies: [], 
         exists: false, 
-        total: 0 
+        total: 0,
+        date: date || new Date().toISOString().split('T')[0]
       };
     }
   }
 
-  @Get(':watchlist/check')
+  /**
+   * Check if watchlist exists for date
+   * GET /api/watchlist/check?date=YYYY-MM-DD
+   */
+  @Get('check')
   async checkWatchlist(
-    @Param('watchlist') watchlist: string,
     @Query('date') date?: string,
   ): Promise<{ exists: boolean }> {
-    const exists = await this.watchlistService.checkWatchlistExists(watchlist, date);
+    const exists = await this.watchlistService.checkWatchlistExists(date);
     return { exists };
   }
 
-  @Get(':watchlist/exchanges')
+  /**
+   * Get available exchanges
+   * GET /api/watchlist/exchanges?date=YYYY-MM-DD
+   */
+  @Get('exchanges')
   async getWatchlistExchanges(
-    @Param('watchlist') watchlist: string,
     @Query('date') date?: string,
   ): Promise<{ exchanges: string[] }> {
-    try {
-      const companies = await this.watchlistService.getWatchlistData(watchlist, date);
-      const exchanges = [...new Set(companies.map(c => c.exchange).filter(Boolean))];
-      return { exchanges };
-    } catch (error) {
-      return { exchanges: [] };
-    }
+    const exchanges = await this.watchlistService.getAvailableExchanges(date);
+    return { exchanges };
   }
 
-  @Get()
-  async getAvailableWatchlists(): Promise<{ watchlists: string[] }> {
-    const watchlists = await this.watchlistService.getAvailableWatchlists();
-    return { watchlists };
-  }
-
+  /**
+   * Get company by code
+   * GET /api/watchlist/company/:companyCode?exchange=NSE
+   */
   @Get('company/:companyCode')
   async getCompanyByCode(
     @Param('companyCode') companyCode: string,
@@ -77,9 +84,17 @@ export class WatchlistController {
     return { company };
   }
 
-  @Post('refresh-cache')
-  async refreshCache(): Promise<{ message: string }> {
-    await this.watchlistService.refreshCompanyMasterCache();
-    return { message: 'Company master cache refreshed successfully' };
+  /**
+   * Get company metrics
+   * GET /api/watchlist/company/:companyCode/metrics?exchange=NSE&date=YYYY-MM-DD
+   */
+  @Get('company/:companyCode/metrics')
+  async getCompanyMetrics(
+    @Param('companyCode') companyCode: string,
+    @Query('exchange') exchange: string,
+    @Query('date') date: string,
+  ): Promise<{ data: any }> {
+    const data = await this.watchlistService.getCompanyMetrics(companyCode, exchange, date);
+    return { data };
   }
 }

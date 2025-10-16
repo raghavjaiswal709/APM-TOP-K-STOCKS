@@ -22,26 +22,27 @@ import {
 } from "@/components/ui/sidebar";
 import { ModeToggle } from "@/app/components/toggleButton";
 
+
 interface Company {
+  company_id?: number;
   company_code: string;
   name: string;
   exchange: string;
+  marker?: string;
   total_valid_days?: number;
-  avg_daily_high_low?: number;
-  median_daily_volume?: number;
-  avg_trading_ratio?: number;
-  N1_Pattern_count?: number;
   avg_daily_high_low_range?: number;
-  avg_daily_volume?: number;
+  median_daily_volume?: number;
   avg_trading_capital?: number;
-  instrument_token?: string;
-  tradingsymbol?: string;
+  latest_close_price?: number;
+  pe_ratio?: number;
+  suggested_capital_deployment?: number;
+  hourly_median_volume?: number;
 }
+
 
 export default function WatchlistPage() {
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [selectedExchange, setSelectedExchange] = useState<string | undefined>(undefined);
-  const [selectedWatchlist, setSelectedWatchlist] = useState<string>('A');
 
   const {
     companies: rawCompanies,
@@ -49,12 +50,15 @@ export default function WatchlistPage() {
     error,
     exists,
     availableExchanges,
-  } = useWatchlist({ externalWatchlist: selectedWatchlist });
+    selectedDate,
+  } = useWatchlist();
+
 
   // Memoize companies array to prevent SelectScrollable from resetting
   const companies = useMemo(() => {
     return rawCompanies || [];
   }, [rawCompanies]);
+
 
   // Memoize the company select handler to prevent unnecessary re-renders
   const handleCompanySelect = useCallback((companyCode: string | null, exchange?: string) => {
@@ -63,12 +67,6 @@ export default function WatchlistPage() {
     setSelectedExchange(exchange);
   }, []);
 
-  const handleWatchlistChange = useCallback((watchlist: string) => {
-    console.log(`[WatchlistPage] Watchlist changed to: ${watchlist}`);
-    setSelectedWatchlist(watchlist);
-    setSelectedCompany(null); // Reset company selection when watchlist changes
-    setSelectedExchange(undefined);
-  }, []);
 
   // Improved selectedCompanyData logic to handle duplicates across exchanges
   const selectedCompanyData = useMemo(() => {
@@ -82,25 +80,23 @@ export default function WatchlistPage() {
     }
     
     // If we only have company code, find the first match
-    // (this handles cases where SelectScrollable only passes company code)
     if (selectedCompany) {
       const matches = companies.filter(c => c.company_code === selectedCompany);
-      
-      // If multiple matches across exchanges, prefer the first one
-      // or you could add logic to prefer a specific exchange
       return matches.length > 0 ? matches[0] : null;
     }
     
     return null;
   }, [selectedCompany, selectedExchange, companies]);
 
+
   const formatNumber = (value: number | undefined) => {
-    if (value === undefined) return 'N/A';
+    if (value === undefined || value === null) return 'N/A';
     return new Intl.NumberFormat('en-IN').format(value);
   };
 
+
   const formatCurrency = (value: number | undefined) => {
-    if (value === undefined) return 'N/A';
+    if (value === undefined || value === null) return 'N/A';
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
@@ -108,21 +104,25 @@ export default function WatchlistPage() {
     }).format(value);
   };
 
+
   const formatDecimal = (value: number | undefined) => {
-    if (value === undefined) return 'N/A';
+    if (value === undefined || value === null) return 'N/A';
     return value.toFixed(4);
   };
+
 
   // Memoize the table click handler
   const handleTableRowClick = useCallback((companyCode: string, exchange: string) => {
     handleCompanySelect(companyCode, exchange);
   }, [handleCompanySelect]);
 
+
   // Memoize the button click handler
   const handleSelectButtonClick = useCallback((e: React.MouseEvent, companyCode: string, exchange: string) => {
     e.stopPropagation();
     handleCompanySelect(companyCode, exchange);
   }, [handleCompanySelect]);
+
 
   return (
     <SidebarProvider>
@@ -150,6 +150,7 @@ export default function WatchlistPage() {
           </div>
         </header>
 
+
         {/* Main Content */}
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
           <div className="container mx-auto space-y-6">
@@ -158,15 +159,16 @@ export default function WatchlistPage() {
             <div className="flex flex-col space-y-2">
               <h1 className="text-3xl font-bold tracking-tight">Watchlist Management</h1>
               <p className="text-muted-foreground">
-                Select and analyze companies from your watchlists
+                Select and analyze companies from your daily watchlist
               </p>
             </div>
+
 
             {/* Watchlist Selector Section */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <span>Select Watchlist & Company</span>
+                  <span>Select Date & Company</span>
                   <div className="flex items-center gap-2 ml-auto">
                     <span className={`inline-block w-2 h-2 rounded-full ${
                       loading ? 'bg-yellow-500' : exists ? 'bg-green-500' : 'bg-red-500'
@@ -179,9 +181,8 @@ export default function WatchlistPage() {
               </CardHeader>
               <CardContent>
                 <WatchlistSelector
-                  selectedWatchlist={selectedWatchlist}
-                  onWatchlistChange={handleWatchlistChange}
                   onCompanySelect={handleCompanySelect}
+                  showDateSelector={true}
                 />
                 
                 {error && (
@@ -192,21 +193,28 @@ export default function WatchlistPage() {
               </CardContent>
             </Card>
 
+
             {/* Watchlist Overview Stats */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card>
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">Selected Watchlist</p>
-                      <p className="text-2xl font-bold">Watchlist {selectedWatchlist}</p>
+                      <p className="text-sm font-medium text-muted-foreground">Selected Date</p>
+                      <p className="text-2xl font-bold">
+                        {selectedDate ? new Date(selectedDate).toLocaleDateString('en-IN', { 
+                          day: '2-digit', 
+                          month: 'short' 
+                        }) : 'Today'}
+                      </p>
                     </div>
                     <Badge variant="secondary" className="text-lg px-3 py-1">
-                      {selectedWatchlist}
+                      {selectedDate ? new Date(selectedDate).getDate() : new Date().getDate()}
                     </Badge>
                   </div>
                 </CardContent>
               </Card>
+
 
               <Card>
                 <CardContent className="pt-6">
@@ -223,6 +231,7 @@ export default function WatchlistPage() {
                 </CardContent>
               </Card>
 
+
               <Card>
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
@@ -233,6 +242,7 @@ export default function WatchlistPage() {
                   </div>
                 </CardContent>
               </Card>
+
 
               <Card>
                 <CardContent className="pt-6">
@@ -262,6 +272,7 @@ export default function WatchlistPage() {
               </Card>
             </div>
 
+
             {/* Selected Company Details */}
             {selectedCompanyData && (
               <Card>
@@ -269,6 +280,9 @@ export default function WatchlistPage() {
                   <CardTitle className="flex items-center gap-2">
                     <span>Company Details</span>
                     <Badge variant="secondary">{selectedCompanyData.exchange}</Badge>
+                    {selectedCompanyData.marker && (
+                      <Badge variant="outline">{selectedCompanyData.marker}</Badge>
+                    )}
                     <Badge variant="outline" className="ml-auto">
                       {selectedCompanyData.company_code}
                     </Badge>
@@ -295,14 +309,23 @@ export default function WatchlistPage() {
                           <p className="text-xs text-muted-foreground mb-1">Exchange</p>
                           <Badge variant="outline" className="mt-1">{selectedCompanyData.exchange}</Badge>
                         </div>
-                        {selectedCompanyData.tradingsymbol && (
+                        {selectedCompanyData.marker && (
                           <div className="bg-muted/50 p-3 rounded-lg">
-                            <p className="text-xs text-muted-foreground mb-1">Trading Symbol</p>
-                            <p className="font-medium font-mono">{selectedCompanyData.tradingsymbol}</p>
+                            <p className="text-xs text-muted-foreground mb-1">Marker</p>
+                            <Badge variant="secondary" className="mt-1">{selectedCompanyData.marker}</Badge>
+                          </div>
+                        )}
+                        {selectedCompanyData.latest_close_price && (
+                          <div className="bg-muted/50 p-3 rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">Latest Close Price</p>
+                            <p className="font-bold text-lg text-green-600 dark:text-green-400">
+                              {formatCurrency(selectedCompanyData.latest_close_price)}
+                            </p>
                           </div>
                         )}
                       </div>
                     </div>
+
 
                     {/* Trading Metrics */}
                     <div className="space-y-4">
@@ -310,66 +333,76 @@ export default function WatchlistPage() {
                         Trading Metrics
                       </h4>
                       <div className="grid gap-3">
-                        <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
-                          <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Total Valid Days</p>
-                          <p className="font-bold text-xl text-blue-700 dark:text-blue-300">
-                            {formatNumber(selectedCompanyData.total_valid_days)}
-                          </p>
-                        </div>
-                        <div className="bg-green-50 dark:bg-green-950/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
-                          <p className="text-xs text-green-600 dark:text-green-400 mb-1">Avg Daily High-Low</p>
-                          <p className="font-bold text-lg text-green-700 dark:text-green-300">
-                            {formatCurrency(selectedCompanyData.avg_daily_high_low)}
-                          </p>
-                        </div>
-                        <div className="bg-purple-50 dark:bg-purple-950/20 p-3 rounded-lg border border-purple-200 dark:border-purple-800">
-                          <p className="text-xs text-purple-600 dark:text-purple-400 mb-1">Median Daily Volume</p>
-                          <p className="font-bold text-lg text-purple-700 dark:text-purple-300">
-                            {formatNumber(selectedCompanyData.median_daily_volume)}
-                          </p>
-                        </div>
-                        <div className="bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg border border-orange-200 dark:border-orange-800">
-                          <p className="text-xs text-orange-600 dark:text-orange-400 mb-1">Avg Trading Ratio</p>
-                          <p className="font-bold text-lg text-orange-700 dark:text-orange-300">
-                            {formatDecimal(selectedCompanyData.avg_trading_ratio)}
-                          </p>
-                        </div>
+                        {selectedCompanyData.total_valid_days && (
+                          <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Total Valid Days</p>
+                            <p className="font-bold text-xl text-blue-700 dark:text-blue-300">
+                              {formatNumber(selectedCompanyData.total_valid_days)}
+                            </p>
+                          </div>
+                        )}
+                        {selectedCompanyData.avg_daily_high_low_range && (
+                          <div className="bg-green-50 dark:bg-green-950/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
+                            <p className="text-xs text-green-600 dark:text-green-400 mb-1">Avg Daily High-Low Range</p>
+                            <p className="font-bold text-lg text-green-700 dark:text-green-300">
+                              {selectedCompanyData.avg_daily_high_low_range.toFixed(2)} %
+                            </p>
+                          </div>
+                        )}
+                        {selectedCompanyData.median_daily_volume && (
+                          <div className="bg-purple-50 dark:bg-purple-950/20 p-3 rounded-lg border border-purple-200 dark:border-purple-800">
+                            <p className="text-xs text-purple-600 dark:text-purple-400 mb-1">Median Daily Volume</p>
+                            <p className="font-bold text-lg text-purple-700 dark:text-purple-300">
+                              {formatNumber(selectedCompanyData.median_daily_volume)}
+                            </p>
+                          </div>
+                        )}
+                        {selectedCompanyData.hourly_median_volume && (
+                          <div className="bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg border border-orange-200 dark:border-orange-800">
+                            <p className="text-xs text-orange-600 dark:text-orange-400 mb-1">Hourly Median Volume</p>
+                            <p className="font-bold text-lg text-orange-700 dark:text-orange-300">
+                              {formatNumber(selectedCompanyData.hourly_median_volume)}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    {/* Pattern Analysis */}
+
+                    {/* Financial Analysis */}
                     <div className="space-y-4">
                       <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide border-b pb-2">
-                        Pattern Analysis
+                        Financial Analysis
                       </h4>
                       <div className="grid gap-3">
-                        <div className="bg-cyan-50 dark:bg-cyan-950/20 p-3 rounded-lg border border-cyan-200 dark:border-cyan-800">
-                          <p className="text-xs text-cyan-600 dark:text-cyan-400 mb-1">N1 Pattern Count</p>
-                          <p className="font-bold text-xl text-cyan-700 dark:text-cyan-300">
-                            {formatNumber(selectedCompanyData.N1_Pattern_count)}
-                          </p>
-                        </div>
-                        {selectedCompanyData.avg_daily_high_low_range && (
-                          <div className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800">
-                            <p className="text-xs text-indigo-600 dark:text-indigo-400 mb-1">Avg High-Low Range</p>
-                            <p className="font-bold text-lg text-indigo-700 dark:text-indigo-300">
-                              {parseFloat(selectedCompanyData.avg_daily_high_low_range).toFixed(2) + ' %'}
-
+                        {selectedCompanyData.pe_ratio && (
+                          <div className="bg-cyan-50 dark:bg-cyan-950/20 p-3 rounded-lg border border-cyan-200 dark:border-cyan-800">
+                            <p className="text-xs text-cyan-600 dark:text-cyan-400 mb-1">P/E Ratio</p>
+                            <p className="font-bold text-xl text-cyan-700 dark:text-cyan-300">
+                              {selectedCompanyData.pe_ratio.toFixed(2)}
                             </p>
                           </div>
                         )}
                         {selectedCompanyData.avg_trading_capital && (
-                          <div className="bg-pink-50 dark:bg-pink-950/20 p-3 rounded-lg border border-pink-200 dark:border-pink-800">
-                            <p className="text-xs text-pink-600 dark:text-pink-400 mb-1">Avg Trading Capital</p>
-                            <p className="font-bold text-lg text-pink-700 dark:text-pink-300">
+                          <div className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800">
+                            <p className="text-xs text-indigo-600 dark:text-indigo-400 mb-1">Avg Trading Capital</p>
+                            <p className="font-bold text-lg text-indigo-700 dark:text-indigo-300">
                               {formatCurrency(selectedCompanyData.avg_trading_capital)}
                             </p>
                           </div>
                         )}
-                        {selectedCompanyData.instrument_token && (
+                        {selectedCompanyData.suggested_capital_deployment && (
+                          <div className="bg-pink-50 dark:bg-pink-950/20 p-3 rounded-lg border border-pink-200 dark:border-pink-800">
+                            <p className="text-xs text-pink-600 dark:text-pink-400 mb-1">Suggested Capital Deployment</p>
+                            <p className="font-bold text-lg text-pink-700 dark:text-pink-300">
+                              {formatCurrency(selectedCompanyData.suggested_capital_deployment)}
+                            </p>
+                          </div>
+                        )}
+                        {selectedCompanyData.company_id && (
                           <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border">
-                            <p className="text-xs text-muted-foreground mb-1">Instrument Token</p>
-                            <p className="font-mono text-sm break-all">{selectedCompanyData.instrument_token}</p>
+                            <p className="text-xs text-muted-foreground mb-1">Company ID</p>
+                            <p className="font-mono text-sm">{selectedCompanyData.company_id}</p>
                           </div>
                         )}
                       </div>
@@ -379,11 +412,12 @@ export default function WatchlistPage() {
               </Card>
             )}
 
+
             {/* Companies Data Table */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  <span>Companies in Watchlist {selectedWatchlist}</span>
+                  <span>Companies in Daily Watchlist</span>
                   <div className="flex items-center gap-2">
                     {loading && <Skeleton className="h-4 w-20" />}
                     {!loading && (
@@ -394,7 +428,9 @@ export default function WatchlistPage() {
                   </div>
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  {exists ? 'Click on any company to view detailed information' : 'Watchlist data not found or unavailable'}
+                  {exists 
+                    ? `Showing companies for ${selectedDate || 'today'} - Click on any company to view detailed information` 
+                    : 'Watchlist data not found or unavailable'}
                 </p>
               </CardHeader>
               <CardContent>
@@ -417,10 +453,10 @@ export default function WatchlistPage() {
                     </div>
                     <h3 className="font-semibold mb-2">No Watchlist Data</h3>
                     <p className="text-muted-foreground mb-4">
-                      The selected watchlist doesn't exist or contains no data.
+                      The selected date doesn't have any watchlist data.
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Try selecting a different watchlist or check your data source.
+                      Try selecting a different date from the available dates.
                     </p>
                   </div>
                 ) : companies.length === 0 ? (
@@ -451,10 +487,10 @@ export default function WatchlistPage() {
                             Valid Days
                           </th>
                           <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
-                            Avg High-Low
+                            Close Price
                           </th>
                           <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
-                            Pattern Count
+                            P/E Ratio
                           </th>
                           <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
                             Actions
@@ -494,12 +530,12 @@ export default function WatchlistPage() {
                               </td>
                               <td className="py-3 px-4">
                                 <span className="font-medium text-green-600 dark:text-green-400">
-                                  {formatCurrency(company.avg_daily_high_low)}
+                                  {formatCurrency(company.latest_close_price)}
                                 </span>
                               </td>
                               <td className="py-3 px-4 text-center">
                                 <span className="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-2 py-1 rounded text-sm">
-                                  {formatNumber(company.N1_Pattern_count)}
+                                  {company.pe_ratio ? company.pe_ratio.toFixed(2) : 'N/A'}
                                 </span>
                               </td>
                               <td className="py-3 px-4">

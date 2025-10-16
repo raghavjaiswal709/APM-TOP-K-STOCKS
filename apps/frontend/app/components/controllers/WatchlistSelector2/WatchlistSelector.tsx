@@ -1,20 +1,22 @@
 'use client'
 import * as React from "react";
 import { useWatchlist } from "@/hooks/useWatchlist";
-import { RadioGroupDemo } from "./RadioGroup";
 import { SelectScrollable } from "./SelectScrollable";
 import { FilterModal } from "./FilterModal";
-import { Filter } from "lucide-react";
+import { Filter, CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
 
 interface WatchlistSelectorProps {
   onCompanySelect?: (companyCode: string | null, exchange?: string, marker?: string) => void;
-  selectedWatchlist?: string;
-  onWatchlistChange?: (watchlist: string) => void;
+  onDateChange?: (date: string) => void;
   showExchangeFilter?: boolean;
   showMarkerFilter?: boolean;
   showSentimentFilter?: boolean;
+  showDateSelector?: boolean;
 }
 
 interface ActiveFilters {
@@ -25,38 +27,25 @@ interface ActiveFilters {
 
 export const WatchlistSelector = React.memo(({ 
   onCompanySelect,
-  selectedWatchlist: externalSelectedWatchlist,
-  onWatchlistChange,
+  onDateChange,
   showExchangeFilter = true,
   showMarkerFilter = true,
-  showSentimentFilter = true
+  showSentimentFilter = true,
+  showDateSelector = true
 }: WatchlistSelectorProps) => {
-  const [currentWatchlist, setCurrentWatchlist] = React.useState(() => 
-    externalSelectedWatchlist || 'A'
-  );
   
   const [isFilterModalOpen, setIsFilterModalOpen] = React.useState(false);
+  const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
   const [activeFilters, setActiveFilters] = React.useState<ActiveFilters>({
     exchanges: [],
     markers: [],
     sentiments: []
   });
 
-  const prevExternalWatchlist = React.useRef(externalSelectedWatchlist);
-
-  React.useEffect(() => {
-    if (externalSelectedWatchlist && 
-        externalSelectedWatchlist !== prevExternalWatchlist.current && 
-        externalSelectedWatchlist !== currentWatchlist) {
-      console.log(`[WatchlistSelector] External watchlist changed to: ${externalSelectedWatchlist}`);
-      prevExternalWatchlist.current = externalSelectedWatchlist;
-      setCurrentWatchlist(externalSelectedWatchlist);
-    }
-  }, [externalSelectedWatchlist, currentWatchlist]);
-
   const {
-    selectedWatchlist,
-    setSelectedWatchlist,
+    selectedDate,
+    setSelectedDate,
+    availableDates,
     companies,
     loading,
     error,
@@ -65,29 +54,32 @@ export const WatchlistSelector = React.memo(({
     availableMarkers,
     totalCompanies,
     getFilteredCompanies
-  } = useWatchlist({ externalWatchlist: currentWatchlist });
+  } = useWatchlist();
 
   // Get available sentiments (you might need to modify this based on your data)
   const availableSentiments = React.useMemo(() => {
     return ['positive', 'negative', 'neutral'];
   }, []);
 
-  const handleWatchlistChange = React.useCallback((value: string) => {
-    console.log(`[WatchlistSelector] Watchlist changed to: ${value}`);
-    if (value === currentWatchlist) {
-      return;
+  const handleDateSelect = React.useCallback((date: Date | undefined) => {
+    if (date) {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      console.log(`[WatchlistSelector] Date selected: ${dateStr}`);
+      setSelectedDate(dateStr);
+      setIsDatePickerOpen(false);
+      
+      // Reset filters when date changes
+      setActiveFilters({
+        exchanges: [],
+        markers: [],
+        sentiments: []
+      });
+      
+      if (onDateChange) {
+        onDateChange(dateStr);
+      }
     }
-    // Reset filters when watchlist changes
-    setActiveFilters({
-      exchanges: [],
-      markers: [],
-      sentiments: []
-    });
-    setCurrentWatchlist(value);
-    if (onWatchlistChange) {
-      onWatchlistChange(value);
-    }
-  }, [currentWatchlist, onWatchlistChange]);
+  }, [setSelectedDate, onDateChange]);
 
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
     if (!companyCode) {
@@ -116,7 +108,7 @@ export const WatchlistSelector = React.memo(({
     // Apply marker filter
     if (activeFilters.markers.length > 0) {
       filtered = filtered.filter(company => 
-        activeFilters.markers.includes(company.marker)
+        company.marker && activeFilters.markers.includes(company.marker)
       );
     }
 
@@ -145,28 +137,60 @@ export const WatchlistSelector = React.memo(({
     sentiments: availableSentiments
   }), [availableExchanges, availableMarkers, availableSentiments]);
 
-  console.log(`[WatchlistSelector] Render - currentWatchlist: ${currentWatchlist}, selectedWatchlist: ${selectedWatchlist}, companies: ${companies.length}, loading: ${loading}`);
+  const availableDateObjects = React.useMemo(() => 
+    availableDates.map(d => new Date(d)),
+    [availableDates]
+  );
+
+  console.log(`[WatchlistSelector] Render - selectedDate: ${selectedDate}, companies: ${companies.length}, loading: ${loading}`);
 
   return (
-    <div className="flex gap-4">
-      <div className="flex gap-5 items-center">
+    <div className="flex gap-4 flex-wrap items-center">
+      
+      {/* Date Selector */}
+      {showDateSelector && (
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium">Watchlist</label>
-          <RadioGroupDemo
-            value={currentWatchlist} 
-            onChange={handleWatchlistChange}
-          />
+          <label className="text-sm font-medium">Select Date</label>
+          <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-[200px] justify-start text-left font-normal"
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {selectedDate ? format(new Date(selectedDate), "PPP") : "Pick a date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={selectedDate ? new Date(selectedDate) : undefined}
+                onSelect={handleDateSelect}
+                disabled={(date) => 
+                  !availableDateObjects.some(d => 
+                    d.toDateString() === date.toDateString()
+                  ) || date > new Date()
+                }
+                initialFocus
+              />
+              {availableDates.length > 0 && (
+                <div className="p-3 border-t text-xs text-muted-foreground">
+                  {availableDates.length} dates available
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
           <div className="flex flex-col gap-2">
             <div className="flex gap-4 text-xs text-muted-foreground">
               <div>
-                {loading && `Loading watchlist ${currentWatchlist}...`}
-                {!loading && exists && `${totalCompanies} companies (${currentWatchlist})`}
-                {!loading && !exists && `No data available for watchlist ${currentWatchlist}`}
+                {loading && `Loading data...`}
+                {!loading && exists && `${totalCompanies} companies`}
+                {!loading && !exists && `No data available`}
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Filter Button */}
       {(showExchangeFilter || showMarkerFilter || showSentimentFilter) && availableExchanges.length > 0 && (
@@ -175,7 +199,7 @@ export const WatchlistSelector = React.memo(({
             variant="outline"
             size="sm"
             onClick={() => setIsFilterModalOpen(true)}
-            className="flex items-center gap-2 h-8"
+            className="flex items-center gap-2 h-10"
           >
             <Filter className="h-4 w-4" />
             Filters

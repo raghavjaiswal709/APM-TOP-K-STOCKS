@@ -1,27 +1,38 @@
-import React from "react";
+'use client'
+import * as React from "react";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
 interface RadioGroupDemoProps {
   value: string;
   onChange: (value: string) => void;
 }
-export const RadioGroupDemo = React.memo(({ value, onChange }: RadioGroupDemoProps) => {
+
+export function RadioGroupDemo({ value, onChange }: RadioGroupDemoProps) {
   return (
-    <RadioGroup className="flex" value={value} onValueChange={onChange}>
+    <RadioGroup 
+      value={value} 
+      onValueChange={onChange}
+      className="flex gap-4"
+    >
       <div className="flex items-center space-x-2">
-        <RadioGroupItem value="A" id="r1" />
-        <Label htmlFor="r1">A</Label>
+        <RadioGroupItem value="A" id="watchlist-a" />
+        <Label htmlFor="watchlist-a" className="cursor-pointer">
+          Watchlist A
+        </Label>
       </div>
       <div className="flex items-center space-x-2">
-        <RadioGroupItem value="B" id="r2" />
-        <Label htmlFor="r2">B</Label>
+        <RadioGroupItem value="B" id="watchlist-b" />
+        <Label htmlFor="watchlist-b" className="cursor-pointer">
+          Watchlist B
+        </Label>
       </div>
       <div className="flex items-center space-x-2">
-        <RadioGroupItem value="C" id="r3" />
-        <Label htmlFor="r3">C</Label>
+        <RadioGroupItem value="C" id="watchlist-c" />
+        <Label htmlFor="watchlist-c" className="cursor-pointer">
+          Watchlist C
+        </Label>
       </div>
     </RadioGroup>
   );
-});
-RadioGroupDemo.displayName = 'RadioGroupDemo';
-
+}

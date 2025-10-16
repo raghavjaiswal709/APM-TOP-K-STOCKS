@@ -1,38 +1,33 @@
 'use client'
 import * as React from "react";
 import { useWatchlist } from "@/hooks/useWatchlist";
-import { RadioGroupDemo } from "./RadioGroup";
 import { SelectScrollable } from "./SelectScrollable";
+import { Calendar } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+
 interface WatchlistSelectorProps {
   onCompanySelect?: (companyCode: string | null, exchange?: string, marker?: string) => void;
-  selectedWatchlist?: string;
-  onWatchlistChange?: (watchlist: string) => void;
+  onDateChange?: (date: string) => void;
   showExchangeFilter?: boolean;
   showMarkerFilter?: boolean;
+  showDateSelector?: boolean;
 }
+
 export const WatchlistSelector = React.memo(({ 
   onCompanySelect,
-  selectedWatchlist: externalSelectedWatchlist,
-  onWatchlistChange,
+  onDateChange,
   showExchangeFilter = true,
-  showMarkerFilter = true
+  showMarkerFilter = true,
+  showDateSelector = true
 }: WatchlistSelectorProps) => {
-  const [currentWatchlist, setCurrentWatchlist] = React.useState(() => 
-    externalSelectedWatchlist || 'A'
-  );
-  const prevExternalWatchlist = React.useRef(externalSelectedWatchlist);
-  React.useEffect(() => {
-    if (externalSelectedWatchlist && 
-        externalSelectedWatchlist !== prevExternalWatchlist.current && 
-        externalSelectedWatchlist !== currentWatchlist) {
-      console.log(`[WatchlistSelector] External watchlist changed to: ${externalSelectedWatchlist}`);
-      prevExternalWatchlist.current = externalSelectedWatchlist;
-      setCurrentWatchlist(externalSelectedWatchlist);
-    }
-  }, [externalSelectedWatchlist, currentWatchlist]);
+  
   const {
-    selectedWatchlist,
-    setSelectedWatchlist,
+    selectedDate,
+    setSelectedDate,
+    availableDates,
     companies,
     loading,
     error,
@@ -41,129 +36,126 @@ export const WatchlistSelector = React.memo(({
     availableMarkers,
     totalCompanies,
     getFilteredCompanies
-  } = useWatchlist({ externalWatchlist: currentWatchlist });
+  } = useWatchlist();
+
   const [selectedExchange, setSelectedExchange] = React.useState<string>('');
   const [selectedMarker, setSelectedMarker] = React.useState<string>('');
-  const handleWatchlistChange = React.useCallback((value: string) => {
-    console.log(`[WatchlistSelector] Watchlist changed to: ${value}`);
-    if (value === currentWatchlist) {
-      return;
+  const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
+
+  const handleDateSelect = React.useCallback((date: Date | undefined) => {
+    if (date) {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      console.log(`[WatchlistSelector] Date selected: ${dateStr}`);
+      setSelectedDate(dateStr);
+      setIsDatePickerOpen(false);
+      if (onDateChange) onDateChange(dateStr);
     }
-    setSelectedExchange('');
-    setSelectedMarker('');
-    setCurrentWatchlist(value);
-    if (onWatchlistChange) {
-      onWatchlistChange(value);
-    }
-  }, [currentWatchlist, onWatchlistChange]);
+  }, [setSelectedDate, onDateChange]);
+
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
     if (!companyCode) {
-      if (onCompanySelect) {
-        onCompanySelect(null);
-      }
+      if (onCompanySelect) onCompanySelect(null);
       return;
     }
+
     const selectedCompany = companies.find(c => c.company_code === companyCode);
-    console.log(`[WatchlistSelector] Selected company: ${companyCode}`, selectedCompany);
     if (onCompanySelect && selectedCompany) {
       onCompanySelect(companyCode, selectedCompany.exchange, selectedCompany.marker);
     }
   }, [companies, onCompanySelect]);
+
   const filteredCompanies = React.useMemo(() => {
     const filters: any = {};
     if (selectedExchange) filters.exchange = selectedExchange;
     if (selectedMarker) filters.marker = selectedMarker;
-    const filtered = getFilteredCompanies(filters);
-    console.log(`[WatchlistSelector] Filtered companies: ${filtered.length} out of ${companies.length}`);
-    return filtered;
+    return getFilteredCompanies(filters);
   }, [companies, selectedExchange, selectedMarker, getFilteredCompanies]);
-  const handleExchangeChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedExchange(e.target.value);
-    setSelectedMarker('');
-  }, []);
-  const handleMarkerChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedMarker(e.target.value);
-  }, []);
-  console.log(`[WatchlistSelector] Render - currentWatchlist: ${currentWatchlist}, selectedWatchlist: ${selectedWatchlist}, companies: ${companies.length}, loading: ${loading}`);
+
+  const availableDateObjects = React.useMemo(() => 
+    availableDates.map(d => new Date(d)),
+    [availableDates]
+  );
+
   return (
-    <div className="flex gap-4">
-      {}
-      <div className="flex gap-5 items-center">
+    <div className="flex gap-4 flex-wrap items-center">
+      
+      {/* Date Selector */}
+      {showDateSelector && (
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium">Watchlist</label>
-          <RadioGroupDemo
-            value={currentWatchlist} 
-            onChange={handleWatchlistChange}
-          />
-          <div className="flex flex-col gap-2">
-         <div className="flex gap-4 text-xs text-muted-foreground">
-  <div>
-    {loading && `Loading watchlist ${currentWatchlist}...`}
-    {!loading && exists && `${totalCompanies} companies (${currentWatchlist})`}
-    {!loading && !exists && `No data available for watchlist ${currentWatchlist}`}
-  </div>
-  {/* {availableExchanges.length > 0 && (
-    <div>
-      Exchanges: {availableExchanges.join(', ')}
-    </div>
-  )} */}
-</div>
+          <label className="text-sm font-medium">Select Date</label>
+          <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-[200px] justify-start text-left font-normal"
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {selectedDate ? format(new Date(selectedDate), "PPP") : "Pick a date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={selectedDate ? new Date(selectedDate) : undefined}
+                onSelect={handleDateSelect}
+                disabled={(date) => 
+                  !availableDateObjects.some(d => 
+                    d.toDateString() === date.toDateString()
+                  ) || date > new Date()
+                }
+                initialFocus
+              />
+              {availableDates.length > 0 && (
+                <div className="p-3 border-t text-xs text-muted-foreground">
+                  {availableDates.length} dates available
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+          <div className="text-xs text-muted-foreground">
+            {loading && `Loading...`}
+            {!loading && exists && `${totalCompanies} companies`}
+            {!loading && !exists && `No data`}
+          </div>
         </div>
-        </div>
-        
-        {/* Status Information */}
-        
-      </div>
+      )}
 
       {/* Filters */}
-      {/* Filters */}
-{(showExchangeFilter || showMarkerFilter) && availableExchanges.length > 0 && (
-  <div className="flex flex-col gap-2 justify-center">
-    {/* Exchange Filter */}
-    {showExchangeFilter && (
-      <div className="flex flex-col">
-        <select
-          value={selectedExchange}
-          onChange={handleExchangeChange}
-          className="px-2 py-1 text-xs border rounded m-0"
-        >
-          <option value="">All Exchanges</option>
-          {availableExchanges.map(exchange => (
-            <option key={exchange} value={exchange}>
-              {exchange}
-            </option>
-          ))}
-        </select>
-      </div>
-    )}
+      {(showExchangeFilter || showMarkerFilter) && availableExchanges.length > 0 && (
+        <div className="flex flex-col gap-2 justify-center">
+          {showExchangeFilter && (
+            <select
+              value={selectedExchange}
+              onChange={(e) => setSelectedExchange(e.target.value)}
+              className="px-3 py-8 text-sm text-muted-foreground border rounded-md bg-background"
+            >
+              <option value="">All Exchanges</option>
+              {availableExchanges.map(exchange => (
+                <option key={exchange} value={exchange}>{exchange}</option>
+              ))}
+            </select>
+          )}
 
-    {/* Marker Filter */}
-    {showMarkerFilter && availableMarkers.length > 0 && (
-      <div className="flex flex-col">
-        <select
-          value={selectedMarker}
-          onChange={handleMarkerChange}
-          className="px-2 py-1 text-xs border rounded m-0"
-        >
-          <option value="">All Markers</option>
-          {availableMarkers.map(marker => (
-            <option key={marker} value={marker}>
-              {marker}
-            </option>
-          ))}
-        </select>
-      </div>
-    )}
+          {showMarkerFilter && availableMarkers.length > 0 && (
+            <select
+              value={selectedMarker}
+              onChange={(e) => setSelectedMarker(e.target.value)}
+              className="px-3 py-2 text-sm border rounded-md bg-background"
+            >
+              <option value="">All Markers</option>
+              {availableMarkers.map(marker => (
+                <option key={marker} value={marker}>{marker}</option>
+              ))}
+            </select>
+          )}
 
-    {/* Filter Results Count - Only render when there's content */}
-    {filteredCompanies.length !== companies.length && (
-      <div className="text-xs text-muted-foreground">
-        {`${filteredCompanies.length} of ${companies.length} shown`}
-      </div>
-    )}
-  </div>
-)}
-
+          {filteredCompanies.length !== companies.length && (
+            <div className="text-xs text-muted-foreground">
+              {filteredCompanies.length} of {companies.length} shown
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Error Display */}
       {error && (
@@ -184,5 +176,5 @@ export const WatchlistSelector = React.memo(({
     </div>
   );
 });
-WatchlistSelector.displayName = 'WatchlistSelector';
 
+WatchlistSelector.displayName = 'WatchlistSelector';

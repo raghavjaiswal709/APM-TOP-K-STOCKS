@@ -100,7 +100,7 @@ fi
 echo -e "${BLUE}Initializing UI components...${NC}"
 if [ -f "components.json" ]; then rm components.json; fi
 npx shadcn@latest init --yes
-for c in avatar breadcrumb button calendar card collapsible dropdown-menu form input label popover radio-group scroll-area select separator sheet sidebar skeleton badge toast toaster tooltip; do
+for c in avatar breadcrumb button calendar card collapsible dropdown-menu form input label popover radio-group scroll-area select separator sheet sidebar skeleton badge toast toaster tooltip checkbox; do
   npx shadcn-ui@latest add "$c" --yes
 done
 cd ../..

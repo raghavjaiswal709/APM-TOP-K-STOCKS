@@ -1,40 +1,50 @@
 'use client'
 import * as React from "react";
 import { useWatchlist } from "@/hooks/useWatchlist";
-import { RadioGroupDemo } from "./RadioGroup";
 import { MultiSelectScrollable } from "./MultiSelectScrollable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Building2, X } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Building2, X, CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+
 interface Company {
+  company_id?: number;
   company_code: string;
   name: string;
   exchange: string;
-  marker: string;
+  marker?: string;
+  symbol?: string;
 }
+
 interface MultiSelectWatchlistSelectorProps {
   onCompaniesSelect?: (companies: Company[]) => void;
-  selectedWatchlist?: string;
-  onWatchlistChange?: (watchlist: string) => void;
+  onDateChange?: (date: string) => void;
   maxSelection?: number;
   selectedCompanies?: Company[];
   showExchangeFilter?: boolean;
   showMarkerFilter?: boolean;
+  showDateSelector?: boolean;
+  disabled?: boolean;
 }
+
 export const MultiSelectWatchlistSelector = React.memo(({ 
   onCompaniesSelect,
-  selectedWatchlist: externalSelectedWatchlist,
-  onWatchlistChange,
+  onDateChange,
   maxSelection = 6,
   selectedCompanies = [],
   showExchangeFilter = true,
-  showMarkerFilter = true
+  showMarkerFilter = true,
+  showDateSelector = true,
+  disabled = false
 }: MultiSelectWatchlistSelectorProps) => {
-  const [currentWatchlist, setCurrentWatchlist] = React.useState(() => 
-    externalSelectedWatchlist || 'A'
-  );
+  
   const {
+    selectedDate,
+    setSelectedDate,
+    availableDates,
     companies,
     loading,
     error,
@@ -43,70 +53,120 @@ export const MultiSelectWatchlistSelector = React.memo(({
     availableMarkers,
     totalCompanies,
     getFilteredCompanies
-  } = useWatchlist({ externalWatchlist: currentWatchlist });
+  } = useWatchlist();
+
   const [selectedExchange, setSelectedExchange] = React.useState<string>('');
   const [selectedMarker, setSelectedMarker] = React.useState<string>('');
-  const handleWatchlistChange = React.useCallback((value: string) => {
-    console.log(`[MultiSelectWatchlistSelector] Watchlist changed to: ${value}`);
-    if (value === currentWatchlist) return;
-    setSelectedExchange('');
-    setSelectedMarker('');
-    setCurrentWatchlist(value);
-    if (onCompaniesSelect) {
-      onCompaniesSelect([]);
+  const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
+
+  const handleDateSelect = React.useCallback((date: Date | undefined) => {
+    if (date) {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      console.log(`[MultiSelectWatchlistSelector] Date selected: ${dateStr}`);
+      setSelectedDate(dateStr);
+      setIsDatePickerOpen(false);
+      
+      // Reset filters and selections when date changes
+      setSelectedExchange('');
+      setSelectedMarker('');
+      
+      if (onCompaniesSelect) {
+        onCompaniesSelect([]);
+      }
+      
+      if (onDateChange) {
+        onDateChange(dateStr);
+      }
     }
-    if (onWatchlistChange) {
-      onWatchlistChange(value);
-    }
-  }, [currentWatchlist, onWatchlistChange, onCompaniesSelect]);
+  }, [setSelectedDate, onDateChange, onCompaniesSelect]);
+
   const handleCompaniesSelect = React.useCallback((newSelectedCompanies: Company[]) => {
     console.log(`[MultiSelectWatchlistSelector] Selected companies:`, newSelectedCompanies);
     if (onCompaniesSelect) {
       onCompaniesSelect(newSelectedCompanies);
     }
   }, [onCompaniesSelect]);
+
   const handleRemoveCompany = React.useCallback((companyToRemove: Company) => {
     const newSelection = selectedCompanies.filter(c => c.company_code !== companyToRemove.company_code);
     handleCompaniesSelect(newSelection);
   }, [selectedCompanies, handleCompaniesSelect]);
+
   const handleClearAll = React.useCallback(() => {
     handleCompaniesSelect([]);
   }, [handleCompaniesSelect]);
+
   const filteredCompanies = React.useMemo(() => {
     const filters: any = {};
     if (selectedExchange) filters.exchange = selectedExchange;
     if (selectedMarker) filters.marker = selectedMarker;
     return getFilteredCompanies(filters);
   }, [companies, selectedExchange, selectedMarker, getFilteredCompanies]);
+
   const handleExchangeChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedExchange(e.target.value);
     setSelectedMarker('');
   }, []);
+
   const handleMarkerChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedMarker(e.target.value);
   }, []);
+
+  const availableDateObjects = React.useMemo(() => 
+    availableDates.map(d => new Date(d)),
+    [availableDates]
+  );
+
   return (
-    <Card className=" flex gap-4 px-4 py-4 ">
-      {/* Watchlist Selection */}
-      <div className="flex gap-4 ">
-        <div className="flex gap-5 items-center">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Watchlist</label>
-            <RadioGroupDemo
-              value={currentWatchlist} 
-              onChange={handleWatchlistChange}
-            />
-            <div className="flex flex-col gap-2">
-              <div className="flex gap-4 text-xs text-muted-foreground">
-                <div>
-                  {loading && `Loading watchlist ${currentWatchlist}...`}
-                  {!loading && exists && `${totalCompanies} companies (${currentWatchlist})`}
-                  {!loading && !exists && `No data available for watchlist ${currentWatchlist}`}
+    <Card className="flex gap-4 px-4 py-4">
+      {/* Date Selection */}
+      <div className="flex gap-4">
+        {showDateSelector && (
+          <div className="flex gap-5 items-center">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium">Select Date</label>
+              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-[200px] justify-start text-left font-normal"
+                    disabled={disabled}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {selectedDate ? format(new Date(selectedDate), "PPP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate ? new Date(selectedDate) : undefined}
+                    onSelect={handleDateSelect}
+                    disabled={(date) => 
+                      !availableDateObjects.some(d => 
+                        d.toDateString() === date.toDateString()
+                      ) || date > new Date()
+                    }
+                    initialFocus
+                  />
+                  {availableDates.length > 0 && (
+                    <div className="p-3 border-t text-xs text-muted-foreground">
+                      {availableDates.length} dates available
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-4 text-xs text-muted-foreground">
+                  <div>
+                    {loading && `Loading data...`}
+                    {!loading && exists && `${totalCompanies} companies`}
+                    {!loading && !exists && `No data available`}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Filters */}
         {(showExchangeFilter || showMarkerFilter) && availableExchanges.length > 0 && (
@@ -117,6 +177,7 @@ export const MultiSelectWatchlistSelector = React.memo(({
                   value={selectedExchange}
                   onChange={handleExchangeChange}
                   className="px-2 py-1 text-xs border rounded m-0"
+                  disabled={disabled}
                 >
                   <option value="">All Exchanges</option>
                   {availableExchanges.map(exchange => (
@@ -133,6 +194,7 @@ export const MultiSelectWatchlistSelector = React.memo(({
                   value={selectedMarker}
                   onChange={handleMarkerChange}
                   className="px-2 py-1 text-xs border rounded m-0"
+                  disabled={disabled}
                 >
                   <option value="">All Markers</option>
                   {availableMarkers.map(marker => (
@@ -164,6 +226,7 @@ export const MultiSelectWatchlistSelector = React.memo(({
               size="sm"
               onClick={handleClearAll}
               className="h-6 px-2 text-xs"
+              disabled={disabled}
             >
               Clear All
             </Button>
@@ -182,6 +245,7 @@ export const MultiSelectWatchlistSelector = React.memo(({
                   size="sm"
                   onClick={() => handleRemoveCompany(company)}
                   className="h-4 w-4 p-0 hover:bg-transparent"
+                  disabled={disabled}
                 >
                   <X className="w-3 h-3" />
                 </Button>
@@ -199,7 +263,7 @@ export const MultiSelectWatchlistSelector = React.memo(({
       )}
       
       {/* Multi-Select Company Dropdown */}
-      <div>
+      <div className="flex items-center justify-center">
         <MultiSelectScrollable
           companies={filteredCompanies}
           loading={loading}
@@ -207,10 +271,11 @@ export const MultiSelectWatchlistSelector = React.memo(({
           onCompaniesSelect={handleCompaniesSelect}
           selectedCompanies={selectedCompanies}
           maxSelection={maxSelection}
+          disabled={disabled}
         />
       </div>
     </Card>
   );
 });
-MultiSelectWatchlistSelector.displayName = 'MultiSelectWatchlistSelector';
 
+MultiSelectWatchlistSelector.displayName = 'MultiSelectWatchlistSelector';
