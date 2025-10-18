@@ -1,15 +1,16 @@
-"use client"
+'use client'
 import * as React from "react"
 import { Check, ChevronsUpDown, Building2, TrendingUp, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+
 interface MergedCompany {
   company_id?: number;
   company_code: string;
   name: string;
   exchange: string;
-  marker: string;
+  marker?: string;
   total_valid_days?: number;
   avg_daily_high_low_range?: number;
   median_daily_volume?: number;
@@ -17,12 +18,14 @@ interface MergedCompany {
   pe_ratio?: number;
   N1_Pattern_count?: number;
 }
+
 interface SelectScrollableProps {
   companies: MergedCompany[];
   loading: boolean;
   exists: boolean;
   onCompanySelect: (companyCode: string | null) => void;
 }
+
 export function SelectScrollable({ 
   companies, 
   loading, 
@@ -33,15 +36,24 @@ export function SelectScrollable({
   const [value, setValue] = React.useState("")
   const [selectedCompany, setSelectedCompany] = React.useState<MergedCompany | null>(null)
   const [searchTerm, setSearchTerm] = React.useState("")
+  const [mounted, setMounted] = React.useState(false) // hydration fix
+
   React.useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  React.useEffect(() => {
+    if (!mounted) return
     console.log(`[SelectScrollable] Companies changed, resetting selection. New count: ${companies.length}`);
     setValue("")
     setSelectedCompany(null)
     setSearchTerm("")
     setOpen(false)
     onCompanySelect(null)
-  }, [companies, onCompanySelect]);
+  }, [companies, onCompanySelect, mounted]);
+
   React.useEffect(() => {
+    if (!mounted) return
     const handleClickOutside = () => {
       if (open) {
         setOpen(false)
@@ -52,7 +64,8 @@ export function SelectScrollable({
       document.addEventListener('click', handleClickOutside)
       return () => document.removeEventListener('click', handleClickOutside)
     }
-  }, [open])
+  }, [open, mounted])
+
   const handleSelect = (company: MergedCompany) => {
     console.log(`[SelectScrollable] handleSelect called with company:`, company);
     if (value === company.company_code) {
@@ -69,6 +82,7 @@ export function SelectScrollable({
     setOpen(false)
     setSearchTerm("")
   }
+
   const handleButtonClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     setOpen(!open)
@@ -76,49 +90,62 @@ export function SelectScrollable({
       setSearchTerm("")
     }
   }
+
   const formatCompanyDisplay = (company: MergedCompany) => {
     return `${company.company_code} - ${company.name}`;
-  };
+  }
+
   const formatCompanyDetails = (company: MergedCompany) => {
     const details = [];
     if (company.exchange) details.push(company.exchange);
     if (company.marker) details.push(company.marker);
     if (company.total_valid_days) details.push(`${company.total_valid_days} days`);
     return details.join(' • ');
-  };
+  }
+
   const filteredCompanies = React.useMemo(() => {
     if (!searchTerm) return companies;
     const searchLower = searchTerm.toLowerCase();
-    return companies.filter(company =>
-      company.company_code.toLowerCase().includes(searchLower) ||
-      company.name.toLowerCase().includes(searchLower) ||
-      company.exchange.toLowerCase().includes(searchLower) ||
-      company.marker.toLowerCase().includes(searchLower)
-    );
+    return companies.filter(company => {
+      const marker = company.marker ?? "";
+      return (
+        (company.company_code && company.company_code.toLowerCase().includes(searchLower)) ||
+        (company.name && company.name.toLowerCase().includes(searchLower)) ||
+        (company.exchange && company.exchange.toLowerCase().includes(searchLower)) ||
+        marker.toLowerCase().includes(searchLower)
+      );
+    });
   }, [companies, searchTerm]);
-   if (loading) {
+
+  if (!mounted) {
+    return <div className="w-[350px] h-20 bg-muted animate-pulse rounded-md" />
+  }
+
+  if (loading) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground min-h-[40px]">
+      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground min-h-[40px] w-[350px]">
         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
         Loading companies...
       </div>
     );
   }
+
   if (!exists || companies.length === 0) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground min-h-[40px]">
+      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground min-h-[40px] w-[350px]">
         <Building2 className="h-4 w-4" />
         {!exists ? 'Watchlist not available' : 'No companies found'}
       </div>
     );
   }
+
   return (
-    <div className="flex gap-3 items-center w-full">
-      <div className="relative">
+    <div className="flex gap-3 items-center w-full max-w-[350px]">
+      <div className="relative w-full">
         <Button
           variant="outline"
           onClick={handleButtonClick}
-          className="w-[350px] justify-between h-20" 
+          className="w-full justify-between h-20" 
         >
           {selectedCompany ? (
             <div className="flex items-center gap-2 min-w-0">
@@ -212,60 +239,59 @@ export function SelectScrollable({
           </div>
         )}
       </div>
-<div className="min-h-[96px] flex items-center"> 
-  {selectedCompany && (
-    <div className="p-3 bg-muted/50 rounded-md h-20 border border-border w-[250px] overflow-hidden"> 
-      <div className="h-full flex flex-col justify-center ">
-        <div className="flex items-center justify-between mb-1">
-          <h4 className="font-medium text-sm truncate flex-1 mr-2">{selectedCompany.company_code}</h4>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-xs font-medium">
-              {selectedCompany.exchange}
-            </span>
-            <span className="bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-xs font-medium">
-              {selectedCompany.marker}
-            </span>
-          </div>
-        </div>
-        <p className="text-xs text-muted-foreground mb-2 truncate">
-          {selectedCompany.name}
-        </p>
-        {(selectedCompany.total_valid_days || selectedCompany.median_daily_volume || selectedCompany.pe_ratio) && (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-            {selectedCompany.total_valid_days && (
-              <div className="flex  items-center gap-2">
-                <span className="text-muted-foreground text-xs">Days:</span>
-                <span className="font-medium text-xs">{selectedCompany.total_valid_days}</span>
+      <div className="min-h-[96px] flex items-center"> 
+        {selectedCompany && (
+          <div className="p-3 bg-muted/50 rounded-md h-20 border border-border w-[250px] overflow-hidden"> 
+            <div className="h-full flex flex-col justify-center ">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="font-medium text-sm truncate flex-1 mr-2">{selectedCompany.company_code}</h4>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-xs font-medium">
+                    {selectedCompany.exchange}
+                  </span>
+                  <span className="bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-xs font-medium">
+                    {selectedCompany.marker}
+                  </span>
+                </div>
               </div>
-            )}
-            {selectedCompany.median_daily_volume && (
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground text-xs">Vol:</span>
-                <span className="font-medium text-xs">{(selectedCompany.median_daily_volume / 1000).toFixed(0)}K</span>
-              </div>
-            )}
-            {selectedCompany.pe_ratio && (
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground text-xs">P/E:</span>
-                <span className="font-medium text-xs">{selectedCompany.pe_ratio.toFixed(1)}</span>
-              </div>
-            )}
-            {selectedCompany.N1_Pattern_count !== undefined && (
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground text-xs">N1:</span>
-                <span className="font-medium text-xs flex items-center gap-1">
-                  {selectedCompany.N1_Pattern_count}
-                  {selectedCompany.N1_Pattern_count > 0 && <TrendingUp className="h-3 w-3 text-green-600" />}
-                </span>
-              </div>
-            )}
+              <p className="text-xs text-muted-foreground mb-2 truncate">
+                {selectedCompany.name}
+              </p>
+              {(selectedCompany.total_valid_days || selectedCompany.median_daily_volume || selectedCompany.pe_ratio) && (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  {selectedCompany.total_valid_days && (
+                    <div className="flex  items-center gap-2">
+                      <span className="text-muted-foreground text-xs">Days:</span>
+                      <span className="font-medium text-xs">{selectedCompany.total_valid_days}</span>
+                    </div>
+                  )}
+                  {selectedCompany.median_daily_volume && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-xs">Vol:</span>
+                      <span className="font-medium text-xs">{(selectedCompany.median_daily_volume / 1000).toFixed(0)}K</span>
+                    </div>
+                  )}
+                  {selectedCompany.pe_ratio && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-xs">P/E:</span>
+                      <span className="font-medium text-xs">{selectedCompany.pe_ratio.toFixed(1)}</span>
+                    </div>
+                  )}
+                  {selectedCompany.N1_Pattern_count !== undefined && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-xs">N1:</span>
+                      <span className="font-medium text-xs flex items-center gap-1">
+                        {selectedCompany.N1_Pattern_count}
+                        {selectedCompany.N1_Pattern_count > 0 && <TrendingUp className="h-3 w-3 text-green-600" />}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
     </div>
-  )}
-</div>
-    </div>
   );
 }
-

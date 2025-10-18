@@ -479,7 +479,7 @@ const MarketDataPage: React.FC = () => {
                 <BreadcrumbList>
                   <BreadcrumbItem className="hidden md:block">
                     <BreadcrumbLink href="#">
-                      Building Your Application
+                      Home
                     </BreadcrumbLink>
                   </BreadcrumbItem>
                   <BreadcrumbSeparator className="hidden md:block" />
@@ -506,19 +506,19 @@ const MarketDataPage: React.FC = () => {
       <AppSidebar />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 w-full">
-          <div className="flex items-center gap-2 px-4">
+          <div className="flex items-center gap-2 px-4 w-full">
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb className="flex items-center justify-end gap-2">
+            <Breadcrumb className="flex items-center justify-between w-full">
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block">
                   <BreadcrumbLink href="#">
-                    Building Your Application
+                    Home
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem>
-                  <BreadcrumbPage>Fixed Market Data</BreadcrumbPage>
+                  <BreadcrumbPage>Live Market Data</BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
               <ModeToggle />
@@ -531,7 +531,7 @@ const MarketDataPage: React.FC = () => {
             <CardContent className="p-4">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-medium">Fixed Market Data</h3>
+                  <h3 className="text-lg font-medium">Live Market Data</h3>
                   <div className="flex items-center space-x-4">
                     <div className="flex items-center space-x-2">
                       <span className={`inline-block w-2 h-2 rounded-full ${
@@ -551,7 +551,7 @@ const MarketDataPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="p-3 border border-opacity-30 rounded-md h-24 flex items-center">
+                <div className="p-3 border border-opacity-30 rounded-md h-24 flex items-center justify-between">
                   <WatchlistSelector
                     onCompanySelect={handleCompanyChange}
                     selectedWatchlist={selectedWatchlist}
@@ -559,40 +559,7 @@ const MarketDataPage: React.FC = () => {
                     showExchangeFilter={true}
                     showMarkerFilter={true}
                   />
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Selected:</span>
-                    <div className="font-medium">
-                      {selectedCompany ? `${selectedCompany} (${selectedExchange})` : 'None'}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Symbol:</span>
-                    <div className="font-medium">{selectedSymbol || 'None'}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Market:</span>
-                    <div className={`font-medium ${tradingHours.isActive ? 'text-green-500' : 'text-red-500'}`}>
-                      {tradingHours.isActive ? 'Open' : 'Closed'}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Data:</span>
-                    <div className="font-medium">{symbolHistory.length}h / {symbolChartUpdates.length}c</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Updates:</span>
-                    <div className="font-medium text-green-400">{dataCount}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Cached:</span>
-                    <div className="font-medium text-purple-400">{totalCachedSymbols}</div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div className="p-3 bg-zinc-800 rounded">
                     <div className="flex items-center space-x-2 mb-2">
                       <Wifi className="h-4 w-4 text-green-500" />
@@ -643,6 +610,90 @@ const MarketDataPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
+                </div>
+
+                {/* <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Selected:</span>
+                    <div className="font-medium">
+                      {selectedCompany ? `${selectedCompany} (${selectedExchange})` : 'None'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Symbol:</span>
+                    <div className="font-medium">{selectedSymbol || 'None'}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Market:</span>
+                    <div className={`font-medium ${tradingHours.isActive ? 'text-green-500' : 'text-red-500'}`}>
+                      {tradingHours.isActive ? 'Open' : 'Closed'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Data:</span>
+                    <div className="font-medium">{symbolHistory.length}h / {symbolChartUpdates.length}c</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Updates:</span>
+                    <div className="font-medium text-green-400">{dataCount}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Cached:</span>
+                    <div className="font-medium text-purple-400">{totalCachedSymbols}</div>
+                  </div>
+                </div> */}
+
+                {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div className="p-3 bg-zinc-800 rounded">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Wifi className="h-4 w-4 text-green-500" />
+                      <span className="text-green-400 font-medium">Active Background ({activeSymbols.length})</span>
+                    </div>
+                    <div className="max-h-20 overflow-y-auto">
+                      {activeSymbols.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {activeSymbols.slice(0, 5).map(symbol => (
+                            <span key={symbol} className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded">
+                              {symbol.split(':')[1]?.split('-')[0] || symbol}
+                            </span>
+                          ))}
+                          {activeSymbols.length > 5 && (
+                            <span className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded">
+                              +{activeSymbols.length - 5} more
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-zinc-500 text-xs">No active symbols</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-zinc-800 rounded">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Database className="h-4 w-4 text-blue-500" />
+                      <span className="text-blue-400 font-medium">Cached Data ({Object.keys(historicalData).length})</span>
+                    </div>
+                    <div className="max-h-20 overflow-y-auto">
+                      {Object.keys(historicalData).length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {Object.keys(historicalData).slice(0, 5).map(symbol => (
+                            <span key={symbol} className="text-xs bg-blue-900/50 text-blue-300 px-2 py-1 rounded">
+                              {symbol.split(':')[1]?.split('-')[0] || symbol}
+                            </span>
+                          ))}
+                          {Object.keys(historicalData).length > 5 && (
+                            <span className="text-xs bg-blue-900/50 text-blue-300 px-2 py-1 rounded">
+                              +{Object.keys(historicalData).length - 5} more
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-zinc-500 text-xs">No cached data</span>
+                      )}
+                    </div>
+                  </div>
+                </div> */}
 
                 {watchlistError && (
                   <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
