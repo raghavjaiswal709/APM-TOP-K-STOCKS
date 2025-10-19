@@ -79,25 +79,27 @@ export function CardWithForm({
         <CardContent className="p-4 w-full">
           <div className="space-y-2">
             {}
-            <div className="flex justify-between gap-4">
+            <div className="flex justify-end gap-2">
               <div className="p-3 border border-opacity-30 rounded-md flex-1 gap-4 h-24 flex items-center">
                 <WatchlistSelector 
                   onCompanySelect={handleCompanySelect}  
                   selectedWatchlist={selectedWatchlist}
                   onWatchlistChange={handleWatchlistChange} 
                 />
-                 {}
-              <div className=" flex items-center justify-center min-w-[120px]">
+
+                <div className=" flex items-center justify-center min-w-[120px] absolute right-[395px]">
                 <Button
                   onClick={handleOpenCarousel}
                   disabled={!selectedCompany}
                   variant="outline"
-                  className="flex items-center gap-2 h-20"
+                  className="flex items-center justify-center gap-2 h-20"
                 >
                   {}
                   <span className="text-sm">View Graphs</span>
                 </Button>
               </div>
+                 {}
+              
               </div>
             </div>
           </div>

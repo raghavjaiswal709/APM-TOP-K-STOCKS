@@ -127,7 +127,7 @@ export const WatchlistSelector = React.memo(({
             <select
               value={selectedExchange}
               onChange={(e) => setSelectedExchange(e.target.value)}
-              className="px-3 py-8 text-sm text-muted-foreground border rounded-md bg-background"
+              className="py-[30px] px-4 text-sm text-muted-foreground border rounded-md bg-background"
             >
               <option value="">All Exchanges</option>
               {availableExchanges.map(exchange => (
