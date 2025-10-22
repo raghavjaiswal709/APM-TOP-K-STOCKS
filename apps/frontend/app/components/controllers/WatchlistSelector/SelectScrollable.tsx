@@ -250,9 +250,9 @@ const filteredCompanies = React.useMemo(() => {
                   <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-xs font-medium">
                     {selectedCompany.exchange}
                   </span>
-                  <span className="bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-xs font-medium">
+                  {/* <span className="bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-xs font-medium">
                     {selectedCompany.marker}
-                  </span>
+                  </span> */}
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mb-2 truncate">
