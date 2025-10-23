@@ -22,7 +22,7 @@ export const SIPR_CONSTANTS = {
   DEFAULT_MONTHS: 3,
   
   ENDPOINTS: {
-    HEALTH: '/',
+    HEALTH: '/health',
     COMPANIES: '/companies',
     TOP3: (code: string) => `/${code}/top3`,
     TOP3_HTML: (code: string) => `/${code}/top3-html`,
@@ -41,4 +41,23 @@ export const SIPR_CONSTANTS = {
     NETWORK_ERROR: 'SIPR_NETWORK_ERROR',
     INVALID_RESPONSE: 'SIPR_INVALID_RESPONSE',
   },
+  
+  // ✅ NEW: Day of week constants
+  WEEKDAYS: [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday'
+  ],
+  
+  TRADING_DAYS: [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday'
+  ],
 };

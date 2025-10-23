@@ -22,8 +22,10 @@ class SiprService {
 
   private getFromCache<T>(key: string): T | null {
     if (this.isCacheValid(key)) {
+      console.log(`✅ Cache HIT: ${key}`);
       return this.cache.get(key)!.data as T;
     }
+    console.log(`❌ Cache MISS: ${key}`);
     return null;
   }
 
@@ -32,6 +34,7 @@ class SiprService {
       data,
       timestamp: Date.now(),
     });
+    console.log(`💾 Cached: ${key}`);
   }
 
   private async fetchWithRetry<T>(
@@ -43,6 +46,7 @@ class SiprService {
     const timeout = setTimeout(() => controller.abort(), siprConfig.timeout);
 
     try {
+      console.log(`🌐 Fetching: ${url}`);
       const response = await fetch(url, {
         ...options,
         signal: controller.signal,
@@ -54,15 +58,19 @@ class SiprService {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      return await response.json();
+      const data = await response.json();
+      console.log(`✅ Success: ${url}`, data);
+      return data;
     } catch (error) {
       clearTimeout(timeout);
 
       if (retries > 0) {
+        console.log(`🔄 Retrying... (${retries} attempts left)`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return this.fetchWithRetry<T>(url, options, retries - 1);
       }
 
+      console.error(`❌ Failed: ${url}`, error);
       throw this.handleError(error);
     }
   }
@@ -261,6 +269,7 @@ class SiprService {
 
   clearCache(): void {
     this.cache.clear();
+    console.log('🗑️ Cache cleared');
   }
 
   clearCompanyCache(companyCode: string): void {
@@ -271,6 +280,7 @@ class SiprService {
       }
     });
     keysToDelete.forEach(key => this.cache.delete(key));
+    console.log(`🗑️ Cleared cache for ${companyCode} (${keysToDelete.length} entries)`);
   }
 }
 

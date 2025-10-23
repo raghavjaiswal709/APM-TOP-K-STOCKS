@@ -20,6 +20,7 @@ export interface SiprPatternInfo {
   avg_time_minutes: number;     // Average duration in minutes
   time_found_range: string | null;      // e.g., "08:00 - 18:00"
   most_prominent_range: string | null;  // e.g., "14:00 - 15:00"
+  most_frequent_days: string[];          // ✅ NEW: Calculated field
 }
 
 export interface SiprTop3Response {
@@ -69,7 +70,15 @@ export interface SiprPatternReport {
     avg_segment_length: number;
     most_common_pattern: number;
   };
-  top_patterns: SiprPatternInfo[];
+  top_patterns: Array<{
+    pattern_id: number;
+    cluster_label: number;
+    occurrence_count: number;
+    percentage_of_total: number;
+    avg_length: number;
+    avg_time_minutes: number;
+    most_frequent_days: string[];  // ✅ NEW
+  }>;
   cluster_distribution: {
     [cluster_id: number]: number;
   };

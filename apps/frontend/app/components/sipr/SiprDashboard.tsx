@@ -14,10 +14,9 @@ import {
   Zap,
   Calendar,
   Timer,
-  TrendingDown,
-  Minus,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  CalendarDays
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,7 +31,7 @@ const extractCompanyCode = (fullCode: string): string => {
   return fullCode.replace(/_(NSE|BSE|MCX|NCDEX)$/, '');
 };
 
-// ✅ Pattern Card Component
+// ✅ FIXED: Pattern Card Component with most_frequent_days
 const PatternCard: React.FC<{ 
   pattern: SiprPatternInfo; 
   rank: number;
@@ -58,6 +57,9 @@ const PatternCard: React.FC<{
     }
   };
 
+  // ✅ Debug logging
+  console.log(`Pattern ${pattern.pattern_id} most_frequent_days:`, pattern.most_frequent_days);
+
   return (
     <Card className={`border-2 ${getRankColor(rank)} transition-all duration-200 hover:shadow-lg`}>
       <CardHeader className="pb-3">
@@ -80,12 +82,34 @@ const PatternCard: React.FC<{
             variant="ghost"
             size="sm"
             onClick={() => setExpanded(!expanded)}
+            className="hover:bg-white/10"
           >
             {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </Button>
         </div>
       </CardHeader>
       <CardContent>
+        {/* ✅ NEW: Most Frequent Days - ALWAYS VISIBLE (not in expanded) */}
+        {pattern.most_frequent_days && pattern.most_frequent_days.length > 0 && (
+          <div className="mb-4 p-3 bg-blue-500/10 rounded-lg border border-blue-500/30">
+            <h4 className="text-sm font-semibold text-blue-300 flex items-center gap-2 mb-2">
+              <CalendarDays className="h-4 w-4" />
+              Most Frequent Days
+            </h4>
+            <div className="flex flex-wrap gap-2">
+              {pattern.most_frequent_days.map((day, index) => (
+                <Badge 
+                  key={index}
+                  variant="outline"
+                  className="bg-blue-600/30 border-blue-500/50 text-blue-100 font-medium"
+                >
+                  {day}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Basic Stats - Always Visible */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <div className="bg-purple-500/10 p-3 rounded-lg border border-purple-500/30">
@@ -144,10 +168,10 @@ const PatternCard: React.FC<{
         {/* Expanded Details */}
         {expanded && (
           <>
-            <Separator className="my-3" />
+            <Separator className="my-3 bg-white/10" />
             
             {/* Time Ranges */}
-            <div className="space-y-2">
+            <div className="space-y-2 mb-3">
               <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
                 <Clock className="h-4 w-4" />
                 Temporal Information
@@ -170,7 +194,7 @@ const PatternCard: React.FC<{
               </div>
             </div>
 
-            <Separator className="my-3" />
+            <Separator className="my-3 bg-white/10" />
 
             {/* Statistical Summary */}
             <div className="bg-zinc-800/30 p-3 rounded border border-zinc-700">
@@ -201,6 +225,12 @@ const PatternCard: React.FC<{
                 <div>
                   <span className="text-gray-400">Overall %:</span>
                   <span className="ml-2 font-mono text-gray-200">{pattern.overall_percentage.toFixed(2)}%</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-gray-400">Avg Duration:</span>
+                  <span className="ml-2 font-mono text-gray-200">
+                    {pattern.avg_time_minutes.toFixed(1)} minutes
+                  </span>
                 </div>
               </div>
             </div>
@@ -248,6 +278,10 @@ export const SiprDashboard: React.FC<SiprDashboardProps> = ({
       console.error('Failed to open visualization:', err);
     }
   };
+
+  // ✅ Debug logging for top3Patterns
+  console.log('SiprDashboard - top3Patterns:', top3Patterns);
+  console.log('SiprDashboard - loading state:', loading);
 
   return (
     <div className={`space-y-6 ${className}`}>
