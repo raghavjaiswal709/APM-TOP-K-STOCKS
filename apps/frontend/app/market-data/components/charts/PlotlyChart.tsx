@@ -2830,3 +2830,32 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 };
 
 export default PlotlyChart;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
