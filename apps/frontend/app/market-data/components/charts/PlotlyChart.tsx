@@ -536,11 +536,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     };
   };
 
-  const calculateYAxisRange = () => {
-    const timeRange = getTimeRange();
-    if (!timeRange) return undefined;
-    const startTime = timeRange[0].getTime() / 1000;
-    const endTime = timeRange[1].getTime() / 1000;
+  const calculateYAxisRange = (timeRange: [any, any] | undefined) => {
+    // const timeRange = getTimeRange(); // <-- REMOVED THIS BUG
+    if (!timeRange || !timeRange[0] || !timeRange[1]) return undefined;
 
     if (chartType === 'line') {
       if (historicalData.length === 0) return undefined;
@@ -774,7 +772,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
     try {
       const newTimeRange = getTimeRange();
-      const newYRange = calculateYAxisRange();
+const newYRange = calculateYAxisRange(newTimeRange); // <-- ✅ FIXED
 
       if (typeof Plotly !== 'undefined' && Plotly.relayout) {
         Plotly.relayout(plotDiv, {
@@ -864,23 +862,17 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     setTimeout(() => setIsUpdating(false), 200);
   };
 
-  const toggleChartType = () => {
-    const plotDiv = document.getElementById('plotly-chart');
-    if (plotDiv && (plotDiv as any).layout) {
-      const currentLayout = (plotDiv as any).layout;
-      setPreservedAxisRanges({
-        xaxis: currentLayout.xaxis?.range ? [
-          new Date(currentLayout.xaxis.range[0]), 
-          new Date(currentLayout.xaxis.range[1])
-        ] : undefined,
-        yaxis: currentLayout.yaxis?.range ? [
-          currentLayout.yaxis.range[0], 
-          currentLayout.yaxis.range[1]
-        ] : undefined
-      });
-    }
-    setChartType(prev => prev === 'line' ? 'candle' : 'line');
-  };
+const toggleChartType = () => {
+    const plotDiv = document.getElementById('plotly-chart');
+    if (plotDiv && (plotDiv as any).layout) {
+      const currentLayout = (plotDiv as any).layout;
+      setPreservedAxisRanges({
+        // 1. Fix: Pass Plotly's range values (string or number) directly.
+        //    This avoids the `new Date(null)` bug which defaults to 1970/2000.
+        xaxis: currentLayout.xaxis?.range ? [
+          currentLayout.xaxis.range[0],
+          currentLayout.xaxis.range[1]
+        ] : undefined,
 
   const toggleIndicator = (indicator: 'sma20' | 'ema9' | 'rsi' | 'macd' | 'bb' | 'vwap' | 'volume') => {
     setShowIndicators(prev => ({
@@ -1936,14 +1928,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
   };
 
-  const createLayout = () => {
-    const colors = getColorTheme();
-    const timeRange = preservedAxisRanges.xaxis ? 
-      [preservedAxisRanges.xaxis[0], preservedAxisRanges.xaxis[1]] : 
-      getTimeRange();
-    const yRange = preservedAxisRanges.yaxis ? 
-      [preservedAxisRanges.yaxis[0], preservedAxisRanges.yaxis[1]] : 
-      calculateYAxisRange();
+ const timeRange = preservedAxisRanges.xaxis ? 
+      [preservedAxisRanges.xaxis[0], preservedAxisRanges.xaxis[1]] : 
+      getTimeRange();
 
     let mainChartDomain = [0, 1];
     let volumeDomain = [0, 0.2];

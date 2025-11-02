@@ -1,12 +1,12 @@
 {
   "authenticated": true,
   "token_valid": true,
-  "expires_at": "2025-10-27T18:29:00.000Z",
+  "expires_at": "2025-10-29T18:29:00.000Z",
   "services_notified": [
     "fyers_data",
     "multi_company_live_data"
   ],
-  "session_date": "2025-10-27",
+  "session_date": "2025-10-29",
   "auto_refresh_enabled": true,
-  "next_refresh_check": "2025-10-27T07:50:29.244Z"
+  "next_refresh_check": "2025-10-29T05:42:13.325Z"
 }
