@@ -79,8 +79,12 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const volumeChartRef = useRef<any>(null);
 
   const [initialized, setInitialized] = useState(false);
-  const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1D');
-  const [chartType, setChartType] = useState<'line' | 'candle'>('candle');
+  // const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1D');
+  const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1m');
+
+  // const [chartType, setChartType] = useState<'line' | 'candle'>('candle');
+  const [chartType, setChartType] = useState<'line' | 'candle'>('line');
+
   const [mainMode, setMainMode] = useState<'none' | 'bidAsk' | 'buySell'>('none');
   const [secondaryView, setSecondaryView] = useState<'line' | 'spread' | 'std'>('line');
   const [showIndicators, setShowIndicators] = useState({
@@ -537,8 +541,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
 
   const calculateYAxisRange = (timeRange: [any, any] | undefined) => {
-    // const timeRange = getTimeRange(); // <-- REMOVED THIS BUG
-    if (!timeRange || !timeRange[0] || !timeRange[1]) return undefined;
+    if (!timeRange || !timeRange[0] || !timeRange[1]) return undefined;
+
+    const startTime = new Date(timeRange[0]).getTime() / 1000;
+    const endTime = new Date(timeRange[1]).getTime() / 1000;
 
     if (chartType === 'line') {
       if (historicalData.length === 0) return undefined;
@@ -772,7 +778,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
     try {
       const newTimeRange = getTimeRange();
-const newYRange = calculateYAxisRange(newTimeRange); // <-- ✅ FIXED
+      const newYRange = calculateYAxisRange(newTimeRange);
 
       if (typeof Plotly !== 'undefined' && Plotly.relayout) {
         Plotly.relayout(plotDiv, {
@@ -862,17 +868,23 @@ const newYRange = calculateYAxisRange(newTimeRange); // <-- ✅ FIXED
     setTimeout(() => setIsUpdating(false), 200);
   };
 
-const toggleChartType = () => {
-    const plotDiv = document.getElementById('plotly-chart');
-    if (plotDiv && (plotDiv as any).layout) {
-      const currentLayout = (plotDiv as any).layout;
-      setPreservedAxisRanges({
-        // 1. Fix: Pass Plotly's range values (string or number) directly.
-        //    This avoids the `new Date(null)` bug which defaults to 1970/2000.
-        xaxis: currentLayout.xaxis?.range ? [
-          currentLayout.xaxis.range[0],
-          currentLayout.xaxis.range[1]
-        ] : undefined,
+  const toggleChartType = () => {
+    const plotDiv = document.getElementById('plotly-chart');
+    if (plotDiv && (plotDiv as any).layout) {
+      const currentLayout = (plotDiv as any).layout;
+      setPreservedAxisRanges({
+        xaxis: currentLayout.xaxis?.range ? [
+          currentLayout.xaxis.range[0],
+          currentLayout.xaxis.range[1]
+        ] : undefined,
+        yaxis: currentLayout.yaxis?.range ? [
+          currentLayout.yaxis.range[0],
+          currentLayout.yaxis.range[1]
+        ] : undefined,
+      });
+    }
+    setChartType(prev => prev === 'line' ? 'candle' : 'line');
+  };
 
   const toggleIndicator = (indicator: 'sma20' | 'ema9' | 'rsi' | 'macd' | 'bb' | 'vwap' | 'volume') => {
     setShowIndicators(prev => ({
@@ -1928,23 +1940,29 @@ const toggleChartType = () => {
     }
   };
 
- const timeRange = preservedAxisRanges.xaxis ? 
-      [preservedAxisRanges.xaxis[0], preservedAxisRanges.xaxis[1]] : 
-      getTimeRange();
+  const createLayout = () => {
+    const colors = getColorTheme();
+    const yRange = preservedAxisRanges.yaxis ? 
+      [preservedAxisRanges.yaxis[0], preservedAxisRanges.yaxis[1]] : 
+      undefined;
+
+    const timeRange = preservedAxisRanges.xaxis ? 
+      [preservedAxisRanges.xaxis[0], preservedAxisRanges.xaxis[1]] : 
+      getTimeRange();
 
     let mainChartDomain = [0, 1];
     let volumeDomain = [0, 0.2];
 
     if (chartType === 'line') {
       if (showIndicators.rsi && showIndicators.macd) {
-        mainChartDomain = [0.6, 1];           // Changed from [0.5, 1]
-        volumeDomain = [0.25, 0.55];          // Changed from [0.3, 0.45] - increased height
+        mainChartDomain = [0.6, 1];
+        volumeDomain = [0.25, 0.55];
       } else if (showIndicators.rsi || showIndicators.macd) {
-        mainChartDomain = [0.45, 1];          // Changed from [0.35, 1]
-        volumeDomain = [0.1, 0.4];            // Changed from [0.15, 0.3] - increased height
+        mainChartDomain = [0.45, 1];
+        volumeDomain = [0.1, 0.4];
       } else {
-        mainChartDomain = [0.35, 1];          // Changed from [0.2, 1]
-        volumeDomain = [0, 0.3];              // Changed from [0, 0.15] - doubled the height
+        mainChartDomain = [0.35, 1];
+        volumeDomain = [0, 0.3];
       }
     } else {
       if (showIndicators.rsi && showIndicators.macd) {
@@ -2568,7 +2586,7 @@ const toggleChartType = () => {
       {mainMode === 'bidAsk' && secondaryView === 'line' && (
         <div className="mt-2">
           <Plot
-                        ref={bidAskChartRef}
+            ref={bidAskChartRef}
             divId="bid-ask-chart"
             data={createBidAskData()}
             layout={createBidAskLayout()}
@@ -2679,170 +2697,15 @@ const toggleChartType = () => {
         </div>
       )}
 
-      {/* ✨ ENHANCED: Status Display with Ultra-Fast Updates */}
+      {/* Status Display */}
       <div className="mt-2 flex items-center space-x-4 text-sm">
         <div className={`flex items-center space-x-2 ${tradingHours.isActive ? 'text-green-400' : 'text-red-400'}`}>
           <div className={`w-2 h-2 rounded-full ${tradingHours.isActive ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
           <span>{tradingHours.isActive ? 'Market Open' : 'Market Closed'}</span>
         </div>
-
-        {/* ✨ Real-time update frequency display */}
-        {/* <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-          <span className="text-blue-400">
-            {updateFrequency > 0 ? `${updateFrequency} ups/sec` : 'Connecting...'}
-          </span>
-        </div> */}
-
-        {/* ✨ Chart update count */}
-        {/* <div className="text-zinc-400">
-          Chart: {chartUpdates.length} pts
-        </div> */}
-
-        {/* Trading Hours Display */}
-        {/* {tradingHours.start && tradingHours.end && (
-          <div className="text-zinc-400">
-            Trading: {new Date(tradingHours.start).toLocaleTimeString()} - {new Date(tradingHours.end).toLocaleTimeString()}
-          </div>
-        )} */}
-
-        {/* Current Timeframe */}
-        {/* <div className="text-zinc-400">
-          Timeframe: {selectedTimeframe}
-        </div> */}
-
-        {/* Chart Type */}
-        {/* <div className="text-zinc-400">
-          Type: {chartType === 'line' ? 'LTP Line' : 'OHLC Candles'}
-        </div> */}
-
-        {/* Data Points Count */}
-        {/* <div className="text-zinc-400">
-          Data: {chartType === 'line' ? historicalData.length : ohlcData.length} points
-        </div> */}
-
-        {/* Current Market Data */}
-        {/* {data && (
-          <>
-            <div className="text-zinc-400">
-              LTP: ₹{data.ltp?.toFixed(2) || 'N/A'}
-            </div>
-            {data.change !== undefined && (
-              <div className={`flex items-center space-x-1 ${data.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {data.change >= 0 ? (
-                  <TrendingUp className="h-4 w-4" />
-                ) : (
-                  <TrendingDown className="h-4 w-4" />
-                )}
-                <span>
-                  {data.change >= 0 ? '+' : ''}
-                  {data.change.toFixed(2)}
-                  {data.changePercent !== undefined && ` (${data.changePercent >= 0 ? '+' : ''}${data.changePercent.toFixed(2)}%)`}
-                </span>
-              </div>
-            )}
-          </>
-        )} */}
-
-        {/* Volume Information */}
-        {/* {data && data.volume && (
-          <div className="text-zinc-400">
-            Vol: {data.volume.toLocaleString()}
-          </div>
-        )} */}
-
-        {/* Technical Indicators Status */}
-        {/* {Object.values(showIndicators).some(indicator => indicator) && (
-          <div className="text-zinc-400">
-            Indicators: {
-              Object.entries(showIndicators)
-                .filter(([key, value]) => value)
-                .map(([key]) => key.toUpperCase())
-                .join(', ')
-            }
-          </div>
-        )} */}
-
-        {/* Advanced Analysis Mode Status */}
-        {/* {mainMode !== 'none' && (
-          <div className="text-emerald-400">
-            Mode: {mainMode === 'bidAsk' ? 'Bid/Ask' : 'Buy/Sell'} - {secondaryView.toUpperCase()}
-          </div>
-        )} */}
-
-        {/* Last Update Time */}
-        {/* <div className="text-zinc-500 text-xs">
-          Last Update: {new Date().toLocaleTimeString()}
-        </div> */}
       </div>
-
-      {/* ✨ Performance Metrics Display */}
-      {/* <div className="mt-1 flex items-center justify-between text-xs text-zinc-500">
-        <div className="flex items-center space-x-4">
-          <span>Chart Performance:</span>
-          <span className={`${updateFrequency > 10 ? 'text-green-400' : updateFrequency > 5 ? 'text-yellow-400' : 'text-red-400'}`}>
-            {updateFrequency} FPS
-          </span>
-          {isUpdating && (
-            <span className="text-blue-400 animate-pulse">Updating...</span>
-          )}
-        </div>
-        
-        <div className="flex items-center space-x-4">
-          <span>Memory: {chartUpdates.length}/1000 updates</span>
-          <span>History: {historicalData.length}/10000 points</span>
-          {ohlcData.length > 0 && (
-            <span>OHLC: {ohlcData.length} candles</span>
-          )}
-        </div>
-      </div> */}
-
-      {/* ✨ Debug Information (only in development) */}
-      {/* {process.env.NODE_ENV === 'development' && (
-        <div className="mt-2 p-2 bg-zinc-800 rounded text-xs text-zinc-400">
-          <div className="grid grid-cols-4 gap-2">
-            <div>Symbol: {symbol}</div>
-            <div>Initialized: {initialized ? 'Yes' : 'No'}</div>
-            <div>Chart Updates: {chartUpdates.length}</div>
-            <div>Last Update: {lastUpdateRef.current}</div>
-            <div>Historical Points: {historicalData.length}</div>
-            <div>OHLC Candles: {ohlcData.length}</div>
-            <div>Trading Active: {tradingHours.isActive ? 'Yes' : 'No'}</div>
-            <div>Update Throttle: 100ms</div>
-          </div>
-        </div>
-      )} */}
     </div>
   );
 };
 
 export default PlotlyChart;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

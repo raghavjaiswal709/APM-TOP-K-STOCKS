@@ -1445,11 +1445,11 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                     
                     {/* ✅ MODIFIED: Show dashboard content inline for LSTMAE/SIPR tabs */}
                     {activeTab === 'LSTMAE' ? (
-                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[5000px]'} overflow-auto`}>
+                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)] overflow-auto' : 'min-h-fit'}`}>
                         <InlineLSTMAEContent companyCode={companyCode} exchange={exchange} />
                       </div>
                     ) : activeTab === 'SiPR' ? (
-                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[5000px]'} overflow-auto`}>
+                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)] overflow-auto' : 'min-h-fit'}`}>
                         <InlineSiprContent 
                           companyCode={companyCode} 
                           exchange={exchange}
