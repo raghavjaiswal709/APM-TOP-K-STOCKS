@@ -46,6 +46,21 @@ interface ChartUpdate {
   changePercent: number;
 }
 
+// ✨ NEW: Prediction data interface
+interface PredictionData {
+  timestamp: string;
+  close: number;
+  predictedat: string;
+}
+
+interface CompanyPredictions {
+  company: string;
+  predictions: Record<string, PredictionData>;
+  count: number;
+  starttime?: string;
+  endtime?: string;
+}
+
 interface PlotlyChartProps {
   symbol: string;
   data: DataPoint | null;
@@ -53,6 +68,8 @@ interface PlotlyChartProps {
   ohlcData?: OHLCPoint[];
   chartUpdates: ChartUpdate[];        // ✨ NEW PROP
   updateFrequency?: number;           // ✨ NEW PROP
+  predictions?: CompanyPredictions | null;  // ✨ NEW: Prediction data
+  showPredictions?: boolean;          // ✨ NEW: Toggle predictions
   tradingHours: {
     start: string;
     end: string;
@@ -68,6 +85,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   ohlcData = [], 
   chartUpdates = [],          // ✨ NEW PROP
   updateFrequency = 0,        // ✨ NEW PROP
+  predictions = null,         // ✨ NEW: Prediction data
+  showPredictions = false,    // ✨ NEW: Toggle predictions
   tradingHours,
 }) => {
   const chartRef = useRef<any>(null);
@@ -546,36 +565,126 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const startTime = new Date(timeRange[0]).getTime() / 1000;
     const endTime = new Date(timeRange[1]).getTime() / 1000;
 
+    // ✨ SMART WINDOW: Use last 10 minutes for Y-axis calculation
+    // Based on the LATEST DATA timestamp, not current wall clock time
+    const windowMinutes = 10; // Configurable window size
+    
+    // Find the latest timestamp from actual data (historical or predictions)
+    let latestDataTimestamp = startTime;
+    
+    if (chartType === 'line' && historicalData.length > 0) {
+      const latestHistorical = Math.max(...historicalData.map(p => p.timestamp));
+      latestDataTimestamp = Math.max(latestDataTimestamp, latestHistorical);
+    } else if (ohlcData && ohlcData.length > 0) {
+      const latestCandle = Math.max(...ohlcData.map(c => c.timestamp));
+      latestDataTimestamp = Math.max(latestDataTimestamp, latestCandle);
+    }
+    
+    // Check predictions for latest timestamp
+    if (showPredictions && predictions && predictions.count > 0) {
+      const predictionEntries = Object.entries(predictions.predictions);
+      if (predictionEntries.length > 0) {
+        const latestPrediction = Math.max(...predictionEntries.map(([key, pred]) => 
+          new Date(pred.timestamp || key).getTime() / 1000
+        ));
+        latestDataTimestamp = Math.max(latestDataTimestamp, latestPrediction);
+      }
+    }
+    
+    // Use the sliding window based on latest data, not current time
+    const windowStart = latestDataTimestamp - (windowMinutes * 60);
+    const yAxisStartTime = Math.max(startTime, windowStart);
+    const yAxisEndTime = endTime;
+
+    let allPrices: number[] = [];
+    let historicalPrices: number[] = [];
+    let predictionPrices: number[] = [];
+
     if (chartType === 'line') {
       if (historicalData.length === 0) return undefined;
-      const visibleData = historicalData.filter(
-        point => point.timestamp >= startTime && point.timestamp <= endTime
+      
+      // Get prices from the sliding window only
+      const windowData = historicalData.filter(
+        point => point.timestamp >= yAxisStartTime && point.timestamp <= yAxisEndTime
       );
-      if (visibleData.length === 0) return undefined;
-      const prices = visibleData.map(point => point.ltp).filter(p => p !== null && p !== undefined);
-      if (prices.length === 0) return undefined;
-      const minPrice = Math.min(...prices);
-      const maxPrice = Math.max(...prices);
-      const padding = (maxPrice - minPrice) * 0.05;
-      return [minPrice - padding, maxPrice + padding];
+      
+      if (windowData.length > 0) {
+        historicalPrices = windowData.map(point => point.ltp).filter(p => p !== null && p !== undefined);
+        allPrices.push(...historicalPrices);
+      }
     } else {
       if (!ohlcData || ohlcData.length === 0) return undefined;
-      const visibleCandles = ohlcData.filter(
-        candle => candle.timestamp >= startTime && candle.timestamp <= endTime
+      
+      // Get candles from the sliding window only
+      const windowCandles = ohlcData.filter(
+        candle => candle.timestamp >= yAxisStartTime && candle.timestamp <= yAxisEndTime
       );
-      if (visibleCandles.length === 0) return undefined;
-      const validCandles = visibleCandles.filter(candle => 
-        candle.high !== null && candle.high !== undefined &&
-        candle.low !== null && candle.low !== undefined
-      );
-      if (validCandles.length === 0) return undefined;
-      const highPrices = validCandles.map(candle => Number(candle.high));
-      const lowPrices = validCandles.map(candle => Number(candle.low));
-      const minPrice = Math.min(...lowPrices);
-      const maxPrice = Math.max(...highPrices);
-      const padding = (maxPrice - minPrice) * 0.05;
-      return [minPrice - padding, maxPrice + padding];
+      
+      if (windowCandles.length > 0) {
+        const validCandles = windowCandles.filter(candle => 
+          candle.high !== null && candle.high !== undefined &&
+          candle.low !== null && candle.low !== undefined
+        );
+        const highPrices = validCandles.map(candle => Number(candle.high));
+        const lowPrices = validCandles.map(candle => Number(candle.low));
+        historicalPrices = [...highPrices, ...lowPrices];
+        allPrices.push(...historicalPrices);
+      }
     }
+
+    // ✨ Include ONLY recent predictions from the sliding window
+    if (showPredictions && predictions && predictions.count > 0) {
+      const predictionEntries = Object.entries(predictions.predictions);
+      
+      predictionPrices = predictionEntries
+        .map(([key, pred]) => {
+          const predTime = new Date(pred.timestamp || key).getTime() / 1000;
+          // Only include predictions in the sliding window
+          if (predTime >= yAxisStartTime && predTime <= yAxisEndTime) {
+            return Number(pred.close);
+          }
+          return null;
+        })
+        .filter(p => p !== null && p !== undefined) as number[];
+      
+      if (predictionPrices.length > 0) {
+        allPrices.push(...predictionPrices);
+      }
+    }
+
+    if (allPrices.length === 0) return undefined;
+
+    const minPrice = Math.min(...allPrices);
+    const maxPrice = Math.max(...allPrices);
+    const range = maxPrice - minPrice;
+    const midPoint = (minPrice + maxPrice) / 2;
+    
+    // Use minimal padding (2%) to tightly fit the data
+    const padding = range * 0.02;
+    
+    const yMin = minPrice - padding;
+    const yMax = maxPrice + padding;
+    
+    const windowStartDate = new Date(yAxisStartTime * 1000);
+    const windowEndDate = new Date(yAxisEndTime * 1000);
+    const latestDataDate = new Date(latestDataTimestamp * 1000);
+    
+    console.log('📊 Y-axis range (sliding window):', {
+      windowSize: `${windowMinutes} minutes`,
+      latestDataTime: latestDataDate.toLocaleTimeString(),
+      windowRange: [windowStartDate.toLocaleTimeString(), windowEndDate.toLocaleTimeString()],
+      historicalDataPoints: historicalPrices.length,
+      predictionDataPoints: predictionPrices.length,
+      totalDataPoints: allPrices.length,
+      minPrice: minPrice.toFixed(2),
+      maxPrice: maxPrice.toFixed(2),
+      range: range.toFixed(2),
+      midPoint: midPoint.toFixed(2),
+      padding: `${padding.toFixed(2)} (2%)`,
+      finalRange: [yMin.toFixed(2), yMax.toFixed(2)]
+    });
+    
+    return [yMin, yMax];
   };
 
   const calculateBidAskRange = () => {
@@ -674,7 +783,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       ? new Date(data.timestamp * 1000) 
       : new Date();
 
-    let startTime = new Date(now);
+    const startTime = new Date(now);
     switch (selectedTimeframe) {
       case '1m':
         startTime.setMinutes(now.getMinutes() - 1);
@@ -701,12 +810,31 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       default:
         try {
           const tradingStart = new Date(tradingHours.start);
-          return [tradingStart, now > new Date(tradingHours.end) ? new Date(tradingHours.end) : now];
+          const tradingEndBase = now > new Date(tradingHours.end) ? new Date(tradingHours.end) : now;
+          
+          // ✨ NEW: Extend end time by 25 minutes for predictions
+          const endTime = new Date(tradingEndBase);
+          if (showPredictions && predictions && predictions.count > 0) {
+            endTime.setMinutes(endTime.getMinutes() + 25);
+            console.log('📅 Extended time range for predictions:', {
+              original: tradingEndBase.toLocaleTimeString(),
+              extended: endTime.toLocaleTimeString()
+            });
+          }
+          
+          return [tradingStart, endTime];
         } catch (e) {
           startTime.setHours(now.getHours() - 24);
         }
     }
-    return [startTime, now];
+    
+    // ✨ NEW: Extend end time by 25 minutes for predictions (for other timeframes)
+    const endTime = new Date(now);
+    if (showPredictions && predictions && predictions.count > 0) {
+      endTime.setMinutes(endTime.getMinutes() + 25);
+    }
+    
+    return [startTime, endTime];
   };
 
   const getColorTheme = () => {
@@ -1105,6 +1233,81 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                         '<extra></extra>',
           showlegend: true
         });
+
+        // ✨ NEW: Add prediction line if available
+        if (showPredictions && predictions && predictions.count > 0) {
+          const predictionEntries = Object.entries(predictions.predictions);
+          console.log('🔮 Adding prediction line to chart:', {
+            showPredictions,
+            predictionsCount: predictions.count,
+            entriesLength: predictionEntries.length,
+            firstEntry: predictionEntries[0],
+            lastEntry: predictionEntries[predictionEntries.length - 1]
+          });
+
+          if (predictionEntries.length > 0) {
+            // Sort predictions by timestamp (use key as timestamp if value.timestamp is not available)
+            const sortedPredictions = predictionEntries.sort((a, b) => {
+              const timeA = new Date(a[1].timestamp || a[0]).getTime();
+              const timeB = new Date(b[1].timestamp || b[0]).getTime();
+              return timeA - timeB;
+            });
+
+            const predictionTimes = sortedPredictions.map(([key, pred]) => 
+              new Date(pred.timestamp || key)
+            );
+            const predictionValues = sortedPredictions.map(([, pred]) => Number(pred.close));
+
+            console.log('🔮 Prediction trace data:', {
+              firstTime: predictionTimes[0],
+              lastTime: predictionTimes[predictionTimes.length - 1],
+              firstValue: predictionValues[0],
+              lastValue: predictionValues[predictionValues.length - 1],
+              totalPoints: predictionTimes.length,
+              timeRange: {
+                start: predictionTimes[0]?.toLocaleString(),
+                end: predictionTimes[predictionTimes.length - 1]?.toLocaleString()
+              }
+            });
+
+            plotData.push({
+              x: predictionTimes,
+              y: predictionValues,
+              type: 'scatter',
+              mode: 'lines+markers',
+              name: 'Prediction',
+              line: {
+                color: '#FF9800',  // Orangish yellow color for predictions
+                width: 3,          // Thicker line for visibility
+                dash: 'dash'       // Dashed line to distinguish from actual
+              },
+              marker: {
+                size: 8,           // Larger markers for visibility
+                color: '#FF9800',
+                symbol: 'diamond',
+                line: {
+                  color: '#E65100',  // Darker orange for marker border
+                  width: 2
+                }
+              },
+              connectgaps: true,
+              hovertemplate: '<b>%{fullData.name}</b><br>' +
+                            'Time: %{x|%H:%M:%S}<br>' +
+                            'Predicted Price: ₹%{y:.2f}<br>' +
+                            '<extra></extra>',
+              showlegend: true,
+              visible: true  // Ensure it's visible
+            });
+
+            console.log('✅ Prediction trace added to plotData, total traces:', plotData.length);
+          }
+        } else {
+          console.log('⚠️ Predictions not added:', {
+            showPredictions,
+            hasPredictions: !!predictions,
+            count: predictions?.count || 0
+          });
+        }
 
         const volumeValues = sortedData.map(point => point.volume || 0);
         const volumeColors = [];
@@ -2001,6 +2204,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         titlefont: { color: colors.text },
         side: 'left',
         domain: mainChartDomain,
+        zeroline: false,  // ✨ Remove zero line
+        automargin: true, // ✨ Auto margin for better spacing
       },
       hovermode: 'closest',
       showlegend: true,

@@ -1,0 +1,2888 @@
+================================================================================
+APM-TOP-K-STOCKS - PREDICTION SYSTEM FILES
+Generated on: 03-11-2025  1:16:41.90
+================================================================================
+
+PROJECT: Stock Market Prediction System Integration
+MODULE: Prediction and Technical Analysis
+
+FILE CATEGORIES:
+1. Prediction Components (3 files)
+2. Status and Display (2 files)
+3. Custom Hooks (2 files)
+4. Service Layer (2 files)
+5. Configuration and Data (2 files)
+
+TOTAL: 11 FILES
+================================================================================
+
+
+################################################################################
+SECTION 1: PREDICTION COMPONENTS
+################################################################################
+
+================================================================================
+FILE 1/11: apps/frontend/app/market+ta/components/PredictionChart.tsx
+CATEGORY: Component - Prediction Chart
+PURPOSE: Chart visualization for prediction data
+================================================================================
+
+'use client';
+
+import React, { useMemo, useCallback, useEffect, useState } from 'react';
+import Plot from 'react-plotly.js';
+import { CompanyPredictions } from '@/hooks/usePredictions';
+import PredictionAPIService from '@/lib/predictionService';
+import {
+  formatPredictionTime,
+  getPredictionFreshnessColor,
+  formatDataAge,
+} from '@/lib/predictionUtils';
+
+interface PredictionChartProps {
+  company: string;
+  predictions: CompanyPredictions | null;
+  actualData?: Record<string, { open: number; high: number; low: number; close: number }>;
+  dataAge?: number;
+  loading?: boolean;
+  height?: number;
+  showComparison?: boolean;
+  showConfidence?: boolean;
+}
+
+export const PredictionChart: React.FC<PredictionChartProps> = ({
+  company,
+  predictions,
+  actualData,
+  dataAge = 0,
+  loading = false,
+  height = 500,
+  showComparison = true,
+  showConfidence = true,
+}) => {
+  const [hoverData, setHoverData] = useState<{
+    timestamp: string;
+    predicted: number;
+    actual?: number;
+    predictedat: string;
+  } | null>(null);
+
+  // Transform data for chart
+  const chartData = useMemo(() => {
+    if (!predictions) return null;
+
+    const chartData = PredictionAPIService.transformToChartData(predictions, actualData);
+
+    const predictedTrace = {
+      x: chartData.timestamps.map(formatPredictionTime),
+      y: chartData.predictedPrices,
+      type: 'scatter' as const,
+      mode: 'lines+markers' as const,
+      name: `${company} - Predicted Price`,
+      line: {
+        color: '#3B82F6',
+        width: 3,
+        dash: 'solid' as const,
+      },
+      marker: {
+        size: 6,
+        color: '#3B82F6',
+        symbol: 'circle' as const,
+      },
+      hovertemplate:
+        '<b>%{fullData.name}</b><br>' +
+        'Time: %{x}<br>' +
+        'Price: ₹%{y:.2f}<br>' +
+        '<extra></extra>',
+    };
+
+    const traces = [predictedTrace];
+
+    // Add actual prices if available
+    if (showComparison && chartData.actualPrices.some((p) => p !== null)) {
+      const actualTrace = {
+        x: chartData.timestamps.map(formatPredictionTime),
+        y: chartData.actualPrices,
+        type: 'scatter' as const,
+        mode: 'lines+markers' as const,
+        name: `${company} - Actual Price`,
+        line: {
+          color: '#10B981',
+          width: 2,
+          dash: 'dash' as const,
+        },
+        marker: {
+          size: 5,
+          color: '#10B981',
+          symbol: 'square' as const,
+        },
+        connectgaps: false,
+        hovertemplate:
+          '<b>%{fullData.name}</b><br>' +
+          'Time: %{x}<br>' +
+          'Price: ₹%{y:.2f}<br>' +
+          '<extra></extra>',
+      };
+
+      traces.push(actualTrace);
+    }
+
+    return traces;
+  }, [predictions, actualData, company, showComparison]);
+
+  const layout = useMemo(
+    () => ({
+      title: {
+        text: `<b>${company} - Price Predictions</b><br><sub>Data Age: ${formatDataAge(dataAge)} | Status: ${loading ? 'Updating...' : 'Ready'}</sub>`,
+        font: { size: 16 },
+      },
+      xaxis: {
+        title: 'Time (IST)',
+        tickangle: -45,
+        showgrid: true,
+        gridwidth: 1,
+        gridcolor: '#E5E7EB',
+      },
+      yaxis: {
+        title: 'Price (₹)',
+        showgrid: true,
+        gridwidth: 1,
+        gridcolor: '#E5E7EB',
+      },
+      hovermode: 'x unified' as const,
+      plot_bgcolor: 'rgba(249, 250, 251, 0.5)',
+      paper_bgcolor: 'white',
+      margin: { l: 60, r: 40, t: 100, b: 80 },
+      height: height,
+      responsive: true,
+      showlegend: true,
+      legend: {
+        x: 0.01,
+        y: 0.99,
+        bgcolor: 'rgba(255, 255, 255, 0.8)',
+        bordercolor: '#E5E7EB',
+        borderwidth: 1,
+      },
+    }),
+    [company, dataAge, loading, height]
+  );
+
+  const config = useMemo(
+    () => ({
+      responsive: true,
+      displayModeBar: true,
+      modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+    }),
+    []
+  );
+
+  return (
+    <div className="w-full bg-white rounded-lg shadow-md p-4">
+      <div className="overflow-x-auto">
+        {chartData && chartData.length > 0 ? (
+          <Plot data={chartData as any} layout={layout as any} config={config} />
+        ) : (
+          <div className="flex items-center justify-center h-96 text-gray-500">
+            <div className="text-center">
+              {loading && (
+                <>
+                  <div className="animate-spin mb-4">⚙️</div>
+                  <p>Loading predictions...</p>
+                </>
+              )}
+              {!loading && !predictions && (
+                <>
+                  <div className="mb-4">📊</div>
+                  <p>No prediction data available</p>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showConfidence && predictions && (
+        <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p className="text-sm text-gray-600">Total Predictions</p>
+              <p className="text-lg font-bold text-blue-600">{predictions.count}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Latest Price</p>
+              <p className="text-lg font-bold text-blue-600">
+                ₹{Math.max(...Object.values(predictions.predictions).map((p) => p.close)).toFixed(2)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Lowest Price</p>
+              <p className="text-lg font-bold text-red-600">
+                ₹{Math.min(...Object.values(predictions.predictions).map((p) => p.close)).toFixed(2)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Data Age</p>
+              <p className="text-lg font-bold text-amber-600">{formatDataAge(dataAge)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default PredictionChart;
+
+
+
+================================================================================
+FILE 2/11: apps/frontend/app/market+ta/components/PredictionControlPanel.tsx
+CATEGORY: Component - Control Panel
+PURPOSE: Control panel for prediction parameters
+================================================================================
+
+'use client';
+
+import React, { useCallback } from 'react';
+import { PlayCircle, PauseCircle, RotateCcw, Download } from 'lucide-react';
+
+export interface PredictionControlPanelProps {
+  isPolling: boolean;
+  elapsedTime: number;
+  timeRemaining: number;
+  progressPercentage: number;
+  pollCount: number;
+  nextPollTime?: Date;
+  onStart: () => void;
+  onPause: () => void;
+  onStop: () => void;
+  onRefresh: () => void;
+  onDownload?: () => void;
+  disabled?: boolean;
+}
+
+export const PredictionControlPanel: React.FC<PredictionControlPanelProps> = ({
+  isPolling,
+  elapsedTime,
+  timeRemaining,
+  progressPercentage,
+  pollCount,
+  nextPollTime,
+  onStart,
+  onPause,
+  onStop,
+  onRefresh,
+  onDownload,
+  disabled = false,
+}) => {
+  const formatTime = useCallback((ms: number): string => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }, []);
+
+  return (
+    <div className="bg-white rounded-lg shadow-md p-4 space-y-4">
+      {/* Status */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-blue-50 p-3 rounded-lg">
+          <p className="text-xs text-gray-600">Status</p>
+          <p className="text-lg font-bold text-blue-600">
+            {isPolling ? '🟢 Active' : '⚫ Stopped'}
+          </p>
+        </div>
+        <div className="bg-purple-50 p-3 rounded-lg">
+          <p className="text-xs text-gray-600">Updates</p>
+          <p className="text-lg font-bold text-purple-600">{pollCount}</p>
+        </div>
+        <div className="bg-green-50 p-3 rounded-lg">
+          <p className="text-xs text-gray-600">Elapsed</p>
+          <p className="text-lg font-bold text-green-600">{formatTime(elapsedTime)}</p>
+        </div>
+        <div className="bg-amber-50 p-3 rounded-lg">
+          <p className="text-xs text-gray-600">Remaining</p>
+          <p className="text-lg font-bold text-amber-600">{formatTime(timeRemaining)}</p>
+        </div>
+      </div>
+
+      {/* Progress Bar */}
+      <div className="space-y-2">
+        <div className="flex justify-between items-center">
+          <p className="text-sm font-medium text-gray-700">Collection Progress</p>
+          <p className="text-sm text-gray-600">{Math.round(progressPercentage)}%</p>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-2">
+          <div
+            className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
+            style={{ width: `${Math.min(progressPercentage, 100)}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Next Poll Time */}
+      {nextPollTime && isPolling && (
+        <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+          <p className="text-sm text-gray-700">
+            <span className="font-semibold">Next update:</span>{' '}
+            {nextPollTime.toLocaleTimeString('en-IN')}
+          </p>
+        </div>
+      )}
+
+      {/* Control Buttons */}
+      <div className="flex flex-wrap gap-2">
+        {!isPolling ? (
+          <button
+            onClick={onStart}
+            disabled={disabled}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors"
+          >
+            <PlayCircle className="w-4 h-4" />
+            Start Collection
+          </button>
+        ) : (
+          <button
+            onClick={onPause}
+            disabled={disabled}
+            className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:bg-gray-400 transition-colors"
+          >
+            <PauseCircle className="w-4 h-4" />
+            Pause
+          </button>
+        )}
+
+        <button
+          onClick={onStop}
+          disabled={disabled}
+          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 transition-colors"
+        >
+          <RotateCcw className="w-4 h-4" />
+          Reset
+        </button>
+
+        <button
+          onClick={onRefresh}
+          disabled={disabled}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
+        >
+          <RotateCcw className="w-4 h-4" />
+          Refresh Now
+        </button>
+
+        {onDownload && (
+          <button
+            onClick={onDownload}
+            disabled={disabled}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Export
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default PredictionControlPanel;
+
+
+
+================================================================================
+FILE 3/11: apps/frontend/app/market+ta/components/PredictionOverlay.tsx
+CATEGORY: Component - Overlay Display
+PURPOSE: Overlay component for prediction visualization
+================================================================================
+
+'use client';
+
+import React, { useMemo } from 'react';
+import { AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
+import { CompanyPredictions } from '@/hooks/usePredictions';
+import {
+  getConfidenceLevel,
+  formatDataAge,
+  getPredictionStats,
+  aggregatePredictions,
+} from '@/lib/predictionUtils';
+
+interface PredictionOverlayProps {
+  predictions: CompanyPredictions | null;
+  company: string;
+  dataAge: number;
+  isStale: boolean;
+}
+
+export const PredictionOverlay: React.FC<PredictionOverlayProps> = ({
+  predictions,
+  company,
+  dataAge,
+  isStale,
+}) => {
+  const stats = useMemo(() => {
+    if (!predictions) return null;
+    return getPredictionStats(predictions);
+  }, [predictions]);
+
+  const aggregated = useMemo(() => {
+    if (!predictions) return null;
+    return aggregatePredictions(predictions);
+  }, [predictions]);
+
+  const latestPrediction = useMemo(() => {
+    if (!predictions || predictions.count === 0) return null;
+
+    const entries = Object.entries(predictions.predictions);
+    if (entries.length === 0) return null;
+
+    const [timestamp, data] = entries[entries.length - 1];
+    return { timestamp, ...data };
+  }, [predictions]);
+
+  const confidence = useMemo(() => {
+    if (!latestPrediction) return null;
+    return getConfidenceLevel(latestPrediction.predictedat);
+  }, [latestPrediction]);
+
+  if (!predictions || !stats) {
+    return (
+      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+        <p className="text-center text-gray-500">No prediction data available</p>
+      </div>
+    );
+  }
+
+  const priceChange = aggregated!.priceChangeFromStart;
+  const isPositive = priceChange >= 0;
+
+  return (
+    <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-4 border border-blue-200">
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-gray-800">
+              {company} - AI Price Predictions
+            </h3>
+            <p className="text-xs text-gray-600">
+              {predictions.count} predictions | Updated {formatDataAge(dataAge)}
+            </p>
+          </div>
+          {isStale && (
+            <div className="flex items-center gap-1 bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-semibold">
+              <AlertCircle className="w-3 h-3" />
+              Data Stale
+            </div>
+          )}
+        </div>
+
+        {/* Latest Prediction */}
+        {latestPrediction && (
+          <div className="bg-white rounded-lg p-3 border border-blue-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-600">Latest Prediction</p>
+                <p className="text-xl font-bold text-blue-600">
+                  ₹{latestPrediction.close.toFixed(2)}
+                </p>
+                <p className="text-xs text-gray-500">
+                  Predicted at: {new Date(latestPrediction.predictedat).toLocaleTimeString('en-IN')}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-600">Confidence</p>
+                <div className={`text-lg font-bold ${confidence?.level === 'high' ? 'text-green-600' : confidence?.level === 'medium' ? 'text-yellow-600' : 'text-red-600'}`}>
+                  {confidence?.percentage.toFixed(0)}%
+                </div>
+                <p className="text-xs text-gray-500">{confidence?.label}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Price Range */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="bg-white rounded p-2 border border-gray-200">
+            <p className="text-xs text-gray-600">Average</p>
+            <p className="font-bold text-gray-800">₹{stats.avgPrice}</p>
+          </div>
+          <div className="bg-white rounded p-2 border border-gray-200">
+            <p className="text-xs text-gray-600">High</p>
+            <p className="font-bold text-green-600">₹{stats.highPrice}</p>
+          </div>
+          <div className="bg-white rounded p-2 border border-gray-200">
+            <p className="text-xs text-gray-600">Low</p>
+            <p className="font-bold text-red-600">₹{stats.lowPrice}</p>
+          </div>
+          <div className="bg-white rounded p-2 border border-gray-200">
+            <p className="text-xs text-gray-600">Range</p>
+            <p className="font-bold text-purple-600">₹{stats.priceRange}</p>
+          </div>
+        </div>
+
+        {/* Price Change */}
+        <div className="bg-white rounded-lg p-3 border border-blue-100">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-700">Price Change (Start to Latest)</span>
+            <div className={`flex items-center gap-1 ${isPositive ? 'text-green-600' : 'text-red-600'} font-bold`}>
+              {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+              {isPositive ? '+' : ''}₹{Math.abs(priceChange).toFixed(2)}
+              <span className="text-xs">
+                ({((Math.abs(priceChange) / aggregated!.earliestPrice) * 100).toFixed(2)}%)
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Data Quality */}
+        <div className="bg-white rounded-lg p-3 border border-gray-200 text-xs">
+          <p className="font-semibold text-gray-700 mb-2">Data Quality</p>
+          <div className="space-y-1 text-gray-600">
+            <p>✓ Avg prediction age: {stats.avgAgeMins} minutes</p>
+            <p>✓ Max age: {stats.maxAgeMins} minutes</p>
+            <p>✓ Min age: {stats.minAgeMins} minutes</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PredictionOverlay;
+ 
+
+
+################################################################################
+SECTION 2: STATUS AND DISPLAY
+################################################################################
+
+================================================================================
+FILE 4/11: apps/frontend/app/market-data/components/PredictionStatus.tsx
+CATEGORY: Component - Status Display
+PURPOSE: Display prediction status and metrics
+================================================================================
+
+'use client';
+
+import React, { useMemo } from 'react';
+import { useHealth } from '@/hooks/usePredictions';
+import { AlertCircle, CheckCircle, Clock, TrendingUp } from 'lucide-react';
+
+export const PredictionStatus: React.FC<{
+  company?: string;
+  lastUpdated?: Date;
+  isStale?: boolean;
+}> = ({ company, lastUpdated, isStale }) => {
+  const { health, loading, error } = useHealth();
+
+  const statusColor = useMemo(() => {
+    if (error) return 'bg-red-50 border-red-200';
+    if (!health?.running) return 'bg-yellow-50 border-yellow-200';
+    return 'bg-green-50 border-green-200';
+  }, [error, health?.running]);
+
+  const textColor = useMemo(() => {
+    if (error) return 'text-red-700';
+    if (!health?.running) return 'text-yellow-700';
+    return 'text-green-700';
+  }, [error, health?.running]);
+
+  const IconComponent = useMemo(() => {
+    if (error) return AlertCircle;
+    if (!health?.running) return Clock;
+    return CheckCircle;
+  }, [error, health?.running]);
+
+  return (
+    <div className={`p-4 rounded-lg border ${statusColor}`}>
+      <div className="flex items-start gap-3">
+        <IconComponent className={`w-5 h-5 mt-0.5 ${textColor}`} />
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-2">
+            <p className={`font-semibold ${textColor}`}>
+              Prediction Service {error ? 'Unavailable' : health?.running ? 'Active' : 'Inactive'}
+            </p>
+            {loading && <span className="text-xs text-gray-600 animate-pulse">Checking...</span>}
+          </div>
+
+          {error ? (
+            <p className="text-sm text-red-600">{error}</p>
+          ) : (
+            <>
+              {health && (
+                <>
+                  <div className="text-sm space-y-1">
+                    <p className={textColor}>
+                      ✓ {health.totalcompanies} companies being tracked
+                    </p>
+                    <p className={textColor}>
+                      ✓ {health.companystatus[company || 'ICICIBANK']?.totalpredictions || 0}{' '}
+                      predictions available
+                    </p>
+                    <p className={`text-xs ${textColor}`}>
+                      Last update: {new Date(health.lastupdate).toLocaleTimeString('en-IN')}
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {lastUpdated && (
+                <div className="mt-2 pt-2 border-t border-green-200">
+                  <p className="text-xs text-green-700">
+                    Dashboard updated: {lastUpdated.toLocaleTimeString('en-IN')}
+                  </p>
+                  {isStale && (
+                    <p className="text-xs text-yellow-700 mt-1">
+                      ⚠️ Data may be stale. Refresh recommended.
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PredictionStatus;
+
+
+================================================================================
+FILE 5/11: apps/frontend/app/market-data/page.tsx
+CATEGORY: Page - Market Data with Predictions
+PURPOSE: Main market data page integrating prediction system
+================================================================================
+
+'use client';
+
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { getSocket } from '@/lib/socket';
+import dynamic from 'next/dynamic';
+import { AppSidebar } from "@/app/components/app-sidebar";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { Separator } from "@/components/ui/separator";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { ModeToggle } from "@/app/components/toggleButton";
+import { Card, CardContent } from "@/components/ui/card";
+import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelector2/WatchlistSelector";
+import { ImageCarousel } from "./components/ImageCarousel";
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { ViewInDashboardButton } from "@/app/components/ViewInDashboardButton";
+import { TrendingUp, TrendingDown, Minus, Database, Wifi, Award, TrendingUpIcon, Clock } from 'lucide-react';
+
+// Prediction Integration
+import { usePredictionPolling } from '@/hooks/usePredictionPolling';
+import PredictionChart from './components/PredictionChart';
+import PredictionStatus from './components/PredictionStatus';
+import PredictionControlPanel from './components/PredictionControlPanel';
+import PredictionOverlay from './components/PredictionOverlay';
+
+const PlotlyChart = dynamic(() => import('./components/charts/PlotlyChart'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-zinc-900">
+      <div className="animate-pulse text-blue-500">Loading chart...</div>
+    </div>
+  )
+});
+
+interface MarketData {
+  symbol: string;
+  ltp: number;
+  change?: number;
+  changePercent?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
+  bid?: number;
+  ask?: number;
+  timestamp: number;
+  sma_20?: number;
+  ema_9?: number;
+  rsi_14?: number;
+}
+
+interface ChartUpdate {
+  symbol: string;
+  price: number;
+  timestamp: number;
+  volume: number;
+  change: number;
+  changePercent: number;
+}
+
+interface OHLCData {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface TradingHours {
+  start: string;
+  end: string;
+  current: string;
+  isActive: boolean;
+}
+
+const MarketDataPage: React.FC = () => {
+  const [isClient, setIsClient] = useState(false);
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('');
+  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [selectedExchange, setSelectedExchange] = useState<string | null>(null);
+  const [selectedWatchlist, setSelectedWatchlist] = useState('A');
+
+  // Prediction Integration State
+  const [showPredictions, setShowPredictions] = useState(true);
+  const [predictionMode, setPredictionMode] = useState<'overlay' | 'comparison'>('overlay');
+
+  // Market Data State
+  const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
+  const [historicalData, setHistoricalData] = useState<Record<string, MarketData[]>>({});
+  const [ohlcData, setOhlcData] = useState<Record<string, OHLCData[]>>({});
+  const [chartUpdates, setChartUpdates] = useState<Record<string, ChartUpdate[]>>({});
+
+  const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
+  const [lastDataReceived, setLastDataReceived] = useState<Date | null>(null);
+  const [dataCount, setDataCount] = useState<number>(0);
+  const [updateFrequency, setUpdateFrequency] = useState<number>(0);
+  const [tradingHours, setTradingHours] = useState<TradingHours>({
+    start: '',
+    end: '',
+    current: '',
+    isActive: false
+  });
+
+  const [activeSymbols, setActiveSymbols] = useState<string[]>([]);
+  const [backgroundDataPoints, setBackgroundDataPoints] = useState<number>(0);
+  const [gradientMode, setGradientMode] = useState<'profit' | 'loss' | 'neutral'>('neutral');
+  const [usefulnessScore, setUsefulnessScore] = useState<number | null>(null);
+  const [showScoreTooltip, setShowScoreTooltip] = useState(false);
+
+  // Refs
+  const updateCountRef = useRef(0);
+  const lastUpdateTimeRef = useRef(Date.now());
+  const frequencyIntervalRef = useRef<NodeJS.Timeout>();
+  const socketRef = useRef<any>(null);
+  const isSubscribedRef = useRef<Set<string>>(new Set());
+
+  const {
+    companies,
+    loading: watchlistLoading,
+    error: watchlistError,
+    selectedWatchlist: currentWatchlist,
+    setSelectedWatchlist: setWatchlist,
+  } = useWatchlist();
+
+  // ============ PREDICTION POLLING INTEGRATION ============
+  const {
+    isPolling,
+    startPolling,
+    stopPolling,
+    pausePolling,
+    resumePolling,
+    predictions,
+    loading: predictionLoading,
+    error: predictionError,
+    lastUpdated: predictionLastUpdated,
+    dataAge: predictionDataAge,
+    elapsedTime,
+    timeRemaining,
+    pollCount,
+    progressPercentage,
+    nextPollTime,
+  } = usePredictionPolling({
+    company: selectedCompany || selectedSymbol.split(':')[1]?.split('-')[0] || '',
+    pollInterval: 5 * 60 * 1000, // 5 minutes
+    totalDuration: 25 * 60 * 1000, // 25 minutes
+    enabled: showPredictions && isClient,
+    autoStart: true,
+    onUpdate: (data) => {
+      console.log(`✅ Predictions updated for ${selectedCompany}:`, data.count, 'predictions');
+    },
+    onError: (error) => {
+      console.error('❌ Prediction error:', error);
+    },
+    onComplete: () => {
+      console.log('✅ Prediction collection completed for 25 minutes');
+    },
+  });
+
+  // ============ UTILITY FUNCTIONS ============
+  const validateAndFormatSymbol = useCallback((companyCode: string, exchange: string, marker: string = 'EQ'): string => {
+    const cleanSymbol = companyCode.replace(/[^A-Z0-9]/g, '').toUpperCase();
+    if (!cleanSymbol || cleanSymbol.length === 0) return '';
+
+    switch (exchange.toUpperCase()) {
+      case 'NSE':
+        return `NSE:${cleanSymbol}-${marker}`;
+      case 'BSE':
+        return `BSE:${cleanSymbol}-${marker}`;
+      default:
+        return `${exchange}:${cleanSymbol}-${marker}`;
+    }
+  }, []);
+
+  const handleCompanyChange = useCallback((companyCode: string | null, exchange?: string, marker?: string) => {
+    console.log(`Company selected: ${companyCode} (${exchange}, ${marker})`);
+    setSelectedCompany(companyCode);
+    setSelectedExchange(exchange || null);
+
+    if (companyCode && exchange) {
+      const formattedSymbol = validateAndFormatSymbol(companyCode, exchange, marker);
+      console.log(`Formatted symbol: ${formattedSymbol}`);
+      setSelectedSymbol(formattedSymbol);
+    } else {
+      setSelectedSymbol('');
+    }
+  }, [validateAndFormatSymbol]);
+
+  const handleWatchlistChange = useCallback((watchlist: string) => {
+    console.log(`Watchlist changed to: ${watchlist}`);
+    setSelectedWatchlist(watchlist);
+    setWatchlist(watchlist);
+    setSelectedCompany(null);
+    setSelectedSymbol('');
+  }, [setWatchlist]);
+
+  const handleFetchUsefulnessScore = useCallback(() => {
+    setUsefulnessScore(90);
+  }, []);
+
+  const getScoreEvaluation = useCallback((score: number) => {
+    if (score >= 80) return { text: 'Great', color: 'text-green-400', bgColor: 'bg-green-500/10', borderColor: 'border-green-500/40' };
+    if (score >= 60) return { text: 'Good', color: 'text-blue-400', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500/40' };
+    if (score >= 40) return { text: 'Average', color: 'text-yellow-400', bgColor: 'bg-yellow-500/10', borderColor: 'border-yellow-500/40' };
+    return { text: 'Poor', color: 'text-red-400', bgColor: 'bg-red-500/10', borderColor: 'border-red-500/40' };
+  }, []);
+
+  // ============ EVENT HANDLERS ============
+  const handleConnect = useCallback(() => {
+    console.log('✅ Connected to server');
+    setSocketStatus('Connected');
+
+    if (socketRef.current) {
+      socketRef.current.emit('get_trading_status', {}, (response: any) => {
+        if (response) {
+          setTradingHours({
+            start: response.trading_start || '',
+            end: response.trading_end || '',
+            current: response.current_time || '',
+            isActive: response.trading_active || false
+          });
+
+          if (response.active_symbols) {
+            setActiveSymbols(response.active_symbols);
+          }
+          if (response.total_data_points) {
+            setBackgroundDataPoints(response.total_data_points);
+          }
+        }
+      });
+    }
+  }, []);
+
+  const handleDisconnect = useCallback((reason: string) => {
+    console.log('❌ Disconnected:', reason);
+    setSocketStatus(`Disconnected: ${reason}`);
+  }, []);
+
+  const handleError = useCallback((error: any) => {
+    console.error('❌ Socket error:', error);
+    setSocketStatus(`Error: ${error.message || 'Unknown'}`);
+  }, []);
+
+  const handleMarketDataUpdate = useCallback((data: MarketData) => {
+    if (!data || !data.symbol) return;
+
+    updateCountRef.current++;
+    setLastDataReceived(new Date());
+    setDataCount(prev => prev + 1);
+
+    setMarketData(prev => ({
+      ...prev,
+      [data.symbol]: data
+    }));
+
+    setHistoricalData(prev => {
+      const symbol = data.symbol;
+      const existingHistory = prev[symbol] || [];
+
+      const exists = existingHistory.some(item => item.timestamp === data.timestamp);
+      if (exists) return prev;
+
+      const newHistory = [...existingHistory, data].slice(-10000);
+      newHistory.sort((a, b) => a.timestamp - b.timestamp);
+
+      return {
+        ...prev,
+        [symbol]: newHistory
+      };
+    });
+  }, []);
+
+  const handleChartUpdate = useCallback((update: ChartUpdate) => {
+    if (!update || !update.symbol) return;
+    updateCountRef.current++;
+
+    setChartUpdates(prev => {
+      const symbolUpdates = prev[update.symbol] || [];
+      const newUpdates = [...symbolUpdates, update].slice(-1000);
+
+      return {
+        ...prev,
+        [update.symbol]: newUpdates
+      };
+    });
+  }, []);
+
+  const handleHistoricalData = useCallback((data: { symbol: string, data: MarketData[] }) => {
+    if (!data || !data.symbol || !Array.isArray(data.data)) return;
+
+    console.log(`📈 Received historical data for ${data.symbol}: ${data.data.length} points`);
+
+    const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
+
+    setHistoricalData(prev => ({
+      ...prev,
+      [data.symbol]: sortedData
+    }));
+
+    if (sortedData.length > 0) {
+      setMarketData(prev => ({
+        ...prev,
+        [data.symbol]: sortedData[sortedData.length - 1]
+      }));
+
+      const chartData = sortedData.map(item => ({
+        symbol: data.symbol,
+        price: item.ltp,
+        timestamp: item.timestamp,
+        volume: item.volume || 0,
+        change: item.change || 0,
+        changePercent: item.changePercent || 0
+      }));
+
+      setChartUpdates(prev => ({
+        ...prev,
+        [data.symbol]: chartData
+      }));
+    }
+  }, []);
+
+  const handleOhlcData = useCallback((data: { symbol: string, data: OHLCData[] }) => {
+    if (!data || !data.symbol || !Array.isArray(data.data)) return;
+
+    console.log(`📊 Received OHLC data for ${data.symbol}: ${data.data.length} candles`);
+
+    const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
+
+    setOhlcData(prev => ({
+      ...prev,
+      [data.symbol]: sortedData
+    }));
+  }, []);
+
+  const handleHeartbeat = useCallback((data: any) => {
+    if (!data) return;
+
+    setTradingHours(prev => ({
+      ...prev,
+      current: new Date().toISOString(),
+      isActive: data.trading_active || false
+    }));
+
+    if (data.active_symbols && Array.isArray(data.active_symbols)) {
+      setActiveSymbols(data.active_symbols);
+    }
+    if (typeof data.total_cached_points === 'number') {
+      setBackgroundDataPoints(data.total_cached_points);
+    }
+  }, []);
+
+  // ============ UTILITY FORMATTERS ============
+  const formatPrice = useCallback((price?: number) => {
+    return price?.toFixed(2) || '0.00';
+  }, []);
+
+  const formatChange = useCallback((change?: number, percent?: number) => {
+    if ((!change && change !== 0) || (!percent && percent !== 0)) return '-';
+    const sign = change >= 0 ? '+' : '';
+    return `${sign}${change.toFixed(2)} (${sign}${percent.toFixed(2)}%)`;
+  }, []);
+
+  const getChangeClass = useCallback((change?: number) => {
+    if (!change && change !== 0) return '';
+    return change >= 0 ? 'text-green-500' : 'text-red-500';
+  }, []);
+
+  const getSentimentIndicator = useCallback((mode: 'profit' | 'loss' | 'neutral') => {
+    switch (mode) {
+      case 'profit':
+        return {
+          background: 'bg-gradient-to-r from-green-500/10 to-green-900/10 border-green-500/40',
+          text: 'text-green-400',
+          icon: TrendingUp,
+          label: 'Positive Sentiment'
+        };
+      case 'loss':
+        return {
+          background: 'bg-gradient-to-r from-red-500/10 to-red-900/10 border-red-500/40',
+          text: 'text-red-400',
+          icon: TrendingDown,
+          label: 'Negative Sentiment'
+        };
+      case 'neutral':
+      default:
+        return {
+          background: 'bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40',
+          text: 'text-zinc-400',
+          icon: Minus,
+          label: 'Neutral Sentiment'
+        };
+    }
+  }, []);
+
+  // ============ EFFECTS ============
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const timeDiff = (now - lastUpdateTimeRef.current) / 1000;
+      const frequency = timeDiff > 0 ? Math.round(updateCountRef.current / timeDiff) : 0;
+      setUpdateFrequency(frequency);
+      updateCountRef.current = 0;
+      lastUpdateTimeRef.current = now;
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (companies.length > 0 && !selectedCompany) {
+      const firstCompany = companies[0];
+      console.log(`Auto-selecting first company: ${firstCompany.company_code}`);
+      handleCompanyChange(firstCompany.company_code, firstCompany.exchange, firstCompany.marker);
+    }
+  }, [companies.length, selectedCompany, handleCompanyChange]);
+
+  useEffect(() => {
+    setIsClient(true);
+    console.log('Component mounted');
+  }, []);
+
+  useEffect(() => {
+    if (!isClient) return;
+
+    console.log('🚀 Initializing WebSocket connection...');
+
+    const socket = getSocket();
+    socketRef.current = socket;
+
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('error', handleError);
+    socket.on('marketDataUpdate', handleMarketDataUpdate);
+    socket.on('chartUpdate', handleChartUpdate);
+    socket.on('historicalData', handleHistoricalData);
+    socket.on('ohlcData', handleOhlcData);
+    socket.on('heartbeat', handleHeartbeat);
+
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('error', handleError);
+      socket.off('marketDataUpdate', handleMarketDataUpdate);
+      socket.off('chartUpdate', handleChartUpdate);
+      socket.off('historicalData', handleHistoricalData);
+      socket.off('ohlcData', handleOhlcData);
+      socket.off('heartbeat', handleHeartbeat);
+    };
+  }, [isClient, handleConnect, handleDisconnect, handleError, handleMarketDataUpdate, handleChartUpdate, handleHistoricalData, handleOhlcData, handleHeartbeat]);
+
+  useEffect(() => {
+    if (!isClient || !selectedSymbol || !socketRef.current) return;
+
+    const socket = socketRef.current;
+
+    if (isSubscribedRef.current.has(selectedSymbol)) {
+      console.log(`Already subscribed to ${selectedSymbol}`);
+      return;
+    }
+
+    console.log('🔄 Subscribing to symbol:', selectedSymbol);
+
+    socket.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
+      if (response && response.success) {
+        isSubscribedRef.current.add(selectedSymbol);
+        console.log(`✅ Successfully subscribed to ${selectedSymbol}`);
+      }
+    });
+
+    return () => {
+      if (isSubscribedRef.current.has(selectedSymbol)) {
+        console.log('🛑 Unsubscribing from:', selectedSymbol);
+        socket.emit('unsubscribe', { symbol: selectedSymbol });
+        isSubscribedRef.current.delete(selectedSymbol);
+      }
+    };
+  }, [selectedSymbol, isClient]);
+
+  // ============ MEMOIZED CALCULATIONS ============
+  const currentData = useMemo(() =>
+    marketData[selectedSymbol] || null,
+    [marketData, selectedSymbol]
+  );
+
+  const symbolHistory = useMemo(() =>
+    historicalData[selectedSymbol] || [],
+    [historicalData, selectedSymbol]
+  );
+
+  const symbolOhlc = useMemo(() =>
+    ohlcData[selectedSymbol] || [],
+    [ohlcData, selectedSymbol]
+  );
+
+  const symbolChartUpdates = useMemo(() =>
+    chartUpdates[selectedSymbol] || [],
+    [chartUpdates, selectedSymbol]
+  );
+
+  const totalCachedSymbols = useMemo(() => Object.keys(marketData).length, [marketData]);
+  const totalHistoricalPoints = useMemo(() =>
+    Object.values(historicalData).reduce((sum, data) => sum + data.length, 0),
+    [historicalData]
+  );
+
+  const isDataStale = useMemo(() => predictionDataAge > 600, [predictionDataAge]);
+
+  // ============ LOADING STATE ============
+  if (!isClient) {
+    return (
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>
+          <header className="flex h-16 shrink-0 items-center gap-2 w-full">
+            <div className="flex items-center gap-2 px-4">
+              <SidebarTrigger className="-ml-1" />
+              <Separator orientation="vertical" className="mr-2 h-4" />
+              <Breadcrumb className="flex items-center justify-end gap-2">
+                <BreadcrumbList>
+                  <BreadcrumbItem className="hidden md:block">
+                    <BreadcrumbLink href="#">Home</BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator className="hidden md:block" />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>Market Data</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+                <ModeToggle />
+              </Breadcrumb>
+            </div>
+          </header>
+          <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+            <div className="container mx-auto p-4 bg-zinc-900 text-white flex items-center justify-center h-[80vh]">
+              <div className="text-xl animate-pulse">Loading market data...</div>
+            </div>
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
+    );
+  }
+
+  // ============ MAIN RENDER ============
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>
+        <header className="flex h-16 shrink-0 items-center gap-2 w-full">
+          <div className="flex items-center gap-2 px-4 w-full">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <Breadcrumb className="flex items-center justify-between w-full">
+              <BreadcrumbList>
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink href="#">Home</BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden md:block" />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Live Market Data + AI Predictions</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+              <ModeToggle />
+            </Breadcrumb>
+          </div>
+        </header>
+
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+          <Card className="w-full">
+            <CardContent className="p-4">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-medium">Live Market + Predictions</h3>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <span className={`inline-block w-2 h-2 rounded-full ${
+                        socketStatus.includes('Connected') ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+                      }`}></span>
+                      <span className="text-sm text-muted-foreground">{socketStatus}</span>
+                    </div>
+                    <button
+                      onClick={() => setShowPredictions(!showPredictions)}
+                      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                        showPredictions
+                          ? 'bg-blue-600 text-white hover:bg-blue-700'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      {showPredictions ? '🔮 Predictions ON' : '🔮 Predictions OFF'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3 border border-opacity-30 rounded-md h-24 flex items-center justify-between">
+                  <WatchlistSelector
+                    onCompanySelect={handleCompanyChange}
+                    selectedWatchlist={selectedWatchlist}
+                    onWatchlistChange={handleWatchlistChange}
+                    showExchangeFilter={true}
+                    showMarkerFilter={true}
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="p-3 bg-zinc-800 rounded">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Wifi className="h-4 w-4 text-green-500" />
+                        <span className="text-green-400 font-medium">Active Background ({activeSymbols.length})</span>
+                      </div>
+                      <div className="max-h-20 overflow-y-auto">
+                        {activeSymbols.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {activeSymbols.slice(0, 5).map(symbol => (
+                              <span key={symbol} className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded">
+                                {symbol.split(':')[1]?.split('-')[0] || symbol}
+                              </span>
+                            ))}
+                            {activeSymbols.length > 5 && (
+                              <span className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded">
+                                +{activeSymbols.length - 5} more
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-zinc-500 text-xs">No active symbols</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-zinc-800 rounded">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Database className="h-4 w-4 text-blue-500" />
+                        <span className="text-blue-400 font-medium">Cached Data ({Object.keys(historicalData).length})</span>
+                      </div>
+                      <div className="max-h-20 overflow-y-auto">
+                        {Object.keys(historicalData).length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {Object.keys(historicalData).slice(0, 5).map(symbol => (
+                              <span key={symbol} className="text-xs bg-blue-900/50 text-blue-300 px-2 py-1 rounded">
+                                {symbol.split(':')[1]?.split('-')[0] || symbol}
+                              </span>
+                            ))}
+                            {Object.keys(historicalData).length > 5 && (
+                              <span className="text-xs bg-blue-900/50 text-blue-300 px-2 py-1 rounded">
+                                +{Object.keys(historicalData).length - 5} more
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-zinc-500 text-xs">No cached data</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {watchlistError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
+                    ❌ {watchlistError}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ============ PREDICTION STATUS ============ */}
+          {showPredictions && (
+            <PredictionStatus
+              company={selectedCompany || ''}
+              lastUpdated={predictionLastUpdated}
+              isStale={isDataStale}
+            />
+          )}
+
+          {/* ============ PREDICTION CONTROL PANEL ============ */}
+          {showPredictions && (
+            <PredictionControlPanel
+              isPolling={isPolling}
+              elapsedTime={elapsedTime}
+              timeRemaining={timeRemaining}
+              progressPercentage={progressPercentage}
+              pollCount={pollCount}
+              nextPollTime={nextPollTime}
+              onStart={startPolling}
+              onPause={pausePolling}
+              onStop={stopPolling}
+              onRefresh={() => {}}
+              disabled={predictionLoading}
+            />
+          )}
+
+          <div className="min-h-screen bg-zinc-900 text-zinc-100 rounded-lg">
+            <div className="container w-full p-4">
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+                {/* ============ MAIN CHART AREA ============ */}
+                <div className="lg:col-span-3">
+                  <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-[600px]">
+                    {symbolHistory.length > 0 || symbolChartUpdates.length > 0 ? (
+                      <div className="w-full h-full">
+                        {showPredictions && predictions ? (
+                          <PredictionChart
+                            company={selectedCompany || selectedSymbol}
+                            predictions={predictions}
+                            dataAge={predictionDataAge}
+                            loading={predictionLoading}
+                            height={600}
+                          />
+                        ) : (
+                          <PlotlyChart
+                            symbol={selectedSymbol}
+                            data={currentData}
+                            historicalData={symbolHistory}
+                            ohlcData={symbolOhlc}
+                            chartUpdates={symbolChartUpdates}
+                            tradingHours={tradingHours}
+                            updateFrequency={updateFrequency}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <div className="h-full flex items-center justify-center">
+                        <p className="text-zinc-400">
+                          {selectedSymbol ? `Loading data for ${selectedSymbol}...` : 'Select a company'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* ============ SIDE PANEL: CURRENT DATA + PREDICTIONS ============ */}
+                <div className="bg-zinc-800 p-4 w-full rounded-lg shadow-lg max-h-[600px] overflow-y-auto">
+                  {currentData ? (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-xl font-semibold text-white">{selectedSymbol}</h2>
+                        <div className="text-xs text-green-400 animate-pulse">
+                          LIVE •
+                        </div>
+                      </div>
+
+                      <div className="text-3xl font-bold mb-2 text-white">₹{formatPrice(currentData.ltp)}</div>
+                      <div className={`text-lg ${getChangeClass(currentData.change)}`}>
+                        {formatChange(currentData.change, currentData.changePercent)}
+                      </div>
+
+                      {(() => {
+                        const sentiment = getSentimentIndicator(gradientMode);
+                        return (
+                          <div className={`mt-3 p-3 rounded-lg border-2 ${sentiment.background} backdrop-blur-sm`}>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm font-medium ${sentiment.text}`}>
+                                {sentiment.label}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* ============ PREDICTION OVERLAY SECTION ============ */}
+                      {showPredictions && predictions && (
+                        <div className="mt-4 border-t border-zinc-700 pt-4">
+                          <PredictionOverlay
+                            predictions={predictions}
+                            company={selectedCompany || selectedSymbol}
+                            dataAge={predictionDataAge}
+                            isStale={isDataStale}
+                          />
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-4 mt-6">
+                        <div className="bg-zinc-700 p-3 rounded">
+                          <div className="text-xs text-zinc-400">Open</div>
+                          <div className="text-lg">₹{formatPrice(currentData.open)}</div>
+                        </div>
+                        <div className="bg-zinc-700 p-3 rounded">
+                          <div className="text-xs text-zinc-400">Close</div>
+                          <div className="text-lg">₹{formatPrice(currentData.close)}</div>
+                        </div>
+                        <div className="bg-zinc-700 p-3 rounded">
+                          <div className="text-xs text-zinc-400">High</div>
+                          <div className="text-lg">₹{formatPrice(currentData.high)}</div>
+                        </div>
+                        <div className="bg-zinc-700 p-3 rounded">
+                          <div className="text-xs text-zinc-400">Low</div>
+                          <div className="text-lg">₹{formatPrice(currentData.low)}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-6 border-t border-zinc-700 pt-4">
+                        <div className="grid grid-cols-2 gap-y-2">
+                          <div>
+                            <div className="text-xs text-zinc-400">Volume</div>
+                            <div>{currentData.volume?.toLocaleString() || '0'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-zinc-400">Updated</div>
+                            <div className="text-green-400">
+                              {new Date(currentData.timestamp * 1000).toLocaleTimeString()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {(currentData.sma_20 || currentData.ema_9 || currentData.rsi_14) && (
+                        <div className="mt-6 border-t border-zinc-700 pt-4">
+                          <h3 className="text-sm font-medium mb-2 text-zinc-300">Technical Indicators</h3>
+                          <div className="grid grid-cols-3 gap-2">
+                            {currentData.sma_20 && (
+                              <div className="bg-zinc-700 p-2 rounded">
+                                <div className="text-xs text-orange-500">SMA 20</div>
+                                <div className="text-sm">₹{formatPrice(currentData.sma_20)}</div>
+                              </div>
+                            )}
+                            {currentData.ema_9 && (
+                              <div className="bg-zinc-700 p-2 rounded">
+                                <div className="text-xs text-purple-500">EMA 9</div>
+                                <div className="text-sm">₹{formatPrice(currentData.ema_9)}</div>
+                              </div>
+                            )}
+                            {currentData.rsi_14 && (
+                              <div className="bg-zinc-700 p-2 rounded">
+                                <div className="text-xs text-cyan-500">RSI 14</div>
+                                <div className="text-sm">{currentData.rsi_14.toFixed(2)}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-4">
+                        {usefulnessScore === null ? (
+                          <button
+                            onClick={handleFetchUsefulnessScore}
+                            className="w-full p-3 rounded-lg border-2 bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40 backdrop-blur-sm hover:from-zinc-500/40 hover:to-zinc-600/30 transition-all duration-200"
+                          >
+                            <div className="flex items-center justify-center gap-2">
+                              <Award className="h-4 w-4 text-zinc-400" />
+                              <span className="text-sm font-medium text-zinc-400">
+                                Fetch Score
+                              </span>
+                            </div>
+                          </button>
+                        ) : (
+                          <div
+                            className="relative"
+                            onMouseEnter={() => setShowScoreTooltip(true)}
+                            onMouseLeave={() => setShowScoreTooltip(false)}
+                          >
+                            {(() => {
+                              const scoreEval = getScoreEvaluation(usefulnessScore);
+                              return (
+                                <div className={`p-3 rounded-lg border-2 bg-gradient-to-r ${scoreEval.bgColor} ${scoreEval.borderColor} backdrop-blur-sm cursor-pointer`}>
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <Award className={`h-5 w-5 ${scoreEval.color}`} />
+                                      <div>
+                                        <div className="text-xs text-zinc-400">Score</div>
+                                        <div className={`text-2xl font-bold ${scoreEval.color}`}>
+                                          {usefulnessScore}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className={`text-lg font-semibold ${scoreEval.color}`}>
+                                      {scoreEval.text}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-zinc-400">
+                        {selectedSymbol ? 'Connecting...' : 'Select a company'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mb-8">
+                <ImageCarousel
+                  companyCode={selectedCompany || ''}
+                  exchange={selectedExchange || ''}
+                  gradientMode={gradientMode}
+                  onGradientModeChange={setGradientMode}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ============ ERROR MESSAGES ============ */}
+          {predictionError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-700">
+                <strong>⚠️ Prediction Error:</strong> {predictionError}
+              </p>
+            </div>
+          )}
+
+          {isDataStale && showPredictions && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-yellow-700">
+                <strong>⚠️ Data Stale:</strong> Predictions are older than 10 minutes. Refresh recommended.
+              </p>
+            </div>
+          )}
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
+  );
+};
+
+export default MarketDataPage;
+
+
+################################################################################
+SECTION 3: CUSTOM HOOKS
+################################################################################
+
+================================================================================
+FILE 6/11: apps/frontend/hooks/usePredictionPolling.ts
+CATEGORY: Hook - Prediction Polling
+PURPOSE: Hook for polling prediction service updates
+================================================================================
+
+import { useEffect, useRef, useCallback, useState } from 'react';
+import { usePredictions, CompanyPredictions } from './usePredictions';
+
+export interface PollingConfig {
+  company: string;
+  pollInterval?: number; // milliseconds (default: 5 * 60 * 1000 = 5 minutes)
+  totalDuration?: number; // milliseconds (default: 25 * 60 * 1000 = 25 minutes)
+  enabled?: boolean;
+  onUpdate?: (data: CompanyPredictions) => void;
+  onError?: (error: string) => void;
+  onComplete?: () => void;
+  autoStart?: boolean;
+}
+
+export const usePredictionPolling = (config: PollingConfig) => {
+  const {
+    company,
+    pollInterval = 5 * 60 * 1000, // 5 minutes
+    totalDuration = 25 * 60 * 1000, // 25 minutes
+    enabled = true,
+    onUpdate,
+    onError,
+    onComplete,
+    autoStart = true,
+  } = config;
+
+  const {
+    predictions,
+    refetch,
+    loading,
+    error,
+    lastUpdated,
+    dataAge,
+  } = usePredictions({ company, enabled });
+
+  const [isPolling, setIsPolling] = useState(autoStart && enabled);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [pollCount, setPollCount] = useState(0);
+  const [nextPollTime, setNextPollTime] = useState<Date | null>(null);
+
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const totalDurationRef = useRef<NodeJS.Timeout | null>(null);
+  const startTimeRef = useRef<Date | null>(null);
+  const lastPollRef = useRef<Date | null>(null);
+
+  const startPolling = useCallback(async () => {
+    if (!enabled || !company) return;
+
+    setIsPolling(true);
+    startTimeRef.current = new Date();
+    lastPollRef.current = new Date();
+    setPollCount(0);
+    setElapsedTime(0);
+
+    // Immediate first fetch
+    const data = await refetch();
+    if (data) {
+      onUpdate?.(data);
+    } else if (error) {
+      onError?.(error);
+    }
+
+    // Set up polling interval
+    pollIntervalRef.current = setInterval(async () => {
+      if (!startTimeRef.current) return;
+
+      const now = new Date();
+      const elapsed = now.getTime() - startTimeRef.current.getTime();
+
+      if (elapsed > totalDuration) {
+        stopPolling();
+        onComplete?.();
+        return;
+      }
+
+      setElapsedTime(elapsed);
+      setNextPollTime(new Date(now.getTime() + pollInterval));
+
+      const data = await refetch();
+      if (data) {
+        setPollCount((prev) => prev + 1);
+        onUpdate?.(data);
+      }
+    }, pollInterval);
+
+    // Set timeout for total duration
+    totalDurationRef.current = setTimeout(() => {
+      stopPolling();
+      onComplete?.();
+    }, totalDuration);
+  }, [enabled, company, pollInterval, totalDuration, refetch, error, onUpdate, onError, onComplete]);
+
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    if (totalDurationRef.current) clearTimeout(totalDurationRef.current);
+    setIsPolling(false);
+    startTimeRef.current = null;
+    lastPollRef.current = null;
+    setNextPollTime(null);
+  }, []);
+
+  const pausePolling = useCallback(() => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    if (totalDurationRef.current) clearTimeout(totalDurationRef.current);
+    setIsPolling(false);
+  }, []);
+
+  const resumePolling = useCallback(() => {
+    if (isPolling) return;
+    startPolling();
+  }, [isPolling, startPolling]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopPolling();
+    };
+  }, [stopPolling]);
+
+  // Auto-start if enabled
+  useEffect(() => {
+    if (enabled && autoStart && !isPolling && company) {
+      startPolling();
+    }
+  }, [enabled, autoStart, company]);
+
+  const timeRemaining = Math.max(0, totalDuration - elapsedTime);
+  const progressPercentage = (elapsedTime / totalDuration) * 100;
+
+  return {
+    isPolling,
+    startPolling,
+    stopPolling,
+    pausePolling,
+    resumePolling,
+    predictions,
+    loading,
+    error,
+    lastUpdated,
+    dataAge,
+    elapsedTime,
+    timeRemaining,
+    pollCount,
+    progressPercentage,
+    nextPollTime,
+  };
+};
+
+
+================================================================================
+FILE 7/11: apps/frontend/hooks/usePredictions.ts
+CATEGORY: Hook - Predictions Management
+PURPOSE: Main hook for prediction data management
+================================================================================
+
+import { useState, useCallback, useEffect, useRef } from 'react';
+
+export interface PredictionData {
+  timestamp: string;
+  close: number;
+  predictedat: string;
+}
+
+export interface CompanyPredictions {
+  company: string;
+  predictions: Record<string, PredictionData>;
+  count: number;
+  starttime?: string;
+  endtime?: string;
+}
+
+export interface HealthStatus {
+  status: 'healthy' | 'stopped';
+  running: boolean;
+  lastupdate: string;
+  activecompanies: string[];
+  totalcompanies: number;
+  companystatus: Record<string, {
+    totalpredictions: number;
+    latestprediction: string;
+  }>;
+}
+
+export interface UsePredictionsOptions {
+  company: string;
+  enabled?: boolean;
+  cacheTimeout?: number;
+  retryAttempts?: number;
+  retryDelay?: number;
+}
+
+const CACHE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+const RETRY_ATTEMPTS = 3;
+const RETRY_DELAY = 1000; // 1 second
+
+class PredictionCache {
+  private cache: Map<string, { data: any; timestamp: number }> = new Map();
+  private timeout: number;
+
+  constructor(timeout: number = CACHE_TIMEOUT) {
+    this.timeout = timeout;
+  }
+
+  set(key: string, data: any): void {
+    this.cache.set(key, { data, timestamp: Date.now() });
+  }
+
+  get(key: string): any | null {
+    const cached = this.cache.get(key);
+    if (!cached) return null;
+
+    if (Date.now() - cached.timestamp > this.timeout) {
+      this.cache.delete(key);
+      return null;
+    }
+
+    return cached.data;
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  isStale(key: string): boolean {
+    const cached = this.cache.get(key);
+    if (!cached) return true;
+    return Date.now() - cached.timestamp > this.timeout;
+  }
+}
+
+export const predictionCache = new PredictionCache();
+
+export const usePredictions = (options: UsePredictionsOptions) => {
+  const {
+    company,
+    enabled = true,
+    cacheTimeout = CACHE_TIMEOUT,
+    retryAttempts = RETRY_ATTEMPTS,
+    retryDelay = RETRY_DELAY,
+  } = options;
+
+  const [predictions, setPredictions] = useState<CompanyPredictions | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [dataAge, setDataAge] = useState<number>(0);
+  const [retrying, setRetrying] = useState(false);
+
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const retryCountRef = useRef(0);
+  const updateTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const calculateDataAge = useCallback(() => {
+    if (!lastUpdated) return 0;
+    return Math.floor((Date.now() - lastUpdated.getTime()) / 1000);
+  }, [lastUpdated]);
+
+  const fetchPredictions = useCallback(
+    async (attempt = 0): Promise<CompanyPredictions | null> => {
+      if (!enabled || !company) return null;
+
+      const cacheKey = `predictions_${company}`;
+      const cached = predictionCache.get(cacheKey);
+      if (cached && attempt === 0) {
+        setPredictions(cached);
+        setLastUpdated(new Date());
+        setError(null);
+        return cached;
+      }
+
+      try {
+        setLoading(true);
+        setRetrying(attempt > 0);
+
+        abortControllerRef.current = new AbortController();
+        const baseUrl = process.env.NEXT_PUBLIC_PREDICTION_API || 'http://localhost:5112';
+        const url = `${baseUrl}/predictions/${company}`;
+
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          signal: abortControllerRef.current.signal,
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error(`No predictions available for ${company}`);
+          }
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data: CompanyPredictions = await response.json();
+
+        predictionCache.set(cacheKey, data);
+        setPredictions(data);
+        setLastUpdated(new Date());
+        setError(null);
+        retryCountRef.current = 0;
+        setRetrying(false);
+
+        return data;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+
+        if (
+          attempt < retryAttempts &&
+          !(err instanceof Error && err.message.includes('No predictions available'))
+        ) {
+          setRetrying(true);
+          await new Promise((resolve) => setTimeout(resolve, retryDelay * (attempt + 1)));
+          return fetchPredictions(attempt + 1);
+        }
+
+        setError(errorMessage);
+        setRetrying(false);
+
+        // Return cached data if available, even if expired
+        const expiredCache = predictionCache.get(cacheKey);
+        if (expiredCache) {
+          setPredictions(expiredCache);
+        }
+
+        return null;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [enabled, company, retryAttempts, retryDelay]
+  );
+
+  const refetch = useCallback(async () => {
+    return await fetchPredictions(0);
+  }, [fetchPredictions]);
+
+  const clearCache = useCallback(() => {
+    predictionCache.clear();
+    setPredictions(null);
+    setError(null);
+    setLastUpdated(null);
+  }, []);
+
+  // Update data age every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setDataAge(calculateDataAge());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [calculateDataAge]);
+
+  // Initial fetch on mount or when company changes
+  useEffect(() => {
+    if (enabled) {
+      fetchPredictions(0);
+    }
+
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [enabled, company, fetchPredictions]);
+
+  return {
+    predictions,
+    loading,
+    error,
+    lastUpdated,
+    dataAge,
+    retrying,
+    refetch,
+    clearCache,
+    isStale: !lastUpdated || dataAge > 600, // 10 minutes
+  };
+};
+
+export const useHealth = () => {
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const checkHealth = useCallback(async () => {
+    try {
+      setLoading(true);
+      const baseUrl = process.env.NEXT_PUBLIC_PREDICTION_API || 'http://localhost:5112';
+      const response = await fetch(`${baseUrl}/health`);
+
+      if (!response.ok) throw new Error('Health check failed');
+
+      const data: HealthStatus = await response.json();
+      setHealth(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [checkHealth]);
+
+  return { health, loading, error };
+};
+
+
+################################################################################
+SECTION 4: SERVICE LAYER
+################################################################################
+
+================================================================================
+FILE 8/11: apps/frontend/lib/predictionService.ts
+CATEGORY: Service - Prediction API
+PURPOSE: Prediction service API integration
+================================================================================
+
+import { CompanyPredictions, HealthStatus } from '@/hooks/usePredictions';
+
+const BASE_URL = process.env.NEXT_PUBLIC_PREDICTION_API || 'http://localhost:5112';
+
+export class PredictionAPIService {
+  private static readonly DEFAULT_TIMEOUT = 10000; // 10 seconds
+
+  /**
+   * Fetch predictions for a single company
+   */
+  static async getCompanyPredictions(
+    company: string,
+    options?: {
+      starttime?: string;
+      endtime?: string;
+      timeout?: number;
+    }
+  ): Promise<CompanyPredictions> {
+    const url = new URL(`${BASE_URL}/predictions/${company}`);
+
+    if (options?.starttime) {
+      url.searchParams.append('starttime', options.starttime);
+    }
+    if (options?.endtime) {
+      url.searchParams.append('endtime', options.endtime);
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        options?.timeout || this.DEFAULT_TIMEOUT
+      );
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(
+          `API Error: ${response.status} ${response.statusText}`
+        );
+      }
+
+      return await response.json();
+    } catch (error) {
+      throw this.handleError(error, `Failed to fetch predictions for ${company}`);
+    }
+  }
+
+  /**
+   * Fetch predictions for multiple companies
+   */
+  static async getBatchPredictions(
+    companies: string[],
+    options?: {
+      starttime?: string;
+      endtime?: string;
+      timeout?: number;
+    }
+  ): Promise<Record<string, CompanyPredictions>> {
+    const url = new URL(`${BASE_URL}/predictions/batch/multiple`);
+
+    companies.forEach((company) => {
+      url.searchParams.append('companies', company);
+    });
+
+    if (options?.starttime) {
+      url.searchParams.append('starttime', options.starttime);
+    }
+    if (options?.endtime) {
+      url.searchParams.append('endtime', options.endtime);
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        options?.timeout || this.DEFAULT_TIMEOUT
+      );
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(
+          `API Error: ${response.status} ${response.statusText}`
+        );
+      }
+
+      const data = await response.json();
+      return data.results || {};
+    } catch (error) {
+      throw this.handleError(
+        error,
+        `Failed to fetch batch predictions for ${companies.join(', ')}`
+      );
+    }
+  }
+
+  /**
+   * Get specific prediction for a company at a timestamp
+   */
+  static async getSpecificPrediction(
+    company: string,
+    timestamp: string,
+    options?: {
+      timeout?: number;
+    }
+  ): Promise<{ company: string; timestamp: string; prediction: any }> {
+    const url = `${BASE_URL}/predictions/${company}/${encodeURIComponent(timestamp)}`;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        options?.timeout || this.DEFAULT_TIMEOUT
+      );
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(
+          `API Error: ${response.status} ${response.statusText}`
+        );
+      }
+
+      return await response.json();
+    } catch (error) {
+      throw this.handleError(
+        error,
+        `Failed to fetch prediction for ${company} at ${timestamp}`
+      );
+    }
+  }
+
+  /**
+   * Check API health status
+   */
+  static async checkHealth(options?: { timeout?: number }): Promise<HealthStatus> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        options?.timeout || this.DEFAULT_TIMEOUT
+      );
+
+      const response = await fetch(`${BASE_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      throw this.handleError(error, 'Failed to check health status');
+    }
+  }
+
+  /**
+   * Get list of available companies
+   */
+  static async getCompanies(options?: {
+    timeout?: number;
+  }): Promise<{
+    companies: string[];
+    count: number;
+    details: Record<string, any>;
+  }> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        options?.timeout || this.DEFAULT_TIMEOUT
+      );
+
+      const response = await fetch(`${BASE_URL}/companies`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      throw this.handleError(error, 'Failed to fetch companies list');
+    }
+  }
+
+  /**
+   * Transform predictions to chart data format
+   */
+  static transformToChartData(
+    predictions: CompanyPredictions,
+    actualData?: Record<string, number>
+  ): {
+    timestamps: string[];
+    predictedPrices: number[];
+    actualPrices: (number | null)[];
+    predictionAges: number[];
+  } {
+    const timestamps: string[] = [];
+    const predictedPrices: number[] = [];
+    const actualPrices: (number | null)[] = [];
+    const predictionAges: number[] = [];
+
+    const now = Date.now();
+
+    Object.entries(predictions.predictions)
+      .sort(([timeA], [timeB]) => timeA.localeCompare(timeB))
+      .forEach(([timestamp, prediction]) => {
+        timestamps.push(timestamp);
+        predictedPrices.push(prediction.close);
+        actualPrices.push(actualData?.[timestamp] ?? null);
+
+        // Calculate age in minutes
+        const predictionTime = new Date(prediction.predictedat).getTime();
+        const ageMinutes = Math.floor((now - predictionTime) / 60000);
+        predictionAges.push(ageMinutes);
+      });
+
+    return {
+      timestamps,
+      predictedPrices,
+      actualPrices,
+      predictionAges,
+    };
+  }
+
+  /**
+   * Calculate accuracy metrics
+   */
+  static calculateMetrics(
+    predictions: CompanyPredictions,
+    actualData: Record<string, number>
+  ): {
+    mae: number;
+    rmse: number;
+    mape: number;
+    accuracy: number;
+    matchCount: number;
+  } {
+    const errors: number[] = [];
+    const percentErrors: number[] = [];
+    let matchCount = 0;
+
+    Object.entries(predictions.predictions).forEach(([timestamp, prediction]) => {
+      if (actualData[timestamp] !== undefined) {
+        matchCount++;
+        const error = Math.abs(prediction.close - actualData[timestamp]);
+        errors.push(error);
+        percentErrors.push((error / actualData[timestamp]) * 100);
+      }
+    });
+
+    if (errors.length === 0) {
+      return { mae: 0, rmse: 0, mape: 0, accuracy: 0, matchCount: 0 };
+    }
+
+    const mae = errors.reduce((a, b) => a + b, 0) / errors.length;
+    const mse = errors.reduce((sum, error) => sum + error ** 2, 0) / errors.length;
+    const rmse = Math.sqrt(mse);
+    const mape = percentErrors.reduce((a, b) => a + b, 0) / percentErrors.length;
+
+    return {
+      mae,
+      rmse,
+      mape,
+      accuracy: Math.max(0, 100 - mape),
+      matchCount,
+    };
+  }
+
+  /**
+   * Check if data is stale (older than 10 minutes)
+   */
+  static isDataStale(predictedat: string, thresholdMinutes = 10): boolean {
+    const predictionTime = new Date(predictedat).getTime();
+    const ageMinutes = Math.floor((Date.now() - predictionTime) / 60000);
+    return ageMinutes > thresholdMinutes;
+  }
+
+  /**
+   * Handle API errors consistently
+   */
+  private static handleError(error: unknown, context: string): Error {
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        return new Error(`${context}: Request timeout`);
+      }
+      return new Error(`${context}: ${error.message}`);
+    }
+
+    return new Error(`${context}: Unknown error occurred`);
+  }
+}
+
+export default PredictionAPIService;
+
+
+================================================================================
+FILE 9/11: apps/frontend/lib/predictionUtils.ts
+CATEGORY: Utility - Prediction Helpers
+PURPOSE: Utility functions for prediction processing
+================================================================================
+
+import { CompanyPredictions, PredictionData } from '@/hooks/usePredictions';
+
+/**
+ * Format time from YYYY-MM-DD HHMM to readable format
+ */
+export const formatPredictionTime = (timeStr: string): string => {
+  try {
+    // Handle format: YYYY-MM-DD HHMM
+    const [date, time] = timeStr.split(' ');
+    const [year, month, day] = date.split('-');
+    const hours = time.substring(0, 2);
+    const minutes = time.substring(2, 4);
+
+    return `${day}/${month} ${hours}:${minutes}`;
+  } catch {
+    return timeStr;
+  }
+};
+
+/**
+ * Get time difference in minutes from predicted time
+ */
+export const getTimeDiffMinutes = (predictedat: string): number => {
+  try {
+    const predTime = new Date(predictedat).getTime();
+    const now = Date.now();
+    return Math.floor((now - predTime) / 60000);
+  } catch {
+    return -1;
+  }
+};
+
+/**
+ * Determine if prediction is fresh (within threshold)
+ */
+export const isFreshPrediction = (predictedat: string, thresholdMinutes = 10): boolean => {
+  return getTimeDiffMinutes(predictedat) <= thresholdMinutes;
+};
+
+/**
+ * Get color based on prediction freshness
+ */
+export const getPredictionFreshnessColor = (predictedat: string): string => {
+  const ageMins = getTimeDiffMinutes(predictedat);
+
+  if (ageMins <= 5) return '#10B981'; // Green - fresh
+  if (ageMins <= 10) return '#F59E0B'; // Amber - stale
+  return '#EF4444'; // Red - very stale
+};
+
+/**
+ * Format price change
+ */
+export const formatPriceChange = (current: number, previous: number): string => {
+  const change = current - previous;
+  const changePercent = ((change / previous) * 100).toFixed(2);
+  const symbol = change > 0 ? '+' : '';
+
+  return `${symbol}₹${change.toFixed(2)} (${symbol}${changePercent}%)`;
+};
+
+/**
+ * Aggregate predictions data for display
+ */
+export const aggregatePredictions = (predictions: CompanyPredictions) => {
+  const predictionsArray = Object.entries(predictions.predictions).map(
+    ([timestamp, data]) => ({
+      timestamp,
+      ...data,
+    })
+  );
+
+  const prices = predictionsArray.map((p) => p.close);
+  const highestPrice = Math.max(...prices);
+  const lowestPrice = Math.min(...prices);
+  const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+  const latestPrice = predictionsArray[predictionsArray.length - 1]?.close || 0;
+  const earliestPrice = predictionsArray[0]?.close || 0;
+  const priceRange = highestPrice - lowestPrice;
+
+  return {
+    count: predictions.count,
+    highestPrice,
+    lowestPrice,
+    avgPrice,
+    latestPrice,
+    earliestPrice,
+    priceRange,
+    priceChangeFromStart: latestPrice - earliestPrice,
+    predictionsArray,
+  };
+};
+
+/**
+ * Get statistics for predictions
+ */
+export const getPredictionStats = (predictions: CompanyPredictions) => {
+  const agg = aggregatePredictions(predictions);
+  const ageMins = Object.values(predictions.predictions).map((p) =>
+    getTimeDiffMinutes(p.predictedat)
+  );
+
+  return {
+    total: agg.count,
+    avgPrice: agg.avgPrice.toFixed(2),
+    priceRange: agg.priceRange.toFixed(2),
+    highPrice: agg.highestPrice.toFixed(2),
+    lowPrice: agg.lowestPrice.toFixed(2),
+    avgAgeMins: (ageMins.reduce((a, b) => a + b, 0) / ageMins.length).toFixed(1),
+    maxAgeMins: Math.max(...ageMins),
+    minAgeMins: Math.min(...ageMins),
+  };
+};
+
+/**
+ * Filter predictions by time range
+ */
+export const filterPredictionsByTime = (
+  predictions: CompanyPredictions,
+  startTime?: string,
+  endTime?: string
+): CompanyPredictions => {
+  const filtered = { ...predictions };
+  const filtered_predictions: Record<string, PredictionData> = {};
+
+  Object.entries(predictions.predictions).forEach(([timestamp, data]) => {
+    if (startTime && timestamp < startTime) return;
+    if (endTime && timestamp > endTime) return;
+    filtered_predictions[timestamp] = data;
+  });
+
+  filtered.predictions = filtered_predictions;
+  filtered.count = Object.keys(filtered_predictions).length;
+
+  return filtered;
+};
+
+/**
+ * Calculate confidence level based on prediction age
+ */
+export const getConfidenceLevel = (predictedat: string): {
+  level: 'high' | 'medium' | 'low';
+  percentage: number;
+  label: string;
+} => {
+  const ageMins = getTimeDiffMinutes(predictedat);
+
+  if (ageMins <= 5) {
+    return {
+      level: 'high',
+      percentage: 100 - ageMins * 5,
+      label: 'High Confidence',
+    };
+  }
+
+  if (ageMins <= 15) {
+    return {
+      level: 'medium',
+      percentage: Math.max(50, 100 - ageMins * 3),
+      label: 'Medium Confidence',
+    };
+  }
+
+  return {
+    level: 'low',
+    percentage: Math.max(20, 100 - ageMins * 2),
+    label: 'Low Confidence',
+  };
+};
+
+/**
+ * Convert predictions to market data format for merging with live data
+ */
+export const convertPredictionsToMarketData = (predictions: CompanyPredictions) => {
+  return Object.entries(predictions.predictions).map(([timestamp, data]) => ({
+    time: timestamp,
+    close: data.close,
+    type: 'prediction' as const,
+    predictedat: data.predictedat,
+    confidence: getConfidenceLevel(data.predictedat),
+  }));
+};
+
+/**
+ * Merge predicted and actual market data
+ */
+export const mergeMarketDataWithPredictions = (
+  actualData: any[],
+  predictions: CompanyPredictions
+) => {
+  const predictionMap = convertPredictionsToMarketData(predictions);
+  const merged = [...actualData];
+
+  predictionMap.forEach((pred) => {
+    const exists = merged.findIndex((d) => d.time === pred.time);
+    if (exists === -1) {
+      merged.push(pred);
+    } else {
+      merged[exists] = { ...merged[exists], ...pred };
+    }
+  });
+
+  return merged.sort((a, b) => a.time.localeCompare(b.time));
+};
+
+/**
+ * Validate prediction data
+ */
+export const isValidPredictionData = (data: any): data is CompanyPredictions => {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    typeof data.company === 'string' &&
+    typeof data.predictions === 'object' &&
+    typeof data.count === 'number' &&
+    data.count >= 0
+  );
+};
+
+/**
+ * Get next expected prediction time
+ */
+export const getNextPredictionTime = (lastPredictionTime: string): Date => {
+  const lastTime = new Date(lastPredictionTime);
+  const nextTime = new Date(lastTime.getTime() + 5 * 60 * 1000); // Add 5 minutes
+  return nextTime;
+};
+
+/**
+ * Format data age for display
+ */
+export const formatDataAge = (ageSeconds: number): string => {
+  if (ageSeconds < 60) {
+    return `${ageSeconds}s ago`;
+  }
+
+  const ageMins = Math.floor(ageSeconds / 60);
+  if (ageMins < 60) {
+    return `${ageMins}m ago`;
+  }
+
+  const ageHours = Math.floor(ageMins / 60);
+  return `${ageHours}h ago`;
+};
+
+/**
+ * Check if we're in trading hours
+ */
+export const isTradingHours = (): boolean => {
+  const now = new Date();
+  const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+
+  const hours = istTime.getHours();
+  const minutes = istTime.getMinutes();
+  const dayOfWeek = istTime.getDay();
+
+  // Trading hours: 9:15 AM to 3:30 PM, Monday to Friday
+  if (dayOfWeek === 0 || dayOfWeek === 6) return false; // Weekend
+
+  const startTime = 9 * 60 + 15; // 9:15 AM
+  const endTime = 15 * 60 + 30; // 3:30 PM
+  const currentTime = hours * 60 + minutes;
+
+  return currentTime >= startTime && currentTime <= endTime;
+};
+
+/**
+ * Get trading day status
+ */
+export const getTradingStatus = (): {
+  isTrading: boolean;
+  status: 'pre-market' | 'trading' | 'post-market' | 'closed';
+  nextOpenTime: Date;
+} => {
+  const now = new Date();
+  const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+
+  const hours = istTime.getHours();
+  const minutes = istTime.getMinutes();
+  const dayOfWeek = istTime.getDay();
+
+  // Weekends
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    const daysUntilMonday = dayOfWeek === 0 ? 1 : 2;
+    const nextOpen = new Date(istTime);
+    nextOpen.setDate(nextOpen.getDate() + daysUntilMonday);
+    nextOpen.setHours(9, 15, 0, 0);
+
+    return {
+      isTrading: false,
+      status: 'closed',
+      nextOpenTime: nextOpen,
+    };
+  }
+
+  const currentTime = hours * 60 + minutes;
+  const preMarketStart = 9 * 60; // 9:00 AM
+  const tradingStart = 9 * 60 + 15; // 9:15 AM
+  const tradingEnd = 15 * 60 + 30; // 3:30 PM
+
+  if (currentTime < preMarketStart) {
+    const nextOpen = new Date(istTime);
+    nextOpen.setHours(9, 15, 0, 0);
+    return {
+      isTrading: false,
+      status: 'pre-market',
+      nextOpenTime: nextOpen,
+    };
+  }
+
+  if (currentTime < tradingStart) {
+    const nextOpen = new Date(istTime);
+    nextOpen.setHours(9, 15, 0, 0);
+    return {
+      isTrading: false,
+      status: 'pre-market',
+      nextOpenTime: nextOpen,
+    };
+  }
+
+  if (currentTime <= tradingEnd) {
+    return {
+      isTrading: true,
+      status: 'trading',
+      nextOpenTime: new Date(),
+    };
+  }
+
+  const nextOpen = new Date(istTime);
+  nextOpen.setDate(nextOpen.getDate() + (dayOfWeek === 5 ? 3 : 1)); // Friday to Monday
+  nextOpen.setHours(9, 15, 0, 0);
+
+  return {
+    isTrading: false,
+    status: 'post-market',
+    nextOpenTime: nextOpen,
+  };
+};
+
+
+################################################################################
+SECTION 5: CONFIGURATION AND DATA
+################################################################################
+
+================================================================================
+FILE 10/11: apps/frontend/public/data-manifest.json
+CATEGORY: Configuration - Data Manifest
+PURPOSE: Data manifest configuration file
+================================================================================
+
+{
+  "dates": [
+    {
+      "date": "2025-06-17",
+      "displayDate": "2025-06-17",
+      "companiesCount": 6,
+      "companies": [
+        {
+          "symbol": "NSE:GPIL-EQ",
+          "company": "GPIL",
+          "exchange": "NSE",
+          "fileName": "GPIL-NSE.json",
+          "fileNameWithoutExt": "GPIL-NSE"
+        },
+        {
+          "symbol": "NSE:IDBI-EQ",
+          "company": "IDBI",
+          "exchange": "NSE",
+          "fileName": "IDBI-NSE.json",
+          "fileNameWithoutExt": "IDBI-NSE"
+        },
+        {
+          "symbol": "NSE:KIRIINDUS-EQ",
+          "company": "KIRIINDUS",
+          "exchange": "NSE",
+          "fileName": "KIRIINDUS-NSE.json",
+          "fileNameWithoutExt": "KIRIINDUS-NSE"
+        },
+        {
+          "symbol": "NSE:NORTHARC-EQ",
+          "company": "NORTHARC",
+          "exchange": "NSE",
+          "fileName": "NORTHARC-NSE.json",
+          "fileNameWithoutExt": "NORTHARC-NSE"
+        },
+        {
+          "symbol": "NSE:RPOWER-EQ",
+          "company": "RPOWER",
+          "exchange": "NSE",
+          "fileName": "RPOWER-NSE.json",
+          "fileNameWithoutExt": "RPOWER-NSE"
+        },
+        {
+          "symbol": "NSE:SCI-EQ",
+          "company": "SCI",
+          "exchange": "NSE",
+          "fileName": "SCI-NSE.json",
+          "fileNameWithoutExt": "SCI-NSE"
+        }
+      ]
+    },
+    {
+      "date": "2025-06-10",
+      "displayDate": "2025-06-10",
+      "companiesCount": 6,
+      "companies": [
+        {
+          "symbol": "NSE:GPIL-EQ",
+          "company": "GPIL",
+          "exchange": "NSE",
+          "fileName": "GPIL-NSE.json",
+          "fileNameWithoutExt": "GPIL-NSE"
+        },
+        {
+          "symbol": "NSE:IDBI-EQ",
+          "company": "IDBI",
+          "exchange": "NSE",
+          "fileName": "IDBI-NSE.json",
+          "fileNameWithoutExt": "IDBI-NSE"
+        },
+        {
+          "symbol": "NSE:KIRIINDUS-EQ",
+          "company": "KIRIINDUS",
+          "exchange": "NSE",
+          "fileName": "KIRIINDUS-NSE.json",
+          "fileNameWithoutExt": "KIRIINDUS-NSE"
+        },
+        {
+          "symbol": "NSE:NORTHARC-EQ",
+          "company": "NORTHARC",
+          "exchange": "NSE",
+          "fileName": "NORTHARC-NSE.json",
+          "fileNameWithoutExt": "NORTHARC-NSE"
+        },
+        {
+          "symbol": "NSE:RPOWER-EQ",
+          "company": "RPOWER",
+          "exchange": "NSE",
+          "fileName": "RPOWER-NSE.json",
+          "fileNameWithoutExt": "RPOWER-NSE"
+        },
+        {
+          "symbol": "NSE:SCI-EQ",
+          "company": "SCI",
+          "exchange": "NSE",
+          "fileName": "SCI-NSE.json",
+          "fileNameWithoutExt": "SCI-NSE"
+        }
+      ]
+    }
+  ],
+  "lastUpdated": "2025-11-02T18:32:59.427Z"
+}
+
+================================================================================
+FILE 11/11: package-lock.json
+CATEGORY: Configuration - Dependencies Lock
+PURPOSE: NPM package lock file
+NOTE: Large file - extracting first 200 lines only
+================================================================================
+
+[PARTIAL EXTRACTION - FIRST 200 LINES] 
+
+
+################################################################################
+END OF PREDICTION SYSTEM EXTRACTION
+################################################################################
+
+EXTRACTION SUMMARY:
+===================
+Section 1: Prediction Components - 3 files
+   - PredictionChart.tsx
+   - PredictionControlPanel.tsx
+   - PredictionOverlay.tsx
+
+Section 2: Status and Display - 2 files
+   - PredictionStatus.tsx
+   - market-data page.tsx
+
+Section 3: Custom Hooks - 2 files
+   - usePredictionPolling.ts
+   - usePredictions.ts
+
+Section 4: Service Layer - 2 files
+   - predictionService.ts
+   - predictionUtils.ts
+
+Section 5: Configuration and Data - 2 files
+   - data-manifest.json
+   - package-lock.json (partial)
+
+================================================================================
+TOTAL FILES PROCESSED: 11 FILES
+================================================================================
+
+PREDICTION SYSTEM ARCHITECTURE:
+--------------------------------
+Components Layer:
+      market+ta/ (Technical Analysis)
+          PredictionChart (Visualization)
+          PredictionControlPanel (Controls)
+          PredictionOverlay (Display)
+
+Integration Layer:
+      market-data/
+          PredictionStatus (Status Display)
+          page.tsx (Main Integration)
+
+State Management:
+      hooks/
+          usePredictionPolling (Real-time Updates)
+          usePredictions (Data Management)
+
+Service Layer:
+      lib/
+          predictionService (API Calls)
+          predictionUtils (Utilities)
+
+Configuration:
+      data-manifest.json (Data Config)
+      package-lock.json (Dependencies)
+
+################################################################################

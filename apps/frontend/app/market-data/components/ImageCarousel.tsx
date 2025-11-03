@@ -1271,7 +1271,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         <Card className={`shadow-lg border border-zinc-700/50 ${
           isMaximized 
             ? `${getMaximizedBackgroundClass(currentHeadline?.sentiment || 'neutral')} w-full` 
-            : `${getGradientClass(gradientMode)} flex-1`
+            : `${getGradientClass(gradientMode)} w-3/4`
         }`}>
           <CardHeader className="flex flex-row items-center justify-between p-1 border-b border-zinc-700/50">
             {/* Left side - Title and Counter Navigation */}
@@ -1522,7 +1522,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         
         {/* News Component - Only show in non-maximized view */}
         {!isMaximized && (
-          <div className="w-[360px] flex-shrink-0">
+          <div className="w-1/4 flex-shrink-0">
             <NewsComponent 
               companyCode={companyCode} 
               isMaximized={isMaximized} 
