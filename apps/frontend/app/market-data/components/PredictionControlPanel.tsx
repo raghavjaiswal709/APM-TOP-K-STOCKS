@@ -9,7 +9,7 @@ export interface PredictionControlPanelProps {
   timeRemaining: number;
   progressPercentage: number;
   pollCount: number;
-  nextPollTime?: Date;
+  nextPollTime?: Date | null;
   onStart: () => void;
   onPause: () => void;
   onStop: () => void;

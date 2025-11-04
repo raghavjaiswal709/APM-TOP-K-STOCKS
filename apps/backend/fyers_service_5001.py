@@ -86,12 +86,22 @@ def initialize_fyers():
             logger.info("ℹ️ No auth file found")
             return False
         
+        # Check if file is empty or invalid
+        file_size = os.path.getsize(auth_file_path)
+        if file_size == 0:
+            logger.warning("⚠️ Auth file is empty")
+            return False
+        
         with open(auth_file_path, 'r') as f:
-            auth_data = json.load(f)
+            content = f.read().strip()
+            if not content:
+                logger.warning("⚠️ Auth file has no content")
+                return False
+            auth_data = json.loads(content)
         
         full_access_token = auth_data.get('access_token')
         if not full_access_token:
-            logger.error("❌ No access token found")
+            logger.warning("⚠️ No access token found in auth file")
             return False
         
         jwt_token = extract_jwt_token(full_access_token)
@@ -144,6 +154,9 @@ def initialize_fyers():
         auth_initialized = True
         return True
         
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Invalid JSON in auth file: {e}")
+        return False
     except Exception as e:
         logger.error(f"❌ Error loading auth: {e}")
         return False

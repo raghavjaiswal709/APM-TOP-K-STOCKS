@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { getSocket } from '@/lib/socket';
+import { getSocket, onReconnect, isSocketConnected } from '@/lib/socket';
 import dynamic from 'next/dynamic';
 import { AppSidebar } from "@/app/components/app-sidebar";
 import {
@@ -29,6 +29,7 @@ import { TrendingUp, TrendingDown, Minus, Database, Wifi, Award, TrendingUpIcon,
 // Prediction Integration
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
 import PredictionChart from './components/PredictionChart';
+import PredictionTimer from './components/PredictionTimer';
 import PredictionStatus from './components/PredictionStatus';
 import PredictionControlPanel from './components/PredictionControlPanel';
 import PredictionOverlay from './components/PredictionOverlay';
@@ -104,6 +105,7 @@ const MarketDataPage: React.FC = () => {
 
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
   const [lastDataReceived, setLastDataReceived] = useState<Date | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
   const [dataCount, setDataCount] = useState<number>(0);
   const [updateFrequency, setUpdateFrequency] = useState<number>(0);
   const [tradingHours, setTradingHours] = useState<TradingHours>({
@@ -142,6 +144,7 @@ const MarketDataPage: React.FC = () => {
     stopPolling,
     pausePolling,
     resumePolling,
+    refetch: refetchPredictions,
     predictions,
     loading: predictionLoading,
     error: predictionError,
@@ -152,6 +155,7 @@ const MarketDataPage: React.FC = () => {
     pollCount,
     progressPercentage,
     nextPollTime,
+    timeUntilNextPoll,
   } = usePredictionPolling({
     company: selectedCompany || selectedSymbol.split(':')[1]?.split('-')[0] || '',
     pollInterval: 5 * 60 * 1000, // 5 minutes
@@ -221,8 +225,10 @@ const MarketDataPage: React.FC = () => {
   const handleConnect = useCallback(() => {
     console.log('✅ Connected to server');
     setSocketStatus('Connected');
+    setIsReconnecting(false);
 
     if (socketRef.current) {
+      // Get trading status
       socketRef.current.emit('get_trading_status', {}, (response: any) => {
         if (response) {
           setTradingHours({
@@ -240,12 +246,35 @@ const MarketDataPage: React.FC = () => {
           }
         }
       });
+
+      // 🔄 Re-subscribe to current symbol if we have one
+      if (selectedSymbol && !isSubscribedRef.current.has(selectedSymbol)) {
+        console.log('🔄 Re-subscribing to symbol after reconnection:', selectedSymbol);
+        socketRef.current.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
+          if (response && response.success) {
+            isSubscribedRef.current.add(selectedSymbol);
+            console.log(`✅ Successfully re-subscribed to ${selectedSymbol}`);
+          }
+        });
+      }
     }
-  }, []);
+  }, [selectedSymbol]);
 
   const handleDisconnect = useCallback((reason: string) => {
     console.log('❌ Disconnected:', reason);
-    setSocketStatus(`Disconnected: ${reason}`);
+    
+    // Show reconnecting status for automatic reconnections
+    if (reason !== 'io client disconnect') {
+      setSocketStatus('Reconnecting...');
+      setIsReconnecting(true);
+      console.log('🔄 Will attempt to reconnect automatically...');
+    } else {
+      setSocketStatus(`Disconnected: ${reason}`);
+      setIsReconnecting(false);
+    }
+    
+    // Clear subscription state on disconnect
+    isSubscribedRef.current.clear();
   }, []);
 
   const handleError = useCallback((error: any) => {
@@ -448,6 +477,28 @@ const MarketDataPage: React.FC = () => {
     socket.on('ohlcData', handleOhlcData);
     socket.on('heartbeat', handleHeartbeat);
 
+    // 🔄 Register reconnection callback to re-subscribe when connection is restored
+    const unsubscribeReconnect = onReconnect(() => {
+      console.log('🔄 Reconnection callback triggered');
+      
+      // Re-subscribe to current symbol
+      if (selectedSymbol && socketRef.current) {
+        console.log('🔄 Re-subscribing to symbol after reconnection:', selectedSymbol);
+        
+        // Clear subscription state and re-subscribe
+        isSubscribedRef.current.clear();
+        
+        socketRef.current.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
+          if (response && response.success) {
+            isSubscribedRef.current.add(selectedSymbol);
+            console.log(`✅ Successfully re-subscribed to ${selectedSymbol} after reconnection`);
+          } else {
+            console.error('❌ Failed to re-subscribe after reconnection:', response);
+          }
+        });
+      }
+    });
+
     return () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
@@ -457,8 +508,11 @@ const MarketDataPage: React.FC = () => {
       socket.off('historicalData', handleHistoricalData);
       socket.off('ohlcData', handleOhlcData);
       socket.off('heartbeat', handleHeartbeat);
+      
+      // Unregister reconnection callback
+      unsubscribeReconnect();
     };
-  }, [isClient, handleConnect, handleDisconnect, handleError, handleMarketDataUpdate, handleChartUpdate, handleHistoricalData, handleOhlcData, handleHeartbeat]);
+  }, [isClient, selectedSymbol, handleConnect, handleDisconnect, handleError, handleMarketDataUpdate, handleChartUpdate, handleHistoricalData, handleOhlcData, handleHeartbeat]);
 
   useEffect(() => {
     if (!isClient || !selectedSymbol || !socketRef.current) return;
@@ -501,6 +555,38 @@ const MarketDataPage: React.FC = () => {
       samplePrediction: predictions?.predictions ? Object.values(predictions.predictions)[0] : null
     });
   }, [predictions, showPredictions, selectedCompany, predictionLoading, predictionError]);
+
+  // 🔍 Connection Health Monitor - Detect stale connections and auto-recover
+  useEffect(() => {
+    if (!isClient || !socketRef.current || !selectedSymbol) return;
+    
+    const STALE_THRESHOLD = 60000; // 60 seconds without data during trading hours
+    
+    const healthCheckInterval = setInterval(() => {
+      const socket = socketRef.current;
+      if (!socket) return;
+      
+      const isConnected = isSocketConnected();
+      const timeSinceLastData = lastDataReceived 
+        ? Date.now() - lastDataReceived.getTime() 
+        : null;
+      
+      // If socket says connected but no data for 60 seconds during trading hours
+      if (isConnected && tradingHours.isActive && timeSinceLastData && timeSinceLastData > STALE_THRESHOLD) {
+        console.warn('⚠️ Connection appears stale (no data for 60s), forcing reconnection...');
+        
+        // Clear subscriptions and force reconnect
+        isSubscribedRef.current.clear();
+        socket.disconnect();
+        
+        setTimeout(() => {
+          socket.connect();
+        }, 1000);
+      }
+    }, 30000); // Check every 30 seconds
+    
+    return () => clearInterval(healthCheckInterval);
+  }, [isClient, selectedSymbol, lastDataReceived, tradingHours.isActive]);
 
   // ============ MEMOIZED CALCULATIONS ============
   const currentData = useMemo(() =>
@@ -598,9 +684,22 @@ const MarketDataPage: React.FC = () => {
                   <div className="flex items-center space-x-4">
                     <div className="flex items-center space-x-2">
                       <span className={`inline-block w-2 h-2 rounded-full ${
-                        socketStatus.includes('Connected') ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+                        socketStatus.includes('Connected') 
+                          ? 'bg-green-500 animate-pulse' 
+                          : isReconnecting 
+                          ? 'bg-yellow-500 animate-pulse' 
+                          : 'bg-red-500'
                       }`}></span>
-                      <span className="text-sm text-muted-foreground">{socketStatus}</span>
+                      <span className={`text-sm ${
+                        socketStatus.includes('Connected')
+                          ? 'text-green-600 dark:text-green-400'
+                          : isReconnecting
+                          ? 'text-yellow-600 dark:text-yellow-400'
+                          : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {socketStatus}
+                        {isReconnecting && ' 🔄'}
+                      </span>
                     </div>
                     <button
                       onClick={() => setShowPredictions(!showPredictions)}
@@ -920,6 +1019,16 @@ const MarketDataPage: React.FC = () => {
                                 />
                               </div>
                             )} */}
+
+                            {/* PREDICTION TIMER - Circular countdown to next update */}
+                            {showPredictions && (
+                              <PredictionTimer
+                                timeUntilNextPoll={timeUntilNextPoll}
+                                nextPollTime={nextPollTime}
+                                isPolling={isPolling}
+                                onTimerEnd={refetchPredictions}
+                              />
+                            )}
 
                             {/* PREDICTION CONTROL PANEL */}
                             {showPredictions && (

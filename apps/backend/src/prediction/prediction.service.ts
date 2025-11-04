@@ -21,7 +21,7 @@ export class PredictionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PredictionService.name);
   private readonly predictionApiUrl: string;
   private predictionCache: Map<string, { data: any; timestamp: number }> = new Map();
-  private readonly CACHE_DURATION = 1 * 60 * 1000; // 1 minute cache
+  private readonly CACHE_DURATION = 30 * 1000; // 30 seconds cache - reduced to ensure fresh data every 5 min
   private lastHealthCheck: { data: HealthResponseDto; timestamp: number } | null = null;
   private readonly HEALTH_CACHE_DURATION = 30 * 1000; // 30 seconds
   private pollInterval: NodeJS.Timeout | null = null;

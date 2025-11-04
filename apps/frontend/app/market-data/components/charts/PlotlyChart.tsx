@@ -565,36 +565,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const startTime = new Date(timeRange[0]).getTime() / 1000;
     const endTime = new Date(timeRange[1]).getTime() / 1000;
 
-    // ✨ SMART WINDOW: Use last 10 minutes for Y-axis calculation
-    // Based on the LATEST DATA timestamp, not current wall clock time
-    const windowMinutes = 10; // Configurable window size
-    
-    // Find the latest timestamp from actual data (historical or predictions)
-    let latestDataTimestamp = startTime;
-    
-    if (chartType === 'line' && historicalData.length > 0) {
-      const latestHistorical = Math.max(...historicalData.map(p => p.timestamp));
-      latestDataTimestamp = Math.max(latestDataTimestamp, latestHistorical);
-    } else if (ohlcData && ohlcData.length > 0) {
-      const latestCandle = Math.max(...ohlcData.map(c => c.timestamp));
-      latestDataTimestamp = Math.max(latestDataTimestamp, latestCandle);
-    }
-    
-    // Check predictions for latest timestamp
-    if (showPredictions && predictions && predictions.count > 0) {
-      const predictionEntries = Object.entries(predictions.predictions);
-      if (predictionEntries.length > 0) {
-        const latestPrediction = Math.max(...predictionEntries.map(([key, pred]) => 
-          new Date(pred.timestamp || key).getTime() / 1000
-        ));
-        latestDataTimestamp = Math.max(latestDataTimestamp, latestPrediction);
-      }
-    }
-    
-    // Use the sliding window based on latest data, not current time
-    const windowStart = latestDataTimestamp - (windowMinutes * 60);
-    const yAxisStartTime = Math.max(startTime, windowStart);
-    const yAxisEndTime = endTime;
+    // ✅ FIX: Use ALL data within the time range (removed 10-minute sliding window)
+    console.log('📊 Calculating Y-axis range from ALL data (no sliding window)');
 
     let allPrices: number[] = [];
     let historicalPrices: number[] = [];
@@ -603,44 +575,44 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     if (chartType === 'line') {
       if (historicalData.length === 0) return undefined;
       
-      // Get prices from the sliding window only
-      const windowData = historicalData.filter(
-        point => point.timestamp >= yAxisStartTime && point.timestamp <= yAxisEndTime
+      // ✅ Use ALL data points within the time range
+      const validData = historicalData.filter(
+        point => point.timestamp >= startTime && point.timestamp <= endTime
       );
       
-      if (windowData.length > 0) {
-        historicalPrices = windowData.map(point => point.ltp).filter(p => p !== null && p !== undefined);
+      if (validData.length > 0) {
+        historicalPrices = validData.map(point => point.ltp).filter(p => p !== null && p !== undefined);
         allPrices.push(...historicalPrices);
       }
     } else {
       if (!ohlcData || ohlcData.length === 0) return undefined;
       
-      // Get candles from the sliding window only
-      const windowCandles = ohlcData.filter(
-        candle => candle.timestamp >= yAxisStartTime && candle.timestamp <= yAxisEndTime
+      // ✅ Use ALL candles within the time range
+      const validCandles = ohlcData.filter(
+        candle => candle.timestamp >= startTime && candle.timestamp <= endTime
       );
       
-      if (windowCandles.length > 0) {
-        const validCandles = windowCandles.filter(candle => 
+      if (validCandles.length > 0) {
+        const filteredCandles = validCandles.filter(candle => 
           candle.high !== null && candle.high !== undefined &&
           candle.low !== null && candle.low !== undefined
         );
-        const highPrices = validCandles.map(candle => Number(candle.high));
-        const lowPrices = validCandles.map(candle => Number(candle.low));
+        const highPrices = filteredCandles.map(candle => Number(candle.high));
+        const lowPrices = filteredCandles.map(candle => Number(candle.low));
         historicalPrices = [...highPrices, ...lowPrices];
         allPrices.push(...historicalPrices);
       }
     }
 
-    // ✨ Include ONLY recent predictions from the sliding window
+    // ✅ Include ALL predictions within the time range
     if (showPredictions && predictions && predictions.count > 0) {
       const predictionEntries = Object.entries(predictions.predictions);
       
       predictionPrices = predictionEntries
         .map(([key, pred]) => {
           const predTime = new Date(pred.timestamp || key).getTime() / 1000;
-          // Only include predictions in the sliding window
-          if (predTime >= yAxisStartTime && predTime <= yAxisEndTime) {
+          // Include all predictions in the time range (not just recent ones)
+          if (predTime >= startTime && predTime <= endTime) {
             return Number(pred.close);
           }
           return null;
@@ -659,20 +631,17 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const range = maxPrice - minPrice;
     const midPoint = (minPrice + maxPrice) / 2;
     
-    // Use minimal padding (2%) to tightly fit the data
-    const padding = range * 0.02;
+    // Use 5% padding for comfortable viewing
+    const padding = range * 0.05;
     
     const yMin = minPrice - padding;
     const yMax = maxPrice + padding;
     
-    const windowStartDate = new Date(yAxisStartTime * 1000);
-    const windowEndDate = new Date(yAxisEndTime * 1000);
-    const latestDataDate = new Date(latestDataTimestamp * 1000);
+    const startDate = new Date(startTime * 1000);
+    const endDate = new Date(endTime * 1000);
     
-    console.log('📊 Y-axis range (sliding window):', {
-      windowSize: `${windowMinutes} minutes`,
-      latestDataTime: latestDataDate.toLocaleTimeString(),
-      windowRange: [windowStartDate.toLocaleTimeString(), windowEndDate.toLocaleTimeString()],
+    console.log('📊 Y-axis range from ALL data (no sliding window):', {
+      timeRange: [startDate.toLocaleTimeString(), endDate.toLocaleTimeString()],
       historicalDataPoints: historicalPrices.length,
       predictionDataPoints: predictionPrices.length,
       totalDataPoints: allPrices.length,
@@ -680,7 +649,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       maxPrice: maxPrice.toFixed(2),
       range: range.toFixed(2),
       midPoint: midPoint.toFixed(2),
-      padding: `${padding.toFixed(2)} (2%)`,
+      padding: `${padding.toFixed(2)} (5%)`,
       finalRange: [yMin.toFixed(2), yMax.toFixed(2)]
     });
     
@@ -775,66 +744,82 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return [0, maxVolume * 1.1];
   };
 
-  const getTimeRange = () => {
+  const getTimeRange = (): [Date, Date] | undefined => {
     const dataToUse = chartType === 'line' ? historicalData : ohlcData;
     if (!dataToUse || dataToUse.length === 0) return undefined;
 
-    const now = data?.timestamp 
-      ? new Date(data.timestamp * 1000) 
-      : new Date();
+    // ✅ FIX: Use actual data timestamps instead of "now" based calculations
+    const timestamps = dataToUse.map(d => d.timestamp);
+    const minDataTime = Math.min(...timestamps);
+    const maxDataTime = Math.max(...timestamps);
+    
+    const startDate = new Date(minDataTime * 1000);
+    let endDate = new Date(maxDataTime * 1000);
 
-    const startTime = new Date(now);
+    // ✅ Extend end time for predictions if they exist
+    if (showPredictions && predictions && predictions.count > 0) {
+      const predictionEntries = Object.entries(predictions.predictions);
+      if (predictionEntries.length > 0) {
+        const predictionTimes = predictionEntries.map(([key, pred]) => 
+          new Date(pred.timestamp || key).getTime() / 1000
+        );
+        const maxPredTime = Math.max(...predictionTimes);
+        
+        // Use the later of data end or prediction end
+        const maxPredDate = new Date(maxPredTime * 1000);
+        if (maxPredDate > endDate) {
+          endDate = maxPredDate;
+          console.log('📅 Extended time range for predictions:', {
+            dataEnd: new Date(maxDataTime * 1000).toLocaleTimeString(),
+            predictionEnd: endDate.toLocaleTimeString()
+          });
+        }
+      }
+    }
+
+    // ✅ Apply timeframe filtering if needed (but keep data-based boundaries)
+    const now = data?.timestamp ? new Date(data.timestamp * 1000) : new Date();
+    let filteredStart = startDate;
+    
     switch (selectedTimeframe) {
       case '1m':
-        startTime.setMinutes(now.getMinutes() - 1);
+        filteredStart = new Date(now.getTime() - 1 * 60 * 1000);
         break;
       case '5m':
-        startTime.setMinutes(now.getMinutes() - 5);
+        filteredStart = new Date(now.getTime() - 5 * 60 * 1000);
         break;
       case '10m':
-        startTime.setMinutes(now.getMinutes() - 10);
+        filteredStart = new Date(now.getTime() - 10 * 60 * 1000);
         break;
       case '30m':
-        startTime.setMinutes(now.getMinutes() - 30);
+        filteredStart = new Date(now.getTime() - 30 * 60 * 1000);
         break;
       case '1H':
-        startTime.setHours(now.getHours() - 1);
+        filteredStart = new Date(now.getTime() - 60 * 60 * 1000);
         break;
       case '6H':
-        startTime.setHours(now.getHours() - 6);
+        filteredStart = new Date(now.getTime() - 6 * 60 * 60 * 1000);
         break;
       case '12H':
-        startTime.setHours(now.getHours() - 12);
+        filteredStart = new Date(now.getTime() - 12 * 60 * 60 * 1000);
         break;
       case '1D':
       default:
-        try {
-          const tradingStart = new Date(tradingHours.start);
-          const tradingEndBase = now > new Date(tradingHours.end) ? new Date(tradingHours.end) : now;
-          
-          // ✨ NEW: Extend end time by 25 minutes for predictions
-          const endTime = new Date(tradingEndBase);
-          if (showPredictions && predictions && predictions.count > 0) {
-            endTime.setMinutes(endTime.getMinutes() + 25);
-            console.log('📅 Extended time range for predictions:', {
-              original: tradingEndBase.toLocaleTimeString(),
-              extended: endTime.toLocaleTimeString()
-            });
-          }
-          
-          return [tradingStart, endTime];
-        } catch (e) {
-          startTime.setHours(now.getHours() - 24);
-        }
+        // Use all available data (from earliest data point)
+        filteredStart = startDate;
     }
     
-    // ✨ NEW: Extend end time by 25 minutes for predictions (for other timeframes)
-    const endTime = new Date(now);
-    if (showPredictions && predictions && predictions.count > 0) {
-      endTime.setMinutes(endTime.getMinutes() + 25);
-    }
+    // Use the later of filtered start or actual data start
+    const finalStart = filteredStart > startDate ? filteredStart : startDate;
     
-    return [startTime, endTime];
+    console.log('📅 Time range calculated from DATA:', {
+      timeframe: selectedTimeframe,
+      dataRange: [startDate.toLocaleTimeString(), endDate.toLocaleTimeString()],
+      finalRange: [finalStart.toLocaleTimeString(), endDate.toLocaleTimeString()],
+      dataPoints: dataToUse.length
+    });
+    
+    return [finalStart, endDate];
   };
 
   const getColorTheme = () => {

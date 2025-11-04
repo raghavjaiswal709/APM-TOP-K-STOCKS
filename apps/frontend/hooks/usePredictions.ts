@@ -101,16 +101,21 @@ export const usePredictions = (options: UsePredictionsOptions) => {
   }, [lastUpdated]);
 
   const fetchPredictions = useCallback(
-    async (attempt = 0): Promise<CompanyPredictions | null> => {
+    async (attempt = 0, bypassCache = false): Promise<CompanyPredictions | null> => {
       if (!enabled || !company) return null;
 
       const cacheKey = `predictions_${company}`;
-      const cached = predictionCache.get(cacheKey);
-      if (cached && attempt === 0) {
-        setPredictions(cached);
-        setLastUpdated(new Date());
-        setError(null);
-        return cached;
+      
+      // Only use cache if not bypassing and this is the first attempt
+      if (!bypassCache && attempt === 0) {
+        const cached = predictionCache.get(cacheKey);
+        if (cached) {
+          console.log(`📦 Using cached predictions for ${company}`);
+          setPredictions(cached);
+          setLastUpdated(new Date());
+          setError(null);
+          return cached;
+        }
       }
 
       try {
@@ -119,13 +124,20 @@ export const usePredictions = (options: UsePredictionsOptions) => {
 
         abortControllerRef.current = new AbortController();
         const baseUrl = process.env.NEXT_PUBLIC_PREDICTION_API || 'http://localhost:5112';
-        const url = `${baseUrl}/predictions/${company}`;
+        
+        // Add timestamp to prevent browser caching
+        const timestamp = Date.now();
+        const url = `${baseUrl}/predictions/${company}?t=${timestamp}`;
+
+        console.log(`🌐 Fetching fresh predictions for ${company}... (attempt ${attempt + 1})`);
 
         const response = await fetch(url, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
           },
           signal: abortControllerRef.current.signal,
         });
@@ -139,6 +151,9 @@ export const usePredictions = (options: UsePredictionsOptions) => {
 
         const data: CompanyPredictions = await response.json();
 
+        console.log(`✅ Fetched ${data.count} predictions for ${company}`);
+        
+        // Always update cache with fresh data
         predictionCache.set(cacheKey, data);
         setPredictions(data);
         setLastUpdated(new Date());
@@ -154,17 +169,20 @@ export const usePredictions = (options: UsePredictionsOptions) => {
           attempt < retryAttempts &&
           !(err instanceof Error && err.message.includes('No predictions available'))
         ) {
+          console.warn(`⚠️ Retry attempt ${attempt + 1}/${retryAttempts} for ${company}`);
           setRetrying(true);
           await new Promise((resolve) => setTimeout(resolve, retryDelay * (attempt + 1)));
-          return fetchPredictions(attempt + 1);
+          return fetchPredictions(attempt + 1, bypassCache);
         }
 
+        console.error(`❌ Failed to fetch predictions for ${company}:`, errorMessage);
         setError(errorMessage);
         setRetrying(false);
 
         // Return cached data if available, even if expired
         const expiredCache = predictionCache.get(cacheKey);
         if (expiredCache) {
+          console.log(`📦 Using expired cache for ${company} due to error`);
           setPredictions(expiredCache);
         }
 
@@ -177,8 +195,10 @@ export const usePredictions = (options: UsePredictionsOptions) => {
   );
 
   const refetch = useCallback(async () => {
-    return await fetchPredictions(0);
-  }, [fetchPredictions]);
+    // ALWAYS bypass cache when explicitly refetching
+    console.log(`🔄 Force refetch for ${company} (bypassing cache)`);
+    return await fetchPredictions(0, true);
+  }, [fetchPredictions, company]);
 
   const clearCache = useCallback(() => {
     predictionCache.clear();
@@ -198,8 +218,10 @@ export const usePredictions = (options: UsePredictionsOptions) => {
 
   // Initial fetch on mount or when company changes
   useEffect(() => {
-    if (enabled) {
-      fetchPredictions(0);
+    if (enabled && company) {
+      console.log(`🔄 Initial fetch triggered for ${company}`);
+      // Use cache for initial load to avoid delay
+      fetchPredictions(0, false);
     }
 
     return () => {
