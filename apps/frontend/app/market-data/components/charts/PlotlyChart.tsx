@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import Plot from 'react-plotly.js';
-import { ChevronRight, TrendingUp, BarChart3, LineChart, CandlestickChart, ArrowLeftRight, ShoppingCart, TrendingDown } from 'lucide-react';
+import { ChevronRight, TrendingUp, BarChart3, LineChart, CandlestickChart, ArrowLeftRight, ShoppingCart, TrendingDown, Maximize2, X } from 'lucide-react';
 
 // Add Plotly import for restyle operations
 declare const Plotly: any;
@@ -103,6 +103,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
   // const [chartType, setChartType] = useState<'line' | 'candle'>('candle');
   const [chartType, setChartType] = useState<'line' | 'candle'>('line');
+
+  // 🔀 Separator Modal State
+  const [isSeparatorModalOpen, setIsSeparatorModalOpen] = useState(false);
 
   const [mainMode, setMainMode] = useState<'none' | 'bidAsk' | 'buySell'>('none');
   const [secondaryView, setSecondaryView] = useState<'line' | 'spread' | 'std'>('line');
@@ -1121,13 +1124,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         const { x, y } = prepareLineChartData();
         if (x.length === 0 || y.length === 0) return;
         if (typeof Plotly !== 'undefined' && Plotly.react) {
-          Plotly.react(plotDiv, createPlotData(), createLayout());
+          // Use Plotly.react but with uirevision to preserve zoom/pan state
+          const layout = createLayout();
+          layout.uirevision = 'static'; // Preserve UI state on updates
+          Plotly.react(plotDiv, createPlotData(), layout);
         }
       } else {
         const { x, open, high, low, close } = prepareCandlestickData();
         if (x.length === 0) return;
         if (typeof Plotly !== 'undefined' && Plotly.react) {
-          Plotly.react(plotDiv, createPlotData(), createLayout());
+          const layout = createLayout();
+          layout.uirevision = 'static'; // Preserve UI state on updates
+          Plotly.react(plotDiv, createPlotData(), layout);
         }
       }
 
@@ -1178,6 +1186,139 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       console.error('Error updating chart:', err);
     }
   }, [data, historicalData, ohlcData, chartUpdates, initialized, selectedTimeframe, chartType, showIndicators, mainMode, secondaryView]);
+
+  // 🔀 CREATE ACTUAL DATA ONLY (No predictions for separator modal left side)
+  const createActualDataOnly = () => {
+    const colors = getColorTheme();
+    let plotData: any[] = [];
+
+    if (chartType === 'line') {
+      if (historicalData && historicalData.length > 0) {
+        const validData = historicalData.filter(point => 
+          point.ltp !== null && 
+          point.ltp !== undefined && 
+          point.ltp > 0 && 
+          !isNaN(point.ltp) &&
+          point.timestamp !== null &&
+          point.timestamp !== undefined
+        );
+
+        if (validData.length === 0) return plotData;
+
+        const sortedData = [...validData].sort((a, b) => a.timestamp - b.timestamp);
+        const timeValues = sortedData.map(point => new Date(point.timestamp * 1000));
+        const priceValues = sortedData.map(point => Number(point.ltp));
+
+        // Only actual LTP line - no predictions
+        plotData.push({
+          x: timeValues,
+          y: priceValues,
+          type: 'scatter',
+          mode: 'lines',
+          name: 'Actual LTP',
+          line: {
+            color: '#10B981',  // Green for actual
+            width: 2,
+            shape: 'linear'
+          },
+          connectgaps: false,
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+                        'Time: %{x|%H:%M:%S}<br>' +
+                        'Price: ₹%{y:.2f}<br>' +
+                        '<extra></extra>',
+          showlegend: true
+        });
+
+        // Note: Volume chart removed from separator modal to prevent layout issues
+        // and keep focus on price comparison
+      }
+    } else {
+      // Candlestick chart for actual data
+      const { x, open, high, low, close } = prepareCandlestickData();
+      if (x.length > 0) {
+        plotData.push({
+          x,
+          open,
+          high,
+          low,
+          close,
+          type: 'candlestick',
+          name: 'Actual OHLC',
+          increasing: { line: { color: colors.upColor } },
+          decreasing: { line: { color: colors.downColor } },
+          showlegend: true
+        });
+      }
+    }
+
+    return plotData;
+  };
+
+  // 🔮 CREATE PREDICTION DATA ONLY (for separator modal right side)
+  const createPredictionDataOnly = () => {
+    const plotData: any[] = [];
+
+    if (!predictions || predictions.count === 0) {
+      console.log('No predictions available for predictions-only view');
+      return plotData;
+    }
+
+    const predictionEntries = Object.entries(predictions.predictions);
+    if (predictionEntries.length === 0) {
+      console.log('Predictions object is empty');
+      return plotData;
+    }
+
+    // Sort predictions by timestamp
+    const sortedPredictions = predictionEntries.sort((a, b) => {
+      const timeA = new Date(a[1].timestamp || a[0]).getTime();
+      const timeB = new Date(b[1].timestamp || b[0]).getTime();
+      return timeA - timeB;
+    });
+
+    const predictionTimes = sortedPredictions.map(([key, pred]) => 
+      new Date(pred.timestamp || key)
+    );
+    const predictionValues = sortedPredictions.map(([, pred]) => Number(pred.close));
+
+    console.log('Predictions-only view:', {
+      count: predictionTimes.length,
+      timeRange: [predictionTimes[0], predictionTimes[predictionTimes.length - 1]],
+      valueRange: [Math.min(...predictionValues), Math.max(...predictionValues)]
+    });
+
+    // Only prediction line - no actual data
+    plotData.push({
+      x: predictionTimes,
+      y: predictionValues,
+      type: 'scatter',
+      mode: 'lines+markers',
+      name: 'Predicted Price',
+      line: {
+        color: '#A855F7',  // Purple for predictions
+        width: 3,
+        shape: 'spline',    // Smooth curve for predictions
+        dash: 'dot'
+      },
+      marker: {
+        size: 10,
+        color: '#A855F7',
+        symbol: 'diamond',
+        line: {
+          color: '#7C3AED',
+          width: 2
+        }
+      },
+      connectgaps: true,
+      hovertemplate: '<b>%{fullData.name}</b><br>' +
+                    'Time: %{x|%H:%M:%S}<br>' +
+                    'Predicted Price: ₹%{y:.2f}<br>' +
+                    '<extra></extra>',
+      showlegend: true
+    });
+
+    return plotData;
+  };
 
   const createPlotData = () => {
     const colors = getColorTheme();
@@ -2162,6 +2303,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
     const layout: any = {
       autosize: true,
+      uirevision: 'static', // 🔥 KEY: Preserve zoom/pan state across updates
       margin: { l: 50, r: 50, t: 40, b: 40 },
       title: {
         text: `${symbol} ${chartType === 'line' ? 'LTP' : 'OHLC'} Chart`,
@@ -2192,6 +2334,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         zeroline: false,  // ✨ Remove zero line
         automargin: true, // ✨ Auto margin for better spacing
       },
+      dragmode: 'pan', // 🔥 Default to pan mode for better UX
       hovermode: 'closest',
       showlegend: true,
       legend: {
@@ -2600,6 +2743,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         </div>
 
         <div className="flex space-x-4">
+          {/* 🔀 Separator Button - Opens Modal with Split View */}
+          <div className="flex space-x-1 bg-gradient-to-r from-purple-900 to-indigo-900 p-1 rounded-md border border-purple-600">
+            <button
+              className="px-3 py-1 rounded bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 flex items-center space-x-2 transition-all"
+              onClick={() => setIsSeparatorModalOpen(true)}
+              title="Open Separate View - Compare Actual vs Predicted"
+            >
+              <Maximize2 className="h-4 w-4" />
+              <span className="text-xs font-bold">Separate View</span>
+            </button>
+          </div>
+
           {/* Chart Type Toggle */}
           <div className="flex space-x-1 bg-zinc-800 p-1 rounded-md border border-zinc-600">
             <button
@@ -2762,13 +2917,22 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           layout={createLayout()}
           config={{
             responsive: true,
-            displayModeBar: false,
+            displayModeBar: true,
+            displaylogo: false,
+            modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+            modeBarButtonsToAdd: [],
             scrollZoom: true,
             doubleClick: 'reset',
+            toImageButtonOptions: {
+              format: 'png',
+              filename: `${symbol}_chart_${new Date().toISOString().split('T')[0]}`,
+              height: 1080,
+              width: 1920,
+              scale: 2
+            }
           }}
           useResizeHandler={true}
           style={{ width: '100%', height: '100%' }}
-          onRelayout={handleRelayout}
         />
       </div>
 
@@ -2884,6 +3048,144 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             useResizeHandler={true}
             style={{ width: '100%', height: '180px' }}
           />
+        </div>
+      )}
+
+      {/* 🔀 SEPARATOR MODAL - Side-by-Side View */}
+      {isSeparatorModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="relative w-[98vw] h-[95vh] bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg shadow-2xl border border-gray-700 overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-900 to-indigo-900 border-b border-purple-700">
+              <h2 className="text-xl font-bold text-white flex items-center space-x-2">
+                <Maximize2 className="h-5 w-5" />
+                <span>Separate View - Actual vs Predicted Comparison</span>
+              </h2>
+              <button
+                onClick={() => setIsSeparatorModalOpen(false)}
+                className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                title="Close Separate View"
+              >
+                <X className="h-6 w-6 text-white" />
+              </button>
+            </div>
+
+            {/* Modal Content - Side by Side Charts */}
+            <div className="grid grid-cols-2 gap-4 p-4 h-[calc(100%-4rem)] overflow-auto">
+              {/* Left Side - Actual Live Chart */}
+              <div className="flex flex-col bg-gray-800/50 rounded-lg border border-gray-700 p-4">
+                <div className="mb-2">
+                  <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
+                    <span className="inline-block w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+                    <span>Actual Live Data</span>
+                  </h3>
+                  <p className="text-sm text-gray-400">Real-time market data from {symbol}</p>
+                </div>
+                
+                <div className="flex-1 min-h-0">
+                  {/* Render ONLY actual data - no predictions */}
+                  {chartType === 'line' ? (
+                    <Plot
+                      data={createActualDataOnly()}
+                      layout={createLayout()}
+                      config={{
+                        responsive: true,
+                        displayModeBar: true,
+                        displaylogo: false,
+                        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                        scrollZoom: true,
+                        doubleClick: 'reset',
+                        toImageButtonOptions: {
+                          format: 'png',
+                          filename: `${symbol}_actual_${new Date().toISOString().split('T')[0]}`,
+                          height: 1080,
+                          width: 1920,
+                          scale: 2
+                        }
+                      }}
+                      useResizeHandler={true}
+                      style={{ width: '100%', height: '100%' }}
+                    />
+                  ) : (
+                    <Plot
+                      data={createActualDataOnly()}
+                      layout={createLayout()}
+                      config={{
+                        responsive: true,
+                        displayModeBar: true,
+                        displaylogo: false,
+                        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                        scrollZoom: true,
+                        doubleClick: 'reset',
+                        toImageButtonOptions: {
+                          format: 'png',
+                          filename: `${symbol}_actual_${new Date().toISOString().split('T')[0]}`,
+                          height: 1080,
+                          width: 1920,
+                          scale: 2
+                        }
+                      }}
+                      useResizeHandler={true}
+                      style={{ width: '100%', height: '100%' }}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Right Side - Predicted Chart */}
+              <div className="flex flex-col bg-gray-800/50 rounded-lg border border-gray-700 p-4">
+                <div className="mb-2">
+                  <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
+                    <span className="inline-block w-3 h-3 bg-purple-500 rounded-full animate-pulse"></span>
+                    <span>Predicted Data</span>
+                  </h3>
+                  <p className="text-sm text-gray-400">
+                    {showPredictions && predictions && predictions.count > 0
+                      ? `${predictions.count} predictions for ${predictions.company}`
+                      : 'No predictions available'}
+                  </p>
+                </div>
+                
+                <div className="flex-1 min-h-0">
+                  {showPredictions && predictions && predictions.count > 0 ? (
+                    <Plot
+                      data={createPredictionDataOnly()}
+                      layout={createLayout()}
+                      config={{
+                        responsive: true,
+                        displayModeBar: true,
+                        displaylogo: false,
+                        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                        scrollZoom: true,
+                        doubleClick: 'reset',
+                        toImageButtonOptions: {
+                          format: 'png',
+                          filename: `${symbol}_predictions_${new Date().toISOString().split('T')[0]}`,
+                          height: 1080,
+                          width: 1920,
+                          scale: 2
+                        }
+                      }}
+                      useResizeHandler={true}
+                      style={{ width: '100%', height: '100%' }}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full mb-4">
+                          <svg className="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                        </div>
+                        <p className="text-gray-400 text-lg mb-2">No Predictions Available</p>
+                        <p className="text-gray-500 text-sm">Enable predictions or wait for data to load</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
