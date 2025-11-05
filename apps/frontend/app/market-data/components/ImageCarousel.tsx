@@ -13,6 +13,10 @@ import { LSTMAEInteractiveDashboard } from '@/app/components/lstmae/LSTMAEIntera
 import { LSTMAEVisualization } from '@/app/components/lstmae/LSTMAEVisualization';
 import { useLSTMAEData } from '@/hooks/useLSTMAEData';
 
+// Base URL for on-prem server hosting the graph images
+// Using the proxied path to avoid CORS issues
+const ONPREM_BASE_URL = '/watchlist-graphs';
+
 interface NewsItem {
   id: string;
   headline: string;
@@ -487,7 +491,7 @@ const ACTUAL_INDICES = [
 interface ImageCarouselProps {
   companyCode: string;
   exchange: string;
-  selectedDate?: Date;
+  selectedDate?: Date | string; // Accept both Date and string to avoid timezone issues
   gradientMode: 'profit' | 'loss' | 'neutral';
   onGradientModeChange: (mode: 'profit' | 'loss' | 'neutral') => void;
 }
@@ -858,8 +862,28 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   };
 
   const getCurrentDateString = useCallback(() => {
-    const date = selectedDate || new Date('2025-07-01');
-    return date.toISOString().split('T')[0];
+    // Handle selectedDate properly to avoid timezone issues
+    let dateStr: string;
+    
+    if (typeof selectedDate === 'string') {
+      // Already a string in YYYY-MM-DD format - use it directly
+      dateStr = selectedDate;
+    } else if (selectedDate instanceof Date) {
+      // Convert Date to YYYY-MM-DD using local time (not UTC)
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(selectedDate.getDate()).padStart(2, '0');
+      dateStr = `${year}-${month}-${day}`;
+    } else {
+      // Fallback to current date using local time
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      dateStr = `${year}-${month}-${day}`;
+    }
+    
+    return dateStr;
   }, [selectedDate]);
 
   // Generate image paths with Pipeline 2 Integration
@@ -870,8 +894,9 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     const companyExchange = `${companyCode}_${exchange}`;
     const imageList: CarouselImage[] = [];
 
-
-    const pattern1Path = `/GraphsN/${dateString}/N1_Pattern_Plot/${companyExchange}/${companyExchange}_interday.png`;
+    // Pattern 1: N1 Pattern Plot
+    // URL: http://100.93.172.21:6969/Watchlist_assets/2025-05-08/N1_Pattern_Plot/360ONE_NSE/360ONE_NSE_interday.png
+    const pattern1Path = `${ONPREM_BASE_URL}/${dateString}/N1_Pattern_Plot/${companyExchange}/${companyExchange}_interday.png`;
     imageList.push({
       src: pattern1Path,
       name: `${companyCode} Combined Overlay`,
@@ -880,14 +905,19 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       exists: false
     });
 
+    // Pattern 2: Watchlist Comparison - Confusion Heatmaps
+    // URL: http://100.93.172.21:6969/Watchlist_assets/2025-05-08/watchlist_comp_ind_90d_analysis_plot/360ONE_NSE_2025-05-08/360ONE_NIFTY50_No_category_confusion_heatmap.png
     ACTUAL_INDICES.forEach(index => {
-      const pattern2Path = `/GraphsN/${dateString}/watchlist_comp_ind_90d_analysis_plot/${companyExchange}_${dateString}/${companyCode}_${index}_intraday.png`;
-      imageList.push({
-        src: pattern2Path,
-        name: `${companyCode} ${index} Analysis`,
-        type: 'Confusion Heatmap',
-        chartType: 'intraday',
-        exists: false
+      // Try multiple category variations
+      ['intraday', 'Yes', 'No'].forEach(category => {
+        const pattern2Path = `${ONPREM_BASE_URL}/${dateString}/watchlist_comp_ind_90d_analysis_plot/${companyExchange}_${dateString}/${companyCode}_${index}_${category}${category === 'intraday' ? '' : '_category_confusion_heatmap'}.png`;
+        imageList.push({
+          src: pattern2Path,
+          name: `${companyCode} ${index} ${category} Analysis`,
+          type: 'Confusion Heatmap',
+          chartType: 'intraday',
+          exists: false
+        });
       });
     });
 
@@ -934,7 +964,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     });
 
     // ✅ NEW - SiPR images (Pattern Analysis visualizations)
-    const siprBasePath = `/GraphsN/${dateString}/SiPR_Analysis/${companyExchange}`;
+    // URL: http://100.93.172.21:6969/Watchlist_assets/2025-05-08/SiPR_Analysis/360ONE_NSE/360ONE_NSE_top3_patterns.png
+    const siprBasePath = `${ONPREM_BASE_URL}/${dateString}/SiPR_Analysis/${companyExchange}`;
     
     const siprVisualizations = [
       {
@@ -969,8 +1000,9 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       });
     });
 
-    // MSAX images (UNCHANGED)
-    const msaxPath = `/GraphsN/${dateString}/MSAX_Analysis/${companyExchange}/${companyExchange}_MSAX_multi.png`;
+    // MSAX images
+    // URL: http://100.93.172.21:6969/Watchlist_assets/2025-05-08/MSAX_Analysis/360ONE_NSE/360ONE_NSE_MSAX_multi.png
+    const msaxPath = `${ONPREM_BASE_URL}/${dateString}/MSAX_Analysis/${companyExchange}/${companyExchange}_MSAX_multi.png`;
     imageList.push({
       src: msaxPath,
       name: `${companyCode} Multi-Scale Analysis`,
@@ -979,7 +1011,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       exists: false
     });
 
-    const msaxPath2 = `/GraphsN/${dateString}/MSAX_Analysis/${companyExchange}/${companyExchange}_MSAX_correlation.png`;
+    const msaxPath2 = `${ONPREM_BASE_URL}/${dateString}/MSAX_Analysis/${companyExchange}/${companyExchange}_MSAX_correlation.png`;
     imageList.push({
       src: msaxPath2,
       name: `${companyCode} Correlation Matrix`,

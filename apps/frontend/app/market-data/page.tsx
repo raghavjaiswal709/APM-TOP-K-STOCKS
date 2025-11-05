@@ -133,6 +133,7 @@ const MarketDataPage: React.FC = () => {
     companies,
     loading: watchlistLoading,
     error: watchlistError,
+    selectedDate,
   } = useWatchlist();
 
   // ============ PREDICTION POLLING INTEGRATION ============
@@ -1099,6 +1100,7 @@ const MarketDataPage: React.FC = () => {
                   exchange={selectedExchange || ''}
                   gradientMode={gradientMode}
                   onGradientModeChange={setGradientMode}
+                  selectedDate={selectedDate || undefined}
                 />
               </div>
             </div>

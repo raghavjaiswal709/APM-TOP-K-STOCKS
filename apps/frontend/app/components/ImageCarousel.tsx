@@ -3,6 +3,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+
+// Base URL for on-prem server hosting the graph images
+// Using the proxied path to avoid CORS issues
+const ONPREM_BASE_URL = '/watchlist-graphs';
+
 const ACTUAL_INDICES = [
   'NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'AUTONIFTY', 
   'PHARMANIFTY', 'METALNIFTY', 'ENERGYNIFTY', 'INFRA', 'GROWTHSECT', 
@@ -14,13 +19,15 @@ const ACTUAL_INDICES = [
   'NIFTY100', 'NIFTY200', 'NIFTY500', 'NIFTYMID', 'NIFTYNXT', 
   'NIFTYSML', 'NIFTYTOT', 'NIFTYDIV', 'NIFTY50', 'NIFTYQUALITY30'
 ];
+
 interface ImageCarouselProps {
   isOpen: boolean;
   onClose: () => void;
   companyCode: string;
   exchange: string;
-  selectedDate?: Date;
+  selectedDate?: Date | string; // Accept both Date and string
 }
+
 interface CarouselImage {
   src: string;
   name: string;
@@ -40,36 +47,87 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const [isResizing, setIsResizing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 1200, height: 900 });
+  
+  // Log when component receives new props
+  React.useEffect(() => {
+    const dateValue = typeof selectedDate === 'string' 
+      ? selectedDate 
+      : selectedDate?.toISOString().split('T')[0];
+    
+    console.log('🖼️ [ImageCarousel] Props updated:', {
+      isOpen,
+      companyCode,
+      exchange,
+      selectedDate: dateValue,
+      dateType: typeof selectedDate
+    });
+  }, [isOpen, companyCode, exchange, selectedDate]);
+  
   const getCurrentDateString = useCallback(() => {
-    const date = selectedDate || new Date('2025-07-01');;
-    return date.toISOString().split('T')[0];
+    // Handle both string and Date types
+    let dateStr: string;
+    
+    if (typeof selectedDate === 'string') {
+      // Already a string in YYYY-MM-DD format - use it directly without conversion
+      dateStr = selectedDate;
+      console.log('📅 [ImageCarousel] Using date string directly:', dateStr);
+    } else if (selectedDate instanceof Date) {
+      // Convert Date to YYYY-MM-DD using local time (not UTC)
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(selectedDate.getDate()).padStart(2, '0');
+      dateStr = `${year}-${month}-${day}`;
+      console.log('📅 [ImageCarousel] Converted Date to local string:', dateStr);
+    } else {
+      // Fallback to current date using local time
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      dateStr = `${year}-${month}-${day}`;
+      console.log('📅 [ImageCarousel] Using current date (fallback):', dateStr);
+    }
+    
+    console.log('📅 [ImageCarousel] Final date string for graphs:', dateStr);
+    
+    return dateStr;
   }, [selectedDate]);
   const generateImagePaths = useCallback(() => {
     if (!companyCode || !exchange) return [];
     const dateString = getCurrentDateString();
     const companyExchange = `${companyCode}_${exchange}`;
     const imageList: CarouselImage[] = [];
-    const pattern1Path = `/Graphs/${dateString}/N1_Pattern_Plot/${companyExchange}/${companyExchange}_combined_overlay.png`;
+
+    // Pattern 1: N1 Pattern Plot - Combined Overlay
+    // URL: http://100.93.172.21:6969/Watchlist_assets/2025-05-08/N1_Pattern_Plot/360ONE_NSE/360ONE_NSE_combined_overlay.png
+    const pattern1Path = `${ONPREM_BASE_URL}/${dateString}/N1_Pattern_Plot/${companyExchange}/${companyExchange}_combined_overlay.png`;
     imageList.push({
       src: pattern1Path,
       name: `${companyCode} Combined Overlay`,
       type: 'N1 Pattern Analysis',
       exists: false
     });
+
+    // Pattern 2: Watchlist Comparison - Confusion Heatmaps for each index
+    // URL: http://100.93.172.21:6969/Watchlist_assets/2025-05-08/watchlist_comp_ind_90d_analysis_plot/360ONE_NSE_2025-05-08/360ONE_NIFTY50_No_category_confusion_heatmap.png
     ACTUAL_INDICES.forEach(index => {
-      const pattern2Path = `/Graphs/${dateString}/watchlist_comp_ind_90d_analysis_plot/${companyExchange}_${dateString}/${companyCode}_${index}_Yes_category_confusion_heatmap.png`;
-      imageList.push({
-        src: pattern2Path,
-        name: `${companyCode} ${index} Analysis`,
-        type: 'Confusion Heatmap',
-        exists: false
+      // Try both "Yes" and "No" category variations
+      ['Yes', 'No'].forEach(category => {
+        const pattern2Path = `${ONPREM_BASE_URL}/${dateString}/watchlist_comp_ind_90d_analysis_plot/${companyExchange}_${dateString}/${companyCode}_${index}_${category}_category_confusion_heatmap.png`;
+        imageList.push({
+          src: pattern2Path,
+          name: `${companyCode} vs ${index} - ${category} Category`,
+          type: 'Confusion Heatmap Analysis',
+          exists: false
+        });
       });
     });
+
     return imageList;
   }, [companyCode, exchange, getCurrentDateString]);
   const checkImageExists = useCallback(async (imageSrc: string): Promise<boolean> => {
     return new Promise((resolve) => {
-      const img = new Image();
+      const img = document.createElement('img');
       img.onload = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = imageSrc;
@@ -242,9 +300,10 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 <h3 className="font-medium text-sm">{currentImage?.name}</h3>
                 <p className="text-xs text-muted-foreground">{currentImage?.type}</p>
               </div>
-              {}
+              {/* Image Display */}
               <div className="flex-1 relative overflow-hidden">
                 {currentImage && (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={currentImage.src}
                     alt={currentImage.name}

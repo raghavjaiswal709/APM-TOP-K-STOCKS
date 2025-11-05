@@ -36,6 +36,7 @@ export function CardWithForm({
     exchange: string;
   } | null>(null);
   const [isCarouselOpen, setIsCarouselOpen] = React.useState(false);
+  const [watchlistSelectedDate, setWatchlistSelectedDate] = React.useState<string | null>(null);
   const handleDateRangeChange = React.useCallback((startDate: Date | undefined, endDate: Date | undefined) => {
     console.log('CardWithForm received date range change:', startDate, endDate);
     onDateRangeChange(startDate, endDate);
@@ -61,18 +62,18 @@ export function CardWithForm({
     console.log('CardWithForm received indicators change:', indicators);
     onIndicatorsChange(indicators);
   }, [onIndicatorsChange]);
-  const handleWatchlistChange = React.useCallback((watchlist: string) => {
-    console.log('CardWithForm received watchlist change:', watchlist);
-    setSelectedCompany(null);
-    if (onWatchlistChange) {
-      onWatchlistChange(watchlist);
-    }
-  }, [onWatchlistChange]);
+
+  const handleWatchlistDateChange = React.useCallback((date: string) => {
+    console.log('🗓️ [CardWithForm] Watchlist date changed to:', date);
+    setWatchlistSelectedDate(date);
+  }, []);
+
   const handleOpenCarousel = React.useCallback(() => {
+    console.log('🖼️ [CardWithForm] Opening carousel with date:', watchlistSelectedDate);
     if (selectedCompany) {
       setIsCarouselOpen(true);
     }
-  }, [selectedCompany]);
+  }, [selectedCompany, watchlistSelectedDate]);
   return (
     <>
       <Card className="border-none w-full">
@@ -83,8 +84,7 @@ export function CardWithForm({
               <div className="p-3 border border-opacity-30 rounded-md flex-1 gap-4 h-24 flex items-center">
                 <WatchlistSelector 
                   onCompanySelect={handleCompanySelect}  
-                  selectedWatchlist={selectedWatchlist}
-                  onWatchlistChange={handleWatchlistChange} 
+                  onDateChange={handleWatchlistDateChange}
                 />
 
                 <div className=" flex items-center justify-center min-w-[120px] absolute right-[395px]">
@@ -105,13 +105,14 @@ export function CardWithForm({
           </div>
         </CardContent>
       </Card>
-      {}
+      {/* Image Carousel Modal */}
       {selectedCompany && (
         <ImageCarousel
           isOpen={isCarouselOpen}
           onClose={() => setIsCarouselOpen(false)}
           companyCode={selectedCompany.companyCode}
           exchange={selectedCompany.exchange}
+          selectedDate={watchlistSelectedDate || undefined}
         />
       )}
     </>
