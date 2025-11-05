@@ -268,11 +268,48 @@ export class WatchlistService {
   private generateFallbackDates(targetDate: string): string[] {
     const date = moment(targetDate);
     const fallbacks: string[] = [];
-    
+
     for (let i = 1; i <= 10; i++) {
       fallbacks.push(date.clone().subtract(i, 'days').format('YYYY-MM-DD'));
     }
-    
+
     return fallbacks;
+  }
+
+  /**
+   * Get all companies from company_master (not date-specific)
+   */
+  async getAllCompaniesFromMaster(exchange?: string): Promise<MergedCompany[]> {
+    try {
+      this.logger.log('Fetching all companies from companies table');
+
+      const queryBuilder = this.companiesRepository.createQueryBuilder('c');
+
+      if (exchange) {
+        const exchanges = exchange
+          .split(',')
+          .map((ex) => ex.trim().toUpperCase());
+        queryBuilder.where('UPPER(c.exchange) IN (:...exchanges)', {
+          exchanges,
+        });
+      }
+
+      const companies = await queryBuilder.orderBy('c.name', 'ASC').getMany();
+
+      const mergedData: MergedCompany[] = companies.map((company) => ({
+        company_id: company.companyId,
+        company_code: company.companyCode,
+        name: company.name,
+        exchange: company.exchange,
+      }));
+
+      this.logger.log(
+        `Successfully fetched ${mergedData.length} companies from companies table`,
+      );
+      return mergedData;
+    } catch (error) {
+      this.logger.error('Error loading companies from companies table:', error);
+      throw new NotFoundException(`Failed to load companies: ${error.message}`);
+    }
   }
 }

@@ -25,6 +25,7 @@ interface WatchlistResponse {
 
 interface UseWatchlistOptions {
   date?: string;
+  showAllCompanies?: boolean;
 }
 
 export function useWatchlist(options: UseWatchlistOptions = {}) {
@@ -39,6 +40,7 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
   const [availableExchanges, setAvailableExchanges] = useState<string[]>([]);
   const [totalCompanies, setTotalCompanies] = useState(0);
   const [availableMarkers, setAvailableMarkers] = useState<string[]>([]);
+  const [showAllCompanies, setShowAllCompanies] = useState(options.showAllCompanies || false);
   
   const activeDate = options.date || selectedDate;
 
@@ -69,13 +71,23 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
     let isCancelled = false;
 
     async function fetchWatchlist() {
-      console.log(`[useWatchlist] Fetching watchlist for date: ${activeDate}`);
       setLoading(true);
       setError(null);
 
       try {
-        const dateParam = activeDate || new Date().toISOString().split('T')[0];
-        const apiUrl = `${BASE_URL}/api/watchlist?date=${dateParam}`;
+        let apiUrl: string;
+        
+        if (showAllCompanies) {
+          // Fetch all companies regardless of date
+          console.log(`[useWatchlist] Fetching all companies`);
+          apiUrl = `${BASE_URL}/api/watchlist/all-companies`;
+        } else {
+          // Fetch date-specific companies
+          const dateParam = activeDate || new Date().toISOString().split('T')[0];
+          console.log(`[useWatchlist] Fetching watchlist for date: ${dateParam}`);
+          apiUrl = `${BASE_URL}/api/watchlist?date=${dateParam}`;
+        }
+        
         console.log(`[useWatchlist] Fetching from: ${apiUrl}`);
 
         const controller = new AbortController();
@@ -97,7 +109,7 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
 
-        const data: WatchlistResponse = await response.json();
+        const data = await response.json();
         if (isCancelled) return;
 
         if (!Array.isArray(data.companies)) {
@@ -106,7 +118,7 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
           setTotalCompanies(0);
           setAvailableExchanges([]);
           setAvailableMarkers([]);
-          setError(`No companies found for date ${dateParam}`);
+          setError(showAllCompanies ? 'No companies found' : `No companies found for date ${activeDate}`);
           return;
         }
 
@@ -115,21 +127,22 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
         );
 
         setCompanies(validCompanies);
-        setExists(data.exists !== false);
+        setExists(showAllCompanies ? true : (data.exists !== false));
         setTotalCompanies(data.total || validCompanies.length);
         
-        const exchanges = [...new Set(validCompanies.map((c: MergedCompany) => c.exchange).filter(Boolean))];
-        const markers = [...new Set(validCompanies.map((c: MergedCompany) => c.marker).filter(Boolean))];
+        const exchanges = [...new Set(validCompanies.map((c: MergedCompany) => c.exchange).filter(Boolean))] as string[];
+        const markers = [...new Set(validCompanies.map((c: MergedCompany) => c.marker).filter(Boolean))] as string[];
         setAvailableExchanges(exchanges);
         setAvailableMarkers(markers);
 
-        console.log(`[useWatchlist] Loaded ${validCompanies.length} companies from database`);
+        console.log(`[useWatchlist] Loaded ${validCompanies.length} companies`);
 
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (isCancelled) return;
 
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
         console.error(`[useWatchlist] Error:`, err);
-        setError(err.message);
+        setError(errorMessage);
         setCompanies([]);
         setExists(false);
         setAvailableExchanges([]);
@@ -142,14 +155,14 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
       }
     }
 
-    if (activeDate || availableDates.length > 0) {
+    if (showAllCompanies || activeDate || availableDates.length > 0) {
       fetchWatchlist();
     }
     
     return () => {
       isCancelled = true;
     };
-  }, [activeDate, BASE_URL]);
+  }, [activeDate, BASE_URL, showAllCompanies, availableDates.length]);
 
   const getFilteredCompanies = useCallback((filters: {
     exchange?: string;
@@ -181,6 +194,8 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
     availableExchanges,
     availableMarkers,
     totalCompanies,
-    getFilteredCompanies
+    getFilteredCompanies,
+    showAllCompanies,
+    setShowAllCompanies
   };
 }

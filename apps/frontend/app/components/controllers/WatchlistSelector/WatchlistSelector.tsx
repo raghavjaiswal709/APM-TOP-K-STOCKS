@@ -5,6 +5,7 @@ import { SelectScrollable } from "./SelectScrollable";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 
@@ -35,7 +36,9 @@ export const WatchlistSelector = React.memo(({
     availableExchanges,
     availableMarkers,
     totalCompanies,
-    getFilteredCompanies
+    getFilteredCompanies,
+    showAllCompanies,
+    setShowAllCompanies
   } = useWatchlist();
 
   const [selectedExchange, setSelectedExchange] = React.useState<string>('');
@@ -64,6 +67,15 @@ export const WatchlistSelector = React.memo(({
     }
   }, [companies, onCompanySelect]);
 
+  const handleShowAllChange = React.useCallback((checked: boolean) => {
+    console.log(`[WatchlistSelector] Show all companies toggled: ${checked}`);
+    setShowAllCompanies(checked);
+    
+    // Reset filters when toggling
+    setSelectedExchange('');
+    setSelectedMarker('');
+  }, [setShowAllCompanies]);
+
   const filteredCompanies = React.useMemo(() => {
     const filters: any = {};
     if (selectedExchange) filters.exchange = selectedExchange;
@@ -83,14 +95,31 @@ export const WatchlistSelector = React.memo(({
       {showDateSelector && (
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium">Select Date</label>
+          
+          {/* Show All Companies Checkbox */}
+          <div className="flex items-center space-x-2 mb-2">
+            <Checkbox
+              id="show-all-companies"
+              checked={showAllCompanies}
+              onCheckedChange={handleShowAllChange}
+            />
+            <label
+              htmlFor="show-all-companies"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+            >
+              Show all companies
+            </label>
+          </div>
+
           <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
                 className="w-[200px] justify-start text-left font-normal"
+                disabled={showAllCompanies}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {selectedDate ? format(new Date(selectedDate), "PPP") : "Pick a date"}
+                {selectedDate && !showAllCompanies ? format(new Date(selectedDate), "PPP") : "Pick a date"}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
@@ -115,7 +144,7 @@ export const WatchlistSelector = React.memo(({
           <div className="text-xs text-muted-foreground">
             {loading && `Loading...`}
             {!loading && exists && `${totalCompanies} companies`}
-            {!loading && !exists && `No data`}
+            {!loading && !exists && !showAllCompanies && `No data`}
           </div>
         </div>
       )}

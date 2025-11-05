@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Building2, X, CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 
@@ -52,7 +53,9 @@ export const MultiSelectWatchlistSelector = React.memo(({
     availableExchanges,
     availableMarkers,
     totalCompanies,
-    getFilteredCompanies
+    getFilteredCompanies,
+    showAllCompanies,
+    setShowAllCompanies
   } = useWatchlist();
 
   const [selectedExchange, setSelectedExchange] = React.useState<string>('');
@@ -63,17 +66,22 @@ export const MultiSelectWatchlistSelector = React.memo(({
     if (date) {
       const dateStr = format(date, 'yyyy-MM-dd');
       console.log(`[MultiSelectWatchlistSelector] Date selected: ${dateStr}`);
-      setSelectedDate(dateStr);
-      setIsDatePickerOpen(false);
       
-      // Reset filters and selections when date changes
-      setSelectedExchange('');
-      setSelectedMarker('');
-      
+      // Important: Clear selections BEFORE setting the new date
+      // This ensures no auto-selection happens
       if (onCompaniesSelect) {
         onCompaniesSelect([]);
       }
       
+      // Reset filters
+      setSelectedExchange('');
+      setSelectedMarker('');
+      
+      // Set the new date (this will trigger data fetch for that date)
+      setSelectedDate(dateStr);
+      setIsDatePickerOpen(false);
+      
+      // Notify parent about date change
       if (onDateChange) {
         onDateChange(dateStr);
       }
@@ -81,11 +89,25 @@ export const MultiSelectWatchlistSelector = React.memo(({
   }, [setSelectedDate, onDateChange, onCompaniesSelect]);
 
   const handleCompaniesSelect = React.useCallback((newSelectedCompanies: Company[]) => {
-    console.log(`[MultiSelectWatchlistSelector] Selected companies:`, newSelectedCompanies);
+    console.log(`[MultiSelectWatchlistSelector] User selected companies:`, newSelectedCompanies);
+    console.log(`[MultiSelectWatchlistSelector] Selection count: ${newSelectedCompanies.length}`);
+    
     if (onCompaniesSelect) {
       onCompaniesSelect(newSelectedCompanies);
     }
   }, [onCompaniesSelect]);
+
+  const handleShowAllChange = React.useCallback((checked: boolean) => {
+    console.log(`[MultiSelectWatchlistSelector] Show all companies toggled: ${checked}`);
+    setShowAllCompanies(checked);
+    
+    // Reset filters and selections when toggling
+    setSelectedExchange('');
+    setSelectedMarker('');
+    if (onCompaniesSelect) {
+      onCompaniesSelect([]);
+    }
+  }, [setShowAllCompanies, onCompaniesSelect]);
 
   const handleRemoveCompany = React.useCallback((companyToRemove: Company) => {
     const newSelection = selectedCompanies.filter(c => c.company_code !== companyToRemove.company_code);
@@ -125,15 +147,32 @@ export const MultiSelectWatchlistSelector = React.memo(({
           <div className="flex gap-5 items-center">
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium">Select Date</label>
+              
+              {/* Show All Companies Checkbox */}
+              <div className="flex items-center space-x-2 mb-2">
+                <Checkbox
+                  id="show-all-companies-multi"
+                  checked={showAllCompanies}
+                  onCheckedChange={handleShowAllChange}
+                  disabled={disabled}
+                />
+                <label
+                  htmlFor="show-all-companies-multi"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                >
+                  Show all companies
+                </label>
+              </div>
+
               <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     className="w-[200px] justify-start text-left font-normal"
-                    disabled={disabled}
+                    disabled={disabled || showAllCompanies}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {selectedDate ? format(new Date(selectedDate), "PPP") : "Pick a date"}
+                    {selectedDate && !showAllCompanies ? format(new Date(selectedDate), "PPP") : "Pick a date"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -160,7 +199,7 @@ export const MultiSelectWatchlistSelector = React.memo(({
                   <div>
                     {loading && `Loading data...`}
                     {!loading && exists && `${totalCompanies} companies`}
-                    {!loading && !exists && `No data available`}
+                    {!loading && !exists && !showAllCompanies && `No data available`}
                   </div>
                 </div>
               </div>

@@ -16,38 +16,6 @@ export class WatchlistController {
   }
 
   /**
-   * Get watchlist companies
-   * GET /api/watchlist?date=YYYY-MM-DD&exchange=NSE,BSE
-   * 
-   * Note: Since your DB doesn't have A/B/C concept, we removed that parameter
-   */
-  @Get()
-  async getWatchlist(
-    @Query('date') date?: string,
-    @Query('exchange') exchange?: string,
-  ): Promise<{ companies: MergedCompany[], exists: boolean, total: number, date: string }> {
-    try {
-      const companies = await this.watchlistService.getAllCompaniesWithExchange(date, exchange);
-      
-      console.log(`Retrieved ${companies.length} companies for exchanges: ${exchange || 'ALL'}`);
-      return { 
-        companies, 
-        exists: true, 
-        total: companies.length,
-        date: date || new Date().toISOString().split('T')[0]
-      };
-    } catch (error) {
-      console.error(`Error fetching watchlist:`, error);
-      return { 
-        companies: [], 
-        exists: false, 
-        total: 0,
-        date: date || new Date().toISOString().split('T')[0]
-      };
-    }
-  }
-
-  /**
    * Check if watchlist exists for date
    * GET /api/watchlist/check?date=YYYY-MM-DD
    */
@@ -72,6 +40,35 @@ export class WatchlistController {
   }
 
   /**
+   * Get all companies from companies table (not date-specific)
+   * GET /api/watchlist/all-companies?exchange=NSE,BSE
+   * NOTE: This must come BEFORE company/:companyCode to avoid route conflicts
+   */
+  @Get('all-companies')
+  async getAllCompanies(
+    @Query('exchange') exchange?: string,
+  ): Promise<{ companies: MergedCompany[]; total: number }> {
+    try {
+      const companies =
+        await this.watchlistService.getAllCompaniesFromMaster(exchange);
+
+      console.log(
+        `Retrieved ${companies.length} companies from companies table for exchanges: ${exchange || 'ALL'}`,
+      );
+      return {
+        companies,
+        total: companies.length,
+      };
+    } catch (error) {
+      console.error(`Error fetching all companies:`, error);
+      return {
+        companies: [],
+        total: 0,
+      };
+    }
+  }
+
+  /**
    * Get company by code
    * GET /api/watchlist/company/:companyCode?exchange=NSE
    */
@@ -80,7 +77,10 @@ export class WatchlistController {
     @Param('companyCode') companyCode: string,
     @Query('exchange') exchange?: string,
   ): Promise<{ company: MergedCompany | null }> {
-    const company = await this.watchlistService.getCompanyByCode(companyCode, exchange);
+    const company = await this.watchlistService.getCompanyByCode(
+      companyCode,
+      exchange,
+    );
     return { company };
   }
 
@@ -94,7 +94,54 @@ export class WatchlistController {
     @Query('exchange') exchange: string,
     @Query('date') date: string,
   ): Promise<{ data: any }> {
-    const data = await this.watchlistService.getCompanyMetrics(companyCode, exchange, date);
+    const data = await this.watchlistService.getCompanyMetrics(
+      companyCode,
+      exchange,
+      date,
+    );
     return { data };
+  }
+
+  /**
+   * Get watchlist companies
+   * GET /api/watchlist?date=YYYY-MM-DD&exchange=NSE,BSE
+   *
+   * Note: Since your DB doesn't have A/B/C concept, we removed that parameter
+   * IMPORTANT: This base route (@Get()) must be LAST to avoid catching all requests
+   */
+  @Get()
+  async getWatchlist(
+    @Query('date') date?: string,
+    @Query('exchange') exchange?: string,
+  ): Promise<{
+    companies: MergedCompany[];
+    exists: boolean;
+    total: number;
+    date: string;
+  }> {
+    try {
+      const companies = await this.watchlistService.getAllCompaniesWithExchange(
+        date,
+        exchange,
+      );
+
+      console.log(
+        `Retrieved ${companies.length} companies for exchanges: ${exchange || 'ALL'}`,
+      );
+      return {
+        companies,
+        exists: true,
+        total: companies.length,
+        date: date || new Date().toISOString().split('T')[0],
+      };
+    } catch (error) {
+      console.error(`Error fetching watchlist:`, error);
+      return {
+        companies: [],
+        exists: false,
+        total: 0,
+        date: date || new Date().toISOString().split('T')[0],
+      };
+    }
   }
 }

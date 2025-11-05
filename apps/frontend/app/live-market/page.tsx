@@ -91,27 +91,38 @@ const LiveMarketPage: React.FC = () => {
 
   const handleCompaniesSelect = useCallback((companies: Company[]) => {
     console.log('🔍 Companies selected in LiveMarketPage:', companies);
+    
+    // Always update selected companies first
     setSelectedCompanies(companies);
+
+    // Only proceed with subscription if we have valid auth AND companies
+    if (companies.length === 0) {
+      console.log('📡 No companies selected, unsubscribing from all');
+      unsubscribeAll();
+      return;
+    }
 
     if (!authStatus?.authenticated || !authStatus?.token_valid) {
       console.warn('⚠️ Cannot subscribe: Fyers authentication required');
       return;
     }
 
-    if (companies.length > 0) {
-      console.log('📡 Subscribing to companies:', companies);
-      subscribeToCompanies(companies);
-    } else {
-      console.log('📡 No companies selected, unsubscribing from all');
-      unsubscribeAll();
-    }
-  }, [subscribeToCompanies, unsubscribeAll, authStatus]);
+    console.log('📡 Subscribing to companies:', companies);
+    subscribeToCompanies(companies);
+  }, [subscribeToCompanies, unsubscribeAll, authStatus?.authenticated, authStatus?.token_valid]);
 
   const handleDateChange = useCallback((date: string) => {
-    console.log('Date changed to:', date);
-    setSelectedDate(date);
-    setSelectedCompanies([]);
+    console.log('📅 Date changed to:', date);
+    console.log('📅 Clearing all selections and unsubscribing');
+    
+    // First unsubscribe from all current subscriptions
     unsubscribeAll();
+    
+    // Then clear the selected companies
+    setSelectedCompanies([]);
+    
+    // Finally set the new date
+    setSelectedDate(date);
   }, [unsubscribeAll]);
 
   const handleClearSelection = useCallback(() => {
@@ -123,6 +134,7 @@ const LiveMarketPage: React.FC = () => {
   const gridSelectedCompanies = React.useMemo(() => {
     return selectedCompanies.map(company => ({
       ...company,
+      marker: company.marker || 'EQ',
       symbol: company.symbol || `${company.exchange}:${company.company_code}-${company.marker || 'EQ'}`
     }));
   }, [selectedCompanies]);
