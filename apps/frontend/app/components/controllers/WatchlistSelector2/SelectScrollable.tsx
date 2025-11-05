@@ -42,15 +42,28 @@ export function SelectScrollable({
     setMounted(true)
   }, [])
 
+  // ✅ IMPROVED: Only reset when companies array becomes empty or drastically changes
+  // This prevents unwanted resets when filters are applied
   React.useEffect(() => {
     if (!mounted) return
-    console.log(`[SelectScrollable] Companies changed, resetting selection. New count: ${companies.length}`);
-    setValue("")
-    setSelectedCompany(null)
-    setSearchTerm("")
-    setOpen(false)
-    onCompanySelect(null)
-  }, [companies, onCompanySelect, mounted]);
+    
+    // Only reset if companies is now empty or the selected company is no longer in the list
+    if (companies.length === 0) {
+      console.log(`[SelectScrollable] Companies list is empty, resetting selection`);
+      setValue("")
+      setSelectedCompany(null)
+      setSearchTerm("")
+      setOpen(false)
+      onCompanySelect(null)
+    } else if (selectedCompany && !companies.find(c => c.company_code === selectedCompany.company_code)) {
+      console.log(`[SelectScrollable] Selected company not in filtered list, resetting selection`);
+      setValue("")
+      setSelectedCompany(null)
+      setSearchTerm("")
+      setOpen(false)
+      onCompanySelect(null)
+    }
+  }, [companies, onCompanySelect, mounted, selectedCompany]);
 
   React.useEffect(() => {
     if (!mounted) return

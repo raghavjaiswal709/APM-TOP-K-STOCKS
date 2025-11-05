@@ -24,7 +24,7 @@ import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelecto
 import { ImageCarousel } from "./components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { ViewInDashboardButton } from "@/app/components/ViewInDashboardButton";
-import { TrendingUp, TrendingDown, Minus, Database, Wifi, Award, TrendingUpIcon, Clock } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Database, Wifi, Award, TrendingUpIcon, Clock, Building2 } from 'lucide-react';
 
 // Prediction Integration
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
@@ -125,7 +125,7 @@ const MarketDataPage: React.FC = () => {
   // Refs
   const updateCountRef = useRef(0);
   const lastUpdateTimeRef = useRef(Date.now());
-  const frequencyIntervalRef = useRef<NodeJS.Timeout>();
+  const frequencyIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const socketRef = useRef<any>(null);
   const isSubscribedRef = useRef<Set<string>>(new Set());
 
@@ -133,8 +133,6 @@ const MarketDataPage: React.FC = () => {
     companies,
     loading: watchlistLoading,
     error: watchlistError,
-    selectedWatchlist: currentWatchlist,
-    setSelectedWatchlist: setWatchlist,
   } = useWatchlist();
 
   // ============ PREDICTION POLLING INTEGRATION ============
@@ -202,13 +200,18 @@ const MarketDataPage: React.FC = () => {
     }
   }, [validateAndFormatSymbol]);
 
+  const handleDateChange = useCallback((date: string) => {
+    console.log(`Date changed to: ${date}`);
+    // Date change is handled by the WatchlistSelector internally
+    // It will automatically clear the company selection
+  }, []);
+
   const handleWatchlistChange = useCallback((watchlist: string) => {
     console.log(`Watchlist changed to: ${watchlist}`);
     setSelectedWatchlist(watchlist);
-    setWatchlist(watchlist);
     setSelectedCompany(null);
     setSelectedSymbol('');
-  }, [setWatchlist]);
+  }, []);
 
   const handleFetchUsefulnessScore = useCallback(() => {
     setUsefulnessScore(90);
@@ -447,13 +450,8 @@ const MarketDataPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    if (companies.length > 0 && !selectedCompany) {
-      const firstCompany = companies[0];
-      console.log(`Auto-selecting first company: ${firstCompany.company_code}`);
-      handleCompanyChange(firstCompany.company_code, firstCompany.exchange, firstCompany.marker);
-    }
-  }, [companies.length, selectedCompany, handleCompanyChange]);
+  // ❌ REMOVED AUTO-SELECTION - Company should only be selected when user clicks it
+  // This prevents automatic data fetching when date is changed
 
   useEffect(() => {
     setIsClient(true);
@@ -717,8 +715,7 @@ const MarketDataPage: React.FC = () => {
                 <div className="p-3 border border-opacity-30 rounded-md h-24 flex items-center justify-between">
                   <WatchlistSelector
                     onCompanySelect={handleCompanyChange}
-                    selectedWatchlist={selectedWatchlist}
-                    onWatchlistChange={handleWatchlistChange}
+                    onDateChange={handleDateChange}
                     showExchangeFilter={true}
                     showMarkerFilter={true}
                   />
@@ -790,7 +787,28 @@ const MarketDataPage: React.FC = () => {
                 {/* ============ MAIN CHART AREA ============ */}
                 <div className="w-3/4">
                   <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-[800px]">
-                    {symbolHistory.length > 0 || symbolChartUpdates.length > 0 ? (
+                    {!selectedSymbol ? (
+                      <div className="h-full flex flex-col items-center justify-center space-y-4">
+                        <div className="text-center space-y-2">
+                          <Database className="h-16 w-16 text-zinc-600 mx-auto mb-4" />
+                          <h3 className="text-xl font-semibold text-zinc-400">No Company Selected</h3>
+                          <p className="text-zinc-500 max-w-md">
+                            Select a date and click on a company from the list above to view live market data and charts
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-zinc-600">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-zinc-600"></div>
+                            <span>Step 1: Choose a date</span>
+                          </div>
+                          <span>→</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-zinc-600"></div>
+                            <span>Step 2: Click a company</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : symbolHistory.length > 0 || symbolChartUpdates.length > 0 ? (
                       <div className="w-full h-full">
                         <PlotlyChart
                           symbol={selectedSymbol}
@@ -806,9 +824,10 @@ const MarketDataPage: React.FC = () => {
                       </div>
                     ) : (
                       <div className="h-full flex items-center justify-center">
-                        <p className="text-zinc-400">
-                          {selectedSymbol ? `Loading data for ${selectedSymbol}...` : 'Select a company'}
-                        </p>
+                        <div className="text-center space-y-2">
+                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+                          <p className="text-zinc-400">Loading data for {selectedSymbol}...</p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -850,7 +869,19 @@ const MarketDataPage: React.FC = () => {
 
                   {/* Tab Content */}
                   <div className="flex-1 overflow-y-auto scrollbar-hide">
-                    {currentData ? (
+                    {!selectedSymbol ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center space-y-4 p-6">
+                        <div className="inline-flex items-center justify-center w-20 h-20 bg-zinc-700/50 rounded-full">
+                          <Building2 className="w-10 h-10 text-zinc-500" />
+                        </div>
+                        <div className="space-y-2">
+                          <h3 className="text-lg font-semibold text-zinc-300">No Company Selected</h3>
+                          <p className="text-sm text-zinc-500 max-w-xs">
+                            Click on a company from the dropdown above to view live market data and AI predictions
+                          </p>
+                        </div>
+                      </div>
+                    ) : currentData ? (
                       <>
                         {/* LIVE DATA TAB */}
                         {activeTab === 'live' && (
@@ -1054,9 +1085,8 @@ const MarketDataPage: React.FC = () => {
                       </>
                     ) : (
                       <div className="text-center py-8">
-                        <p className="text-zinc-400">
-                          {selectedSymbol ? 'Connecting...' : 'Select a company'}
-                        </p>
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-3"></div>
+                        <p className="text-zinc-400 text-sm">Connecting...</p>
                       </div>
                     )}
                   </div>

@@ -36,6 +36,7 @@ export const WatchlistSelector = React.memo(({
   
   const [isFilterModalOpen, setIsFilterModalOpen] = React.useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
+  const [selectedCompanyCode, setSelectedCompanyCode] = React.useState<string | null>(null);
   const [activeFilters, setActiveFilters] = React.useState<ActiveFilters>({
     exchanges: [],
     markers: [],
@@ -68,6 +69,9 @@ export const WatchlistSelector = React.memo(({
       setSelectedDate(dateStr);
       setIsDatePickerOpen(false);
       
+      // ✅ Clear selected company when date changes
+      setSelectedCompanyCode(null);
+      
       // Reset filters when date changes
       setActiveFilters({
         exchanges: [],
@@ -75,13 +79,23 @@ export const WatchlistSelector = React.memo(({
         sentiments: []
       });
       
+      // ✅ Notify parent that company selection is cleared
+      if (onCompanySelect) {
+        onCompanySelect(null);
+      }
+      
       if (onDateChange) {
         onDateChange(dateStr);
       }
     }
-  }, [setSelectedDate, onDateChange]);
+  }, [setSelectedDate, onDateChange, onCompanySelect]);
 
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
+    console.log(`[WatchlistSelector] handleCompanySelect called with: ${companyCode}`);
+    
+    // ✅ Update local state to track selected company
+    setSelectedCompanyCode(companyCode);
+    
     if (!companyCode) {
       if (onCompanySelect) {
         onCompanySelect(null);
@@ -228,6 +242,7 @@ export const WatchlistSelector = React.memo(({
       {/* Company Selection */}
       <div>
         <SelectScrollable
+          key={`company-selector-${selectedDate}`} // ✅ Force re-render when date changes
           companies={filteredCompanies}
           loading={loading}
           exists={exists}
