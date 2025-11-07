@@ -90,6 +90,7 @@ export const usePredictions = (options: UsePredictionsOptions) => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [dataAge, setDataAge] = useState<number>(0);
   const [retrying, setRetrying] = useState(false);
+  const [updateTrigger, setUpdateTrigger] = useState(0); // ✅ CRITICAL: Force re-render trigger
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const retryCountRef = useRef(0);
@@ -155,11 +156,14 @@ export const usePredictions = (options: UsePredictionsOptions) => {
         
         // Always update cache with fresh data
         predictionCache.set(cacheKey, data);
-        setPredictions(data);
+        
+        // ✅ CRITICAL: Create new object to force React re-render even if content is identical
+        setPredictions({ ...data, _updateId: Date.now() } as any);
         setLastUpdated(new Date());
         setError(null);
         retryCountRef.current = 0;
         setRetrying(false);
+        setUpdateTrigger(prev => prev + 1); // ✅ Force re-render
 
         return data;
       } catch (err) {
@@ -197,6 +201,7 @@ export const usePredictions = (options: UsePredictionsOptions) => {
   const refetch = useCallback(async () => {
     // ALWAYS bypass cache when explicitly refetching
     console.log(`🔄 Force refetch for ${company} (bypassing cache)`);
+    setUpdateTrigger(prev => prev + 1); // ✅ Force re-render
     return await fetchPredictions(0, true);
   }, [fetchPredictions, company]);
 
@@ -240,6 +245,7 @@ export const usePredictions = (options: UsePredictionsOptions) => {
     retrying,
     refetch,
     clearCache,
+    updateTrigger, // ✅ CRITICAL: Export trigger for parent components
     isStale: !lastUpdated || dataAge > 600, // 10 minutes
   };
 };

@@ -137,6 +137,10 @@ const MarketDataPage: React.FC = () => {
   } = useWatchlist();
 
   // ============ PREDICTION POLLING INTEGRATION ============
+  // ✅ CRITICAL FIX: Use ref to track if predictions just updated
+  const predictionUpdateTriggerRef = useRef(0);
+  const [chartRevision, setChartRevision] = useState(0);
+
   const {
     isPolling,
     startPolling,
@@ -149,6 +153,7 @@ const MarketDataPage: React.FC = () => {
     error: predictionError,
     lastUpdated: predictionLastUpdated,
     dataAge: predictionDataAge,
+    updateTrigger, // ✅ CRITICAL: Get update trigger from hook
     elapsedTime,
     timeRemaining,
     pollCount,
@@ -162,7 +167,17 @@ const MarketDataPage: React.FC = () => {
     enabled: showPredictions && isClient,
     autoStart: true,
     onUpdate: (data) => {
-      console.log(`✅ Predictions updated for ${selectedCompany}:`, data.count, 'predictions');
+      console.log(`✅ [PREDICTION UPDATE] Predictions updated for ${selectedCompany}:`, data.count, 'predictions');
+      // ✅ Increment ref-based trigger
+      predictionUpdateTriggerRef.current += 1;
+      // ✅ Force chart re-render with a small delay to ensure state is updated
+      setTimeout(() => {
+        setChartRevision(prev => {
+          const newRevision = prev + 1;
+          console.log(`🔄 [CHART REVISION] Updated from ${prev} to ${newRevision}`);
+          return newRevision;
+        });
+      }, 50); // 50ms delay to ensure predictions state is fully updated
     },
     onError: (error) => {
       console.error('❌ Prediction error:', error);
@@ -171,6 +186,77 @@ const MarketDataPage: React.FC = () => {
       console.log('✅ Prediction collection completed for 25 minutes');
     },
   });
+
+  // ✅ CRITICAL FIX: Sync chart revision with updateTrigger changes
+  useEffect(() => {
+    if (updateTrigger > 0) {
+      console.log(`🔄 [UPDATE TRIGGER] Changed to ${updateTrigger}, forcing chart update`);
+      setChartRevision(prev => {
+        const newRevision = prev + 1;
+        console.log(`📊 [CHART REVISION] Synced: ${prev} → ${newRevision}`);
+        return newRevision;
+      });
+    }
+  }, [updateTrigger]);
+
+  // ✅ CRITICAL FIX: Also sync with predictions object changes
+  useEffect(() => {
+    if (predictions && predictions.count > 0) {
+      console.log(`🔮 [PREDICTIONS CHANGED] Count: ${predictions.count}, Company: ${predictions.company}`);
+      // Update revision when predictions actually change
+      setChartRevision(prev => prev + 1);
+    }
+  }, [predictions?.count, predictions?.company]); // Watch for actual prediction changes
+
+  // ✅ OPTIMIZED: Stable callback using refs to avoid stale closures
+  const handleTimerEnd = useCallback(async () => {
+    console.log('⏰ [TIMER END] Timer reached 0 - triggering immediate refresh');
+    
+    try {
+      // Fetch new predictions
+      const result = await refetchPredictions();
+      console.log('✅ [TIMER END] Refresh completed:', result?.count || 0, 'predictions');
+      
+      // ✅ CRITICAL: Force immediate chart update after fetch completes
+      // Wait for state to propagate (React batching)
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      setChartRevision(prev => {
+        const newRevision = prev + 1;
+        console.log(`⏰ [TIMER END] Chart revision: ${prev} → ${newRevision}`);
+        return newRevision;
+      });
+      
+      predictionUpdateTriggerRef.current += 1;
+      
+    } catch (error) {
+      console.error('❌ [TIMER END] Refresh failed:', error);
+    }
+  }, [refetchPredictions]); // Only depends on refetchPredictions
+
+  // ✅ OPTIMIZED: Stable callback for manual refresh
+  const handleManualRefresh = useCallback(async () => {
+    console.log('🔄 [MANUAL REFRESH] Button clicked, fetching predictions...');
+    
+    try {
+      const result = await refetchPredictions();
+      console.log('✅ [MANUAL REFRESH] Predictions refreshed:', result?.count || 0, 'predictions');
+      
+      // ✅ CRITICAL: Force immediate chart update after fetch completes
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      setChartRevision(prev => {
+        const newRevision = prev + 1;
+        console.log(`🔄 [MANUAL REFRESH] Chart revision: ${prev} → ${newRevision}`);
+        return newRevision;
+      });
+      
+      predictionUpdateTriggerRef.current += 1;
+      
+    } catch (error) {
+      console.error('❌ [MANUAL REFRESH] Refresh failed:', error);
+    }
+  }, [refetchPredictions]);
 
   // ============ UTILITY FUNCTIONS ============
   const validateAndFormatSymbol = useCallback((companyCode: string, exchange: string, marker: string = 'EQ'): string => {
@@ -821,6 +907,7 @@ const MarketDataPage: React.FC = () => {
                           updateFrequency={updateFrequency}
                           predictions={predictions}
                           showPredictions={showPredictions}
+                          predictionRevision={chartRevision}
                         />
                       </div>
                     ) : (
@@ -1058,7 +1145,7 @@ const MarketDataPage: React.FC = () => {
                                 timeUntilNextPoll={timeUntilNextPoll}
                                 nextPollTime={nextPollTime}
                                 isPolling={isPolling}
-                                onTimerEnd={refetchPredictions}
+                                onTimerEnd={handleTimerEnd}
                               />
                             )}
 
@@ -1076,7 +1163,7 @@ const MarketDataPage: React.FC = () => {
                                   onStart={startPolling}
                                   onPause={pausePolling}
                                   onStop={stopPolling}
-                                  onRefresh={() => {}}
+                                  onRefresh={handleManualRefresh}
                                   disabled={predictionLoading}
                                 />
                               </div>

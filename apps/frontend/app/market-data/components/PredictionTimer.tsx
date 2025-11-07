@@ -6,7 +6,7 @@ export interface PredictionTimerProps {
   timeUntilNextPoll: number; // milliseconds
   nextPollTime: Date | null | undefined;
   isPolling: boolean;
-  onTimerEnd?: () => void | Promise<unknown>; // Callback when timer reaches 0 (called after 3 sec delay)
+  onTimerEnd?: () => void | Promise<unknown>; // ✅ CRITICAL: Callback when timer reaches 0 (NO DELAY)
 }
 
 export const PredictionTimer: React.FC<PredictionTimerProps> = ({
@@ -16,21 +16,29 @@ export const PredictionTimer: React.FC<PredictionTimerProps> = ({
   onTimerEnd,
 }) => {
   const previousTimeRef = useRef<number>(timeUntilNextPoll);
+  const hasTriggeredRef = useRef<boolean>(false);
 
-  // Trigger callback when countdown reaches 0 (with 3 second delay)
+  // ✅ CRITICAL FIX: Trigger callback IMMEDIATELY when countdown reaches 0
   useEffect(() => {
     const wasPositive = previousTimeRef.current > 0;
     const isZeroOrNegative = timeUntilNextPoll <= 0;
     
-    // When timer transitions from positive to 0 or negative, trigger refresh after 3 seconds
-    if (wasPositive && isZeroOrNegative && isPolling && onTimerEnd) {
-      console.log('⏰ Timer ended - will refresh in 3 seconds...');
-      const timeoutId = setTimeout(() => {
-        console.log('🔄 Triggering refresh after 3 second delay');
-        onTimerEnd();
-      }, 4000); // 3 second delay
+    // When timer transitions from positive to 0 or negative, trigger refresh IMMEDIATELY
+    if (wasPositive && isZeroOrNegative && isPolling && onTimerEnd && !hasTriggeredRef.current) {
+      console.log('⏰ [TIMER END] Timer hit 0 - triggering refresh NOW');
+      hasTriggeredRef.current = true;
       
-      return () => clearTimeout(timeoutId);
+      // Execute callback immediately (no delay)
+      Promise.resolve(onTimerEnd()).then(() => {
+        console.log('✅ [TIMER END] Refresh completed successfully');
+        // Reset trigger flag after 2 seconds to allow next cycle
+        setTimeout(() => {
+          hasTriggeredRef.current = false;
+        }, 2000);
+      }).catch((err) => {
+        console.error('❌ [TIMER END] Refresh failed:', err);
+        hasTriggeredRef.current = false;
+      });
     }
     
     previousTimeRef.current = timeUntilNextPoll;

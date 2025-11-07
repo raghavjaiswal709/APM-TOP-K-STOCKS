@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Plot from 'react-plotly.js';
 import { ChevronRight, TrendingUp, BarChart3, LineChart, CandlestickChart, ArrowLeftRight, ShoppingCart, TrendingDown, Maximize2, X } from 'lucide-react';
 
@@ -70,6 +70,7 @@ interface PlotlyChartProps {
   updateFrequency?: number;           // ✨ NEW PROP
   predictions?: CompanyPredictions | null;  // ✨ NEW: Prediction data
   showPredictions?: boolean;          // ✨ NEW: Toggle predictions
+  predictionRevision?: number;        // ✨ CRITICAL: Force re-render when predictions update
   tradingHours: {
     start: string;
     end: string;
@@ -87,6 +88,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   updateFrequency = 0,        // ✨ NEW PROP
   predictions = null,         // ✨ NEW: Prediction data
   showPredictions = false,    // ✨ NEW: Toggle predictions
+  predictionRevision = 0,     // ✨ CRITICAL: Force re-render counter
   tradingHours,
 }) => {
   const chartRef = useRef<any>(null);
@@ -104,7 +106,39 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   // const [chartType, setChartType] = useState<'line' | 'candle'>('candle');
   const [chartType, setChartType] = useState<'line' | 'candle'>('line');
 
-  // 🔀 Separator Modal State
+  // ✅ NEW: Track user interactions for zoom/pan preservation
+  const [userHasInteracted, setUserHasInteracted] = useState(false);
+  const [preservedRange, setPreservedRange] = useState<{
+    xaxis?: [any, any];
+    yaxis?: [any, any];
+  }>({});
+
+  // ✅ ENHANCED: Log prediction revision changes
+  useEffect(() => {
+    console.log(`🔄 [CHART] predictionRevision changed to ${predictionRevision}`);
+  }, [predictionRevision]);
+
+  // ✅ CRITICAL: Create stable prediction key to force re-renders when predictions change
+  const predictionKey = useMemo(() => {
+    if (!predictions || !predictions.predictions) return 'no-predictions';
+    const count = predictions.count || 0;
+    const keys = Object.keys(predictions.predictions);
+    const firstKey = keys[0] || '';
+    const lastKey = keys[keys.length - 1] || '';
+    return `pred-${count}-${firstKey}-${lastKey}`;
+  }, [predictions]);
+
+  // ✅ Log prediction key changes
+  useEffect(() => {
+    console.log(`🔮 [CHART] predictionKey changed to ${predictionKey}`);
+  }, [predictionKey]);
+
+  // � Track prediction revision changes
+  useEffect(() => {
+    console.log(`🔄 [PREDICTION REVISION CHANGE] predictionRevision=${predictionRevision}, predictionKey=${predictionKey}`);
+  }, [predictionRevision, predictionKey]);
+
+  // �🔀 Separator Modal State
   const [isSeparatorModalOpen, setIsSeparatorModalOpen] = useState(false);
 
   const [mainMode, setMainMode] = useState<'none' | 'bidAsk' | 'buySell'>('none');
@@ -568,9 +602,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const startTime = new Date(timeRange[0]).getTime() / 1000;
     const endTime = new Date(timeRange[1]).getTime() / 1000;
 
-    // ✅ FIX: Use ALL data within the time range (removed 10-minute sliding window)
-    console.log('📊 Calculating Y-axis range from ALL data (no sliding window)');
-
     let allPrices: number[] = [];
     let historicalPrices: number[] = [];
     let predictionPrices: number[] = [];
@@ -578,7 +609,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     if (chartType === 'line') {
       if (historicalData.length === 0) return undefined;
       
-      // ✅ Use ALL data points within the time range
+      // ✅ Use ALL data points within the time range (NO sliding window)
       const validData = historicalData.filter(
         point => point.timestamp >= startTime && point.timestamp <= endTime
       );
@@ -590,7 +621,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     } else {
       if (!ohlcData || ohlcData.length === 0) return undefined;
       
-      // ✅ Use ALL candles within the time range
+      // ✅ Use ALL candles within the time range (NO sliding window)
       const validCandles = ohlcData.filter(
         candle => candle.timestamp >= startTime && candle.timestamp <= endTime
       );
@@ -607,14 +638,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       }
     }
 
-    // ✅ Include ALL predictions within the time range
+    // ✅ CRITICAL: Include ALL predictions within the time range
     if (showPredictions && predictions && predictions.count > 0) {
       const predictionEntries = Object.entries(predictions.predictions);
       
       predictionPrices = predictionEntries
         .map(([key, pred]) => {
           const predTime = new Date(pred.timestamp || key).getTime() / 1000;
-          // Include all predictions in the time range (not just recent ones)
           if (predTime >= startTime && predTime <= endTime) {
             return Number(pred.close);
           }
@@ -632,29 +662,12 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const minPrice = Math.min(...allPrices);
     const maxPrice = Math.max(...allPrices);
     const range = maxPrice - minPrice;
-    const midPoint = (minPrice + maxPrice) / 2;
     
-    // Use 5% padding for comfortable viewing
-    const padding = range * 0.05;
+    // ✅ Use 8% padding for better visibility
+    const padding = range * 0.08;
     
     const yMin = minPrice - padding;
     const yMax = maxPrice + padding;
-    
-    const startDate = new Date(startTime * 1000);
-    const endDate = new Date(endTime * 1000);
-    
-    console.log('📊 Y-axis range from ALL data (no sliding window):', {
-      timeRange: [startDate.toLocaleTimeString(), endDate.toLocaleTimeString()],
-      historicalDataPoints: historicalPrices.length,
-      predictionDataPoints: predictionPrices.length,
-      totalDataPoints: allPrices.length,
-      minPrice: minPrice.toFixed(2),
-      maxPrice: maxPrice.toFixed(2),
-      range: range.toFixed(2),
-      midPoint: midPoint.toFixed(2),
-      padding: `${padding.toFixed(2)} (5%)`,
-      finalRange: [yMin.toFixed(2), yMax.toFixed(2)]
-    });
     
     return [yMin, yMax];
   };
@@ -751,7 +764,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const dataToUse = chartType === 'line' ? historicalData : ohlcData;
     if (!dataToUse || dataToUse.length === 0) return undefined;
 
-    // ✅ FIX: Use actual data timestamps instead of "now" based calculations
+    // ✅ Use actual data timestamps (not "now" based calculations)
     const timestamps = dataToUse.map(d => d.timestamp);
     const minDataTime = Math.min(...timestamps);
     const maxDataTime = Math.max(...timestamps);
@@ -759,7 +772,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const startDate = new Date(minDataTime * 1000);
     let endDate = new Date(maxDataTime * 1000);
 
-    // ✅ Extend end time for predictions if they exist
+    // ✅ CRITICAL: Extend range to include ALL predictions
     if (showPredictions && predictions && predictions.count > 0) {
       const predictionEntries = Object.entries(predictions.predictions);
       if (predictionEntries.length > 0) {
@@ -767,21 +780,25 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           new Date(pred.timestamp || key).getTime() / 1000
         );
         const maxPredTime = Math.max(...predictionTimes);
+        const minPredTime = Math.min(...predictionTimes);
         
-        // Use the later of data end or prediction end
+        // Extend BOTH start and end if needed
         const maxPredDate = new Date(maxPredTime * 1000);
+        const minPredDate = new Date(minPredTime * 1000);
+        
         if (maxPredDate > endDate) {
           endDate = maxPredDate;
-          console.log('📅 Extended time range for predictions:', {
-            dataEnd: new Date(maxDataTime * 1000).toLocaleTimeString(),
-            predictionEnd: endDate.toLocaleTimeString()
-          });
         }
       }
     }
 
-    // ✅ Apply timeframe filtering if needed (but keep data-based boundaries)
-    const now = data?.timestamp ? new Date(data.timestamp * 1000) : new Date();
+    // ✅ CRITICAL FIX: Apply timeframe filtering based on LATEST data timestamp, not stale 'data'
+    // Get the most recent timestamp from historical data OR current data
+    const latestHistoricalTime = historicalData.length > 0 
+      ? Math.max(...historicalData.map(p => p.timestamp))
+      : (data?.timestamp || Date.now() / 1000);
+    
+    const now = new Date(latestHistoricalTime * 1000);
     let filteredStart = startDate;
     
     switch (selectedTimeframe) {
@@ -808,18 +825,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         break;
       case '1D':
       default:
-        // Use all available data (from earliest data point)
         filteredStart = startDate;
     }
     
     // Use the later of filtered start or actual data start
     const finalStart = filteredStart > startDate ? filteredStart : startDate;
     
-    console.log('📅 Time range calculated from DATA:', {
-      timeframe: selectedTimeframe,
-      dataRange: [startDate.toLocaleTimeString(), endDate.toLocaleTimeString()],
-      finalRange: [finalStart.toLocaleTimeString(), endDate.toLocaleTimeString()],
-      dataPoints: dataToUse.length
+    console.log('⏱️ [TIMEFRAME] Filtering:', {
+      selectedTimeframe,
+      latestDataTime: now.toLocaleTimeString(),
+      filteredStart: filteredStart.toLocaleTimeString(),
+      finalStart: finalStart.toLocaleTimeString(),
+      endDate: endDate.toLocaleTimeString()
     });
     
     return [finalStart, endDate];
@@ -882,7 +899,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
 
   const handleTimeframeChange = (timeframe: string) => {
-    // ✨ ADD THIS - Prevent updates during timeframe changes
+    // ✅ Reset user interaction tracking on manual timeframe change
+    setUserHasInteracted(false);
+    setPreservedRange({});
+    
+    // ✨ Prevent updates during timeframe changes
     setIsUpdating(true);
 
     setSelectedTimeframe(timeframe);
@@ -1009,7 +1030,19 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }));
   };
 
+  // ✅ ENHANCED: Capture user interactions and preserve state
   const handleRelayout = (eventData: any) => {
+    // ✅ Track user zoom/pan
+    if (eventData['xaxis.range[0]'] || eventData['yaxis.range[0]']) {
+      setUserHasInteracted(true);
+      setPreservedRange({
+        xaxis: eventData['xaxis.range[0]'] ? 
+          [eventData['xaxis.range[0]'], eventData['xaxis.range[1]']] : preservedRange.xaxis,
+        yaxis: eventData['yaxis.range[0]'] ? 
+          [eventData['yaxis.range[0]'], eventData['yaxis.range[1]']] : preservedRange.yaxis,
+      });
+    }
+
     if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
       const startDate = new Date(eventData['xaxis.range[0]']);
       const endDate = new Date(eventData['xaxis.range[1]']);
@@ -1108,8 +1141,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
   };
 
-  // ============ ENHANCED: Main chart rendering with chartUpdates dependency ============
+  // ============ ENHANCED: Stable chart rendering with state preservation ============
   useEffect(() => {
+    console.log('🔄 [CHART UPDATE] useEffect triggered:', {
+      hasPredictions: !!predictions,
+      predictionsCount: predictions?.count || 0,
+      showPredictions,
+      historicalDataPoints: historicalData.length,
+      selectedTimeframe,
+      isUpdating,
+      userHasInteracted
+    });
+
     if (!chartRef.current) return;
     const plotDiv = document.getElementById('plotly-chart');
     if (!plotDiv) return;
@@ -1119,22 +1162,40 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       return;
     }
 
+    // ❌ CRITICAL FIX: Remove isUpdating block - it prevents ALL updates including predictions!
+    // Only skip if explicitly updating (not just from prediction changes)
+    // if (isUpdating) {
+    //   return;
+    // }
+
     try {
+      const layout = createLayout();
+      
+      // ✅ CRITICAL: Preserve user's zoom/pan state during prediction updates
+      if (userHasInteracted && (preservedRange.xaxis || preservedRange.yaxis)) {
+        if (preservedRange.xaxis) {
+          layout.xaxis.range = preservedRange.xaxis;
+          layout.xaxis.autorange = false;
+        }
+        if (preservedRange.yaxis) {
+          layout.yaxis.range = preservedRange.yaxis;
+          layout.yaxis.autorange = false;
+        }
+      }
+      
+      // ✅ Use consistent uirevision to preserve zoom/pan
+      layout.uirevision = 'preserve-zoom-v1';
+      
       if (chartType === 'line') {
         const { x, y } = prepareLineChartData();
         if (x.length === 0 || y.length === 0) return;
         if (typeof Plotly !== 'undefined' && Plotly.react) {
-          // Use Plotly.react but with uirevision to preserve zoom/pan state
-          const layout = createLayout();
-          layout.uirevision = 'static'; // Preserve UI state on updates
           Plotly.react(plotDiv, createPlotData(), layout);
         }
       } else {
         const { x, open, high, low, close } = prepareCandlestickData();
         if (x.length === 0) return;
         if (typeof Plotly !== 'undefined' && Plotly.react) {
-          const layout = createLayout();
-          layout.uirevision = 'static'; // Preserve UI state on updates
           Plotly.react(plotDiv, createPlotData(), layout);
         }
       }
@@ -1185,7 +1246,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     } catch (err) {
       console.error('Error updating chart:', err);
     }
-  }, [data, historicalData, ohlcData, chartUpdates, initialized, selectedTimeframe, chartType, showIndicators, mainMode, secondaryView]);
+  }, [data, historicalData, ohlcData, predictionKey, showPredictions, predictionRevision, initialized, selectedTimeframe, chartType, showIndicators, mainMode, secondaryView, userHasInteracted, preservedRange]);
 
   // 🔀 CREATE ACTUAL DATA ONLY (No predictions for separator modal left side)
   const createActualDataOnly = () => {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { usePredictions, CompanyPredictions } from './usePredictions';
+import { usePredictions, CompanyPredictions, predictionCache } from './usePredictions';
 
 export interface PollingConfig {
   company: string;
@@ -67,6 +67,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
     error,
     lastUpdated,
     dataAge,
+    updateTrigger, // ✅ CRITICAL: Get update trigger
   } = usePredictions({ company, enabled });
 
   const [isPolling, setIsPolling] = useState(autoStart && enabled);
@@ -101,7 +102,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
   }, []);
 
   /**
-   * Fetch predictions at synchronized time
+   * Fetch predictions at synchronized time with stability optimization
    */
   const fetchAtSyncTime = useCallback(async () => {
     if (!enabled || !company) return;
@@ -112,19 +113,37 @@ export const usePredictionPolling = (config: PollingConfig) => {
     
     console.log(`🔄 [SYNC] Fetching predictions for ${company} at ${now.toLocaleTimeString()} (Poll #${currentPollCount})`);
     
-    // FORCE FRESH FETCH - bypass cache
+    // ✅ CRITICAL: Show cached data immediately for stable UI
+    const cachedData = predictionCache.get(`predictions_${company}`);
+    if (cachedData && currentPollCount > 1) {
+      // Keep showing cached while fetching fresh (prevents flicker)
+      console.log(`📦 Showing cached predictions during fetch (${cachedData.count} predictions)`);
+    }
+    
+    // Fetch fresh data
     const freshData = await refetch();
     if (freshData) {
+      // ✅ CRITICAL FIX: ALWAYS update poll count and trigger callbacks
+      // Even if data is identical, the chart needs to know a refresh happened
+      const dataChanged = !cachedData || JSON.stringify(freshData) !== JSON.stringify(cachedData);
+      
+      // ALWAYS update poll metadata
       setPollCount(currentPollCount);
       lastPollRef.current = now;
-      onUpdate?.(freshData);
       
-      // Log the latest prediction time from server
-      const predictions = Object.values(freshData.predictions);
-      if (predictions.length > 0) {
-        const latestPrediction = predictions[predictions.length - 1];
-        console.log(`✅ [SYNC] Poll #${currentPollCount} successful: ${freshData.count} predictions`);
-        console.log(`📊 [SYNC] Latest server prediction time: ${latestPrediction.predictedat}`);
+      if (dataChanged) {
+        onUpdate?.(freshData);
+        
+        const predictions = Object.values(freshData.predictions);
+        if (predictions.length > 0) {
+          const latestPrediction = predictions[predictions.length - 1];
+          console.log(`✅ [SYNC] Poll #${currentPollCount} - NEW DATA: ${freshData.count} predictions`);
+          console.log(`📊 [SYNC] Latest prediction: ${latestPrediction.predictedat}`);
+        }
+      } else {
+        // Data identical BUT still notify (chart might need to update timer, etc.)
+        console.log(`ℹ️ [SYNC] Poll #${currentPollCount} - Data unchanged but poll count updated`);
+        onUpdate?.(freshData); // ✅ CRITICAL: Call onUpdate even if data unchanged
       }
     } else {
       console.error(`❌ [SYNC] Poll #${currentPollCount} failed:`, error);
@@ -133,7 +152,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
 
     // Schedule next sync
     scheduleNextSync();
-  }, [enabled, company, refetch, onUpdate, onError, error]);
+  }, [enabled, company, refetch, onUpdate, onError, error, predictionCache]);
 
   /**
    * Schedule fetch at next 5-minute interval
@@ -279,11 +298,12 @@ export const usePredictionPolling = (config: PollingConfig) => {
     error,
     lastUpdated,
     dataAge,
+    updateTrigger, // ✅ CRITICAL: Pass through update trigger
     elapsedTime,
     timeRemaining,
     pollCount,
     progressPercentage,
     nextPollTime,
-    timeUntilNextPoll, // NEW: countdown in milliseconds
+    timeUntilNextPoll,
   };
 };
