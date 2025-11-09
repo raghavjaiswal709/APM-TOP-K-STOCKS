@@ -23,7 +23,6 @@ interface ActiveFilters {
   exchanges: string[];
   markers: string[];
   sentiments: string[];
-  refined: boolean | null;
 }
 
 export const WatchlistSelector = React.memo(({ 
@@ -41,8 +40,7 @@ export const WatchlistSelector = React.memo(({
   const [activeFilters, setActiveFilters] = React.useState<ActiveFilters>({
     exchanges: [],
     markers: [],
-    sentiments: [],
-    refined: null
+    sentiments: []
   });
 
   const {
@@ -56,9 +54,7 @@ export const WatchlistSelector = React.memo(({
     availableExchanges,
     availableMarkers,
     totalCompanies,
-    getFilteredCompanies,
-    refinedFilter,
-    setRefinedFilter
+    getFilteredCompanies
   } = useWatchlist();
 
   // Get available sentiments (you might need to modify this based on your data)
@@ -80,12 +76,8 @@ export const WatchlistSelector = React.memo(({
       setActiveFilters({
         exchanges: [],
         markers: [],
-        sentiments: [],
-        refined: null
+        sentiments: []
       });
-      
-      // Reset refined filter in hook
-      setRefinedFilter(null);
       
       // ✅ Notify parent that company selection is cleared
       if (onCompanySelect) {
@@ -96,7 +88,7 @@ export const WatchlistSelector = React.memo(({
         onDateChange(dateStr);
       }
     }
-  }, [setSelectedDate, onDateChange, onCompanySelect, setRefinedFilter]);
+  }, [setSelectedDate, onDateChange, onCompanySelect]);
 
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
     console.log(`[WatchlistSelector] handleCompanySelect called with: ${companyCode}`);
@@ -136,10 +128,9 @@ export const WatchlistSelector = React.memo(({
 
     // Apply sentiment filter (assuming sentiment is a property of company)
     if (activeFilters.sentiments.length > 0) {
-      filtered = filtered.filter(company => {
-        const sentiment = (company as { sentiment?: string }).sentiment || 'neutral';
-        return activeFilters.sentiments.includes(sentiment);
-      });
+      filtered = filtered.filter(company => 
+        activeFilters.sentiments.includes((company as any).sentiment || 'neutral')
+      );
     }
 
     console.log(`[WatchlistSelector] Filtered companies: ${filtered.length} out of ${companies.length}`);
@@ -148,9 +139,7 @@ export const WatchlistSelector = React.memo(({
 
   const handleFiltersChange = React.useCallback((filters: ActiveFilters) => {
     setActiveFilters(filters);
-    // Update refined filter in the hook to trigger API call
-    setRefinedFilter(filters.refined);
-  }, [setRefinedFilter]);
+  }, []);
 
   const getActiveFilterCount = () => {
     return activeFilters.exchanges.length + activeFilters.markers.length + activeFilters.sentiments.length;

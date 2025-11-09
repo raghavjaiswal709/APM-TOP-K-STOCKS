@@ -38,14 +38,11 @@ export const WatchlistSelector = React.memo(({
     totalCompanies,
     getFilteredCompanies,
     showAllCompanies,
-    setShowAllCompanies,
-    refinedFilter,
-    setRefinedFilter
+    setShowAllCompanies
   } = useWatchlist();
 
   const [selectedExchange, setSelectedExchange] = React.useState<string>('');
   const [selectedMarker, setSelectedMarker] = React.useState<string>('');
-  const [selectedRefined, setSelectedRefined] = React.useState<string>('all');
   const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
 
   const handleDateSelect = React.useCallback((date: Date | undefined) => {
@@ -77,27 +74,14 @@ export const WatchlistSelector = React.memo(({
     // Reset filters when toggling
     setSelectedExchange('');
     setSelectedMarker('');
-    setSelectedRefined('all');
-    setRefinedFilter(null);
-  }, [setShowAllCompanies, setRefinedFilter]);
-
-  const handleRefinedChange = React.useCallback((value: string) => {
-    setSelectedRefined(value);
-    if (value === 'all') {
-      setRefinedFilter(null);
-    } else if (value === 'refined') {
-      setRefinedFilter(true);
-    } else if (value === 'non-refined') {
-      setRefinedFilter(false);
-    }
-  }, [setRefinedFilter]);
+  }, [setShowAllCompanies]);
 
   const filteredCompanies = React.useMemo(() => {
-    const filters: { exchange?: string; marker?: string; minValidDays?: number } = {};
+    const filters: any = {};
     if (selectedExchange) filters.exchange = selectedExchange;
     if (selectedMarker) filters.marker = selectedMarker;
     return getFilteredCompanies(filters);
-  }, [selectedExchange, selectedMarker, getFilteredCompanies]);
+  }, [companies, selectedExchange, selectedMarker, getFilteredCompanies]);
 
   const availableDateObjects = React.useMemo(() => 
     availableDates.map(d => new Date(d)),
@@ -193,18 +177,6 @@ export const WatchlistSelector = React.memo(({
               ))}
             </select>
           )}
-
-          {/* Refined Filter */}
-          <select
-            value={selectedRefined}
-            onChange={(e) => handleRefinedChange(e.target.value)}
-            className="px-3 py-2 text-sm border rounded-md bg-background"
-            disabled={showAllCompanies}
-          >
-            <option value="all">All Quality</option>
-            <option value="refined">Refined Only ({companies.filter(c => c.refined === true).length})</option>
-            <option value="non-refined">Non-Refined Only ({companies.filter(c => c.refined === false || !c.refined).length})</option>
-          </select>
 
           {filteredCompanies.length !== companies.length && (
             <div className="text-xs text-muted-foreground">

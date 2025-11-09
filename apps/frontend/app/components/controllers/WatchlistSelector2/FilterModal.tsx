@@ -17,7 +17,6 @@ interface ActiveFilters {
   exchanges: string[];
   markers: string[];
   sentiments: string[];
-  refined: boolean | null;
 }
 
 interface FilterModalProps {
@@ -60,7 +59,7 @@ export function FilterModal({
     }
   }, [isOpen, onClose]);
 
-  const handleFilterToggle = (filterType: 'exchanges' | 'markers' | 'sentiments', value: string) => {
+  const handleFilterToggle = (filterType: keyof ActiveFilters, value: string) => {
     setTempFilters(prev => {
       const currentValues = prev[filterType];
       const newValues = currentValues.includes(value)
@@ -74,13 +73,6 @@ export function FilterModal({
     });
   };
 
-  const handleRefinedToggle = (value: boolean | null) => {
-    setTempFilters(prev => ({
-      ...prev,
-      refined: value
-    }));
-  };
-
   const handleApply = () => {
     onFiltersChange(tempFilters);
     onClose();
@@ -90,8 +82,7 @@ export function FilterModal({
     const clearedFilters = {
       exchanges: [],
       markers: [],
-      sentiments: [],
-      refined: null
+      sentiments: []
     };
     setTempFilters(clearedFilters);
     onFiltersChange(clearedFilters);
@@ -104,7 +95,7 @@ export function FilterModal({
   };
 
   const getActiveFilterCount = () => {
-    return tempFilters.exchanges.length + tempFilters.markers.length + tempFilters.sentiments.length + (tempFilters.refined !== null ? 1 : 0);
+    return tempFilters.exchanges.length + tempFilters.markers.length + tempFilters.sentiments.length;
   };
 
   if (!isOpen) return null;
@@ -227,69 +218,6 @@ export function FilterModal({
                     )} />
                   </div>
                 ))}
-              </div>
-            </div>
-
-            {/* Refined Filter */}
-            <div className="space-y-3">
-              <h4 className="font-medium text-sm">Quality Filter</h4>
-              <div className="grid grid-cols-3 gap-2">
-                <div
-                  onClick={() => handleRefinedToggle(null)}
-                  className={cn(
-                    "flex items-center justify-center gap-2 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
-                    tempFilters.refined === null && "bg-accent border-primary"
-                  )}
-                >
-                  <div className={cn(
-                    "h-4 w-4 border rounded flex items-center justify-center",
-                    tempFilters.refined === null && "bg-primary border-primary"
-                  )}>
-                    {tempFilters.refined === null && (
-                      <Check className="h-3 w-3 text-primary-foreground" />
-                    )}
-                  </div>
-                  <span className="text-sm font-medium">All</span>
-                </div>
-                
-                <div
-                  onClick={() => handleRefinedToggle(true)}
-                  className={cn(
-                    "flex items-center justify-center gap-2 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
-                    tempFilters.refined === true && "bg-accent border-primary"
-                  )}
-                >
-                  <div className={cn(
-                    "h-4 w-4 border rounded flex items-center justify-center",
-                    tempFilters.refined === true && "bg-primary border-primary"
-                  )}>
-                    {tempFilters.refined === true && (
-                      <Check className="h-3 w-3 text-primary-foreground" />
-                    )}
-                  </div>
-                  <span className="text-sm font-medium">Refined</span>
-                </div>
-
-                <div
-                  onClick={() => handleRefinedToggle(false)}
-                  className={cn(
-                    "flex items-center justify-center gap-2 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
-                    tempFilters.refined === false && "bg-accent border-primary"
-                  )}
-                >
-                  <div className={cn(
-                    "h-4 w-4 border rounded flex items-center justify-center",
-                    tempFilters.refined === false && "bg-primary border-primary"
-                  )}>
-                    {tempFilters.refined === false && (
-                      <Check className="h-3 w-3 text-primary-foreground" />
-                    )}
-                  </div>
-                  <span className="text-sm font-medium">Non-Refined</span>
-                </div>
-              </div>
-              <div className="text-xs text-muted-foreground px-1">
-                Refined stocks are premium quality selections based on advanced analysis
               </div>
             </div>
           </CardContent>

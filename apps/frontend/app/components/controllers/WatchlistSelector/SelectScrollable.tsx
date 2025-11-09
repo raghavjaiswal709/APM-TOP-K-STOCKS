@@ -10,8 +10,7 @@ interface MergedCompany {
   company_code: string;
   name: string;
   exchange: string;
-  refined?: boolean;
-  marker?: string;
+  marker: string;
   total_valid_days?: number;
   avg_daily_high_low_range?: number;
   median_daily_volume?: number;

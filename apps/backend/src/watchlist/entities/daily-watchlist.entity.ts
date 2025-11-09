@@ -3,7 +3,6 @@ import { Entity, Column, PrimaryGeneratedColumn, Unique, Index, CreateDateColumn
 @Entity({ name: 'daily_watchlist', schema: 'public' })
 @Unique(['watchlistDate', 'companyId', 'companyCode', 'exchange'])
 @Index(['watchlistDate', 'companyId'])
-@Index(['watchlistDate', 'refined'])
 export class DailyWatchlist {
   @PrimaryGeneratedColumn({ name: 'watchlist_id' })
   watchlistId: number;
@@ -21,9 +20,6 @@ export class DailyWatchlist {
 
   @Column({ name: 'exchange', type: 'varchar', length: 10 })
   exchange: string;
-
-  @Column({ name: 'refined', type: 'boolean', default: false })
-  refined: boolean;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;

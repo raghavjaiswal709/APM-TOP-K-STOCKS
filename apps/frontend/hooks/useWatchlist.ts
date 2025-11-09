@@ -5,7 +5,6 @@ interface MergedCompany {
   company_code: string;
   name: string;
   exchange: string;
-  refined?: boolean;
   marker?: string;
   total_valid_days?: number;
   avg_daily_high_low_range?: number;
@@ -27,7 +26,6 @@ interface WatchlistResponse {
 interface UseWatchlistOptions {
   date?: string;
   showAllCompanies?: boolean;
-  refinedFilter?: boolean | null;
 }
 
 export function useWatchlist(options: UseWatchlistOptions = {}) {
@@ -43,7 +41,6 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
   const [totalCompanies, setTotalCompanies] = useState(0);
   const [availableMarkers, setAvailableMarkers] = useState<string[]>([]);
   const [showAllCompanies, setShowAllCompanies] = useState(options.showAllCompanies || false);
-  const [refinedFilter, setRefinedFilter] = useState<boolean | null>(options.refinedFilter !== undefined ? options.refinedFilter : null);
   
   const activeDate = options.date || selectedDate;
 
@@ -87,13 +84,8 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
         } else {
           // Fetch date-specific companies
           const dateParam = activeDate || new Date().toISOString().split('T')[0];
-          console.log(`[useWatchlist] Fetching watchlist for date: ${dateParam}, refined: ${refinedFilter}`);
-          
-          // Build URL with refined parameter
+          console.log(`[useWatchlist] Fetching watchlist for date: ${dateParam}`);
           apiUrl = `${BASE_URL}/api/watchlist?date=${dateParam}`;
-          if (refinedFilter !== null && refinedFilter !== undefined) {
-            apiUrl += `&refined=${refinedFilter}`;
-          }
         }
         
         console.log(`[useWatchlist] Fetching from: ${apiUrl}`);
@@ -170,7 +162,7 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
     return () => {
       isCancelled = true;
     };
-  }, [activeDate, BASE_URL, showAllCompanies, availableDates.length, refinedFilter]);
+  }, [activeDate, BASE_URL, showAllCompanies, availableDates.length]);
 
   const getFilteredCompanies = useCallback((filters: {
     exchange?: string;
@@ -204,8 +196,6 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
     totalCompanies,
     getFilteredCompanies,
     showAllCompanies,
-    setShowAllCompanies,
-    refinedFilter,
-    setRefinedFilter
+    setShowAllCompanies
   };
 }
