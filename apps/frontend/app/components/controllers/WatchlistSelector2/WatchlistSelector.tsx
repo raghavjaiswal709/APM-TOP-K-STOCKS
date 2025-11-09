@@ -56,8 +56,8 @@ export const WatchlistSelector = React.memo(({
     availableExchanges,
     availableMarkers,
     totalCompanies,
-    getFilteredCompanies,
-    refinedFilter,
+    showAllCompanies,
+    setShowAllCompanies,
     setRefinedFilter
   } = useWatchlist();
 
@@ -272,6 +272,8 @@ export const WatchlistSelector = React.memo(({
         onFiltersChange={handleFiltersChange}
         totalCompanies={companies.length}
         filteredCount={filteredCompanies.length}
+        showAllCompanies={showAllCompanies}
+        onShowAllCompaniesChange={setShowAllCompanies}
       />
     </div>
   );

@@ -10,13 +10,11 @@ import { cn } from "@/lib/utils"
 interface FilterOptions {
   exchanges: string[];
   markers: string[];
-  sentiments: string[];
 }
 
 interface ActiveFilters {
   exchanges: string[];
   markers: string[];
-  sentiments: string[];
   refined: boolean | null;
 }
 
@@ -66,7 +64,7 @@ export function FilterModal({
     }
   }, [isOpen, onClose]);
 
-  const handleFilterToggle = (filterType: 'exchanges' | 'markers' | 'sentiments', value: string) => {
+  const handleFilterToggle = (filterType: 'exchanges' | 'markers', value: string) => {
     setTempFilters(prev => {
       const currentValues = prev[filterType];
       const newValues = currentValues.includes(value)
@@ -97,7 +95,6 @@ export function FilterModal({
     const clearedFilters = {
       exchanges: [],
       markers: [],
-      sentiments: [],
       refined: null
     };
     setTempFilters(clearedFilters);
@@ -114,7 +111,7 @@ export function FilterModal({
   };
 
   const getActiveFilterCount = () => {
-    return tempFilters.exchanges.length + tempFilters.markers.length + tempFilters.sentiments.length + (tempFilters.refined !== null ? 1 : 0);
+    return tempFilters.exchanges.length + tempFilters.markers.length + (tempFilters.refined !== null ? 1 : 0);
   };
 
   if (!isOpen) return null;
@@ -175,9 +172,9 @@ export function FilterModal({
               </div>
             </div>
 
-            {/* Exchange Filter */}
+            {/* NSE Exchange Filter */}
             <div className="space-y-3">
-              <h4 className="font-medium text-sm">Exchange</h4>
+              <h4 className="font-medium text-sm">NSE Exchange</h4>
               <div className="grid grid-cols-2 gap-2">
                 {filterOptions.exchanges.map(exchange => (
                   <div
@@ -233,43 +230,9 @@ export function FilterModal({
               </div>
             )}
 
-            {/* Sentiment Filter */}
+            {/* Quality Filter (Refined) */}
             <div className="space-y-3">
-              <h4 className="font-medium text-sm">Sentiment</h4>
-              <div className="grid grid-cols-2 gap-2">
-                {filterOptions.sentiments.map(sentiment => (
-                  <div
-                    key={sentiment}
-                    onClick={() => !tempShowAll && handleFilterToggle('sentiments', sentiment)}
-                    className={cn(
-                      "flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
-                      tempFilters.sentiments.includes(sentiment) && "bg-accent border-primary",
-                      tempShowAll && "opacity-50 cursor-not-allowed"
-                    )}
-                  >
-                    <div className={cn(
-                      "h-4 w-4 border rounded flex items-center justify-center",
-                      tempFilters.sentiments.includes(sentiment) && "bg-primary border-primary"
-                    )}>
-                      {tempFilters.sentiments.includes(sentiment) && (
-                        <Check className="h-3 w-3 text-primary-foreground" />
-                      )}
-                    </div>
-                    <span className="text-sm capitalize">{sentiment}</span>
-                    <div className={cn(
-                      "ml-auto w-2 h-2 rounded-full",
-                      sentiment === 'positive' && "bg-green-500",
-                      sentiment === 'negative' && "bg-red-500",
-                      sentiment === 'neutral' && "bg-gray-500"
-                    )} />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Refined Filter */}
-            <div className="space-y-3">
-              <h4 className="font-medium text-sm">Quality Filter</h4>
+              <h4 className="font-medium text-sm">Quality Selector</h4>
               <div className="grid grid-cols-3 gap-2">
                 <div
                   onClick={() => !tempShowAll && handleRefinedToggle(null)}
