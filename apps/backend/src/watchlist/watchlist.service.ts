@@ -11,6 +11,7 @@ export interface MergedCompany {
   company_code: string;
   name: string;
   exchange: string;
+  refined?: boolean;
   total_valid_days?: number;
   marker?: string;
   avg_daily_high_low_range?: number;
@@ -58,15 +59,21 @@ export class WatchlistService {
   /**
    * Get watchlist companies for a specific date with merged metrics
    */
-  async getWatchlistData(date?: string): Promise<MergedCompany[]> {
+  async getWatchlistData(date?: string, refinedFilter?: boolean): Promise<MergedCompany[]> {
     const targetDate = date ? moment(date).format('YYYY-MM-DD') : moment().format('YYYY-MM-DD');
     
     try {
-      this.logger.log(`Fetching watchlist for date ${targetDate}`);
+      this.logger.log(`Fetching watchlist for date ${targetDate}, refined filter: ${refinedFilter}`);
+
+      // Build where clause with optional refined filter
+      const whereClause: any = { watchlistDate: new Date(targetDate) };
+      if (refinedFilter !== undefined) {
+        whereClause.refined = refinedFilter;
+      }
 
       // Get watchlist entries for the date
       let watchlistEntries = await this.dailyWatchlistRepository.find({
-        where: { watchlistDate: new Date(targetDate) }
+        where: whereClause
       });
 
       // If no data, try fallback dates
@@ -75,8 +82,13 @@ export class WatchlistService {
         const fallbackDates = this.generateFallbackDates(targetDate);
         
         for (const fallbackDate of fallbackDates) {
+          const fallbackWhereClause: any = { watchlistDate: new Date(fallbackDate) };
+          if (refinedFilter !== undefined) {
+            fallbackWhereClause.refined = refinedFilter;
+          }
+          
           watchlistEntries = await this.dailyWatchlistRepository.find({
-            where: { watchlistDate: new Date(fallbackDate) }
+            where: fallbackWhereClause
           });
 
           if (watchlistEntries.length > 0) {
@@ -117,6 +129,7 @@ export class WatchlistService {
           company_code: company?.companyCode || entry.companyCode,
           name: company?.name || entry.companyCode,
           exchange: entry.exchange,
+          refined: entry.refined,
           total_valid_days: metric?.totalValidDays,
           avg_daily_high_low_range: metric?.avgDailyHighLowRange,
           median_daily_volume: metric?.medianDailyVolume,
@@ -128,7 +141,7 @@ export class WatchlistService {
         };
       });
 
-      this.logger.log(`Successfully merged ${mergedData.length} companies`);
+      this.logger.log(`Successfully merged ${mergedData.length} companies (refined filter: ${refinedFilter !== undefined ? refinedFilter : 'ALL'})`);
       return mergedData.sort((a, b) => a.name.localeCompare(b.name));
 
     } catch (error) {
@@ -138,10 +151,14 @@ export class WatchlistService {
   }
 
   /**
-   * Get companies with exchange filter
+   * Get companies with exchange and refined filter
    */
-  async getAllCompaniesWithExchange(date?: string, exchange?: string): Promise<MergedCompany[]> {
-    const companies = await this.getWatchlistData(date);
+  async getAllCompaniesWithExchange(
+    date?: string,
+    exchange?: string,
+    refinedFilter?: boolean,
+  ): Promise<MergedCompany[]> {
+    const companies = await this.getWatchlistData(date, refinedFilter);
     
     if (!exchange) return companies;
 
