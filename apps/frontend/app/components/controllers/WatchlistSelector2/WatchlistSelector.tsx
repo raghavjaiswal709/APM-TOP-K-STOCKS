@@ -147,6 +147,8 @@ export const WatchlistSelector = React.memo(({
   }, [companies, activeFilters]);
 
   const handleFiltersChange = React.useCallback((filters: ActiveFilters) => {
+    console.log(`[WatchlistSelector] Filters changed:`, filters);
+    console.log(`[WatchlistSelector] Refined filter set to: ${filters.refined}`);
     setActiveFilters(filters);
     // Update refined filter in the hook to trigger API call
     setRefinedFilter(filters.refined);

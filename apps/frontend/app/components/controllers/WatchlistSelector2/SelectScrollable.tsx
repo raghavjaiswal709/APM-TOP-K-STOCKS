@@ -42,6 +42,13 @@ export function SelectScrollable({
     setMounted(true)
   }, [])
 
+  // Debug: Log when companies prop changes
+  React.useEffect(() => {
+    if (mounted) {
+      console.log(`[SelectScrollable] Companies prop updated - count: ${companies.length}`);
+    }
+  }, [companies, mounted])
+
   // ✅ IMPROVED: Only reset when companies array becomes empty or drastically changes
   // This prevents unwanted resets when filters are applied
   React.useEffect(() => {

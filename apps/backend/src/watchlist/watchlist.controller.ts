@@ -17,19 +17,34 @@ export class WatchlistController {
 
   /**
    * Get watchlist companies
-   * GET /api/watchlist?date=YYYY-MM-DD&exchange=NSE,BSE
+   * GET /api/watchlist?date=YYYY-MM-DD&exchange=NSE,BSE&refined=true
    * 
-   * Note: Since your DB doesn't have A/B/C concept, we removed that parameter
+   * @param date - The date to fetch watchlist for (YYYY-MM-DD)
+   * @param exchange - Comma-separated list of exchanges (e.g., 'NSE,BSE')
+   * @param refined - Filter by refined status: 'true' for refined only, 'false' for non-refined only, undefined for all
    */
   @Get()
   async getWatchlist(
     @Query('date') date?: string,
     @Query('exchange') exchange?: string,
+    @Query('refined') refinedParam?: string,
   ): Promise<{ companies: MergedCompany[], exists: boolean, total: number, date: string }> {
     try {
-      const companies = await this.watchlistService.getAllCompaniesWithExchange(date, exchange);
+      // Parse refined parameter: 'true' -> true, 'false' -> false, undefined/other -> undefined
+      let refinedFilter: boolean | undefined;
+      if (refinedParam === 'true') {
+        refinedFilter = true;
+      } else if (refinedParam === 'false') {
+        refinedFilter = false;
+      }
       
-      console.log(`Retrieved ${companies.length} companies for exchanges: ${exchange || 'ALL'}`);
+      const companies = await this.watchlistService.getAllCompaniesWithExchange(
+        date, 
+        exchange, 
+        refinedFilter
+      );
+      
+      console.log(`Retrieved ${companies.length} companies for exchanges: ${exchange || 'ALL'}, refined: ${refinedFilter !== undefined ? refinedFilter : 'ALL'}`);
       return { 
         companies, 
         exists: true, 
