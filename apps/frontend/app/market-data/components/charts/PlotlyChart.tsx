@@ -6,6 +6,53 @@ import { ChevronRight, TrendingUp, BarChart3, LineChart, CandlestickChart, Arrow
 // Add Plotly import for restyle operations
 declare const Plotly: any;
 
+// ============ CONFIGURATION CONSTANTS ============
+// Time Range & Buffer Constants
+const FUTURE_BUFFER_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
+const PREDICTION_EXTENSION_MS = 5 * 60 * 1000; // 5 minutes extension for predictions
+
+// Y-Axis Padding Constants
+const Y_AXIS_BASE_PADDING = 0.10; // 10% base padding
+const Y_AXIS_TOP_MULTIPLIER = 1.2; // 20% extra padding at top for predictions
+
+// Timeframe Duration Constants (in milliseconds)
+const TIMEFRAME_DURATIONS = {
+  '1m': 1 * 60 * 1000,
+  '5m': 5 * 60 * 1000,
+  '10m': 10 * 60 * 1000,
+  '15m': 15 * 60 * 1000,
+  '30m': 30 * 60 * 1000,
+  '1h': 60 * 60 * 1000,
+  '1H': 60 * 60 * 1000,
+  '6H': 6 * 60 * 60 * 1000,
+  '12H': 12 * 60 * 60 * 1000,
+  '1d': 24 * 60 * 60 * 1000,
+  '1D': 24 * 60 * 60 * 1000,
+  'default': 60 * 60 * 1000, // 1 hour
+} as const;
+
+// Trading Day Constants (for 1D view)
+const TRADING_DAY_START_HOUR = 9;
+const TRADING_DAY_START_MINUTE = 15;
+const TRADING_DAY_END_HOUR = 15;
+const TRADING_DAY_END_MINUTE = 30;
+
+// Technical Indicator Constants
+const SMA_PERIOD = 20;
+const EMA_PERIOD = 9;
+const RSI_PERIOD = 14;
+const VOLUME_STD_DEV_WINDOW = 20;
+
+// Chart Display Constants
+const CHART_HEIGHT = 600;
+const SECONDARY_CHART_HEIGHT = 300;
+const FONT_SIZE_TITLE = 14;
+const FONT_SIZE_AXIS = 12;
+const LINE_WIDTH = 2;
+const CANDLESTICK_WIDTH = 0.8;
+
+// ============ END CONSTANTS ============
+
 interface DataPoint {
   ltp: number;
   timestamp: number;
@@ -302,34 +349,41 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
   // ============ ENHANCED: prepareLineChartData with chartUpdates integration ============
   const prepareLineChartData = () => {
-    const allData = [...historicalData];
+    // ✅ FIX: Use Map for automatic deduplication by timestamp
+    const dataMap = new Map<number, DataPoint>();
+    
+    // Add historical data
+    historicalData.forEach(point => {
+      if (point.ltp > 0 && !isNaN(point.ltp) && point.timestamp > 0) {
+        dataMap.set(point.timestamp, point);
+      }
+    });
 
     // ✨ ENHANCED: Merge chart updates for ultra-smooth line
     if (chartUpdates && chartUpdates.length > 0) {
-      const latestHistoricalTime = historicalData.length > 0 ? 
-        historicalData[historicalData.length - 1].timestamp : 0;
-
-      // Add chart updates that are newer than historical data
-      const recentUpdates = chartUpdates
-        .filter(update => update.timestamp > latestHistoricalTime)
-        .map(update => ({
-          symbol: update.symbol,
-          ltp: update.price,
-          timestamp: update.timestamp,
-          volume: update.volume,
-          change: update.change,
-          changePercent: update.changePercent
-        }));
-
-      allData.push(...recentUpdates);
-    } else if (data && data.ltp) {
-      const lastPoint = historicalData.length > 0 ? historicalData[historicalData.length - 1] : null;
-      if (!lastPoint || lastPoint.timestamp !== data.timestamp) {
-        allData.push(data);
+      chartUpdates.forEach(update => {
+        if (!dataMap.has(update.timestamp)) {
+          dataMap.set(update.timestamp, {
+            symbol: update.symbol,
+            ltp: update.price,
+            timestamp: update.timestamp,
+            volume: update.volume,
+            change: update.change,
+            changePercent: update.changePercent
+          } as DataPoint);
+        }
+      });
+    }
+    
+    // Add current data point if not already in map
+    if (data && data.ltp && data.ltp > 0 && !isNaN(data.ltp)) {
+      if (!dataMap.has(data.timestamp)) {
+        dataMap.set(data.timestamp, data);
       }
     }
 
-    allData.sort((a, b) => a.timestamp - b.timestamp);
+    // Convert to array and sort
+    const allData = Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 
     const x = allData.map(point => new Date(point.timestamp * 1000));
     const y = allData.map(point => point.ltp);
@@ -559,7 +613,17 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       return { x: [], open: [], high: [], low: [], close: [], volume: [], volumeStdDev: [], buyVolumes: [], sellVolumes: [], buyPrices: [], sellPrices: [], buySellSpreads: [] };
     }
 
-    const sortedData = [...validOhlcData].sort((a, b) => a.timestamp - b.timestamp);
+    // ✅ FIX: Deduplicate by timestamp (prevents double rendering)
+    const uniqueData = new Map<number, OHLCPoint>();
+    validOhlcData.forEach(candle => {
+      const existing = uniqueData.get(candle.timestamp);
+      // Keep the latest candle if there are duplicates
+      if (!existing || existing.timestamp <= candle.timestamp) {
+        uniqueData.set(candle.timestamp, candle);
+      }
+    });
+    
+    const sortedData = Array.from(uniqueData.values()).sort((a, b) => a.timestamp - b.timestamp);
     const buyVolumes = sortedData.map(candle => calculateBuySellVolume(candle).buyVolume);
     const sellVolumes = sortedData.map(candle => calculateBuySellVolume(candle).sellVolume);
     const volumeStdDev = sortedData.map((candle, index) => 
@@ -603,25 +667,23 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const endTime = new Date(timeRange[1]).getTime() / 1000;
 
     let allPrices: number[] = [];
-    let historicalPrices: number[] = [];
-    let predictionPrices: number[] = [];
 
     if (chartType === 'line') {
       if (historicalData.length === 0) return undefined;
       
-      // ✅ Use ALL data points within the time range (NO sliding window)
+      // ✅ Use ALL data points within the time range
       const validData = historicalData.filter(
         point => point.timestamp >= startTime && point.timestamp <= endTime
       );
       
       if (validData.length > 0) {
-        historicalPrices = validData.map(point => point.ltp).filter(p => p !== null && p !== undefined);
+        const historicalPrices = validData.map(point => point.ltp).filter(p => p !== null && p !== undefined);
         allPrices.push(...historicalPrices);
       }
     } else {
       if (!ohlcData || ohlcData.length === 0) return undefined;
       
-      // ✅ Use ALL candles within the time range (NO sliding window)
+      // ✅ Use ALL candles within the time range
       const validCandles = ohlcData.filter(
         candle => candle.timestamp >= startTime && candle.timestamp <= endTime
       );
@@ -633,8 +695,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         );
         const highPrices = filteredCandles.map(candle => Number(candle.high));
         const lowPrices = filteredCandles.map(candle => Number(candle.low));
-        historicalPrices = [...highPrices, ...lowPrices];
-        allPrices.push(...historicalPrices);
+        allPrices.push(...highPrices, ...lowPrices);
       }
     }
 
@@ -642,7 +703,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     if (showPredictions && predictions && predictions.count > 0) {
       const predictionEntries = Object.entries(predictions.predictions);
       
-      predictionPrices = predictionEntries
+      const predictionPrices = predictionEntries
         .map(([key, pred]) => {
           const predTime = new Date(pred.timestamp || key).getTime() / 1000;
           if (predTime >= startTime && predTime <= endTime) {
@@ -663,11 +724,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const maxPrice = Math.max(...allPrices);
     const range = maxPrice - minPrice;
     
-    // ✅ Use 8% padding for better visibility
-    const padding = range * 0.08;
+    // ✅ Extra padding for future buffer zone (top and bottom)
+    const padding = range * Y_AXIS_BASE_PADDING;
     
     const yMin = minPrice - padding;
-    const yMax = maxPrice + padding;
+    const yMax = maxPrice + padding * Y_AXIS_TOP_MULTIPLIER; // Extra padding at top for predictions
     
     return [yMin, yMax];
   };
@@ -764,82 +825,100 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const dataToUse = chartType === 'line' ? historicalData : ohlcData;
     if (!dataToUse || dataToUse.length === 0) return undefined;
 
-    // ✅ Use actual data timestamps (not "now" based calculations)
+    // ✅ STEP 1: Find "now" (latest data timestamp or current time)
     const timestamps = dataToUse.map(d => d.timestamp);
-    const minDataTime = Math.min(...timestamps);
-    const maxDataTime = Math.max(...timestamps);
+    const nowTimestamp = Math.max(...timestamps); // Latest data point = "now"
+    const now = new Date(nowTimestamp * 1000);
+    const currentTime = new Date(); // Actual current time
     
-    const startDate = new Date(minDataTime * 1000);
-    let endDate = new Date(maxDataTime * 1000);
-
-    // ✅ CRITICAL: Extend range to include ALL predictions
+    let startTime: Date;
+    let endTime: Date;
+    
+    // ✅ SPECIAL CASE: 1D = Trading Day (9:15 AM to 3:30 PM)
+    if (selectedTimeframe === '1D' || selectedTimeframe === '1d') {
+      // Set to today's trading hours
+      const today = new Date();
+      
+      // Trading start: 9:15 AM today
+      startTime = new Date(today);
+      startTime.setHours(TRADING_DAY_START_HOUR, TRADING_DAY_START_MINUTE, 0, 0);
+      
+      // Trading end: 3:30 PM today + 15 min buffer
+      endTime = new Date(today);
+      endTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE + 15, 0, 0);
+      
+      console.log('📅 [1D MODE] Trading Day Range:', {
+        startTime: startTime.toLocaleTimeString(),
+        endTime: endTime.toLocaleTimeString(),
+        duration: '6h 30min trading day'
+      });
+      
+    } else {
+      // ✅ STEP 2: Calculate start time based on selected timeframe
+      // Format: [now - X, now + 15m] where X is the timeframe duration
+      
+      // Use constant lookup for known timeframes
+      const duration = TIMEFRAME_DURATIONS[selectedTimeframe as keyof typeof TIMEFRAME_DURATIONS];
+      
+      if (duration) {
+        // ✅ CRITICAL FIX: For 6H, 12H - use current time, NOT data timestamp
+        // This ensures we ALWAYS show the full duration back from NOW
+        if (selectedTimeframe === '6H' || selectedTimeframe === '12H') {
+          startTime = new Date(currentTime.getTime() - duration);
+          endTime = new Date(currentTime.getTime() + FUTURE_BUFFER_MS);
+          
+          console.log(`⏰ [${selectedTimeframe} MODE] Fixed Duration from Current Time:`, {
+            currentTime: currentTime.toLocaleTimeString(),
+            startTime: startTime.toLocaleTimeString(),
+            endTime: endTime.toLocaleTimeString(),
+            hoursBack: duration / (60 * 60 * 1000)
+          });
+        } else {
+          // For shorter timeframes, use latest data point as "now"
+          startTime = new Date(now.getTime() - duration);
+          endTime = new Date(now.getTime() + FUTURE_BUFFER_MS);
+        }
+      } else {
+        // For "ALL" or unrecognized timeframes, use earliest data point
+        startTime = new Date(Math.min(...timestamps) * 1000);
+        endTime = new Date(now.getTime() + FUTURE_BUFFER_MS);
+      }
+    }
+    
+    // ✅ STEP 3: Extend end time if predictions go beyond the buffer
     if (showPredictions && predictions && predictions.count > 0) {
       const predictionEntries = Object.entries(predictions.predictions);
       if (predictionEntries.length > 0) {
-        const predictionTimes = predictionEntries.map(([key, pred]) => 
-          new Date(pred.timestamp || key).getTime() / 1000
+        const predictionTimes = predictionEntries.map(([key, pred]) =>
+          new Date(pred.timestamp || key).getTime()
         );
         const maxPredTime = Math.max(...predictionTimes);
-        const minPredTime = Math.min(...predictionTimes);
         
-        // Extend BOTH start and end if needed
-        const maxPredDate = new Date(maxPredTime * 1000);
-        const minPredDate = new Date(minPredTime * 1000);
-        
-        if (maxPredDate > endDate) {
-          endDate = maxPredDate;
+        // Only extend if predictions go beyond our current end time
+        if (maxPredTime > endTime.getTime()) {
+          endTime = new Date(maxPredTime + PREDICTION_EXTENSION_MS);
         }
       }
     }
-
-    // ✅ CRITICAL FIX: Apply timeframe filtering based on LATEST data timestamp, not stale 'data'
-    // Get the most recent timestamp from historical data OR current data
-    const latestHistoricalTime = historicalData.length > 0 
-      ? Math.max(...historicalData.map(p => p.timestamp))
-      : (data?.timestamp || Date.now() / 1000);
     
-    const now = new Date(latestHistoricalTime * 1000);
-    let filteredStart = startDate;
-    
-    switch (selectedTimeframe) {
-      case '1m':
-        filteredStart = new Date(now.getTime() - 1 * 60 * 1000);
-        break;
-      case '5m':
-        filteredStart = new Date(now.getTime() - 5 * 60 * 1000);
-        break;
-      case '10m':
-        filteredStart = new Date(now.getTime() - 10 * 60 * 1000);
-        break;
-      case '30m':
-        filteredStart = new Date(now.getTime() - 30 * 60 * 1000);
-        break;
-      case '1H':
-        filteredStart = new Date(now.getTime() - 60 * 60 * 1000);
-        break;
-      case '6H':
-        filteredStart = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-        break;
-      case '12H':
-        filteredStart = new Date(now.getTime() - 12 * 60 * 60 * 1000);
-        break;
-      case '1D':
-      default:
-        filteredStart = startDate;
+    // ✅ STEP 4: For shorter timeframes (NOT 6H, 12H, 1D), limit to available data
+    if (selectedTimeframe !== '6H' && selectedTimeframe !== '12H' && 
+        selectedTimeframe !== '1D' && selectedTimeframe !== '1d') {
+      const minDataTime = new Date(Math.min(...timestamps) * 1000);
+      if (startTime < minDataTime) {
+        startTime = minDataTime;
+      }
     }
     
-    // Use the later of filtered start or actual data start
-    const finalStart = filteredStart > startDate ? filteredStart : startDate;
-    
-    console.log('⏱️ [TIMEFRAME] Filtering:', {
+    console.log('⏱️ [TIMEFRAME] Time Range Calculated:', {
       selectedTimeframe,
-      latestDataTime: now.toLocaleTimeString(),
-      filteredStart: filteredStart.toLocaleTimeString(),
-      finalStart: finalStart.toLocaleTimeString(),
-      endDate: endDate.toLocaleTimeString()
+      startTime: startTime.toLocaleTimeString(),
+      endTime: endTime.toLocaleTimeString(),
+      duration: `${((endTime.getTime() - startTime.getTime()) / 60000).toFixed(1)} minutes`,
+      futureBuffer: `${((endTime.getTime() - now.getTime()) / 60000).toFixed(1)} minutes`
     });
     
-    return [finalStart, endDate];
+    return [startTime, endTime];
   };
 
   const getColorTheme = () => {
@@ -1141,37 +1220,40 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
   };
 
+  // ============ PERFORMANCE: Cache prepared data to prevent recalculation ============
+  const lineChartDataRef = useRef<ReturnType<typeof prepareLineChartData> | null>(null);
+  const candlestickDataRef = useRef<ReturnType<typeof prepareCandlestickData> | null>(null);
+
+  // Only recalculate when underlying data changes
+  if (chartType === 'line' && (
+    historicalData.length > 0 || 
+    (chartUpdates && chartUpdates.length > 0) ||
+    data?.ltp
+  )) {
+    lineChartDataRef.current = prepareLineChartData();
+  }
+
+  if (chartType === 'candle' && ohlcData.length > 0) {
+    candlestickDataRef.current = prepareCandlestickData();
+  }
+
+  const lineChartData = lineChartDataRef.current;
+  const candlestickData = candlestickDataRef.current;
+
   // ============ ENHANCED: Stable chart rendering with state preservation ============
   useEffect(() => {
-    console.log('🔄 [CHART UPDATE] useEffect triggered:', {
-      hasPredictions: !!predictions,
-      predictionsCount: predictions?.count || 0,
-      showPredictions,
-      historicalDataPoints: historicalData.length,
-      selectedTimeframe,
-      isUpdating,
-      userHasInteracted
-    });
-
-    if (!chartRef.current) return;
-    const plotDiv = document.getElementById('plotly-chart');
-    if (!plotDiv) return;
-
-    if (!initialized) {
-      setInitialized(true);
+    if (!chartRef.current || !initialized) {
+      if (!initialized) setInitialized(true);
       return;
     }
-
-    // ❌ CRITICAL FIX: Remove isUpdating block - it prevents ALL updates including predictions!
-    // Only skip if explicitly updating (not just from prediction changes)
-    // if (isUpdating) {
-    //   return;
-    // }
+    
+    const plotDiv = document.getElementById('plotly-chart');
+    if (!plotDiv) return;
 
     try {
       const layout = createLayout();
       
-      // ✅ CRITICAL: Preserve user's zoom/pan state during prediction updates
+      // ✅ Preserve user's zoom/pan state during prediction updates
       if (userHasInteracted && (preservedRange.xaxis || preservedRange.yaxis)) {
         if (preservedRange.xaxis) {
           layout.xaxis.range = preservedRange.xaxis;
@@ -1183,27 +1265,22 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         }
       }
       
-      // ✅ Use consistent uirevision to preserve zoom/pan
-      layout.uirevision = 'preserve-zoom-v1';
-      
       if (chartType === 'line') {
-        const { x, y } = prepareLineChartData();
-        if (x.length === 0 || y.length === 0) return;
+        if (!lineChartData || lineChartData.x.length === 0) return;
         if (typeof Plotly !== 'undefined' && Plotly.react) {
           Plotly.react(plotDiv, createPlotData(), layout);
         }
       } else {
-        const { x, open, high, low, close } = prepareCandlestickData();
-        if (x.length === 0) return;
+        if (!candlestickData || candlestickData.x.length === 0) return;
         if (typeof Plotly !== 'undefined' && Plotly.react) {
           Plotly.react(plotDiv, createPlotData(), layout);
         }
       }
 
+      // Update secondary charts
       if (mainMode === 'bidAsk' && secondaryView === 'line') {
         const bidAskDiv = document.getElementById('bid-ask-chart');
         if (bidAskDiv && typeof Plotly !== 'undefined') {
-          const { x, bid, ask } = prepareLineChartData();
           Plotly.react(bidAskDiv, createBidAskData(), createBidAskLayout());
         }
       }
@@ -1211,7 +1288,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       if (mainMode === 'bidAsk' && secondaryView === 'spread') {
         const spreadDiv = document.getElementById('spread-chart');
         if (spreadDiv && typeof Plotly !== 'undefined') {
-          const { x, spread } = prepareLineChartData();
           Plotly.react(spreadDiv, createSpreadData(), createSpreadLayout());
         }
       }
@@ -1246,7 +1322,21 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     } catch (err) {
       console.error('Error updating chart:', err);
     }
-  }, [data, historicalData, ohlcData, predictionKey, showPredictions, predictionRevision, initialized, selectedTimeframe, chartType, showIndicators, mainMode, secondaryView, userHasInteracted, preservedRange]);
+  }, [
+    predictionKey, 
+    showPredictions, 
+    predictionRevision, 
+    initialized, 
+    selectedTimeframe, 
+    chartType, 
+    showIndicators, 
+    mainMode, 
+    secondaryView, 
+    userHasInteracted, 
+    preservedRange,
+    lineChartData,
+    candlestickData
+  ]);
 
   // 🔀 CREATE ACTUAL DATA ONLY (No predictions for separator modal left side)
   const createActualDataOnly = () => {
@@ -2364,7 +2454,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
     const layout: any = {
       autosize: true,
-      uirevision: 'static', // 🔥 KEY: Preserve zoom/pan state across updates
+      // ✅ FIX: Dynamic uirevision to force update when predictions change
+      uirevision: showPredictions ? `pred-rev-${predictionRevision}` : 'static',
       margin: { l: 50, r: 50, t: 40, b: 40 },
       title: {
         text: `${symbol} ${chartType === 'line' ? 'LTP' : 'OHLC'} Chart`,

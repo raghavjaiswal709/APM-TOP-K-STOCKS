@@ -88,8 +88,10 @@ export const usePredictionPolling = (config: PollingConfig) => {
    * Update countdown timer every second
    */
   const startCountdown = useCallback(() => {
+    // ✅ FIX: Clear existing interval and null out ref
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
     }
 
     const updateCountdown = () => {
@@ -100,6 +102,42 @@ export const usePredictionPolling = (config: PollingConfig) => {
     updateCountdown(); // Initial update
     countdownIntervalRef.current = setInterval(updateCountdown, 1000);
   }, []);
+
+  // ✅ FIX: Use refs to avoid stale closures and circular dependencies
+  const onUpdateRef = useRef(onUpdate);
+  const onErrorRef = useRef(onError);
+  const errorRef = useRef(error);
+  const fetchAtSyncTimeRef = useRef<() => Promise<void>>(async () => {});
+  
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+    onErrorRef.current = onError;
+    errorRef.current = error;
+  }, [onUpdate, onError, error]);
+
+  /**
+   * Schedule fetch at next 5-minute interval
+   */
+  const scheduleNextSync = useCallback(() => {
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = null; // ✅ FIX: Explicitly null out
+    }
+
+    const timeUntilNext = getTimeUntilNextSync();
+    const nextTime = getNextSyncTime();
+    
+    setNextPollTime(nextTime);
+    
+    console.log(`⏰ [SYNC] Next poll scheduled for: ${nextTime.toLocaleTimeString()} (in ${Math.round(timeUntilNext / 1000)}s)`);
+    
+    syncTimeoutRef.current = setTimeout(() => {
+      fetchAtSyncTimeRef.current?.();
+    }, timeUntilNext);
+
+    // Start countdown timer
+    startCountdown();
+  }, [startCountdown]);
 
   /**
    * Fetch predictions at synchronized time with stability optimization
@@ -123,16 +161,18 @@ export const usePredictionPolling = (config: PollingConfig) => {
     // Fetch fresh data
     const freshData = await refetch();
     if (freshData) {
-      // ✅ CRITICAL FIX: ALWAYS update poll count and trigger callbacks
-      // Even if data is identical, the chart needs to know a refresh happened
-      const dataChanged = !cachedData || JSON.stringify(freshData) !== JSON.stringify(cachedData);
+      // ✅ PERFORMANCE FIX: Replace JSON.stringify with metadata comparison
+      const dataChanged = !cachedData || 
+                          cachedData.count !== freshData.count ||
+                          cachedData.starttime !== freshData.starttime ||
+                          cachedData.endtime !== freshData.endtime;
       
       // ALWAYS update poll metadata
       setPollCount(currentPollCount);
       lastPollRef.current = now;
       
       if (dataChanged) {
-        onUpdate?.(freshData);
+        onUpdateRef.current?.(freshData);
         
         const predictions = Object.values(freshData.predictions);
         if (predictions.length > 0) {
@@ -143,39 +183,21 @@ export const usePredictionPolling = (config: PollingConfig) => {
       } else {
         // Data identical BUT still notify (chart might need to update timer, etc.)
         console.log(`ℹ️ [SYNC] Poll #${currentPollCount} - Data unchanged but poll count updated`);
-        onUpdate?.(freshData); // ✅ CRITICAL: Call onUpdate even if data unchanged
+        onUpdateRef.current?.(freshData); // ✅ CRITICAL: Call onUpdate even if data unchanged
       }
     } else {
-      console.error(`❌ [SYNC] Poll #${currentPollCount} failed:`, error);
-      onError?.(error || 'Failed to fetch predictions');
+      console.error(`❌ [SYNC] Poll #${currentPollCount} failed:`, errorRef.current);
+      onErrorRef.current?.(errorRef.current || 'Failed to fetch predictions');
     }
 
     // Schedule next sync
     scheduleNextSync();
-  }, [enabled, company, refetch, onUpdate, onError, error, predictionCache]);
+  }, [enabled, company, refetch, scheduleNextSync]);
 
-  /**
-   * Schedule fetch at next 5-minute interval
-   */
-  const scheduleNextSync = useCallback(() => {
-    if (syncTimeoutRef.current) {
-      clearTimeout(syncTimeoutRef.current);
-    }
-
-    const timeUntilNext = getTimeUntilNextSync();
-    const nextTime = getNextSyncTime();
-    
-    setNextPollTime(nextTime);
-    
-    console.log(`⏰ [SYNC] Next poll scheduled for: ${nextTime.toLocaleTimeString()} (in ${Math.round(timeUntilNext / 1000)}s)`);
-    
-    syncTimeoutRef.current = setTimeout(() => {
-      fetchAtSyncTime();
-    }, timeUntilNext);
-
-    // Start countdown timer
-    startCountdown();
-  }, [fetchAtSyncTime, startCountdown]);
+  // Update ref when callback changes
+  useEffect(() => {
+    fetchAtSyncTimeRef.current = fetchAtSyncTime;
+  }, [fetchAtSyncTime]);
 
   const startPolling = useCallback(async () => {
     if (!enabled || !company) {
@@ -192,7 +214,11 @@ export const usePredictionPolling = (config: PollingConfig) => {
     setPollCount(0);
     setElapsedTime(0);
 
-    // Clear existing timers
+    // ✅ FIX: Clear all existing timers before starting new ones
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
     if (syncTimeoutRef.current) {
       clearTimeout(syncTimeoutRef.current);
       syncTimeoutRef.current = null;
@@ -200,6 +226,10 @@ export const usePredictionPolling = (config: PollingConfig) => {
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
+    }
+    if (totalDurationRef.current) {
+      clearTimeout(totalDurationRef.current);
+      totalDurationRef.current = null;
     }
 
     // Immediate first fetch
@@ -233,15 +263,28 @@ export const usePredictionPolling = (config: PollingConfig) => {
       }
     }, 1000);
 
-    pollIntervalRef.current = elapsedInterval as any;
+    pollIntervalRef.current = elapsedInterval;
 
   }, [enabled, company, refetch, onUpdate, onError, scheduleNextSync, error]);
 
   const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-    if (totalDurationRef.current) clearTimeout(totalDurationRef.current);
+    // ✅ FIX: Clear all timers and null out refs to prevent memory leaks
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = null;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    if (totalDurationRef.current) {
+      clearTimeout(totalDurationRef.current);
+      totalDurationRef.current = null;
+    }
     
     setIsPolling(false);
     startTimeRef.current = null;
@@ -253,10 +296,23 @@ export const usePredictionPolling = (config: PollingConfig) => {
   }, []);
 
   const pausePolling = useCallback(() => {
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-    if (totalDurationRef.current) clearTimeout(totalDurationRef.current);
+    // ✅ FIX: Clear all timers and null out refs
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = null;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    if (totalDurationRef.current) {
+      clearTimeout(totalDurationRef.current);
+      totalDurationRef.current = null;
+    }
     setIsPolling(false);
     
     console.log('⏸️ [SYNC] Polling paused');
