@@ -12,7 +12,7 @@ import { WatchlistSelector } from "./controllers/WatchlistSelector";
 import { ImageCarousel } from "./ImageCarousel";
 import { BarChart3 } from "lucide-react";
 interface CardWithFormProps {
-  onCompanyChange: (companyCode: string | null, exchange?: string) => void;
+  onCompanyChange: (companyCode: string | null, exchange?: string, marker?: string) => void;
   onDateRangeChange: (startDate: Date | undefined, endDate: Date | undefined) => void;
   onFetchData: () => void;
   onIntervalChange: (interval: string) => void;
@@ -41,14 +41,14 @@ export function CardWithForm({
     console.log('CardWithForm received date range change:', startDate, endDate);
     onDateRangeChange(startDate, endDate);
   }, [onDateRangeChange]);
-  const handleCompanySelect = React.useCallback((companyCode: string | null, exchange?: string) => {
-    console.log('CardWithForm received company change:', companyCode, 'on exchange:', exchange);
+  const handleCompanySelect = React.useCallback((companyCode: string | null, exchange?: string, marker?: string) => {
+    console.log('CardWithForm received company change:', companyCode, 'on exchange:', exchange, 'marker:', marker);
     if (companyCode && exchange) {
       setSelectedCompany({ companyCode, exchange });
     } else {
       setSelectedCompany(null);
     }
-    onCompanyChange(companyCode, exchange);
+    onCompanyChange(companyCode, exchange, marker);
   }, [onCompanyChange]);
   const handleFetchData = React.useCallback(() => {
     console.log('CardWithForm received fetch data request');

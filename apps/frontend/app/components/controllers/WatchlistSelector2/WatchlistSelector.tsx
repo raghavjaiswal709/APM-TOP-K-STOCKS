@@ -99,7 +99,7 @@ export const WatchlistSelector = React.memo(({
   }, [setSelectedDate, onDateChange, onCompanySelect, setRefinedFilter]);
 
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
-    console.log(`[WatchlistSelector] handleCompanySelect called with: ${companyCode}`);
+    console.log(`📋 [WatchlistSelector2] handleCompanySelect called with: ${companyCode}`);
     
     // ✅ Update local state to track selected company
     setSelectedCompanyCode(companyCode);
@@ -111,8 +111,17 @@ export const WatchlistSelector = React.memo(({
       return;
     }
     const selectedCompany = companies.find(c => c.company_code === companyCode);
-    console.log(`[WatchlistSelector] Selected company: ${companyCode}`, selectedCompany);
+    console.log(`📋 [WatchlistSelector2] Found company:`, selectedCompany);
+    console.log(`📋 [WatchlistSelector2] Company code: "${selectedCompany?.company_code}"`);
+    console.log(`📋 [WatchlistSelector2] Exchange: "${selectedCompany?.exchange}"`);
+    console.log(`📋 [WatchlistSelector2] Marker: "${selectedCompany?.marker}" (type: ${typeof selectedCompany?.marker})`);
+    
     if (onCompanySelect && selectedCompany) {
+      console.log(`📋 [WatchlistSelector2] Calling onCompanySelect with:`, {
+        code: companyCode,
+        exchange: selectedCompany.exchange,
+        marker: selectedCompany.marker
+      });
       onCompanySelect(companyCode, selectedCompany.exchange, selectedCompany.marker);
     }
   }, [companies, onCompanySelect]);

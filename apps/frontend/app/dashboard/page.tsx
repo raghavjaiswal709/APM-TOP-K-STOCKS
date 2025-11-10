@@ -38,6 +38,7 @@ export default function Page() {
   const isMarketDataRoute = pathname?.includes('/market-data');
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [selectedExchange, setSelectedExchange] = useState<string | null>(null);
+  const [selectedMarker, setSelectedMarker] = useState<string | null>(null);
   const [selectedWatchlist, setSelectedWatchlist] = useState('A');
   const [selectedInterval, setSelectedInterval] = useState('1h');
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
@@ -70,10 +71,11 @@ export default function Page() {
      enableIncrementalLoading: true
   });
   const pageTitle = isMarketDataRoute ? "Market Data" : "Historical Data";
-  const handleCompanyChange = useCallback((companyCode: string | null, exchange?: string) => {
-    console.log(`Selected: ${companyCode} (${exchange})`);
+  const handleCompanyChange = useCallback((companyCode: string | null, exchange?: string, marker?: string) => {
+    console.log(`Selected: ${companyCode} (${exchange}) [${marker}]`);
     setSelectedCompany(companyCode);
     setSelectedExchange(exchange || null);
+    setSelectedMarker(marker || null);
     clearData();
   }, [clearData]);
   const handleDateRangeChange = useCallback((startDate: Date | undefined, endDate: Date | undefined) => {
@@ -274,7 +276,8 @@ export default function Page() {
               <div className="min-h-[500px] flex-1 rounded-xl bg-muted/50">
                 <StockChart 
                   companyId={selectedCompany}  
-                  exchange={selectedExchange}  
+                  exchange={selectedExchange}
+                  marker={selectedMarker}
                   data={stockData}
                   startDate={selectedStartDate}
                   endDate={selectedEndDate}

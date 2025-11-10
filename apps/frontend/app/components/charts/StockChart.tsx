@@ -159,6 +159,8 @@ interface StockDataPoint {
 }
 interface StockChartProps {
   companyId: string | null;
+  exchange?: string | null;
+  marker?: string | null;
   data?: StockDataPoint[];
   startDate?: Date;
   endDate?: Date;
@@ -237,6 +239,8 @@ const generateMarketTimeline = (startDate: Date, endDate: Date, intervalMinutes:
 };
 export function StockChart({
   companyId,
+  exchange = null,
+  marker = null,
   data = [],
   startDate,
   endDate,

@@ -259,28 +259,38 @@ const MarketDataPage: React.FC = () => {
   }, [refetchPredictions]);
 
   // ============ UTILITY FUNCTIONS ============
-  const validateAndFormatSymbol = useCallback((companyCode: string, exchange: string, marker: string = 'EQ'): string => {
+  const validateAndFormatSymbol = useCallback((companyCode: string, exchange: string, marker?: string): string => {
     const cleanSymbol = companyCode.replace(/[^A-Z0-9]/g, '').toUpperCase();
     if (!cleanSymbol || cleanSymbol.length === 0) return '';
+    
+    // Use the provided marker, or default to 'EQ' if not provided
+    const finalMarker = marker && marker.trim() ? marker.trim().toUpperCase() : 'EQ';
+    
+    console.log(`🔍 [validateAndFormatSymbol] Input: ${companyCode}, Exchange: ${exchange}, Marker: "${marker}" (type: ${typeof marker})`);
+    console.log(`🔍 [validateAndFormatSymbol] Final Marker: "${finalMarker}"`);
 
     switch (exchange.toUpperCase()) {
       case 'NSE':
-        return `NSE:${cleanSymbol}-${marker}`;
+        return `NSE:${cleanSymbol}-${finalMarker}`;
       case 'BSE':
-        return `BSE:${cleanSymbol}-${marker}`;
+        return `BSE:${cleanSymbol}-${finalMarker}`;
       default:
-        return `${exchange}:${cleanSymbol}-${marker}`;
+        return `${exchange}:${cleanSymbol}-${finalMarker}`;
     }
   }, []);
 
   const handleCompanyChange = useCallback((companyCode: string | null, exchange?: string, marker?: string) => {
-    console.log(`Company selected: ${companyCode} (${exchange}, ${marker})`);
+    console.log(`🏢 [handleCompanyChange] Company selected: ${companyCode}`);
+    console.log(`🏢 [handleCompanyChange] Exchange: "${exchange}" (type: ${typeof exchange})`);
+    console.log(`🏢 [handleCompanyChange] Marker: "${marker}" (type: ${typeof marker})`);
+    console.log(`🏢 [handleCompanyChange] Full arguments:`, { companyCode, exchange, marker });
+    
     setSelectedCompany(companyCode);
     setSelectedExchange(exchange || null);
 
     if (companyCode && exchange) {
       const formattedSymbol = validateAndFormatSymbol(companyCode, exchange, marker);
-      console.log(`Formatted symbol: ${formattedSymbol}`);
+      console.log(`✅ [handleCompanyChange] Formatted symbol: ${formattedSymbol}`);
       setSelectedSymbol(formattedSymbol);
     } else {
       setSelectedSymbol('');
