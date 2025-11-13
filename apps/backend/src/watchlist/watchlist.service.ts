@@ -4,7 +4,6 @@ import { Repository, In } from 'typeorm';
 import { Companies } from './entities/companies.entity';
 import { DailyWatchlist } from './entities/daily-watchlist.entity';
 import { DailyWatchlistMetrics } from './entities/daily-watchlist-metrics.entity';
-import { CompanyMasterService } from './company-master.service';
 import * as moment from 'moment';
 
 export interface MergedCompany {
@@ -37,8 +36,6 @@ export class WatchlistService {
     
     @InjectRepository(DailyWatchlistMetrics)
     private dailyWatchlistMetricsRepository: Repository<DailyWatchlistMetrics>,
-    
-    private companyMasterService: CompanyMasterService,
   ) {}
 
   /**
@@ -126,19 +123,12 @@ export class WatchlistService {
       const mergedData: MergedCompany[] = watchlistEntries.map(entry => {
         const company = companies.find(c => c.companyId === entry.companyId);
         const metric = metrics.find(m => m.companyId === entry.companyId);
-        
-        // Get marker from CSV company_master.csv
-        const companyCode = company?.companyCode || entry.companyCode;
-        const marker = this.companyMasterService.getMarker(companyCode, entry.exchange);
-        
-        this.logger.debug(`Company ${companyCode} (${entry.exchange}): marker from CSV = ${marker}`);
 
         return {
           company_id: entry.companyId,
-          company_code: companyCode,
+          company_code: company?.companyCode || entry.companyCode,
           name: company?.name || entry.companyCode,
           exchange: entry.exchange,
-          marker: marker, // ✅ Get marker from CSV via CompanyMasterService
           refined: entry.refined,
           total_valid_days: metric?.totalValidDays,
           avg_daily_high_low_range: metric?.avgDailyHighLowRange,
@@ -323,18 +313,12 @@ export class WatchlistService {
 
       const companies = await queryBuilder.orderBy('c.name', 'ASC').getMany();
 
-      const mergedData: MergedCompany[] = companies.map((company) => {
-        // Get marker from CSV company_master.csv
-        const marker = this.companyMasterService.getMarker(company.companyCode, company.exchange);
-        
-        return {
-          company_id: company.companyId,
-          company_code: company.companyCode,
-          name: company.name,
-          exchange: company.exchange,
-          marker: marker, // ✅ Get marker from CSV via CompanyMasterService
-        };
-      });
+      const mergedData: MergedCompany[] = companies.map((company) => ({
+        company_id: company.companyId,
+        company_code: company.companyCode,
+        name: company.name,
+        exchange: company.exchange,
+      }));
 
       this.logger.log(
         `Successfully fetched ${mergedData.length} companies from companies table`,

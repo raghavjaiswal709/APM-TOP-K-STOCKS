@@ -56,8 +56,8 @@ export const WatchlistSelector = React.memo(({
     availableExchanges,
     availableMarkers,
     totalCompanies,
-    showAllCompanies,
-    setShowAllCompanies,
+    getFilteredCompanies,
+    refinedFilter,
     setRefinedFilter
   } = useWatchlist();
 
@@ -99,7 +99,7 @@ export const WatchlistSelector = React.memo(({
   }, [setSelectedDate, onDateChange, onCompanySelect, setRefinedFilter]);
 
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
-    console.log(`📋 [WatchlistSelector2] handleCompanySelect called with: ${companyCode}`);
+    console.log(`[WatchlistSelector] handleCompanySelect called with: ${companyCode}`);
     
     // ✅ Update local state to track selected company
     setSelectedCompanyCode(companyCode);
@@ -111,17 +111,8 @@ export const WatchlistSelector = React.memo(({
       return;
     }
     const selectedCompany = companies.find(c => c.company_code === companyCode);
-    console.log(`📋 [WatchlistSelector2] Found company:`, selectedCompany);
-    console.log(`📋 [WatchlistSelector2] Company code: "${selectedCompany?.company_code}"`);
-    console.log(`📋 [WatchlistSelector2] Exchange: "${selectedCompany?.exchange}"`);
-    console.log(`📋 [WatchlistSelector2] Marker: "${selectedCompany?.marker}" (type: ${typeof selectedCompany?.marker})`);
-    
+    console.log(`[WatchlistSelector] Selected company: ${companyCode}`, selectedCompany);
     if (onCompanySelect && selectedCompany) {
-      console.log(`📋 [WatchlistSelector2] Calling onCompanySelect with:`, {
-        code: companyCode,
-        exchange: selectedCompany.exchange,
-        marker: selectedCompany.marker
-      });
       onCompanySelect(companyCode, selectedCompany.exchange, selectedCompany.marker);
     }
   }, [companies, onCompanySelect]);
@@ -156,8 +147,6 @@ export const WatchlistSelector = React.memo(({
   }, [companies, activeFilters]);
 
   const handleFiltersChange = React.useCallback((filters: ActiveFilters) => {
-    console.log(`[WatchlistSelector] Filters changed:`, filters);
-    console.log(`[WatchlistSelector] Refined filter set to: ${filters.refined}`);
     setActiveFilters(filters);
     // Update refined filter in the hook to trigger API call
     setRefinedFilter(filters.refined);
@@ -281,8 +270,6 @@ export const WatchlistSelector = React.memo(({
         onFiltersChange={handleFiltersChange}
         totalCompanies={companies.length}
         filteredCount={filteredCompanies.length}
-        showAllCompanies={showAllCompanies}
-        onShowAllCompaniesChange={setShowAllCompanies}
       />
     </div>
   );

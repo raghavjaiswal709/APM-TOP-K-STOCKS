@@ -28,8 +28,6 @@ interface FilterModalProps {
   onFiltersChange: (filters: ActiveFilters) => void;
   totalCompanies: number;
   filteredCount: number;
-  showAllCompanies: boolean;
-  onShowAllCompaniesChange: (value: boolean) => void;
 }
 
 export function FilterModal({
@@ -39,19 +37,15 @@ export function FilterModal({
   activeFilters,
   onFiltersChange,
   totalCompanies,
-  filteredCount,
-  showAllCompanies,
-  onShowAllCompaniesChange
+  filteredCount
 }: FilterModalProps) {
   const [tempFilters, setTempFilters] = React.useState<ActiveFilters>(activeFilters);
-  const [tempShowAll, setTempShowAll] = React.useState(showAllCompanies);
 
   React.useEffect(() => {
     if (isOpen) {
       setTempFilters(activeFilters);
-      setTempShowAll(showAllCompanies);
     }
-  }, [isOpen, activeFilters, showAllCompanies]);
+  }, [isOpen, activeFilters]);
 
   React.useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -88,7 +82,6 @@ export function FilterModal({
   };
 
   const handleApply = () => {
-    onShowAllCompaniesChange(tempShowAll);
     onFiltersChange(tempFilters);
     onClose();
   };
@@ -101,15 +94,12 @@ export function FilterModal({
       refined: null
     };
     setTempFilters(clearedFilters);
-    setTempShowAll(false);
-    onShowAllCompaniesChange(false);
     onFiltersChange(clearedFilters);
     onClose();
   };
 
   const handleCancel = () => {
     setTempFilters(activeFilters);
-    setTempShowAll(showAllCompanies);
     onClose();
   };
 
@@ -151,30 +141,6 @@ export function FilterModal({
           </CardHeader>
           
           <CardContent className="space-y-6 max-h-[400px] overflow-y-auto">
-            {/* Show All Companies Toggle */}
-            <div className="space-y-3 pb-3 border-b">
-              <div 
-                onClick={() => setTempShowAll(!tempShowAll)}
-                className={cn(
-                  "flex items-center gap-3 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
-                  tempShowAll && "bg-accent border-primary"
-                )}
-              >
-                <div className={cn(
-                  "h-5 w-5 border-2 rounded flex items-center justify-center flex-shrink-0",
-                  tempShowAll && "bg-primary border-primary"
-                )}>
-                  {tempShowAll && (
-                    <Check className="h-4 w-4 text-primary-foreground" />
-                  )}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">Show all companies</span>
-                  <span className="text-xs text-muted-foreground">Display all companies regardless of date selection</span>
-                </div>
-              </div>
-            </div>
-
             {/* Exchange Filter */}
             <div className="space-y-3">
               <h4 className="font-medium text-sm">Exchange</h4>
@@ -182,11 +148,10 @@ export function FilterModal({
                 {filterOptions.exchanges.map(exchange => (
                   <div
                     key={exchange}
-                    onClick={() => !tempShowAll && handleFilterToggle('exchanges', exchange)}
+                    onClick={() => handleFilterToggle('exchanges', exchange)}
                     className={cn(
                       "flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
-                      tempFilters.exchanges.includes(exchange) && "bg-accent border-primary",
-                      tempShowAll && "opacity-50 cursor-not-allowed"
+                      tempFilters.exchanges.includes(exchange) && "bg-accent border-primary"
                     )}
                   >
                     <div className={cn(
@@ -211,11 +176,10 @@ export function FilterModal({
                   {filterOptions.markers.map(marker => (
                     <div
                       key={marker}
-                      onClick={() => !tempShowAll && handleFilterToggle('markers', marker)}
+                      onClick={() => handleFilterToggle('markers', marker)}
                       className={cn(
                         "flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
-                        tempFilters.markers.includes(marker) && "bg-accent border-primary",
-                        tempShowAll && "opacity-50 cursor-not-allowed"
+                        tempFilters.markers.includes(marker) && "bg-accent border-primary"
                       )}
                     >
                       <div className={cn(
@@ -240,11 +204,10 @@ export function FilterModal({
                 {filterOptions.sentiments.map(sentiment => (
                   <div
                     key={sentiment}
-                    onClick={() => !tempShowAll && handleFilterToggle('sentiments', sentiment)}
+                    onClick={() => handleFilterToggle('sentiments', sentiment)}
                     className={cn(
                       "flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
-                      tempFilters.sentiments.includes(sentiment) && "bg-accent border-primary",
-                      tempShowAll && "opacity-50 cursor-not-allowed"
+                      tempFilters.sentiments.includes(sentiment) && "bg-accent border-primary"
                     )}
                   >
                     <div className={cn(
@@ -272,11 +235,10 @@ export function FilterModal({
               <h4 className="font-medium text-sm">Quality Filter</h4>
               <div className="grid grid-cols-3 gap-2">
                 <div
-                  onClick={() => !tempShowAll && handleRefinedToggle(null)}
+                  onClick={() => handleRefinedToggle(null)}
                   className={cn(
                     "flex items-center justify-center gap-2 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
-                    tempFilters.refined === null && "bg-accent border-primary",
-                    tempShowAll && "opacity-50 cursor-not-allowed"
+                    tempFilters.refined === null && "bg-accent border-primary"
                   )}
                 >
                   <div className={cn(
@@ -291,11 +253,10 @@ export function FilterModal({
                 </div>
                 
                 <div
-                  onClick={() => !tempShowAll && handleRefinedToggle(true)}
+                  onClick={() => handleRefinedToggle(true)}
                   className={cn(
                     "flex items-center justify-center gap-2 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
-                    tempFilters.refined === true && "bg-accent border-primary",
-                    tempShowAll && "opacity-50 cursor-not-allowed"
+                    tempFilters.refined === true && "bg-accent border-primary"
                   )}
                 >
                   <div className={cn(
@@ -310,11 +271,10 @@ export function FilterModal({
                 </div>
 
                 <div
-                  onClick={() => !tempShowAll && handleRefinedToggle(false)}
+                  onClick={() => handleRefinedToggle(false)}
                   className={cn(
                     "flex items-center justify-center gap-2 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
-                    tempFilters.refined === false && "bg-accent border-primary",
-                    tempShowAll && "opacity-50 cursor-not-allowed"
+                    tempFilters.refined === false && "bg-accent border-primary"
                   )}
                 >
                   <div className={cn(

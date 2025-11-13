@@ -87,22 +87,16 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
         } else {
           // Fetch date-specific companies
           const dateParam = activeDate || new Date().toISOString().split('T')[0];
-          console.log(`[useWatchlist] ===== FETCHING WATCHLIST =====`);
-          console.log(`[useWatchlist] Date: ${dateParam}`);
-          console.log(`[useWatchlist] Refined Filter: ${refinedFilter}`);
-          console.log(`[useWatchlist] ShowAllCompanies: ${showAllCompanies}`);
+          console.log(`[useWatchlist] Fetching watchlist for date: ${dateParam}, refined: ${refinedFilter}`);
           
           // Build URL with refined parameter
           apiUrl = `${BASE_URL}/api/watchlist?date=${dateParam}`;
           if (refinedFilter !== null && refinedFilter !== undefined) {
             apiUrl += `&refined=${refinedFilter}`;
-            console.log(`[useWatchlist] Added refined parameter to URL: ${refinedFilter}`);
-          } else {
-            console.log(`[useWatchlist] No refined filter applied (showing all companies for date)`);
           }
         }
         
-        console.log(`[useWatchlist] Final API URL: ${apiUrl}`);
+        console.log(`[useWatchlist] Fetching from: ${apiUrl}`);
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);

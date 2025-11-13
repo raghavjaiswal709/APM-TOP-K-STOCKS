@@ -2,12 +2,11 @@
 import * as React from "react";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { SelectScrollable } from "./SelectScrollable";
-import { FilterModal } from "./FilterModal";
-import { Filter, CalendarIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 
 interface WatchlistSelectorProps {
@@ -18,12 +17,6 @@ interface WatchlistSelectorProps {
   showDateSelector?: boolean;
 }
 
-interface ActiveFilters {
-  exchanges: string[];
-  markers: string[];
-  refined: boolean | null;
-}
-
 export const WatchlistSelector = React.memo(({ 
   onCompanySelect,
   onDateChange,
@@ -32,15 +25,6 @@ export const WatchlistSelector = React.memo(({
   showDateSelector = true
 }: WatchlistSelectorProps) => {
   
-  const [isFilterModalOpen, setIsFilterModalOpen] = React.useState(false);
-  const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
-  const [selectedCompanyCode, setSelectedCompanyCode] = React.useState<string | null>(null);
-  const [activeFilters, setActiveFilters] = React.useState<ActiveFilters>({
-    exchanges: [],
-    markers: [],
-    refined: null
-  });
-
   const {
     selectedDate,
     setSelectedDate,
@@ -52,10 +36,17 @@ export const WatchlistSelector = React.memo(({
     availableExchanges,
     availableMarkers,
     totalCompanies,
+    getFilteredCompanies,
     showAllCompanies,
     setShowAllCompanies,
+    refinedFilter,
     setRefinedFilter
   } = useWatchlist();
+
+  const [selectedExchange, setSelectedExchange] = React.useState<string>('');
+  const [selectedMarker, setSelectedMarker] = React.useState<string>('');
+  const [selectedRefined, setSelectedRefined] = React.useState<string>('all');
+  const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
 
   const handleDateSelect = React.useCallback((date: Date | undefined) => {
     if (date) {
@@ -63,94 +54,55 @@ export const WatchlistSelector = React.memo(({
       console.log(`[WatchlistSelector] Date selected: ${dateStr}`);
       setSelectedDate(dateStr);
       setIsDatePickerOpen(false);
-      
-      // Clear selected company when date changes
-      setSelectedCompanyCode(null);
-      
-      // Reset filters when date changes
-      setActiveFilters({
-        exchanges: [],
-        markers: [],
-        refined: null
-      });
-      
-      // Reset refined filter in hook
-      setRefinedFilter(null);
-      
-      // Notify parent that company selection is cleared
-      if (onCompanySelect) {
-        onCompanySelect(null);
-      }
-      
-      if (onDateChange) {
-        onDateChange(dateStr);
-      }
+      if (onDateChange) onDateChange(dateStr);
     }
-  }, [setSelectedDate, onDateChange, onCompanySelect, setRefinedFilter]);
+  }, [setSelectedDate, onDateChange]);
 
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
-    console.log(`[WatchlistSelector] handleCompanySelect called with: ${companyCode}`);
-    
-    // Update local state to track selected company
-    setSelectedCompanyCode(companyCode);
-    
     if (!companyCode) {
-      if (onCompanySelect) {
-        onCompanySelect(null);
-      }
+      if (onCompanySelect) onCompanySelect(null);
       return;
     }
+
     const selectedCompany = companies.find(c => c.company_code === companyCode);
-    console.log(`[WatchlistSelector] Selected company: ${companyCode}`, selectedCompany);
     if (onCompanySelect && selectedCompany) {
       onCompanySelect(companyCode, selectedCompany.exchange, selectedCompany.marker);
     }
   }, [companies, onCompanySelect]);
 
-  const filteredCompanies = React.useMemo(() => {
-    let filtered = companies;
+  const handleShowAllChange = React.useCallback((checked: boolean) => {
+    console.log(`[WatchlistSelector] Show all companies toggled: ${checked}`);
+    setShowAllCompanies(checked);
+    
+    // Reset filters when toggling
+    setSelectedExchange('');
+    setSelectedMarker('');
+    setSelectedRefined('all');
+    setRefinedFilter(null);
+  }, [setShowAllCompanies, setRefinedFilter]);
 
-    // Apply exchange filter
-    if (activeFilters.exchanges.length > 0) {
-      filtered = filtered.filter(company => 
-        activeFilters.exchanges.includes(company.exchange)
-      );
+  const handleRefinedChange = React.useCallback((value: string) => {
+    setSelectedRefined(value);
+    if (value === 'all') {
+      setRefinedFilter(null);
+    } else if (value === 'refined') {
+      setRefinedFilter(true);
+    } else if (value === 'non-refined') {
+      setRefinedFilter(false);
     }
-
-    // Apply marker filter
-    if (activeFilters.markers.length > 0) {
-      filtered = filtered.filter(company => 
-        company.marker && activeFilters.markers.includes(company.marker)
-      );
-    }
-
-    console.log(`[WatchlistSelector] Filtered companies: ${filtered.length} out of ${companies.length}`);
-    return filtered;
-  }, [companies, activeFilters]);
-
-  const handleFiltersChange = React.useCallback((filters: ActiveFilters) => {
-    console.log(`[WatchlistSelector] Filters changed:`, filters);
-    console.log(`[WatchlistSelector] Refined filter set to: ${filters.refined}`);
-    setActiveFilters(filters);
-    // Update refined filter in the hook to trigger API call
-    setRefinedFilter(filters.refined);
   }, [setRefinedFilter]);
 
-  const getActiveFilterCount = () => {
-    return activeFilters.exchanges.length + activeFilters.markers.length + (activeFilters.refined !== null ? 1 : 0);
-  };
-
-  const filterOptions = React.useMemo(() => ({
-    exchanges: availableExchanges,
-    markers: availableMarkers
-  }), [availableExchanges, availableMarkers]);
+  const filteredCompanies = React.useMemo(() => {
+    const filters: { exchange?: string; marker?: string; minValidDays?: number } = {};
+    if (selectedExchange) filters.exchange = selectedExchange;
+    if (selectedMarker) filters.marker = selectedMarker;
+    return getFilteredCompanies(filters);
+  }, [selectedExchange, selectedMarker, getFilteredCompanies]);
 
   const availableDateObjects = React.useMemo(() => 
     availableDates.map(d => new Date(d)),
     [availableDates]
   );
-
-  console.log(`[WatchlistSelector] Render - selectedDate: ${selectedDate}, companies: ${companies.length}, loading: ${loading}`);
 
   return (
     <div className="flex gap-4 flex-wrap items-center">
@@ -160,6 +112,21 @@ export const WatchlistSelector = React.memo(({
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium">Select Date</label>
           
+          {/* Show All Companies Checkbox */}
+          <div className="flex items-center space-x-2 mb-2">
+            <Checkbox
+              id="show-all-companies"
+              checked={showAllCompanies}
+              onCheckedChange={handleShowAllChange}
+            />
+            <label
+              htmlFor="show-all-companies"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+            >
+              Show all companies
+            </label>
+          </div>
+
           <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
             <PopoverTrigger asChild>
               <Button
@@ -198,27 +165,50 @@ export const WatchlistSelector = React.memo(({
         </div>
       )}
 
-      {/* Filter Button */}
+      {/* Filters */}
       {(showExchangeFilter || showMarkerFilter) && availableExchanges.length > 0 && (
         <div className="flex flex-col gap-2 justify-center">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsFilterModalOpen(true)}
-            className="flex items-center gap-2 h-10"
+          {showExchangeFilter && (
+            <select
+              value={selectedExchange}
+              onChange={(e) => setSelectedExchange(e.target.value)}
+              className="py-[30px] px-4 text-sm text-muted-foreground border rounded-md bg-background"
+            >
+              <option value="">All Exchanges</option>
+              {availableExchanges.map(exchange => (
+                <option key={exchange} value={exchange}>{exchange}</option>
+              ))}
+            </select>
+          )}
+
+          {showMarkerFilter && availableMarkers.length > 0 && (
+            <select
+              value={selectedMarker}
+              onChange={(e) => setSelectedMarker(e.target.value)}
+              className="px-3 py-2 text-sm border rounded-md bg-background"
+            >
+              <option value="">All Markers</option>
+              {availableMarkers.map(marker => (
+                <option key={marker} value={marker}>{marker}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Refined Filter */}
+          <select
+            value={selectedRefined}
+            onChange={(e) => handleRefinedChange(e.target.value)}
+            className="px-3 py-2 text-sm border rounded-md bg-background"
+            disabled={showAllCompanies}
           >
-            <Filter className="h-4 w-4" />
-            Filters
-            {getActiveFilterCount() > 0 && (
-              <Badge variant="secondary" className="ml-1 h-5 px-1 text-xs">
-                {getActiveFilterCount()}
-              </Badge>
-            )}
-          </Button>
-          
+            <option value="all">All Quality</option>
+            <option value="refined">Refined Only ({companies.filter(c => c.refined === true).length})</option>
+            <option value="non-refined">Non-Refined Only ({companies.filter(c => c.refined === false || !c.refined).length})</option>
+          </select>
+
           {filteredCompanies.length !== companies.length && (
-            <div className="text-xs text-muted-foreground text-center">
-              {`${filteredCompanies.length} of ${companies.length} shown`}
+            <div className="text-xs text-muted-foreground">
+              {filteredCompanies.length} of {companies.length} shown
             </div>
           )}
         </div>
@@ -234,26 +224,12 @@ export const WatchlistSelector = React.memo(({
       {/* Company Selection */}
       <div>
         <SelectScrollable
-          key={`company-selector-${selectedDate}`}
           companies={filteredCompanies}
           loading={loading}
           exists={exists}
           onCompanySelect={handleCompanySelect}
         />
       </div>
-
-      {/* Filter Modal */}
-      <FilterModal
-        isOpen={isFilterModalOpen}
-        onClose={() => setIsFilterModalOpen(false)}
-        filterOptions={filterOptions}
-        activeFilters={activeFilters}
-        onFiltersChange={handleFiltersChange}
-        totalCompanies={companies.length}
-        filteredCount={filteredCompanies.length}
-        showAllCompanies={showAllCompanies}
-        onShowAllCompaniesChange={setShowAllCompanies}
-      />
     </div>
   );
 });

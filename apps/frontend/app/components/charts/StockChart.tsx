@@ -1,6 +1,8 @@
 'use client'
-import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback, useReducer } from 'react';
 import dynamic from 'next/dynamic';
+import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
+import { parse as parseDate } from 'date-fns';
 import { 
   LineChart, 
   CandlestickChart, 
@@ -27,8 +29,20 @@ import {
   Monitor,
   Smartphone
 } from 'lucide-react';
-const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
-const CHART_PERFORMANCE_CONFIG = {
+
+// ✅ OPTIMIZATION 1: Load Plot only once at module level
+const Plot = dynamic(() => import('react-plotly.js'), { 
+  ssr: false,
+  loading: () => null
+});
+
+// ===================== TIMEZONE CONSTANTS =====================
+const MARKET_TIMEZONE = 'Asia/Kolkata';
+const DATE_FORMAT = 'yyyy-MM-dd HH:mm:ss';
+const DAY_FORMAT = 'yyyy-MM-dd';
+
+// ✅ OPTIMIZATION 2: Frozen config for performance
+const CHART_PERFORMANCE_CONFIG = Object.freeze({
   MAX_VISIBLE_POINTS: 2000,
   CHUNK_SIZE: 1000,
   WEBGL_THRESHOLD: 5000,
@@ -40,7 +54,7 @@ const CHART_PERFORMANCE_CONFIG = {
   SIDEBAR_WIDTH: 280,
   MIN_CHART_WIDTH: 400,
   MIN_CHART_HEIGHT: 300,
-  RESIZE_DEBOUNCE_MS: 150,
+  RESIZE_DEBOUNCE_MS: 100,
   AUTO_RESIZE_ENABLED: true,
   RESPONSIVE_BREAKPOINTS: {
     MOBILE: 768,
@@ -52,14 +66,16 @@ const CHART_PERFORMANCE_CONFIG = {
     STANDARD: 4/3,
     SQUARE: 1/1
   },
-  RELAYOUT_DEBOUNCE: 500,
-  UPDATE_DEBOUNCE: 500,
-  STABLE_UI_REVISION: 'stable-v1',
+  RELAYOUT_DEBOUNCE: 300,
+  UPDATE_DEBOUNCE: 200,
+  STABLE_UI_REVISION: 'stable-v2',
   PRICE_CHART_HEIGHT_RATIO: 0.60, 
   VOLUME_CHART_HEIGHT_RATIO: 0.40, 
   INDICATOR_CHART_HEIGHT: 120, 
-  CHART_GAP: 2 
-};
+  CHART_GAP: 2,
+  LOADING_MIN_DISPLAY_TIME: 300,
+  SYNC_RELAYOUT_DELAY: 50
+} as const);
 const MARKET_HOLIDAYS_2025 = [
   '2023-01-26',
   '2023-03-07',
@@ -106,6 +122,10 @@ const MARKET_HOLIDAYS_2025 = [
   '2025-11-05',
   '2025-12-25'
 ];
+
+// Create a Set for O(1) holiday lookups
+const MARKET_HOLIDAYS_SET = new Set(MARKET_HOLIDAYS_2025);
+
 const STABLE_RANGEBREAKS = [
   { 
     bounds: ['sat', 'mon'], 
@@ -159,8 +179,6 @@ interface StockDataPoint {
 }
 interface StockChartProps {
   companyId: string | null;
-  exchange?: string | null;
-  marker?: string | null;
   data?: StockDataPoint[];
   startDate?: Date;
   endDate?: Date;
@@ -210,22 +228,60 @@ const LoadingIndicator = ({ show }: { show: boolean }) => {
     </div>
   );
 };
+// ✅ TIMEZONE-AWARE: Check if a date is during market hours in IST
 const isMarketHours = (date: Date): boolean => {
-  const day = date.getDay();
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const timeInMinutes = hours * 60 + minutes;
-  if (day === 0 || day === 6) return false;
+  // Get the IST day of week and time
+  const istDayOfWeek = formatInTimeZone(date, MARKET_TIMEZONE, 'E'); // 'Mon', 'Tue', etc.
+  const istTime = formatInTimeZone(date, MARKET_TIMEZONE, 'HH:mm');
+  const istDay = formatInTimeZone(date, MARKET_TIMEZONE, DAY_FORMAT); // 'yyyy-MM-dd'
+  
+  // Check if weekend (Saturday = 6, Sunday = 7 in 'E' format as numbers)
+  if (istDayOfWeek === 'Sat' || istDayOfWeek === 'Sun') return false;
+  
+  // Check if holiday
+  if (MARKET_HOLIDAYS_SET.has(istDay)) return false;
+  
+  // Check market hours (09:15 to 15:30 IST)
+  const [hours, mins] = istTime.split(':').map(Number);
+  const timeInMinutes = hours * 60 + mins;
+  
   return timeInMinutes >= CHART_PERFORMANCE_CONFIG.MARKET_OPEN_MINUTES && 
          timeInMinutes <= CHART_PERFORMANCE_CONFIG.MARKET_CLOSE_MINUTES;
 };
-const filterMarketHoursData = (data: StockDataPoint[]): StockDataPoint[] => {
+
+// ✅ TIMEZONE-AWARE: Filter data and add IST keys for category axis
+interface StockDataPointWithIST extends StockDataPoint {
+  ist_key: string;
+  ist_date: Date;
+}
+
+const filterMarketHoursData = (data: StockDataPoint[]): StockDataPointWithIST[] => {
   if (!data || !data.length) return [];
-  return data.filter(item => {
-    const date = new Date(item.interval_start);
-    return isMarketHours(date);
-  });
+  
+  return data
+    .filter(item => {
+      const date = new Date(item.interval_start);
+      return isMarketHours(date);
+    })
+    .map(item => {
+      const istDate = new Date(item.interval_start);
+      const istKey = formatInTimeZone(istDate, MARKET_TIMEZONE, DATE_FORMAT);
+      
+      return {
+        ...item,
+        ist_key: istKey,
+        ist_date: istDate
+      };
+    });
 };
+
+// ✅ Helper to parse IST timestamp strings back to Date objects
+const parseISTTimestamp = (istTimestamp: string): Date => {
+  // Format is 'yyyy-MM-dd HH:mm:ss' in IST timezone
+  // Parse it and treat it as IST
+  return parseDate(istTimestamp, DATE_FORMAT, new Date());
+};
+
 const generateMarketTimeline = (startDate: Date, endDate: Date, intervalMinutes: number): Date[] => {
   const timeline: Date[] = [];
   const current = new Date(startDate);
@@ -239,8 +295,6 @@ const generateMarketTimeline = (startDate: Date, endDate: Date, intervalMinutes:
 };
 export function StockChart({
   companyId,
-  exchange = null,
-  marker = null,
   data = [],
   startDate,
   endDate,
@@ -269,7 +323,7 @@ export function StockChart({
   const [sidebarVisible, setSidebarVisible] = useState(showControls);
   const [chartTheme, setChartTheme] = useState<'light' | 'dark'>(theme);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [autoResize, setAutoResize] = useState(CHART_PERFORMANCE_CONFIG.AUTO_RESIZE_ENABLED);
+  const [autoResize, setAutoResize] = useState<boolean>(CHART_PERFORMANCE_CONFIG.AUTO_RESIZE_ENABLED);
   const [responsiveMode, setResponsiveMode] = useState<'auto' | 'manual'>('auto');
   const [aspectRatio, setAspectRatio] = useState<keyof typeof CHART_PERFORMANCE_CONFIG.ASPECT_RATIOS>('WIDESCREEN');
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
@@ -299,8 +353,56 @@ export function StockChart({
   const [loadingStartTime, setLoadingStartTime] = useState<number | null>(null);
   const [showLoadingIndicator, setShowLoadingIndicator] = useState(false);
   const [dataRange, setDataRange] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });
-  const [allData, setAllData] = useState<StockDataPoint[]>([]);
+  const [allData, setAllData] = useState<StockDataPointWithIST[]>([]);
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // ✅ STEP 4: Create data map for O(1) lookups by IST key
+  const dataMap = useMemo(() => {
+    const map = new Map<string, StockDataPointWithIST>();
+    for (const item of allData) {
+      if (item.ist_key) {
+        map.set(item.ist_key, item);
+      }
+    }
+    return map;
+  }, [allData]);
+
+  // ✅ STEP 5: Generate master timeline - ONLY valid market timestamps (category axis)
+  const [masterTimeline, masterData] = useMemo(() => {
+    if (!dataRange.start || !dataRange.end || allData.length === 0) {
+      return [[], []];
+    }
+
+    const timeline: string[] = [];
+    const data: (StockDataPointWithIST | null)[] = [];
+    
+    // Get interval in minutes
+    const intervalMap: Record<string, number> = {
+      '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '1d': 375 // 375 = full trading day
+    };
+    const intervalMinutes = intervalMap[selectedInterval] || 1;
+    
+    // Start from dataRange.start in IST
+    const current = new Date(dataRange.start);
+    const end = new Date(dataRange.end);
+    
+    while (current <= end) {
+      if (isMarketHours(current)) {
+        const istKey = formatInTimeZone(current, MARKET_TIMEZONE, DATE_FORMAT);
+        timeline.push(istKey);
+        
+        // Look up data in map (null if missing)
+        const dataPoint = dataMap.get(istKey) || null;
+        data.push(dataPoint);
+      }
+      
+      current.setMinutes(current.getMinutes() + intervalMinutes);
+    }
+    
+    console.log(`✅ Master timeline generated: ${timeline.length} valid market timestamps`);
+    return [timeline, data];
+  }, [dataRange, dataMap, selectedInterval]);
+  
   const lastFetchRangeRef = useRef<{ start: Date; end: Date } | null>(null);
   const [xRange, setXRange] = useState<[string, string] | null>(null);
   const [yRange, setYRange] = useState<[number, number] | null>(null);
@@ -310,6 +412,11 @@ export function StockChart({
   const relayoutTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isUserInteracting, setIsUserInteracting] = useState(false);
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // ✅ CRITICAL: Anchoring refs to prevent view jumping on data load
+  const anchorTimestampRef = useRef<string | null>(null);
+  const prevXRangeRef = useRef<[number, number] | null>(null);
+  const wasLoadingRef = useRef<boolean>(false);
   useEffect(() => {
     const loadingStyles = `
       @keyframes slideInScale {
@@ -353,62 +460,132 @@ export function StockChart({
     };
     return intervalMap[intervalStr] || 60 * 1000;
   }, []);
-  const detectDataGaps = useCallback((visibleRange: [string, string]) => {
-    if (!allData || allData.length === 0) {
-      return null;
-    }
+  // ✅ OPTIMIZATION 9: Pre-compute timestamps to avoid Date parsing in loop
+  // ✅ REFACTORED: detectDataGaps now uses dataRange state AND detects internal gaps
+  const detectDataGaps = useCallback((visibleRange: [string, string], visibleIndices?: [number, number]) => {
+    // Use dataRange state which tracks the true bounds of fetched data
+    if (!dataRange.start || !dataRange.end) return null;
+    
     try {
       const [visibleStartStr, visibleEndStr] = visibleRange;
       const visibleStart = new Date(visibleStartStr);
       const visibleEnd = new Date(visibleEndStr);
-      if (isNaN(visibleStart.getTime()) || isNaN(visibleEnd.getTime())) {
-        return null;
-      }
-      const dataStart = new Date(allData[0].interval_start);
-      const dataEnd = new Date(allData[allData.length - 1].interval_start);
+      if (isNaN(visibleStart.getTime()) || isNaN(visibleEnd.getTime())) return null;
+      
+      // ✅ Use dataRange state for boundaries (not allData)
+      const dataStart = new Date(dataRange.start);
+      const dataEnd = new Date(dataRange.end);
       const gaps = [];
       const bufferTime = 30 * 60 * 1000;
+      
+      // Check if user panned before the fetched data
       if (visibleStart < dataStart) {
-        const gapStart = new Date(visibleStart.getTime() - bufferTime);
+        console.log('🔍 Gap detected BEFORE data:', {
+          visibleStart: visibleStart.toISOString(),
+          dataStart: dataStart.toISOString()
+        });
         gaps.push({
           type: 'before',
-          start: gapStart,
+          start: new Date(visibleStart.getTime() - bufferTime),
           end: dataStart,
           priority: 'high'
         });
       }
+      
+      // Check if user panned after the fetched data
       if (visibleEnd > dataEnd) {
-        const gapEnd = new Date(visibleEnd.getTime() + bufferTime);
+        console.log('🔍 Gap detected AFTER data:', {
+          visibleEnd: visibleEnd.toISOString(),
+          dataEnd: dataEnd.toISOString()
+        });
         gaps.push({
           type: 'after',
           start: dataEnd,
-          end: gapEnd,
+          end: new Date(visibleEnd.getTime() + bufferTime),
           priority: 'high'
         });
       }
-      if (allData.length > 1) {
-        const intervalMs = getIntervalInMs(selectedInterval);
-        const maxGap = intervalMs * 3;
-        for (let i = 1; i < allData.length; i++) {
-          const currentTime = new Date(allData[i].interval_start).getTime();
-          const previousTime = new Date(allData[i - 1].interval_start).getTime();
-          const actualGap = currentTime - previousTime;
-          if (actualGap > maxGap) {
+      
+      // ✅ PART 1: Detect INTERNAL gaps within visible range
+      if (visibleIndices && masterTimeline.length > 0 && masterData.length > 0) {
+        const [startIdx, endIdx] = visibleIndices;
+        const clampedStart = Math.max(0, Math.min(masterData.length - 1, startIdx));
+        const clampedEnd = Math.max(0, Math.min(masterData.length - 1, endIdx));
+        
+        console.log('🔎 Scanning for internal gaps from index', clampedStart, 'to', clampedEnd);
+        
+        let gapStart: number | null = null;
+        
+        for (let i = clampedStart; i <= clampedEnd; i++) {
+          const dataPoint = masterData[i];
+          
+          if (dataPoint === null) {
+            // Found a null - start or continue gap
+            if (gapStart === null) {
+              gapStart = i;
+            }
+          } else {
+            // Found data - if we were in a gap, close it
+            if (gapStart !== null) {
+              const gapEnd = i - 1;
+              const gapStartLabel = masterTimeline[gapStart];
+              const gapEndLabel = masterTimeline[gapEnd];
+              
+              if (gapStartLabel && gapEndLabel) {
+                const gapStartDate = parseISTTimestamp(gapStartLabel);
+                const gapEndDate = parseISTTimestamp(gapEndLabel);
+                
+                console.log('🔍 Internal gap detected:', {
+                  indices: [gapStart, gapEnd],
+                  labels: [gapStartLabel, gapEndLabel],
+                  dates: [gapStartDate.toISOString(), gapEndDate.toISOString()]
+                });
+                
+                gaps.push({
+                  type: 'internal',
+                  start: gapStartDate,
+                  end: gapEndDate,
+                  priority: 'medium'
+                });
+              }
+              
+              gapStart = null;
+            }
+          }
+        }
+        
+        // Handle gap that extends to the end of visible range
+        if (gapStart !== null) {
+          const gapEnd = clampedEnd;
+          const gapStartLabel = masterTimeline[gapStart];
+          const gapEndLabel = masterTimeline[gapEnd];
+          
+          if (gapStartLabel && gapEndLabel) {
+            const gapStartDate = parseISTTimestamp(gapStartLabel);
+            const gapEndDate = parseISTTimestamp(gapEndLabel);
+            
+            console.log('🔍 Internal gap detected (extends to end):', {
+              indices: [gapStart, gapEnd],
+              labels: [gapStartLabel, gapEndLabel],
+              dates: [gapStartDate.toISOString(), gapEndDate.toISOString()]
+            });
+            
             gaps.push({
               type: 'internal',
-              start: new Date(previousTime + intervalMs),
-              end: new Date(currentTime - intervalMs),
+              start: gapStartDate,
+              end: gapEndDate,
               priority: 'medium'
             });
           }
         }
       }
+      
       return gaps.length > 0 ? gaps : null;
     } catch (error) {
       console.error('Error in detectDataGaps:', error);
       return null;
     }
-  }, [allData, selectedInterval, getIntervalInMs]);
+  }, [dataRange, masterTimeline, masterData]);
   const fetchMissingData = useCallback(async (gaps: Array<{type: string, start: Date, end: Date, priority?: string}>) => {
     if (!companyId || isLoadingMoreData) {
       console.log('Skipping fetch: no companyId or already loading');
@@ -490,7 +667,7 @@ export function StockChart({
           }
           lastFetchRangeRef.current = { start: gap.start, end: gap.end };
           const normalizedData = newData
-            .map((item: any) => {
+            .map((item: StockDataPoint) => {
               try {
                 return {
                   interval_start: typeof item.interval_start === 'string' 
@@ -507,11 +684,11 @@ export function StockChart({
                 return null;
               }
             })
-            .filter((item): item is StockDataPoint => item !== null);
+            .filter((item: any): item is StockDataPoint => item !== null);
           console.log(`Normalized ${normalizedData.length} data points for gap:`, gap);
           return filterMarketHoursData(normalizedData);
-        } catch (error) {
-          if (error.name === 'AbortError') {
+        } catch (error: unknown) {
+          if ((error as Error).name === 'AbortError') {
             console.log('Fetch aborted');
             return [];
           }
@@ -577,81 +754,196 @@ export function StockChart({
       }
     }
   }, [companyId, selectedInterval, activeIndicators, isLoadingMoreData, getIntervalInMs]);
-  const syncChartRanges = useCallback((newXRange: [string, string], sourceChart: string) => {
-    setSyncedXRange(newXRange);
-    setXRange(newXRange);
+  // ✅ OPTIMIZATION 4: Async non-blocking chart sync
+  // ✅ REFACTORED: syncChartRanges now works with category indices (numbers, not date strings)
+  const syncChartRanges = useCallback((newXRange: [number, number] | any[], sourceChart: string) => {
+    // Store the index-based range for syncing
+    setSyncedXRange(newXRange as any);
+    setXRange(newXRange as any);
+    
     const charts = [
       { ref: priceChartRef, name: 'price' },
       { ref: volumeChartRef, name: 'volume' },
       { ref: rsiChartRef, name: 'rsi' },
       { ref: macdChartRef, name: 'macd' }
     ];
-    charts.forEach(chart => {
-      if (sourceChart !== chart.name && chart.ref.current) {
-        try {
-          chart.ref.current.relayout({ 'xaxis.range': newXRange });
-        } catch (error) {
-          console.warn(`Failed to sync ${chart.name} chart range:`, error);
+    
+    // Use requestAnimationFrame to avoid blocking main thread
+    requestAnimationFrame(() => {
+      charts.forEach((chart, index) => {
+        if (sourceChart !== chart.name && chart.ref.current) {
+          // Stagger updates slightly to prevent frame drops
+          setTimeout(() => {
+            try {
+              // ✅ Pass index-based range directly to category axis
+              chart.ref.current?.relayout({ 'xaxis.range': newXRange });
+            } catch {
+              // Silent fail - non-critical
+            }
+          }, index * CHART_PERFORMANCE_CONFIG.SYNC_RELAYOUT_DELAY);
         }
-      }
+      });
     });
   }, []);
+  // ✅ REFACTORED: handlePriceChartRelayout now works with category axis indices
   const handlePriceChartRelayout = useCallback((eventData: any) => {
+    // ✅ DEBUG: Log ALL relayout events to see what we're getting
+    console.log('🔧 RELAYOUT EVENT RECEIVED:', eventData);
+    console.log('🔧 Event keys:', Object.keys(eventData));
+    
     if (isLoadingMoreData) {
-      console.log('Skipping price chart relayout handling - already loading');
+      console.log('⏸️ Skipping - already loading');
       return;
     }
     setIsUserInteracting(true);
     if (interactionTimeoutRef.current) {
       clearTimeout(interactionTimeoutRef.current);
     }
+    
     let newXRange = null;
     let newYRange = null;
-    if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
-      newXRange = [eventData['xaxis.range[0]'], eventData['xaxis.range[1]']];
-    } else if (eventData['xaxis.range']) {
-      newXRange = eventData['xaxis.range'];
-    }
-    if (eventData['yaxis.range[0]'] && eventData['yaxis.range[1]']) {
+    
+    // Handle Y-axis
+    if (eventData['yaxis.range[0]'] !== undefined && eventData['yaxis.range[1]'] !== undefined) {
       newYRange = [eventData['yaxis.range[0]'], eventData['yaxis.range[1]']];
-    }
-    console.log('Price chart relayout event:', { newXRange, newYRange });
-    if (newXRange) {
-      syncChartRanges(newXRange, 'price');
-    }
-    if (newYRange) {
+      console.log('📏 Y-axis range:', newYRange);
       setYRange(newYRange);
     }
+    if (eventData['yaxis.autorange'] === true) {
+      console.log('📏 Y-axis autorange');
+      setYRange(null);
+    }
+    
+    // ✅ Handle X-axis: Category axis provides INDICES, not dates
+    if (eventData['xaxis.range[0]'] !== undefined && eventData['xaxis.range[1]'] !== undefined) {
+      // Category axis returns indices like [50.2, 150.8]
+      newXRange = [eventData['xaxis.range[0]'], eventData['xaxis.range[1]']];
+      console.log('📊 X-axis category indices:', newXRange);
+      
+      // Sync the index-based range to other charts
+      syncChartRanges(newXRange, 'price');
+    } else if (eventData['xaxis.range']) {
+      newXRange = eventData['xaxis.range'];
+      console.log('📊 X-axis range (direct):', newXRange);
+      syncChartRanges(newXRange, 'price');
+    } else {
+      console.log('⚠️ No X-axis range found in event data');
+    }
+    
     if (eventData['xaxis.autorange'] === true) {
+      console.log('📊 X-axis autorange');
       setSyncedXRange(null);
       setXRange(null);
     }
-    if (eventData['yaxis.autorange'] === true) {
-      setYRange(null);
+    
+    // ✅ PART 2: Store anchor timestamp BEFORE any gap detection
+    if (newXRange && masterTimeline.length > 0) {
+      const [rawStart, rawEnd] = newXRange;
+      const centerIndex = Math.floor((rawStart + rawEnd) / 2);
+      if (centerIndex >= 0 && centerIndex < masterTimeline.length) {
+        anchorTimestampRef.current = masterTimeline[centerIndex];
+        prevXRangeRef.current = newXRange as [number, number];
+        console.log('⚓ Anchor stored:', { 
+          centerIndex, 
+          timestamp: anchorTimestampRef.current,
+          range: prevXRangeRef.current 
+        });
+      }
     }
+    
+    // ✅ Debounced gap detection with category-to-date conversion
     if (relayoutTimeoutRef.current) {
       clearTimeout(relayoutTimeoutRef.current);
     }
+    
     relayoutTimeoutRef.current = setTimeout(() => {
-      if (!isLoadingMoreData && newXRange) {
+      console.log('⏰ Debounce timeout fired');
+      console.log('⏰ State check:', { 
+        isLoadingMoreData, 
+        hasNewXRange: !!newXRange, 
+        masterTimelineLength: masterTimeline.length 
+      });
+      
+      if (!isLoadingMoreData && newXRange && masterTimeline.length > 0) {
         try {
-          console.log('Checking for gaps in price chart range:', newXRange);
-          const gaps = detectDataGaps(newXRange);
+          // ✅ Convert category indices to actual date strings
+          // CRITICAL: Handle indices that go beyond array bounds (user panned beyond data)
+          const rawStartIndex = Math.floor(newXRange[0]);
+          const rawEndIndex = Math.ceil(newXRange[1]);
+          
+          console.log('🔢 Raw indices from relayout:', { rawStartIndex, rawEndIndex, timelineLength: masterTimeline.length });
+          
+          // ✅ Clamp to valid array bounds
+          const startIndex = Math.max(0, Math.min(masterTimeline.length - 1, rawStartIndex));
+          const endIndex = Math.max(0, Math.min(masterTimeline.length - 1, rawEndIndex));
+          
+          console.log('🔢 Clamped indices:', { startIndex, endIndex });
+          
+          const visibleStartLabel = masterTimeline[startIndex];
+          const visibleEndLabel = masterTimeline[endIndex];
+          
+          console.log('🏷️ Timeline labels:', { visibleStartLabel, visibleEndLabel });
+          
+          // ✅ Safety check: both labels must exist
+          if (!visibleStartLabel || !visibleEndLabel) {
+            console.error('❌ Missing timeline labels:', { startIndex, endIndex, visibleStartLabel, visibleEndLabel });
+            return;
+          }
+          
+          // Parse IST timestamps back to Date objects
+          const visibleStartDate = parseISTTimestamp(visibleStartLabel);
+          const visibleEndDate = parseISTTimestamp(visibleEndLabel);
+          
+          console.log('🔍 Converted indices to dates:', {
+            indices: [startIndex, endIndex],
+            labels: [visibleStartLabel, visibleEndLabel],
+            dates: [visibleStartDate.toISOString(), visibleEndDate.toISOString()]
+          });
+          
+          // ✅ CRITICAL: If user panned BEYOND data bounds, detect gaps
+          // Check if rawIndices go beyond the actual data
+          let visibleRangeStart = visibleStartDate.toISOString();
+          let visibleRangeEnd = visibleEndDate.toISOString();
+          
+          // If user panned BEFORE the data (negative index), extend the visible range
+          if (rawStartIndex < 0) {
+            const extraMinutes = Math.abs(rawStartIndex) * (getIntervalInMs(selectedInterval) / 60000);
+            const extendedStart = new Date(visibleStartDate.getTime() - extraMinutes * 60000);
+            visibleRangeStart = extendedStart.toISOString();
+            console.log('📍 User panned BEFORE data, extended start:', visibleRangeStart);
+          }
+          
+          // If user panned AFTER the data (beyond array), extend the visible range
+          if (rawEndIndex >= masterTimeline.length) {
+            const extraMinutes = (rawEndIndex - masterTimeline.length + 1) * (getIntervalInMs(selectedInterval) / 60000);
+            const extendedEnd = new Date(visibleEndDate.getTime() + extraMinutes * 60000);
+            visibleRangeEnd = extendedEnd.toISOString();
+            console.log('📍 User panned AFTER data, extended end:', visibleRangeEnd);
+          }
+          
+          // ✅ PART 1: Pass both extended range AND visible indices to detectDataGaps
+          const visibleRange: [string, string] = [visibleRangeStart, visibleRangeEnd];
+          const visibleIndices: [number, number] = [startIndex, endIndex];
+          
+          const gaps = detectDataGaps(visibleRange, visibleIndices);
           if (gaps && gaps.length > 0) {
-            console.log('Found gaps, fetching data:', gaps);
+            console.log('✅ Gaps detected (before/after/internal), fetching missing data:', gaps);
             fetchMissingData(gaps);
           } else {
-            console.log('No gaps detected');
+            console.log('✅ No gaps detected');
           }
         } catch (error) {
-          console.error('Error in price chart gap detection:', error);
+          console.error('❌ Error in price chart gap detection:', error);
         }
+      } else {
+        console.log('⏸️ Skipping gap detection:', { isLoadingMoreData, hasNewXRange: !!newXRange, timelineLength: masterTimeline.length });
       }
     }, CHART_PERFORMANCE_CONFIG.RELAYOUT_DEBOUNCE);
+    
     interactionTimeoutRef.current = setTimeout(() => {
       setIsUserInteracting(false);
     }, CHART_PERFORMANCE_CONFIG.RELAYOUT_DEBOUNCE + 200);
-  }, [detectDataGaps, fetchMissingData, isLoadingMoreData, syncChartRanges]);
+  }, [detectDataGaps, fetchMissingData, isLoadingMoreData, syncChartRanges, masterTimeline, getIntervalInMs, selectedInterval]);
   const handleVolumeChartRelayout = useCallback((eventData: any) => {
     if (isLoadingMoreData) {
       console.log('Skipping volume chart relayout handling - already loading');
@@ -725,31 +1017,129 @@ export function StockChart({
       setIsUserInteracting(false);
     }, CHART_PERFORMANCE_CONFIG.RELAYOUT_DEBOUNCE + 200);
   }, [isLoadingMoreData, syncChartRanges]);
+  // ✅ OPTIMIZATION 5: Merge and de-dupe data to prevent data loss
   useEffect(() => {
     if (data && data.length > 0) {
       const marketHoursData = filterMarketHoursData(data);
-      setAllData(marketHoursData);
-      if (marketHoursData.length > 0) {
-        const start = new Date(marketHoursData[0].interval_start);
-        const end = new Date(marketHoursData[marketHoursData.length - 1].interval_start);
-        setDataRange({ start, end });
-      }
-      setXRange(null);
-      setYRange(null);
-      setSyncedXRange(null);
+      
+      // Batch state update with merge logic to prevent data loss
+      requestAnimationFrame(() => {
+        setAllData(prevData => {
+          // ✅ CRITICAL FIX: Merge new data with existing data using IST keys
+          const combined = [...prevData, ...marketHoursData];
+          const uniqueMap = new Map<string, StockDataPointWithIST>();
+          
+          combined.forEach(item => {
+            const key = item.ist_key; // Use IST key for deduplication
+            // Keep item with volume if duplicate, or just keep first occurrence
+            if (!uniqueMap.has(key) || (item.volume > 0 && uniqueMap.get(key)!.volume === 0)) {
+              uniqueMap.set(key, item);
+            }
+          });
+          
+          // Sort by IST timestamp
+          const sortedData = Array.from(uniqueMap.values()).sort((a, b) => 
+            a.ist_date.getTime() - b.ist_date.getTime()
+          );
+          
+          return sortedData;
+        });
+        
+        if (marketHoursData.length > 0) {
+          const start = new Date(marketHoursData[0].interval_start);
+          const end = new Date(marketHoursData[marketHoursData.length - 1].interval_start);
+          setDataRange({ start, end });
+        }
+      });
     }
-  }, [data]);
+  }, [data]); // ✅ Fixed: Removed isUserInteracting to prevent race condition
+  
+  // ✅ OPTIMIZATION 6: Clean state on company/interval change to prevent data contamination
   useEffect(() => {
     if (companyId) {
-      setXRange(null);
-      setYRange(null);
-      setSyncedXRange(null);
-      setAllData([]);
+      // Clear all data and ranges when company OR interval changes
+      setAllData([]); // ✅ CRITICAL: Clear data to prevent contamination
       setDataRange({ start: null, end: null });
       lastFetchRangeRef.current = null;
       setIsUserInteracting(false);
+      
+      // Reset zoom state
+      setXRange(null);
+      setYRange(null);
+      setSyncedXRange(null);
+      
+      // Reset indicator states to prevent stale data
+      setActiveIndicators(indicators);
+      
+      // Clear loading states
+      setIsLoadingMoreData(false);
+      setShowLoadingIndicator(false);
     }
-  }, [companyId]);
+  }, [companyId, indicators, selectedInterval]); // ✅ CRITICAL FIX: Added selectedInterval to prevent data contamination
+  
+  // ✅ PART 2: CRITICAL - View Anchoring Effect to prevent jumps on data load
+  useEffect(() => {
+    // Check if loading just finished
+    if (wasLoadingRef.current && !isLoadingMoreData) {
+      console.log('⚓ Loading finished, applying anchor...');
+      
+      const anchor = anchorTimestampRef.current;
+      const oldRange = prevXRangeRef.current;
+      
+      if (!anchor || !oldRange || masterTimeline.length === 0) {
+        console.log('⚓ No anchor or empty timeline, skipping:', { 
+          hasAnchor: !!anchor, 
+          hasOldRange: !!oldRange, 
+          timelineLength: masterTimeline.length 
+        });
+        wasLoadingRef.current = false;
+        return;
+      }
+      
+      // 1. Find the new index of our anchor timestamp
+      const newAnchorIndex = masterTimeline.indexOf(anchor);
+      
+      if (newAnchorIndex === -1) {
+        console.log('⚓ Anchor not found in timeline (interval changed?), clearing:', anchor);
+        anchorTimestampRef.current = null;
+        prevXRangeRef.current = null;
+        wasLoadingRef.current = false;
+        return;
+      }
+      
+      console.log('⚓ Anchor found at new index:', newAnchorIndex, 'was centered in range:', oldRange);
+      
+      // 2. Calculate the new range based on the anchor's new position
+      const [oldStart, oldEnd] = oldRange;
+      const rangeWidth = oldEnd - oldStart;
+      const oldCenter = (oldStart + oldEnd) / 2;
+      const oldStartOffset = oldStart - oldCenter; // How far the start was from the center
+      
+      const newStart = newAnchorIndex + oldStartOffset;
+      const newEnd = newStart + rangeWidth;
+      
+      console.log('⚓ Calculated new range:', { 
+        oldRange, 
+        newRange: [newStart, newEnd],
+        anchorMoved: newAnchorIndex - oldCenter,
+        rangeWidth 
+      });
+      
+      // 3. Set the new, anchored range
+      setSyncedXRange([newStart, newEnd] as any);
+      
+      // 4. Clear the refs
+      anchorTimestampRef.current = null;
+      prevXRangeRef.current = null;
+      
+      console.log('⚓ View anchored successfully! 🎯');
+    }
+    
+    // Always update the ref to the current loading state
+    wasLoadingRef.current = isLoadingMoreData;
+  }, [masterTimeline, isLoadingMoreData]);
+  
+  // ✅ OPTIMIZATION 8: Batch chart height calculations to prevent multiple re-renders
   useEffect(() => {
     const totalAvailableHeight = isFullscreen ? window.innerHeight - 20 : height - 20;
     const gap = CHART_PERFORMANCE_CONFIG.CHART_GAP;
@@ -759,17 +1149,25 @@ export function StockChart({
     if (hasRSI) indicatorHeight += CHART_PERFORMANCE_CONFIG.INDICATOR_CHART_HEIGHT + gap;
     if (hasMACD) indicatorHeight += CHART_PERFORMANCE_CONFIG.INDICATOR_CHART_HEIGHT + gap;
     const availableForMainCharts = totalAvailableHeight - indicatorHeight;
-    if (showVolume) {
-      const priceHeight = Math.floor(availableForMainCharts * CHART_PERFORMANCE_CONFIG.PRICE_CHART_HEIGHT_RATIO);
-      const volumeHeight = Math.floor(availableForMainCharts * CHART_PERFORMANCE_CONFIG.VOLUME_CHART_HEIGHT_RATIO);
-      setPriceChartHeight(priceHeight);
-      setVolumeChartHeight(volumeHeight);
-    } else {
-      setPriceChartHeight(availableForMainCharts);
-      setVolumeChartHeight(0);
-    }
-    setRsiChartHeight(hasRSI ? CHART_PERFORMANCE_CONFIG.INDICATOR_CHART_HEIGHT : 0);
-    setMacdChartHeight(hasMACD ? CHART_PERFORMANCE_CONFIG.INDICATOR_CHART_HEIGHT : 0);
+    
+    // Batch all height updates in a single state update using requestAnimationFrame
+    requestAnimationFrame(() => {
+      const updates = {
+        price: showVolume 
+          ? Math.floor(availableForMainCharts * CHART_PERFORMANCE_CONFIG.PRICE_CHART_HEIGHT_RATIO)
+          : availableForMainCharts,
+        volume: showVolume 
+          ? Math.floor(availableForMainCharts * CHART_PERFORMANCE_CONFIG.VOLUME_CHART_HEIGHT_RATIO)
+          : 0,
+        rsi: hasRSI ? CHART_PERFORMANCE_CONFIG.INDICATOR_CHART_HEIGHT : 0,
+        macd: hasMACD ? CHART_PERFORMANCE_CONFIG.INDICATOR_CHART_HEIGHT : 0
+      };
+      
+      setPriceChartHeight(updates.price);
+      setVolumeChartHeight(updates.volume);
+      setRsiChartHeight(updates.rsi);
+      setMacdChartHeight(updates.macd);
+    });
   }, [height, isFullscreen, showVolume, activeIndicators]);
   useEffect(() => {
     return () => {
@@ -879,54 +1277,77 @@ export function StockChart({
       }
     };
   }, [autoResize, isFullscreen, sidebarVisible, responsiveMode, aspectRatio]);
-  const filteredData = useMemo(() => {
-    return filterMarketHoursData(allData);
-  }, [allData]);
+  // ✅ OPTIMIZATION 7: Remove redundant filtering - allData is already filtered
+  // const filteredData is removed - allData is already market-hours-filtered in useEffect
+  
+  // ✅ OPTIMIZATION 3: Fixed timestamp bug + optimized aggregation
   const optimizedData = useMemo(() => {
-    if (!filteredData.length) return filteredData;
-    if (filteredData.length <= CHART_PERFORMANCE_CONFIG.MAX_VISIBLE_POINTS) {
-      return filteredData;
+    if (!allData.length) return allData;
+    if (allData.length <= CHART_PERFORMANCE_CONFIG.MAX_VISIBLE_POINTS) {
+      return allData;
     }
-    const ratio = Math.ceil(filteredData.length / CHART_PERFORMANCE_CONFIG.MAX_VISIBLE_POINTS);
+    const ratio = Math.ceil(allData.length / CHART_PERFORMANCE_CONFIG.MAX_VISIBLE_POINTS);
     const result: StockDataPoint[] = [];
-    for (let i = 0; i < filteredData.length; i += ratio) {
-      const chunk = filteredData.slice(i, i + ratio);
+    for (let i = 0; i < allData.length; i += ratio) {
+      const chunk = allData.slice(i, Math.min(i + ratio, allData.length));
       if (chunk.length === 1) {
         result.push(chunk[0]);
       } else {
+        // ✅ FIX: Use FIRST timestamp for correct time progression
         const open = chunk[0].open;
         const close = chunk[chunk.length - 1].close;
-        const high = Math.max(...chunk.map(d => d.high));
-        const low = Math.min(...chunk.map(d => d.low));
-        const volume = chunk.reduce((sum, d) => sum + d.volume, 0);
-       result.push({
-  interval_start: chunk[chunk.length - 1].interval_start,  
-  open, high, low, close, volume
-});
+        let high = chunk[0].high;
+        let low = chunk[0].low;
+        let volume = 0;
+        
+        // Optimized single-pass calculation
+        for (let j = 0; j < chunk.length; j++) {
+          const point = chunk[j];
+          if (point.high > high) high = point.high;
+          if (point.low < low) low = point.low;
+          volume += point.volume;
+        }
+        
+        result.push({
+          interval_start: chunk[0].interval_start, // ✅ FIRST not LAST
+          open, high, low, close, volume
+        });
       }
     }
     return result;
-  }, [filteredData]);
-  const calculateIndicator = useCallback((type: string, prices: number[], options = {}) => {
+  }, [allData]);
+  
+  // ✅ OPTIMIZATION 10: Indicator calculation cache to prevent redundant recalculations
+  const indicatorCacheRef = useRef<Map<string, any>>(new Map());
+  
+  const calculateIndicator = useCallback((type: string, prices: number[], options: Record<string, number> = {}) => {
+    // Cache key based on type, prices length, and options
+    const cacheKey = `${type}-${prices.length}-${JSON.stringify(options)}`;
+    if (indicatorCacheRef.current.has(cacheKey)) {
+      return indicatorCacheRef.current.get(cacheKey);
+    }
+    
+    let result: any;
     switch (type) {
       case 'ma': {
-        const period = (options as any).period || 20;
-        const result = new Array(prices.length);
+        const period = options.period || 20;
+        const maResult = new Array(prices.length);
         for (let i = 0; i < prices.length; i++) {
           if (i < period - 1) {
-            result[i] = null;
+            maResult[i] = null;
           } else {
             let sum = 0;
             for (let j = i - period + 1; j <= i; j++) {
               sum += prices[j];
             }
-            result[i] = sum / period;
+            maResult[i] = sum / period;
           }
         }
-        return result;
+        result = maResult;
+        break;
       }
       case 'ema': {
-        const period = (options as any).period || 9;
+        const period = options.period || 9;
         const k = 2 / (period + 1);
         const result = new Array(prices.length);
         result[0] = prices[0];
@@ -936,11 +1357,11 @@ export function StockChart({
         for (let i = 0; i < period - 1; i++) {
           result[i] = null;
         }
-        return result;
+        break;
       }
       case 'bollinger': {
-        const period = (options as any).period || 20;
-        const stdDevMultiplier = (options as any).stdDev || 2;
+        const period = options.period || 20;
+        const stdDevMultiplier = options.stdDev || 2;
         const ma = calculateIndicator('ma', prices, { period }) as number[];
         const upperBand = new Array(prices.length);
         const lowerBand = new Array(prices.length);
@@ -959,10 +1380,11 @@ export function StockChart({
             lowerBand[i] = ma[i] - (stdDev * stdDevMultiplier);
           }
         }
-        return { middle: ma, upper: upperBand, lower: lowerBand };
+        result = { middle: ma, upper: upperBand, lower: lowerBand };
+        break;
       }
       case 'rsi': {
-        const period = (options as any).period || 14;
+        const period = options.period || 14;
         const gains = new Array(prices.length - 1);
         const losses = new Array(prices.length - 1);
         for (let i = 1; i < prices.length; i++) {
@@ -981,12 +1403,12 @@ export function StockChart({
             result[i + 1] = 100 - (100 / (1 + rs));
           }
         }
-        return result;
+        break;
       }
       case 'macd': {
-        const fastPeriod = (options as any).fastPeriod || 12;
-        const slowPeriod = (options as any).slowPeriod || 26;
-        const signalPeriod = (options as any).signalPeriod || 9;
+        const fastPeriod = options.fastPeriod || 12;
+        const slowPeriod = options.slowPeriod || 26;
+        const signalPeriod = options.signalPeriod || 9;
         const fastEMA = calculateIndicator('ema', prices, { period: fastPeriod }) as number[];
         const slowEMA = calculateIndicator('ema', prices, { period: slowPeriod }) as number[];
         const macdLine = fastEMA.map((fast, i) => {
@@ -1000,11 +1422,25 @@ export function StockChart({
           if (macd === null || paddedSignalLine[i] === null) return null;
           return macd - paddedSignalLine[i];
         });
-        return { macdLine, signalLine: paddedSignalLine, histogram };
+        result = { macdLine, signalLine: paddedSignalLine, histogram };
+        break;
       }
       default:
-        return [];
+        result = [];
     }
+    
+    // Store in cache
+    indicatorCacheRef.current.set(cacheKey, result);
+    
+    // Limit cache size to prevent memory leaks (max 50 cached indicators)
+    if (indicatorCacheRef.current.size > 50) {
+      const firstKey = indicatorCacheRef.current.keys().next().value;
+      if (firstKey) {
+        indicatorCacheRef.current.delete(firstKey);
+      }
+    }
+    
+    return result;
   }, []);
   const convertToHeikenAshi = useCallback((data: StockDataPoint[]) => {
     if (!data || data.length === 0) return [];
@@ -1123,19 +1559,19 @@ export function StockChart({
     }
   }, [chartTheme]);
   const priceChartData = useMemo(() => {
-    if (!optimizedData.length) return [];
-    const timeLabels = optimizedData.map(item => new Date(item.interval_start));
+    if (!masterData.length) return [];
+    // ✅ Use masterTimeline (category strings) for X-axis
     const plotElements = [];
-    const chartData = selectedChartType === 'heiken-ashi' ? convertToHeikenAshi(optimizedData) : optimizedData;
+    const chartData = selectedChartType === 'heiken-ashi' ? convertToHeikenAshi(masterData.filter(d => d !== null) as StockDataPointWithIST[]) : masterData;
     let priceChart;
     switch (selectedChartType) {
       case 'candlestick':
         priceChart = {
-          x: timeLabels,
-          open: optimizedData.map(item => item.open),
-          high: optimizedData.map(item => item.high),
-          low: optimizedData.map(item => item.low),
-          close: optimizedData.map(item => item.close),
+          x: masterTimeline, // ✅ Category axis
+          open: masterData.map(item => item?.open ?? null),
+          high: masterData.map(item => item?.high ?? null),
+          low: masterData.map(item => item?.low ?? null),
+          close: masterData.map(item => item?.close ?? null),
           type: 'candlestick',
           name: 'Price',
           decreasing: { 
@@ -1152,11 +1588,11 @@ export function StockChart({
         break;
       case 'ohlc':
         priceChart = {
-          x: timeLabels,
-          open: optimizedData.map(item => item.open),
-          high: optimizedData.map(item => item.high),
-          low: optimizedData.map(item => item.low),
-          close: optimizedData.map(item => item.close),
+          x: masterTimeline, // ✅ Category axis
+          open: masterData.map(item => item?.open ?? null),
+          high: masterData.map(item => item?.high ?? null),
+          low: masterData.map(item => item?.low ?? null),
+          close: masterData.map(item => item?.close ?? null),
           type: 'ohlc',
           name: 'Price',
           decreasing: { line: { color: colors.downColor, width: 2 } },
@@ -1165,11 +1601,11 @@ export function StockChart({
         break;
       case 'heiken-ashi':
         priceChart = {
-          x: timeLabels,
-          open: chartData.map(item => item.ha_open),
-          high: chartData.map(item => item.ha_high),
-          low: chartData.map(item => item.ha_low),
-          close: chartData.map(item => item.ha_close),
+          x: masterTimeline, // ✅ Category axis
+          open: chartData.map(item => item?.ha_open ?? null),
+          high: chartData.map(item => item?.ha_high ?? null),
+          low: chartData.map(item => item?.ha_low ?? null),
+          close: chartData.map(item => item?.ha_close ?? null),
           type: 'candlestick',
           name: 'Heiken Ashi',
           decreasing: { 
@@ -1185,8 +1621,8 @@ export function StockChart({
         break;
       case 'line':
         priceChart = {
-          x: timeLabels,
-          y: optimizedData.map(item => item.close),
+          x: masterTimeline, // ✅ Category axis
+          y: masterData.map(item => item?.close ?? null),
           type: 'scatter',
           mode: 'lines',
           name: 'Price',
@@ -1195,13 +1631,13 @@ export function StockChart({
             width: 2.5,
             shape: 'linear'
           },
-          connectgaps: true
+          connectgaps: false // ✅ Don't connect over missing data
         };
         break;
       case 'area':
         priceChart = {
-          x: timeLabels,
-          y: optimizedData.map(item => item.close),
+          x: masterTimeline, // ✅ Category axis
+          y: masterData.map(item => item?.close ?? null),
           type: 'scatter',
           mode: 'lines',
           name: 'Price',
@@ -1212,17 +1648,17 @@ export function StockChart({
             width: 2.5,
             shape: 'linear'
           },
-          connectgaps: true
+          connectgaps: false // ✅ Don't connect over missing data
         };
         break;
     }
     plotElements.push(priceChart);
-    const prices = optimizedData.map(item => item.close);
+    const prices = masterData.map(item => item?.close ?? 0);
     if (activeIndicators.includes('ma')) {
       selectedMAperiods.forEach((period, index) => {
         const ma = calculateIndicator('ma', prices, { period });
         plotElements.push({
-          x: timeLabels,
+          x: masterTimeline, // ✅ Category axis
           y: ma,
           type: 'scatter',
           mode: 'lines',
@@ -1240,7 +1676,7 @@ export function StockChart({
       selectedEMAperiods.forEach((period, index) => {
         const ema = calculateIndicator('ema', prices, { period });
         plotElements.push({
-          x: timeLabels,
+          x: masterTimeline, // ✅ Category axis
           y: ema,
           type: 'scatter',
           mode: 'lines',
@@ -1258,7 +1694,7 @@ export function StockChart({
     if (activeIndicators.includes('bollinger')) {
       const bands = calculateIndicator('bollinger', prices, { period: 20, stdDev: 2 }) as any;
       plotElements.push({
-        x: timeLabels,
+        x: masterTimeline, // ✅ Category axis
         y: bands.upper,
         type: 'scatter',
         mode: 'lines',
@@ -1273,7 +1709,7 @@ export function StockChart({
         connectgaps: false
       });
       plotElements.push({
-        x: timeLabels,
+        x: masterTimeline, // ✅ Category axis
         y: bands.lower,
         type: 'scatter',
         mode: 'lines',
@@ -1290,7 +1726,7 @@ export function StockChart({
         connectgaps: false
       });
       plotElements.push({
-        x: timeLabels,
+        x: masterTimeline, // ✅ Category axis
         y: bands.middle,
         type: 'scatter',
         mode: 'lines',
@@ -1305,7 +1741,8 @@ export function StockChart({
     }
     return plotElements;
   }, [
-    optimizedData, 
+    masterData,
+    masterTimeline,
     selectedChartType, 
     activeIndicators, 
     selectedMAperiods, 
@@ -1315,13 +1752,15 @@ export function StockChart({
     convertToHeikenAshi
   ]);
   const volumeChartData = useMemo(() => {
-    if (!optimizedData.length) return [];
-    const timeLabels = optimizedData.map(item => new Date(item.interval_start));
-    const volumes = optimizedData.map(item => item.volume);
-    const volumeColors = optimizedData.map((item, i) => {
-      if (i === 0) return colors.volume.up;
+    if (!masterData.length) return [];
+    // ✅ Use masterTimeline and masterData
+    const volumes = masterData.map(item => item?.volume ?? 0);
+    const volumeColors = masterData.map((item, i) => {
+      if (i === 0 || !item) return colors.volume.up;
       const currentClose = item.close;
-      const previousClose = optimizedData[i - 1].close;
+      const previousItem = masterData[i - 1];
+      if (!previousItem) return colors.volume.up;
+      const previousClose = previousItem.close;
       return currentClose >= previousClose ? colors.volume.up : colors.volume.down;
     });
     const maxVolume = Math.max(...volumes);
@@ -1334,7 +1773,7 @@ export function StockChart({
       return Math.max(vol, minVisibleVolume);
     });
     const volumeChart = {
-      x: timeLabels,
+      x: masterTimeline, // ✅ Category axis
       y: normalizedVolumes,
       type: 'bar',
       name: 'Volume',
@@ -1355,14 +1794,14 @@ export function StockChart({
       }
     };
     return [volumeChart];
-  }, [optimizedData, colors, deviceType]);
+  }, [masterData, masterTimeline, colors, deviceType]);
   const rsiChartData = useMemo(() => {
-    if (!optimizedData.length || !activeIndicators.includes('rsi')) return [];
-    const timeLabels = optimizedData.map(item => new Date(item.interval_start));
-    const prices = optimizedData.map(item => item.close);
+    if (!masterData.length || !activeIndicators.includes('rsi')) return [];
+    // ✅ Use masterTimeline and masterData
+    const prices = masterData.map(item => item?.close ?? 0);
     const rsi = calculateIndicator('rsi', prices) as number[];
     return [{
-      x: timeLabels,
+      x: masterTimeline, // ✅ Category axis
       y: rsi,
       type: 'scatter',
       mode: 'lines',
@@ -1374,15 +1813,15 @@ export function StockChart({
       },
       connectgaps: false
     }];
-  }, [optimizedData, activeIndicators, colors, calculateIndicator]);
+  }, [masterData, masterTimeline, activeIndicators, colors, calculateIndicator]);
   const macdChartData = useMemo(() => {
-    if (!optimizedData.length || !activeIndicators.includes('macd')) return [];
-    const timeLabels = optimizedData.map(item => new Date(item.interval_start));
-    const prices = optimizedData.map(item => item.close);
+    if (!masterData.length || !activeIndicators.includes('macd')) return [];
+    // ✅ Use masterTimeline and masterData
+    const prices = masterData.map(item => item?.close ?? 0);
     const macd = calculateIndicator('macd', prices) as any;
     return [
       {
-        x: timeLabels,
+        x: masterTimeline, // ✅ Category axis
         y: macd.macdLine,
         type: 'scatter',
         mode: 'lines',
@@ -1395,7 +1834,7 @@ export function StockChart({
         connectgaps: false
       },
       {
-        x: timeLabels,
+        x: masterTimeline, // ✅ Category axis
         y: macd.signalLine,
         type: 'scatter',
         mode: 'lines',
@@ -1408,7 +1847,7 @@ export function StockChart({
         connectgaps: false
       },
       {
-        x: timeLabels,
+        x: masterTimeline, // ✅ Category axis
         y: macd.histogram,
         type: 'bar',
         name: 'Histogram',
@@ -1421,16 +1860,16 @@ export function StockChart({
         }
       }
     ];
-  }, [optimizedData, activeIndicators, colors, calculateIndicator]);
+  }, [masterData, masterTimeline, activeIndicators, colors, calculateIndicator]);
   const chartTitle = useMemo(() => {
     let title = companyId ? 
-      `${companyId} - ${selectedInterval.toUpperCase()} Chart [${optimizedData.length} points]` : 
+      `${companyId} - ${selectedInterval.toUpperCase()} Chart [${masterData.length} points]` : 
       'Select a Company';
     if (isLoadingMoreData) {
       title += ' 🔄 Expanding...';
     }
     return title;
-  }, [companyId, selectedInterval, optimizedData.length, isLoadingMoreData]);
+  }, [companyId, selectedInterval, masterData.length, isLoadingMoreData]);
   const priceChartLayout = useMemo(() => {
     const getResponsiveMargin = () => {
       switch (deviceType) {
@@ -1478,18 +1917,20 @@ export function StockChart({
       font: { color: colors.text, family: 'Inter, system-ui, sans-serif' },
       xaxis: {
         rangeslider: { visible: false },
-        type: 'date',
+        type: 'category', // ✅ CHANGED from 'date' to 'category'
         showgrid: showGridlines,
         gridcolor: colors.grid,
         linecolor: colors.grid,
         tickfont: { color: colors.text, size: responsiveFonts.tick },
-        title: { text: 'Time', font: { color: colors.text, size: responsiveFonts.axis } },
+        title: { text: 'Time (IST)', font: { color: colors.text, size: responsiveFonts.axis } },
         autorange: syncedXRange ? false : true,
         range: syncedXRange || undefined,
-        fixedrange: false,
-        rangebreaks: STABLE_RANGEBREAKS,
-        nticks: deviceType === 'mobile' ? 5 : deviceType === 'tablet' ? 8 : 12,
-        showticklabels: true
+        fixedrange: false, // ✅ CRITICAL: Allows panning/zooming
+        editable: true, // ✅ NEW: Enables interaction with axis
+        // ✅ REMOVED rangebreaks - not needed with category axis
+        nticks: deviceType === 'mobile' ? 8 : deviceType === 'tablet' ? 12 : 15, // Increased for better label distribution
+        showticklabels: true,
+        tickangle: deviceType === 'mobile' ? -45 : 0 // Angle labels on mobile
       },
       yaxis: {
         title: { text: 'Price (₹)', font: { color: colors.text, size: responsiveFonts.axis } },
@@ -1572,7 +2013,7 @@ export function StockChart({
       plot_bgcolor: colors.bg,
       font: { color: colors.text, family: 'Inter, system-ui, sans-serif' },
       xaxis: {
-        type: 'date',
+        type: 'category', // ✅ CHANGED from 'date' to 'category'
         showgrid: showGridlines,
         gridcolor: colors.grid,
         linecolor: colors.grid,
@@ -1581,8 +2022,8 @@ export function StockChart({
         autorange: syncedXRange ? false : true,
         range: syncedXRange || undefined,
         fixedrange: false,
-        rangebreaks: STABLE_RANGEBREAKS,
-        nticks: deviceType === 'mobile' ? 5 : deviceType === 'tablet' ? 8 : 12,
+        // ✅ REMOVED rangebreaks
+        nticks: deviceType === 'mobile' ? 8 : deviceType === 'tablet' ? 12 : 15,
         showticklabels: false
       },
       yaxis: {
@@ -1645,7 +2086,7 @@ export function StockChart({
       plot_bgcolor: colors.bg,
       font: { color: colors.text, family: 'Inter, system-ui, sans-serif' },
       xaxis: {
-        type: 'date',
+        type: 'category', // ✅ CHANGED from 'date' to 'category'
         showgrid: showGridlines,
         gridcolor: colors.grid,
         linecolor: colors.grid,
@@ -1654,8 +2095,8 @@ export function StockChart({
         autorange: syncedXRange ? false : true,
         range: syncedXRange || undefined,
         fixedrange: false,
-        rangebreaks: STABLE_RANGEBREAKS,
-        nticks: deviceType === 'mobile' ? 5 : deviceType === 'tablet' ? 8 : 12,
+        // ✅ REMOVED rangebreaks
+        nticks: deviceType === 'mobile' ? 8 : deviceType === 'tablet' ? 12 : 15,
         showticklabels: false
       },
       yaxis: {
@@ -1737,18 +2178,19 @@ export function StockChart({
       plot_bgcolor: colors.bg,
       font: { color: colors.text, family: 'Inter, system-ui, sans-serif' },
       xaxis: {
-        type: 'date',
+        type: 'category', // ✅ CHANGED from 'date' to 'category'
         showgrid: showGridlines,
         gridcolor: colors.grid,
         linecolor: colors.grid,
         tickfont: { color: colors.text, size: responsiveFonts.tick },
-        title: { text: 'Time', font: { color: colors.text, size: responsiveFonts.axis } },
+        title: { text: 'Time (IST)', font: { color: colors.text, size: responsiveFonts.axis } },
         autorange: syncedXRange ? false : true,
         range: syncedXRange || undefined,
         fixedrange: false,
-        rangebreaks: STABLE_RANGEBREAKS,
-        nticks: deviceType === 'mobile' ? 5 : deviceType === 'tablet' ? 8 : 12,
-        showticklabels: true
+        // ✅ REMOVED rangebreaks
+        nticks: deviceType === 'mobile' ? 8 : deviceType === 'tablet' ? 12 : 15,
+        showticklabels: true,
+        tickangle: deviceType === 'mobile' ? -45 : 0
       },
       yaxis: {
         title: { text: 'MACD', font: { color: colors.indicators.macd, size: responsiveFonts.axis } },
@@ -1885,11 +2327,11 @@ export function StockChart({
     setDrawingMode(null);
   }, []);
   const exportChartData = useCallback(() => {
-    if (!optimizedData.length) return;
+    if (!masterData.length) return;
     const csvContent = [
       'Date,Open,High,Low,Close,Volume',
-      ...optimizedData.map(item => 
-        `${item.interval_start},${item.open},${item.high},${item.low},${item.close},${item.volume}`
+      ...masterData.filter(item => item !== null).map(item => 
+        `${item!.interval_start},${item!.open},${item!.high},${item!.low},${item!.close},${item!.volume}`
       )
     ].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -1901,7 +2343,7 @@ export function StockChart({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [optimizedData, companyId, selectedInterval]);
+  }, [masterData, companyId, selectedInterval]);
   useEffect(() => {
     if (!autoRefresh || !onIntervalChange) return;
     const interval = setInterval(() => {
@@ -1923,8 +2365,10 @@ export function StockChart({
     setPriceAlerts(prev => prev.filter(alert => alert.id !== id));
   }, []);
   useEffect(() => {
-    if (!alertsEnabled || !optimizedData.length || !priceAlerts.length) return;
-    const currentPrice = optimizedData[optimizedData.length - 1]?.close;
+    if (!alertsEnabled || !masterData.length || !priceAlerts.length) return;
+    // Get the last non-null data point for current price
+    const lastDataPoint = masterData.filter(item => item !== null).slice(-1)[0];
+    const currentPrice = lastDataPoint?.close;
     if (!currentPrice) return;
     priceAlerts.forEach(alert => {
       if (alert.triggered) return;
@@ -1943,7 +2387,7 @@ export function StockChart({
         }
       }
     });
-  }, [optimizedData, priceAlerts, alertsEnabled, companyId]);
+  }, [masterData, priceAlerts, alertsEnabled, companyId]);
   useEffect(() => {
     if (alertsEnabled && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
