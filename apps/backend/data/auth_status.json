@@ -1,9 +1,12 @@
 {
-  "authenticated": false,
-  "token_valid": false,
-  "expires_at": null,
-  "services_notified": [],
-  "session_date": "2025-11-11",
+  "authenticated": true,
+  "token_valid": true,
+  "expires_at": "2025-11-10T18:29:00.000Z",
+  "services_notified": [
+    "fyers_data",
+    "multi_company_live_data"
+  ],
+  "session_date": "2025-11-10",
   "auto_refresh_enabled": true,
-  "next_refresh_check": "2025-11-12T00:04:09.335Z"
+  "next_refresh_check": "2025-11-10T04:28:35.569Z"
 }
