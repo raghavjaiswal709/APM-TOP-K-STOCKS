@@ -25,6 +25,8 @@ import { ImageCarousel } from "./components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { ViewInDashboardButton } from "@/app/components/ViewInDashboardButton";
 import { TrendingUp, TrendingDown, Minus, Database, Wifi, Award, TrendingUpIcon, Clock, Building2 } from 'lucide-react';
+import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
+import { isMarketOpen } from "@/lib/marketHours";
 
 // Prediction Integration
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
@@ -121,6 +123,7 @@ const MarketDataPage: React.FC = () => {
   const [usefulnessScore, setUsefulnessScore] = useState<number | null>(null);
   const [showScoreTooltip, setShowScoreTooltip] = useState(false);
   const [activeTab, setActiveTab] = useState<'live' | 'predictions'>('live');
+  const [marketOpen, setMarketOpen] = useState<boolean>(true);
 
   // Refs
   const updateCountRef = useRef(0);
@@ -499,6 +502,17 @@ const MarketDataPage: React.FC = () => {
   useEffect(() => {
     setIsClient(true);
     console.log('Component mounted');
+    
+    // Check market status
+    const checkMarketStatus = () => {
+      const status = isMarketOpen();
+      setMarketOpen(status.isOpen);
+    };
+    
+    checkMarketStatus();
+    const interval = setInterval(checkMarketStatus, 60000); // Check every minute
+    
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -829,8 +843,14 @@ const MarketDataPage: React.FC = () => {
               <div className="flex gap-6 mb-6">
                 {/* ============ MAIN CHART AREA ============ */}
                 <div className="w-3/4">
-                  <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-[800px]">
-                    {!selectedSymbol ? (
+                  <div className="bg-zinc-800 rounded-lg shadow-lg h-[800px]">
+                    {!marketOpen ? (
+                      <div className="h-full w-full flex items-center justify-center p-0">
+                        <div className="h-full w-full flex items-center justify-center">
+                          <MarketClosedBanner className="w-full h-full flex items-center justify-center" />
+                        </div>
+                      </div>
+                    ) : !selectedSymbol ? (
                       <div className="h-full flex flex-col items-center justify-center space-y-4">
                         <div className="text-center space-y-2">
                           <Database className="h-16 w-16 text-zinc-600 mx-auto mb-4" />
@@ -913,7 +933,22 @@ const MarketDataPage: React.FC = () => {
 
                   {/* Tab Content */}
                   <div className="flex-1 overflow-y-auto scrollbar-hide">
-                    {!selectedSymbol ? (
+                    {!marketOpen ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center space-y-4 p-6">
+                        <div className="inline-flex items-center justify-center w-20 h-20 bg-orange-500/10 rounded-full border-2 border-orange-500/30">
+                          <Clock className="w-10 h-10 text-orange-500" />
+                        </div>
+                        <div className="space-y-2">
+                          <h3 className="text-lg font-semibold text-orange-400">Market is Closed</h3>
+                          <p className="text-sm text-zinc-400 max-w-xs">
+                            Live market data and real-time updates are not available outside trading hours.
+                          </p>
+                          <p className="text-xs text-zinc-500 mt-2">
+                            Trading Hours: 9:15 AM - 3:30 PM IST
+                          </p>
+                        </div>
+                      </div>
+                    ) : !selectedSymbol ? (
                       <div className="h-full flex flex-col items-center justify-center text-center space-y-4 p-6">
                         <div className="inline-flex items-center justify-center w-20 h-20 bg-zinc-700/50 rounded-full">
                           <Building2 className="w-10 h-10 text-zinc-500" />
