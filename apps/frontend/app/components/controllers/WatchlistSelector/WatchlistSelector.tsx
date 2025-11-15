@@ -2,11 +2,11 @@
 import * as React from "react";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { SelectScrollable } from "./SelectScrollable";
-import { Calendar } from "@/components/ui/calendar";
+import { CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 
 interface WatchlistSelectorProps {
@@ -25,6 +25,11 @@ export const WatchlistSelector = React.memo(({
   showDateSelector = true
 }: WatchlistSelectorProps) => {
   
+  const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
+  const [selectedExchange, setSelectedExchange] = React.useState<string>('');
+  const [selectedMarker, setSelectedMarker] = React.useState<string>('');
+  const [selectedRefined, setSelectedRefined] = React.useState<string>('all');
+
   const {
     selectedDate,
     setSelectedDate,
@@ -36,17 +41,10 @@ export const WatchlistSelector = React.memo(({
     availableExchanges,
     availableMarkers,
     totalCompanies,
-    getFilteredCompanies,
     showAllCompanies,
     setShowAllCompanies,
-    refinedFilter,
     setRefinedFilter
   } = useWatchlist();
-
-  const [selectedExchange, setSelectedExchange] = React.useState<string>('');
-  const [selectedMarker, setSelectedMarker] = React.useState<string>('');
-  const [selectedRefined, setSelectedRefined] = React.useState<string>('all');
-  const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
 
   const handleDateSelect = React.useCallback((date: Date | undefined) => {
     if (date) {
@@ -93,11 +91,18 @@ export const WatchlistSelector = React.memo(({
   }, [setRefinedFilter]);
 
   const filteredCompanies = React.useMemo(() => {
-    const filters: { exchange?: string; marker?: string; minValidDays?: number } = {};
-    if (selectedExchange) filters.exchange = selectedExchange;
-    if (selectedMarker) filters.marker = selectedMarker;
-    return getFilteredCompanies(filters);
-  }, [selectedExchange, selectedMarker, getFilteredCompanies]);
+    let filtered = [...companies];
+    
+    if (selectedExchange) {
+      filtered = filtered.filter(c => c.exchange === selectedExchange);
+    }
+    
+    if (selectedMarker) {
+      filtered = filtered.filter(c => c.marker === selectedMarker);
+    }
+    
+    return filtered;
+  }, [companies, selectedExchange, selectedMarker]);
 
   const availableDateObjects = React.useMemo(() => 
     availableDates.map(d => new Date(d)),
