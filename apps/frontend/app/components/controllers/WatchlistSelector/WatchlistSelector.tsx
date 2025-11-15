@@ -80,12 +80,16 @@ export const WatchlistSelector = React.memo(({
   }, [setShowAllCompanies, setRefinedFilter]);
 
   const handleRefinedChange = React.useCallback((value: string) => {
+    console.log(`[WatchlistSelector] Refined filter changed to: ${value}`);
     setSelectedRefined(value);
     if (value === 'all') {
+      console.log('[WatchlistSelector] Setting refined filter to NULL (all companies)');
       setRefinedFilter(null);
     } else if (value === 'refined') {
+      console.log('[WatchlistSelector] Setting refined filter to TRUE (refined only)');
       setRefinedFilter(true);
     } else if (value === 'non-refined') {
+      console.log('[WatchlistSelector] Setting refined filter to FALSE (non-refined only)');
       setRefinedFilter(false);
     }
   }, [setRefinedFilter]);
@@ -205,17 +209,21 @@ export const WatchlistSelector = React.memo(({
             onChange={(e) => handleRefinedChange(e.target.value)}
             className="px-3 py-2 text-sm border rounded-md bg-background"
             disabled={showAllCompanies}
+            data-refined-filter={selectedRefined}
           >
-            <option value="all">All Quality</option>
-            <option value="refined">Refined Only ({companies.filter(c => c.refined === true).length})</option>
-            <option value="non-refined">Non-Refined Only ({companies.filter(c => c.refined === false || !c.refined).length})</option>
+            <option value="all">All Quality ({totalCompanies})</option>
+            <option value="refined">Refined Only</option>
+            <option value="non-refined">Non-Refined Only</option>
           </select>
 
-          {filteredCompanies.length !== companies.length && (
-            <div className="text-xs text-muted-foreground">
-              {filteredCompanies.length} of {companies.length} shown
-            </div>
-          )}
+          <div className="text-xs text-muted-foreground">
+            {filteredCompanies.length} of {totalCompanies} companies
+            {selectedRefined !== 'all' && (
+              <span className="ml-1 text-primary font-medium">
+                ({selectedRefined === 'refined' ? 'Refined' : 'Non-Refined'})
+              </span>
+            )}
+          </div>
         </div>
       )}
 

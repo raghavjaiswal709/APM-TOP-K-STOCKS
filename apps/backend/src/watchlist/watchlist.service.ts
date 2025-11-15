@@ -141,7 +141,11 @@ export class WatchlistService {
         };
       });
 
-      this.logger.log(`Successfully merged ${mergedData.length} companies (refined filter: ${refinedFilter !== undefined ? refinedFilter : 'ALL'})`);
+      // Debug: Log refined status distribution
+      const refinedCount = mergedData.filter(c => c.refined === true).length;
+      const nonRefinedCount = mergedData.filter(c => c.refined === false || !c.refined).length;
+      
+      this.logger.log(`✅ Successfully merged ${mergedData.length} companies - Refined: ${refinedCount}, Non-Refined: ${nonRefinedCount} (filter: ${refinedFilter !== undefined ? refinedFilter : 'ALL'})`);
       return mergedData.sort((a, b) => a.name.localeCompare(b.name));
 
     } catch (error) {

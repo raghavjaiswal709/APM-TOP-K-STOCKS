@@ -120,6 +120,13 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
         const data = await response.json();
         if (isCancelled) return;
 
+        console.log('[useWatchlist] ✅ API Response received:', {
+          companiesCount: data.companies?.length || 0,
+          total: data.total,
+          exists: data.exists,
+          refinedFilterApplied: refinedFilter
+        });
+
         if (!Array.isArray(data.companies)) {
           setCompanies([]);
           setExists(false);
@@ -134,6 +141,16 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
           company.company_code && company.name && company.exchange
         );
 
+        // Debug: Check refined status distribution
+        const refinedCount = validCompanies.filter(c => c.refined === true).length;
+        const nonRefinedCount = validCompanies.filter(c => c.refined === false || !c.refined).length;
+        console.log('[useWatchlist] 📊 Companies breakdown:', {
+          total: validCompanies.length,
+          refined: refinedCount,
+          nonRefined: nonRefinedCount,
+          filterActive: refinedFilter !== null ? (refinedFilter ? 'refined-only' : 'non-refined-only') : 'all'
+        });
+
         setCompanies(validCompanies);
         setExists(showAllCompanies ? true : (data.exists !== false));
         setTotalCompanies(data.total || validCompanies.length);
@@ -143,7 +160,7 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
         setAvailableExchanges(exchanges);
         setAvailableMarkers(markers);
 
-        console.log(`[useWatchlist] Loaded ${validCompanies.length} companies`);
+        console.log(`[useWatchlist] ✅ Loaded ${validCompanies.length} companies`);
 
       } catch (err: unknown) {
         if (isCancelled) return;
