@@ -181,9 +181,16 @@ export const formatNextOpenTime = (nextOpenTime: Date): string => {
     now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })
   );
 
-  const diffMs = nextOpenTime.getTime() - istNow.getTime();
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffHours / 24);
+  // Set both dates to midnight for accurate day comparison
+  const nextOpenMidnight = new Date(nextOpenTime);
+  nextOpenMidnight.setHours(0, 0, 0, 0);
+  
+  const todayMidnight = new Date(istNow);
+  todayMidnight.setHours(0, 0, 0, 0);
+  
+  // Calculate actual day difference
+  const diffMs = nextOpenMidnight.getTime() - todayMidnight.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
   if (diffDays > 1) {
     return `on ${nextOpenTime.toLocaleDateString('en-IN', {
@@ -197,6 +204,10 @@ export const formatNextOpenTime = (nextOpenTime: Date): string => {
     return 'tomorrow at 9:15 AM';
   }
 
+  // Same day - calculate hours
+  const diffHoursMs = nextOpenTime.getTime() - istNow.getTime();
+  const diffHours = Math.floor(diffHoursMs / (1000 * 60 * 60));
+  
   if (diffHours > 0) {
     return `in ${diffHours} hour${diffHours > 1 ? 's' : ''} at 9:15 AM`;
   }
