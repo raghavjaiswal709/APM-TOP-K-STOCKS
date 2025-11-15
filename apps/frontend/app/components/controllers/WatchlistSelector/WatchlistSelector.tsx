@@ -2,11 +2,12 @@
 import * as React from "react";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { SelectScrollable } from "./SelectScrollable";
-import { CalendarIcon } from "lucide-react";
+import { FilterModal } from "./FilterModal";
+import { CalendarIcon, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 
 interface WatchlistSelectorProps {
@@ -26,9 +27,13 @@ export const WatchlistSelector = React.memo(({
 }: WatchlistSelectorProps) => {
   
   const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
-  const [selectedExchange, setSelectedExchange] = React.useState<string>('');
-  const [selectedMarker, setSelectedMarker] = React.useState<string>('');
-  const [selectedRefined, setSelectedRefined] = React.useState<string>('all');
+  const [isFilterModalOpen, setIsFilterModalOpen] = React.useState(false);
+  const [activeFilters, setActiveFilters] = React.useState({
+    exchanges: [] as string[],
+    markers: [] as string[],
+    refined: null as boolean | null,
+    showAllCompanies: false
+  });
 
   const {
     selectedDate,
@@ -68,45 +73,39 @@ export const WatchlistSelector = React.memo(({
     }
   }, [companies, onCompanySelect]);
 
-  const handleShowAllChange = React.useCallback((checked: boolean) => {
-    console.log(`[WatchlistSelector] Show all companies toggled: ${checked}`);
-    setShowAllCompanies(checked);
+  const handleFiltersChange = React.useCallback((filters: typeof activeFilters) => {
+    console.log(`[WatchlistSelector] Filters changed:`, filters);
+    setActiveFilters(filters);
     
-    // Reset filters when toggling
-    setSelectedExchange('');
-    setSelectedMarker('');
-    setSelectedRefined('all');
-    setRefinedFilter(null);
+    // Update showAllCompanies state
+    setShowAllCompanies(filters.showAllCompanies);
+    
+    // Update refined filter for API calls
+    setRefinedFilter(filters.refined);
   }, [setShowAllCompanies, setRefinedFilter]);
-
-  const handleRefinedChange = React.useCallback((value: string) => {
-    console.log(`[WatchlistSelector] Refined filter changed to: ${value}`);
-    setSelectedRefined(value);
-    if (value === 'all') {
-      console.log('[WatchlistSelector] Setting refined filter to NULL (all companies)');
-      setRefinedFilter(null);
-    } else if (value === 'refined') {
-      console.log('[WatchlistSelector] Setting refined filter to TRUE (refined only)');
-      setRefinedFilter(true);
-    } else if (value === 'non-refined') {
-      console.log('[WatchlistSelector] Setting refined filter to FALSE (non-refined only)');
-      setRefinedFilter(false);
-    }
-  }, [setRefinedFilter]);
 
   const filteredCompanies = React.useMemo(() => {
     let filtered = [...companies];
     
-    if (selectedExchange) {
-      filtered = filtered.filter(c => c.exchange === selectedExchange);
+    // Apply exchange filter
+    if (activeFilters.exchanges.length > 0) {
+      filtered = filtered.filter(c => activeFilters.exchanges.includes(c.exchange));
     }
     
-    if (selectedMarker) {
-      filtered = filtered.filter(c => c.marker === selectedMarker);
+    // Apply marker filter
+    if (activeFilters.markers.length > 0) {
+      filtered = filtered.filter(c => c.marker && activeFilters.markers.includes(c.marker));
     }
     
     return filtered;
-  }, [companies, selectedExchange, selectedMarker]);
+  }, [companies, activeFilters]);
+
+  const getActiveFilterCount = React.useCallback(() => {
+    if (activeFilters.showAllCompanies) return 1;
+    return activeFilters.exchanges.length + 
+           activeFilters.markers.length + 
+           (activeFilters.refined !== null ? 1 : 0);
+  }, [activeFilters]);
 
   const availableDateObjects = React.useMemo(() => 
     availableDates.map(d => new Date(d)),
@@ -121,21 +120,6 @@ export const WatchlistSelector = React.memo(({
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium">Select Date</label>
           
-          {/* Show All Companies Checkbox */}
-          <div className="flex items-center space-x-2 mb-2">
-            <Checkbox
-              id="show-all-companies"
-              checked={showAllCompanies}
-              onCheckedChange={handleShowAllChange}
-            />
-            <label
-              htmlFor="show-all-companies"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-            >
-              Show all companies
-            </label>
-          </div>
-
           <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
             <PopoverTrigger asChild>
               <Button
@@ -174,58 +158,45 @@ export const WatchlistSelector = React.memo(({
         </div>
       )}
 
-      {/* Filters */}
+      {/* Filter Button */}
       {(showExchangeFilter || showMarkerFilter) && availableExchanges.length > 0 && (
-        <div className="flex flex-col gap-2 justify-center">
-          {showExchangeFilter && (
-            <select
-              value={selectedExchange}
-              onChange={(e) => setSelectedExchange(e.target.value)}
-              className="py-[30px] px-4 text-sm text-muted-foreground border rounded-md bg-background"
-            >
-              <option value="">All Exchanges</option>
-              {availableExchanges.map(exchange => (
-                <option key={exchange} value={exchange}>{exchange}</option>
-              ))}
-            </select>
-          )}
-
-          {showMarkerFilter && availableMarkers.length > 0 && (
-            <select
-              value={selectedMarker}
-              onChange={(e) => setSelectedMarker(e.target.value)}
-              className="px-3 py-2 text-sm border rounded-md bg-background"
-            >
-              <option value="">All Markers</option>
-              {availableMarkers.map(marker => (
-                <option key={marker} value={marker}>{marker}</option>
-              ))}
-            </select>
-          )}
-
-          {/* Refined Filter */}
-          <select
-            value={selectedRefined}
-            onChange={(e) => handleRefinedChange(e.target.value)}
-            className="px-3 py-2 text-sm border rounded-md bg-background"
-            disabled={showAllCompanies}
-            data-refined-filter={selectedRefined}
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium">Filters</label>
+          <Button
+            variant="outline"
+            onClick={() => setIsFilterModalOpen(true)}
+            className="relative min-w-[120px]"
           >
-            <option value="all">All Quality ({totalCompanies})</option>
-            <option value="refined">Refined Only</option>
-            <option value="non-refined">Non-Refined Only</option>
-          </select>
-
+            <Filter className="mr-2 h-4 w-4" />
+            Filters
+            {getActiveFilterCount() > 0 && (
+              <Badge 
+                variant="secondary" 
+                className="ml-2 px-1.5 py-0.5 text-xs"
+              >
+                {getActiveFilterCount()}
+              </Badge>
+            )}
+          </Button>
           <div className="text-xs text-muted-foreground">
             {filteredCompanies.length} of {totalCompanies} companies
-            {selectedRefined !== 'all' && (
-              <span className="ml-1 text-primary font-medium">
-                ({selectedRefined === 'refined' ? 'Refined' : 'Non-Refined'})
-              </span>
-            )}
           </div>
         </div>
       )}
+
+      {/* Filter Modal */}
+      <FilterModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        filterOptions={{
+          exchanges: availableExchanges,
+          markers: availableMarkers
+        }}
+        activeFilters={activeFilters}
+        onFiltersChange={handleFiltersChange}
+        totalCompanies={totalCompanies}
+        filteredCount={filteredCompanies.length}
+      />
 
       {/* Error Display */}
       {error && (
