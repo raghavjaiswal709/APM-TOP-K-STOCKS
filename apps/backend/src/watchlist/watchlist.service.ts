@@ -4,6 +4,7 @@ import { Repository, In } from 'typeorm';
 import { Companies } from './entities/companies.entity';
 import { DailyWatchlist } from './entities/daily-watchlist.entity';
 import { DailyWatchlistMetrics } from './entities/daily-watchlist-metrics.entity';
+import { CompanyMasterService } from './company-master.service';
 import * as moment from 'moment';
 
 export interface MergedCompany {
@@ -36,6 +37,8 @@ export class WatchlistService {
     
     @InjectRepository(DailyWatchlistMetrics)
     private dailyWatchlistMetricsRepository: Repository<DailyWatchlistMetrics>,
+    
+    private companyMasterService: CompanyMasterService,
   ) {}
 
   /**
@@ -123,12 +126,23 @@ export class WatchlistService {
       const mergedData: MergedCompany[] = watchlistEntries.map(entry => {
         const company = companies.find(c => c.companyId === entry.companyId);
         const metric = metrics.find(m => m.companyId === entry.companyId);
+        
+        // Get marker from multiple sources: entry -> company -> CSV fallback
+        let marker = entry.marker || company?.marker;
+        if (!marker) {
+          const csvMarker = this.companyMasterService.getMarker(
+            company?.companyCode || entry.companyCode,
+            entry.exchange
+          );
+          marker = csvMarker || 'EQ';
+        }
 
         return {
           company_id: entry.companyId,
           company_code: company?.companyCode || entry.companyCode,
           name: company?.name || entry.companyCode,
           exchange: entry.exchange,
+          marker: marker,
           refined: entry.refined,
           total_valid_days: metric?.totalValidDays,
           avg_daily_high_low_range: metric?.avgDailyHighLowRange,
@@ -243,11 +257,18 @@ export class WatchlistService {
 
       if (!company) return null;
 
+      // Get marker from company or CSV fallback
+      let marker = company.marker;
+      if (!marker) {
+        marker = this.companyMasterService.getMarker(company.companyCode, company.exchange) || 'EQ';
+      }
+
       return {
         company_id: company.companyId,
         company_code: company.companyCode,
         name: company.name,
-        exchange: company.exchange
+        exchange: company.exchange,
+        marker: marker
       };
     } catch (error) {
       this.logger.error(`Error fetching company by code:`, error);
@@ -317,12 +338,21 @@ export class WatchlistService {
 
       const companies = await queryBuilder.orderBy('c.name', 'ASC').getMany();
 
-      const mergedData: MergedCompany[] = companies.map((company) => ({
-        company_id: company.companyId,
-        company_code: company.companyCode,
-        name: company.name,
-        exchange: company.exchange,
-      }));
+      const mergedData: MergedCompany[] = companies.map((company) => {
+        // Get marker from company or CSV fallback
+        let marker = company.marker;
+        if (!marker) {
+          marker = this.companyMasterService.getMarker(company.companyCode, company.exchange) || 'EQ';
+        }
+        
+        return {
+          company_id: company.companyId,
+          company_code: company.companyCode,
+          name: company.name,
+          exchange: company.exchange,
+          marker: marker,
+        };
+      });
 
       this.logger.log(
         `Successfully fetched ${mergedData.length} companies from companies table`,

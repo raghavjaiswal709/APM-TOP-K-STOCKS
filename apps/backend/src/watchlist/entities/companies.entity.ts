@@ -16,4 +16,7 @@ export class Companies {
   @Column({ name: 'exchange', type: 'varchar', length: 10 })
   @Index()
   exchange: string;
+
+  @Column({ name: 'marker', type: 'varchar', length: 10, nullable: true, select: false })
+  marker?: string;
 }

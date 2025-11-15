@@ -22,6 +22,9 @@ export class DailyWatchlist {
   @Column({ name: 'exchange', type: 'varchar', length: 10 })
   exchange: string;
 
+  @Column({ name: 'marker', type: 'varchar', length: 10, nullable: true, select: false })
+  marker?: string;
+
   @Column({ name: 'refined', type: 'boolean', default: false })
   refined: boolean;
 
