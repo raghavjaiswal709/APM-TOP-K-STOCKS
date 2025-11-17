@@ -13,7 +13,7 @@ export default function FyersCallbackPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   useEffect(() => {
-    const code = searchParams.get('code');
+    const code = searchParams.get('auth_code');
     const error = searchParams.get('error');
     const state = searchParams.get('state');
     console.log('Callback received:', { code, error, state });
