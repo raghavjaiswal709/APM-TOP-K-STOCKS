@@ -206,8 +206,6 @@ export const MultiSelectWatchlistSelector = React.memo(({
         {showDateSelector && (
           <div className="flex gap-5 items-center">
             <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">Select Date</label>
-
               <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -238,15 +236,6 @@ export const MultiSelectWatchlistSelector = React.memo(({
                   )}
                 </PopoverContent>
               </Popover>
-              <div className="flex flex-col gap-2">
-                <div className="flex gap-4 text-xs text-muted-foreground">
-                  <div>
-                    {loading && `Loading data...`}
-                    {!loading && exists && `${totalCompanies} companies`}
-                    {!loading && !exists && !showAllCompanies && `No data available`}
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -258,7 +247,7 @@ export const MultiSelectWatchlistSelector = React.memo(({
               variant="outline"
               size="sm"
               onClick={() => setIsFilterModalOpen(true)}
-              className="flex items-center gap-2 h-10"
+              className="flex items-center gap-2 h-20"
               disabled={disabled}
             >
               <Filter className="h-4 w-4" />
@@ -269,12 +258,6 @@ export const MultiSelectWatchlistSelector = React.memo(({
                 </Badge>
               )}
             </Button>
-            
-            {filteredCompanies.length !== companies.length && (
-              <div className="text-xs text-muted-foreground text-center">
-                {`${filteredCompanies.length} of ${companies.length} shown`}
-              </div>
-            )}
           </div>
         )}
       </div>

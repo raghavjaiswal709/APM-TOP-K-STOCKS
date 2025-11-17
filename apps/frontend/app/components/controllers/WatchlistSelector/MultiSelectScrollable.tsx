@@ -70,7 +70,7 @@ export function MultiSelectScrollable({
   if (loading) {
     return (
       <Select disabled>
-        <SelectTrigger className="w-[280px]">
+        <SelectTrigger className="w-[280px] h-20">
           <SelectValue placeholder="Loading companies..." />
         </SelectTrigger>
       </Select>
@@ -80,7 +80,7 @@ export function MultiSelectScrollable({
   if (!exists || companies.length === 0) {
     return (
       <Select disabled>
-        <SelectTrigger className="w-[280px]">
+        <SelectTrigger className="w-[280px] h-20">
           <SelectValue placeholder="No companies available" />
         </SelectTrigger>
       </Select>
@@ -89,7 +89,7 @@ export function MultiSelectScrollable({
 
   return (
     <Select open={isOpen} onOpenChange={setIsOpen}>
-      <SelectTrigger className="w-[280px]" disabled={disabled}>
+      <SelectTrigger className="w-[280px] h-20" disabled={disabled}>
         <SelectValue>
           {selectedCompanies.length === 0 ? (
             "Select companies"

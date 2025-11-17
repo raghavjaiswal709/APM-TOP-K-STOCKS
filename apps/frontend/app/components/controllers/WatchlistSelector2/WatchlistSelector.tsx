@@ -186,12 +186,11 @@ export const WatchlistSelector = React.memo(({
       {/* Date Selector */}
       {showDateSelector && (
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium">Select Date</label>
           <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
-                className="w-[200px] justify-start text-left font-normal"
+                className="w-[200px] h-20 justify-start text-left font-normal"
                 disabled={showAllCompanies}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
@@ -217,15 +216,6 @@ export const WatchlistSelector = React.memo(({
               )}
             </PopoverContent>
           </Popover>
-          <div className="flex flex-col gap-2">
-            <div className="flex gap-4 text-xs text-muted-foreground">
-              <div>
-                {loading && `Loading...`}
-                {!loading && exists && `${totalCompanies} companies`}
-                {!loading && !exists && !showAllCompanies && `No data`}
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -236,7 +226,7 @@ export const WatchlistSelector = React.memo(({
             variant="outline"
             size="sm"
             onClick={() => setIsFilterModalOpen(true)}
-            className="flex items-center gap-2 h-10"
+            className="flex items-center gap-2 h-20"
           >
             <Filter className="h-4 w-4" />
             Filters
@@ -246,12 +236,6 @@ export const WatchlistSelector = React.memo(({
               </Badge>
             )}
           </Button>
-          
-          {filteredCompanies.length !== companies.length && (
-            <div className="text-xs text-muted-foreground text-center">
-              {`${filteredCompanies.length} of ${companies.length} shown`}
-            </div>
-          )}
         </div>
       )}
 
