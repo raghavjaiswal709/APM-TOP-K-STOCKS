@@ -245,7 +245,7 @@ export default function Page() {
           ) : (
             <>
               <Card className="w-full">
-                <CardContent className="p-4">
+                <CardContent className="p-0">
                   <div className="flex gap-2 items-center justify-between w-full">
                     <CardWithForm 
                       onCompanyChange={handleCompanyChange} 

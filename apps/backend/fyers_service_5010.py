@@ -39,7 +39,7 @@ app = socketio.WSGIApp(sio)
 # Fyers API credentials
 client_id = "150HUKJSWG-100"
 secret_key = "18YYNXCAS7"
-redirect_uri = "https://daksphere.com/"
+redirect_uri = "https://raghavjaiswal709.github.io/DAKSphere_redirect_PROD/"
 response_type = "code"
 grant_type = "authorization_code"
 
