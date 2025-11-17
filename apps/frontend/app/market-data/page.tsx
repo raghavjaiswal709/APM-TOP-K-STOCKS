@@ -27,7 +27,7 @@ import { ViewInDashboardButton } from "@/app/components/ViewInDashboardButton";
 import { TrendingUp, TrendingDown, Minus, Database, Wifi, Award, TrendingUpIcon, Clock, Building2 } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
 import { isMarketOpen } from "@/lib/marketHours";
-import { fetchHistoricalData, mergeHistoricalData, detectDataGaps } from "@/lib/historicalDataFetcher";
+import { fetchHistoricalData, detectDataGaps } from "@/lib/historicalDataFetcher";
 
 // Prediction Integration
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
@@ -350,12 +350,21 @@ const MarketDataPage: React.FC = () => {
       const symbol = data.symbol;
       const existingHistory = prev[symbol] || [];
 
-      const exists = existingHistory.some(item => item.timestamp === data.timestamp);
-      if (exists) return prev;
-
-      // ✅ CRITICAL FIX: Keep ALL data from 9:15 AM onwards (50000 points max)
-      const newHistory = [...existingHistory, data].slice(-50000);
-      newHistory.sort((a, b) => a.timestamp - b.timestamp);
+      // ✅ CRITICAL FIX: Use Map for efficient deduplication and merging
+      const dataMap = new Map<number, MarketData>();
+      
+      // Add all existing data
+      existingHistory.forEach(point => {
+        dataMap.set(point.timestamp, point);
+      });
+      
+      // Add new data point (will overwrite if duplicate timestamp exists)
+      dataMap.set(data.timestamp, data);
+      
+      // Convert back to sorted array (keep last 50000 points)
+      const newHistory = Array.from(dataMap.values())
+        .sort((a, b) => a.timestamp - b.timestamp)
+        .slice(-50000);
 
       return {
         ...prev,
@@ -625,12 +634,28 @@ const MarketDataPage: React.FC = () => {
             ask: point.ask_price
           }));
           
-          // Merge with existing data
+          // ✅ CRITICAL FIX: Use Map for efficient deduplication during merge
           setHistoricalData(prev => {
             const existingData = prev[selectedSymbol] || [];
-            const mergedData = mergeHistoricalData(existingData, externalData);
             
-            console.log(`📊 Merged data: ${existingData.length} local + ${externalData.length} external = ${mergedData.length} total`);
+            // Use Map for O(1) deduplication
+            const dataMap = new Map<number, MarketData>();
+            
+            // Add existing data first
+            existingData.forEach(point => {
+              dataMap.set(point.timestamp, point);
+            });
+            
+            // Add external data (will overwrite if timestamps match, keeping newer data)
+            externalData.forEach(point => {
+              dataMap.set(point.timestamp, point);
+            });
+            
+            // Convert to sorted array
+            const mergedData = Array.from(dataMap.values())
+              .sort((a, b) => a.timestamp - b.timestamp);
+            
+            console.log(`📊 Merged data: ${existingData.length} local + ${externalData.length} external = ${mergedData.length} total (${existingData.length + externalData.length - mergedData.length} duplicates removed)`);
             console.log(`🔍 First merged point:`, mergedData[0] ? { timestamp: mergedData[0].timestamp, date: new Date(mergedData[0].timestamp * 1000), ltp: mergedData[0].ltp } : null);
             console.log(`🔍 Last merged point:`, mergedData[mergedData.length - 1] ? { timestamp: mergedData[mergedData.length - 1].timestamp, date: new Date(mergedData[mergedData.length - 1].timestamp * 1000), ltp: mergedData[mergedData.length - 1].ltp } : null);
             

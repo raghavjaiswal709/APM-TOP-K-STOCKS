@@ -147,8 +147,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const volumeChartRef = useRef<any>(null);
 
   const [initialized, setInitialized] = useState(false);
-  // ✅ DEFAULT: Show full trading day (9:15 AM - 3:30 PM)
-  const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1D');
+  // ✅ DEFAULT: Show 1 hour view
+  const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1H');
 
   // const [chartType, setChartType] = useState<'line' | 'candle'>('candle');
   const [chartType, setChartType] = useState<'line' | 'candle'>('line');
@@ -348,9 +348,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
 
   // ============ ENHANCED: prepareLineChartData with chartUpdates integration ============
-  const prepareLineChartData = () => {
+  const prepareLineChartData = useMemo(() => {
     // ✅ DATA MERGE: Combine historical (pre-filtered by API) + live updates + current point
     const dataMap = new Map<number, DataPoint>();
+    
+    // ✅ CRITICAL FIX: NO FILTERING - API already returns TODAY's data only (9:15 AM onwards)
+    // The old logic incorrectly calculated tradingStartTimestamp using local browser time,
+    // causing valid intraday data to be filtered out.
     
     // 🔍 DEBUG: Log input data
     console.log(`🔍 [prepareLineChartData] Input:`, {
@@ -361,7 +365,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       lastHistorical: historicalData[historicalData.length - 1]
     });
     
-    // ✅ Add ALL historical data (already filtered by API to TODAY only)
+    // ✅ Add ALL historical data (API guarantees TODAY only, no filtering needed)
     historicalData.forEach(point => {
       if (point.ltp > 0 && !isNaN(point.ltp) && point.timestamp > 0) {
         if (!dataMap.has(point.timestamp)) {
@@ -444,7 +448,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       sellPrices,
       buySellSpreads
     };
-  };
+  }, [historicalData, chartUpdates, data]); // ✅ CRITICAL: Only recalculate when data actually changes
 
   const calculateStandardDeviation = (values: number[], usePopulation = false) => {
     if (values.length === 0) return 0;
@@ -471,14 +475,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
 
   const calculateBidAskStandardDeviation = () => {
-    const { bid, ask, x } = prepareLineChartData();
+    const { bid, ask, x } = lineChartData;
     const windowSize = 20;
     const bidStdDev = [];
     const askStdDev = [];
     for (let i = 0; i < bid.length; i++) {
       const startIndex = Math.max(0, i - windowSize + 1);
-      const bidWindow = bid.slice(startIndex, i + 1).filter(b => b !== null && b !== undefined) as number[];
-      const askWindow = ask.slice(startIndex, i + 1).filter(a => a !== null && a !== undefined) as number[];
+      const bidWindow = bid.slice(startIndex, i + 1).filter((b: number | null) => b !== null && b !== undefined) as number[];
+      const askWindow = ask.slice(startIndex, i + 1).filter((a: number | null) => a !== null && a !== undefined) as number[];
       bidStdDev.push(bidWindow.length > 1 ? calculateStandardDeviation(bidWindow) : 0);
       askStdDev.push(askWindow.length > 1 ? calculateStandardDeviation(askWindow) : 0);
     }
@@ -490,23 +494,21 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     let buyPrices: number[] = [];
     let sellPrices: number[] = [];
     if (chartType === 'line') {
-      const data = prepareLineChartData();
-      x = data.x;
-      buyPrices = data.buyPrices;
-      sellPrices = data.sellPrices;
+      x = lineChartData.x;
+      buyPrices = lineChartData.buyPrices;
+      sellPrices = lineChartData.sellPrices;
     } else {
-      const data = prepareCandlestickData();
-      x = data.x;
-      buyPrices = data.buyPrices;
-      sellPrices = data.sellPrices;
+      x = candlestickData.x;
+      buyPrices = candlestickData.buyPrices;
+      sellPrices = candlestickData.sellPrices;
     }
     const windowSize = 20;
     const buyStdDev = [];
     const sellStdDev = [];
     for (let i = 0; i < buyPrices.length; i++) {
       const startIndex = Math.max(0, i - windowSize + 1);
-      const buyWindow = buyPrices.slice(startIndex, i + 1).filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
-      const sellWindow = sellPrices.slice(startIndex, i + 1).filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
+      const buyWindow = buyPrices.slice(startIndex, i + 1).filter((p: number) => p !== null && p !== undefined && !isNaN(p)) as number[];
+      const sellWindow = sellPrices.slice(startIndex, i + 1).filter((p: number) => p !== null && p !== undefined && !isNaN(p)) as number[];
       buyStdDev.push(buyWindow.length > 1 ? calculateStandardDeviation(buyWindow) : 0);
       sellStdDev.push(sellWindow.length > 1 ? calculateStandardDeviation(sellWindow) : 0);
     }
@@ -615,7 +617,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return vwapValues;
   };
 
-  const prepareCandlestickData = () => {
+  const prepareCandlestickData = useMemo(() => {
     if (!ohlcData || ohlcData.length === 0) {
       return { x: [], open: [], high: [], low: [], close: [], volume: [], volumeStdDev: [], buyVolumes: [], sellVolumes: [], buyPrices: [], sellPrices: [], buySellSpreads: [] };
     }
@@ -676,7 +678,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       sellPrices,
       buySellSpreads
     };
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ohlcData]); // ✅ Only recalculate when OHLC data changes (helper functions are stable)
 
   const calculateYAxisRange = (timeRange: [any, any] | undefined) => {
     if (!timeRange || !timeRange[0] || !timeRange[1]) return undefined;
@@ -752,7 +755,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
 
   const calculateBidAskRange = () => {
-    const { bid, ask } = prepareLineChartData();
+    const { bid, ask } = lineChartData;
     const validBids = bid.filter(b => b !== null && b !== undefined) as number[];
     const validAsks = ask.filter(a => a !== null && a !== undefined) as number[];
     if (validBids.length === 0 || validAsks.length === 0) return undefined;
@@ -766,13 +769,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     let buyPrices: number[] = [];
     let sellPrices: number[] = [];
     if (chartType === 'line') {
-      const { buyPrices: bp, sellPrices: sp } = prepareLineChartData();
-      buyPrices = bp.filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
-      sellPrices = sp.filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
+      const { buyPrices: bp, sellPrices: sp } = lineChartData;
+      buyPrices = bp.filter((p: number | null) => p !== null && p !== undefined && !isNaN(p)) as number[];
+      sellPrices = sp.filter((p: number | null) => p !== null && p !== undefined && !isNaN(p)) as number[];
     } else {
-      const { buyPrices: bp, sellPrices: sp } = prepareCandlestickData();
-      buyPrices = bp.filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
-      sellPrices = sp.filter(p => p !== null && p !== undefined && !isNaN(p)) as number[];
+      const { buyPrices: bp, sellPrices: sp } = candlestickData;
+      buyPrices = bp.filter((p: number | null) => p !== null && p !== undefined && !isNaN(p)) as number[];
+      sellPrices = sp.filter((p: number | null) => p !== null && p !== undefined && !isNaN(p)) as number[];
     }
     if (buyPrices.length === 0 || sellPrices.length === 0) return undefined;
     const minPrice = Math.min(...sellPrices);
@@ -782,8 +785,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
 
   const calculateSpreadRange = () => {
-    const { spread } = prepareLineChartData();
-    const validSpreads = spread.filter(s => s !== null && s !== undefined) as number[];
+    const { spread } = lineChartData;
+    const validSpreads = spread.filter((s: number | null) => s !== null && s !== undefined) as number[];
     if (validSpreads.length === 0) return [0, 1];
     const minSpread = Math.min(...validSpreads);
     const maxSpread = Math.max(...validSpreads);
@@ -794,11 +797,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const calculateBuySellSpreadRange = () => {
     let buySellSpreads: number[] = [];
     if (chartType === 'line') {
-      const { buySellSpreads: bss } = prepareLineChartData();
-      buySellSpreads = bss.filter(s => s !== null && s !== undefined && !isNaN(s)) as number[];
+      const { buySellSpreads: bss } = lineChartData;
+      buySellSpreads = bss.filter((s: number) => s !== null && s !== undefined && !isNaN(s)) as number[];
     } else {
-      const { buySellSpreads: bss } = prepareCandlestickData();
-      buySellSpreads = bss.filter(s => s !== null && s !== undefined && !isNaN(s)) as number[];
+      const { buySellSpreads: bss } = candlestickData;
+      buySellSpreads = bss.filter((s: number) => s !== null && s !== undefined && !isNaN(s)) as number[];
     }
     if (buySellSpreads.length === 0) return [0, 1];
     const minSpread = Math.min(...buySellSpreads);
@@ -812,7 +815,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     if (chartType === 'line') {
       volumes = historicalData.map(point => point.volume || 0).filter(v => v > 0);
     } else {
-      const { volume } = prepareCandlestickData();
+      const { volume } = candlestickData;
       volumes = volume.filter(v => v > 0);
     }
     if (volumes.length === 0) return [0, 1000];
@@ -824,13 +827,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     let buyVolumes: number[] = [];
     let sellVolumes: number[] = [];
     if (chartType === 'line') {
-      const { buyVolumes: bv, sellVolumes: sv } = prepareLineChartData();
-      buyVolumes = bv.filter(v => v !== null && v !== undefined) as number[];
-      sellVolumes = sv.filter(v => v !== null && v !== undefined) as number[];
+      const { buyVolumes: bv, sellVolumes: sv } = lineChartData;
+      buyVolumes = bv.filter((v: number) => v !== null && v !== undefined) as number[];
+      sellVolumes = sv.filter((v: number) => v !== null && v !== undefined) as number[];
     } else {
-      const { buyVolumes: bv, sellVolumes: sv } = prepareCandlestickData();
-      buyVolumes = bv.filter(v => v !== null && v !== undefined) as number[];
-      sellVolumes = sv.filter(v => v !== null && v !== undefined) as number[];
+      const { buyVolumes: bv, sellVolumes: sv } = candlestickData;
+      buyVolumes = bv.filter((v: number) => v !== null && v !== undefined) as number[];
+      sellVolumes = sv.filter((v: number) => v !== null && v !== undefined) as number[];
     }
     if (buyVolumes.length === 0 && sellVolumes.length === 0) return [0, 1000];
     const maxBuyVolume = buyVolumes.length > 0 ? Math.max(...buyVolumes) : 0;
@@ -989,7 +992,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
 
   const getLineColor = () => {
-    const { y } = prepareLineChartData();
+    const { y } = lineChartData;
     if (y.length < 2) return '#22d3ee';
     const lastPrice = y[y.length - 1];
     const prevPrice = y[y.length - 2];
@@ -1254,25 +1257,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
   };
 
-  // ============ PERFORMANCE: Cache prepared data to prevent recalculation ============
-  const lineChartDataRef = useRef<ReturnType<typeof prepareLineChartData> | null>(null);
-  const candlestickDataRef = useRef<ReturnType<typeof prepareCandlestickData> | null>(null);
-
-  // Only recalculate when underlying data changes
-  if (chartType === 'line' && (
-    historicalData.length > 0 || 
-    (chartUpdates && chartUpdates.length > 0) ||
-    data?.ltp
-  )) {
-    lineChartDataRef.current = prepareLineChartData();
-  }
-
-  if (chartType === 'candle' && ohlcData.length > 0) {
-    candlestickDataRef.current = prepareCandlestickData();
-  }
-
-  const lineChartData = lineChartDataRef.current;
-  const candlestickData = candlestickDataRef.current;
+  // ✅ OPTIMIZED: Data is now properly memoized via useMemo in the prepare functions
+  const lineChartData = prepareLineChartData;
+  const candlestickData = prepareCandlestickData;
 
   // ============ ENHANCED: Stable chart rendering with state preservation ============
   useEffect(() => {
@@ -1284,20 +1271,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const plotDiv = document.getElementById('plotly-chart');
     if (!plotDiv) return;
 
+    // ✅ THROTTLE: Prevent excessive re-renders during rapid updates
+    if (isUpdating) return;
+
     try {
       const layout = createLayout();
-      
-      // ✅ Preserve user's zoom/pan state during prediction updates
-      if (userHasInteracted && (preservedRange.xaxis || preservedRange.yaxis)) {
-        if (preservedRange.xaxis) {
-          layout.xaxis.range = preservedRange.xaxis;
-          layout.xaxis.autorange = false;
-        }
-        if (preservedRange.yaxis) {
-          layout.yaxis.range = preservedRange.yaxis;
-          layout.yaxis.autorange = false;
-        }
-      }
       
       if (chartType === 'line') {
         if (!lineChartData || lineChartData.x.length === 0) return;
@@ -1357,19 +1335,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       console.error('Error updating chart:', err);
     }
   }, [
+    // ✅ OPTIMIZED: Only re-render when these critical values change
     predictionKey, 
     showPredictions, 
-    predictionRevision, 
     initialized, 
     selectedTimeframe, 
     chartType, 
     showIndicators, 
     mainMode, 
-    secondaryView, 
-    userHasInteracted, 
-    preservedRange,
+    secondaryView,
     lineChartData,
-    candlestickData
+    candlestickData,
+    isUpdating
   ]);
 
   // 🔀 CREATE ACTUAL DATA ONLY (No predictions for separator modal left side)
@@ -1419,7 +1396,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       }
     } else {
       // Candlestick chart for actual data
-      const { x, open, high, low, close } = prepareCandlestickData();
+      const { x, open, high, low, close } = candlestickData;
       if (x.length > 0) {
         plotData.push({
           x,
@@ -1788,10 +1765,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         }
       }
     } else {
-      const { x, open, high, low, close, volume, volumeStdDev, buyVolumes, sellVolumes } = prepareCandlestickData();
+      const { x, open, high, low, close, volume } = candlestickData;
       if (x.length === 0) return plotData;
 
-      const hoverText = x.map((date, i) => 
+      const hoverText = x.map((date: Date, i: number) => 
         `${date.toLocaleDateString()} ${date.toLocaleTimeString()}<br>` +
         `Open: ${open[i]?.toFixed(2) || 'N/A'}<br>` +
         `High: ${high[i]?.toFixed(2) || 'N/A'}<br>` +
@@ -1971,7 +1948,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         priceData = validData.map(point => Number(point.ltp));
         timeData = validData.slice(14).map(point => new Date(point.timestamp * 1000));
       } else {
-        const { close: candleClose, x: candleX } = prepareCandlestickData();
+        const { close: candleClose, x: candleX } = candlestickData;
         if (Array.isArray(candleClose)) {
           priceData = candleClose.filter(price => 
             price !== null && price !== undefined && !isNaN(price)
@@ -2069,7 +2046,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         timeDataMACD = validData.slice(25).map(point => new Date(point.timestamp * 1000));
         timeDataSignal = validData.slice(33).map(point => new Date(point.timestamp * 1000));
       } else {
-        const { close: candleClose, x: candleX } = prepareCandlestickData();
+        const { close: candleClose, x: candleX } = candlestickData;
         if (Array.isArray(candleClose)) {
           priceData = candleClose.filter(price => 
             price !== null && price !== undefined && !isNaN(price)
@@ -2148,7 +2125,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
   const createSpreadData = () => {
     const colors = getColorTheme();
-    const { x, spread } = prepareLineChartData();
+    const { x, spread } = lineChartData;
 
     return [{
       x,
@@ -2194,7 +2171,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         }
       ];
     } else {
-      const { x, bid, ask } = prepareLineChartData();
+      const { x, bid, ask } = lineChartData;
       return [
         {
           x,
@@ -2255,15 +2232,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       let sellPrices: number[] = [];
 
       if (chartType === 'line') {
-        const data = prepareLineChartData();
-        x = data.x;
-        buyPrices = data.buyPrices;
-        sellPrices = data.sellPrices;
+        x = lineChartData.x;
+        buyPrices = lineChartData.buyPrices;
+        sellPrices = lineChartData.sellPrices;
       } else {
-        const data = prepareCandlestickData();
-        x = data.x;
-        buyPrices = data.buyPrices;
-        sellPrices = data.sellPrices;
+        x = candlestickData.x;
+        buyPrices = candlestickData.buyPrices;
+        sellPrices = candlestickData.sellPrices;
       }
 
       return [
@@ -2301,13 +2276,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     let buySellSpreads: number[] = [];
 
     if (chartType === 'line') {
-      const data = prepareLineChartData();
-      x = data.x;
-      buySellSpreads = data.buySellSpreads;
+      x = lineChartData.x;
+      buySellSpreads = lineChartData.buySellSpreads;
     } else {
-      const data = prepareCandlestickData();
-      x = data.x;
-      buySellSpreads = data.buySellSpreads;
+      x = candlestickData.x;
+      buySellSpreads = candlestickData.buySellSpreads;
     }
 
     return [{
@@ -2329,26 +2302,24 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const colors = getColorTheme();
     let x: Date[] = [];
     let volumes: number[] = [];
-    let volumeColors: string[] = [];
+    const volumeColors: string[] = [];
 
     if (chartType === 'line') {
-      const data = prepareLineChartData();
-      x = data.x;
-      volumes = data.allData.map(point => point.volume || 0);
+      x = lineChartData.x;
+      volumes = lineChartData.allData.map((point: DataPoint) => point.volume || 0);
 
-      for (let i = 0; i < data.allData.length; i++) {
+      for (let i = 0; i < lineChartData.allData.length; i++) {
         if (i === 0) {
           volumeColors.push(colors.upColor);
         } else {
-          const currentPrice = data.allData[i].ltp;
-          const prevPrice = data.allData[i - 1].ltp;
+          const currentPrice = lineChartData.allData[i].ltp;
+          const prevPrice = lineChartData.allData[i - 1].ltp;
           volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
         }
       }
     } else {
-      const data = prepareCandlestickData();
-      x = data.x;
-      volumes = data.volume;
+      x = candlestickData.x;
+      volumes = candlestickData.volume;
 
       for (let i = 0; i < data.close.length; i++) {
         volumeColors.push(data.close[i] >= data.open[i] ? colors.upColor : colors.downColor);
@@ -2443,15 +2414,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       let volumeStdDev: number[] = [];
 
       if (chartType === 'line') {
-        const data = prepareLineChartData();
-        x = data.x;
-        volumeStdDev = data.allData.map((point, index) => 
+        x = lineChartData.x;
+        volumeStdDev = lineChartData.allData.map((point: DataPoint, index: number) => 
           calculateVolumeStandardDeviation(point, index)
         );
       } else {
-        const data = prepareCandlestickData();
-        x = data.x;
-        volumeStdDev = data.volumeStdDev;
+        x = candlestickData.x;
+        volumeStdDev = candlestickData.volumeStdDev;
       }
 
       return [{
@@ -2508,8 +2477,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
     const layout: any = {
       autosize: true,
-      // ✅ FIX: Dynamic uirevision to force update when predictions change
-      uirevision: showPredictions ? `pred-rev-${predictionRevision}` : 'static',
+      // ✅ CRITICAL FIX: Use static uirevision to preserve user interactions
+      // This prevents the chart from resetting zoom/pan on every data update
+      uirevision: 'static',
       margin: { l: 50, r: 50, t: 40, b: 40 },
       title: {
         text: `${symbol} ${chartType === 'line' ? 'LTP' : 'OHLC'} Chart`,
@@ -2518,7 +2488,15 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       xaxis: {
         title: 'Time',
         type: 'date',
-        range: timeRange,
+        // ✅ CRITICAL FIX: Only set range if user hasn't zoomed
+        // This prevents the chart from auto-scrolling when user is exploring data
+        ...(userHasInteracted && preservedRange.xaxis ? {
+          range: preservedRange.xaxis,
+          autorange: false
+        } : {
+          range: timeRange,
+          autorange: false
+        }),
         gridcolor: colors.grid,
         linecolor: colors.grid,
         tickfont: { color: colors.text },
@@ -2533,8 +2511,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       },
       yaxis: {
         title: 'Price (₹)',
-        range: yRange,  // ✅ Use calculated range for visible data
-        autorange: yRange ? false : true,  // ✅ Auto if no range calculated
+        // ✅ CRITICAL FIX: Preserve user's Y-axis zoom if they've interacted
+        ...(userHasInteracted && preservedRange.yaxis ? {
+          range: preservedRange.yaxis,
+          autorange: false
+        } : {
+          range: yRange,
+          autorange: yRange ? false : true
+        }),
         fixedrange: false,  // ✅ Allow user to zoom y-axis if needed
         gridcolor: colors.grid,
         linecolor: colors.grid,
@@ -2544,7 +2528,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         domain: mainChartDomain,
         zeroline: false,
         automargin: true,
-        rangemode: 'normal',  // ✅ Ensure range adjusts to data
+        rangemode: 'normal',
       },
       dragmode: 'zoom', // ✅ Enable zoom mode for better data exploration
       hovermode: 'closest',
@@ -2878,8 +2862,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           calculateVolumeStandardDeviation(point, index)
         );
       } else {
-        const { volumeStdDev: stdDev } = prepareCandlestickData();
-        volumeStdDev = stdDev;
+        volumeStdDev = candlestickData.volumeStdDev;
       }
       const validStdDev = volumeStdDev.filter(v => v !== null && v !== undefined && !isNaN(v));
       const maxStdDev = validStdDev.length > 0 ? Math.max(...validStdDev) : 1;
@@ -2937,7 +2920,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     { label: '30m', value: '30m' },
     { label: '1H', value: '1H' },
     { label: '6H', value: '6H' },
-    { label: '12H', value: '12H' },
     { label: '1D', value: '1D' },
   ];
 
