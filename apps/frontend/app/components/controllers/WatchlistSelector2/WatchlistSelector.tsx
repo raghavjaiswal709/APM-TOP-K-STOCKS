@@ -24,6 +24,7 @@ interface ActiveFilters {
   markers: string[];
   sentiments: string[];
   refined: boolean | null;
+  showAllCompanies: boolean;
 }
 
 export const WatchlistSelector = React.memo(({ 
@@ -42,7 +43,8 @@ export const WatchlistSelector = React.memo(({
     exchanges: [],
     markers: [],
     sentiments: [],
-    refined: null
+    refined: null,
+    showAllCompanies: false
   });
 
   const {
@@ -58,7 +60,9 @@ export const WatchlistSelector = React.memo(({
     totalCompanies,
     getFilteredCompanies,
     refinedFilter,
-    setRefinedFilter
+    setRefinedFilter,
+    showAllCompanies,
+    setShowAllCompanies
   } = useWatchlist();
 
   // Get available sentiments (you might need to modify this based on your data)
@@ -81,7 +85,8 @@ export const WatchlistSelector = React.memo(({
         exchanges: [],
         markers: [],
         sentiments: [],
-        refined: null
+        refined: null,
+        showAllCompanies: false
       });
       
       // Reset refined filter in hook
@@ -147,13 +152,19 @@ export const WatchlistSelector = React.memo(({
   }, [companies, activeFilters]);
 
   const handleFiltersChange = React.useCallback((filters: ActiveFilters) => {
+    console.log(`[WatchlistSelector] Filters changed:`, filters);
     setActiveFilters(filters);
+    
+    // Update showAllCompanies state
+    setShowAllCompanies(filters.showAllCompanies);
+    
     // Update refined filter in the hook to trigger API call
     setRefinedFilter(filters.refined);
-  }, [setRefinedFilter]);
+  }, [setRefinedFilter, setShowAllCompanies]);
 
   const getActiveFilterCount = () => {
-    return activeFilters.exchanges.length + activeFilters.markers.length + activeFilters.sentiments.length;
+    if (activeFilters.showAllCompanies) return 1;
+    return activeFilters.exchanges.length + activeFilters.markers.length + activeFilters.sentiments.length + (activeFilters.refined !== null ? 1 : 0);
   };
 
   const filterOptions = React.useMemo(() => ({
@@ -181,9 +192,10 @@ export const WatchlistSelector = React.memo(({
               <Button
                 variant="outline"
                 className="w-[200px] justify-start text-left font-normal"
+                disabled={showAllCompanies}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {selectedDate ? format(new Date(selectedDate), "PPP") : "Pick a date"}
+                {selectedDate && !showAllCompanies ? format(new Date(selectedDate), "PPP") : "Pick a date"}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
@@ -208,9 +220,9 @@ export const WatchlistSelector = React.memo(({
           <div className="flex flex-col gap-2">
             <div className="flex gap-4 text-xs text-muted-foreground">
               <div>
-                {loading && `Loading data...`}
+                {loading && `Loading...`}
                 {!loading && exists && `${totalCompanies} companies`}
-                {!loading && !exists && `No data available`}
+                {!loading && !exists && !showAllCompanies && `No data`}
               </div>
             </div>
           </div>

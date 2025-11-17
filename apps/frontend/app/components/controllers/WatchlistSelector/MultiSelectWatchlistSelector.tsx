@@ -2,13 +2,14 @@
 import * as React from "react";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { MultiSelectScrollable } from "./MultiSelectScrollable";
+import { MultiSelectFilterModal } from "./MultiSelectFilterModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Building2, X, CalendarIcon } from "lucide-react";
+import { Building2, X, CalendarIcon, Filter } from "lucide-react";
 import { format } from "date-fns";
 
 interface Company {
@@ -55,12 +56,25 @@ export const MultiSelectWatchlistSelector = React.memo(({
     totalCompanies,
     getFilteredCompanies,
     showAllCompanies,
-    setShowAllCompanies
+    setShowAllCompanies,
+    setRefinedFilter
   } = useWatchlist();
 
   const [selectedExchange, setSelectedExchange] = React.useState<string>('');
   const [selectedMarker, setSelectedMarker] = React.useState<string>('');
   const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
+  const [isFilterModalOpen, setIsFilterModalOpen] = React.useState(false);
+  const [activeFilters, setActiveFilters] = React.useState<{
+    exchanges: string[];
+    markers: string[];
+    refined: boolean | null;
+    showAllCompanies: boolean;
+  }>({
+    exchanges: [],
+    markers: [],
+    refined: null,
+    showAllCompanies: false
+  });
 
   const handleDateSelect = React.useCallback((date: Date | undefined) => {
     if (date) {
@@ -101,6 +115,12 @@ export const MultiSelectWatchlistSelector = React.memo(({
     console.log(`[MultiSelectWatchlistSelector] Show all companies toggled: ${checked}`);
     setShowAllCompanies(checked);
     
+    // Update active filters
+    setActiveFilters(prev => ({
+      ...prev,
+      showAllCompanies: checked
+    }));
+    
     // Reset filters and selections when toggling
     setSelectedExchange('');
     setSelectedMarker('');
@@ -118,12 +138,45 @@ export const MultiSelectWatchlistSelector = React.memo(({
     handleCompaniesSelect([]);
   }, [handleCompaniesSelect]);
 
+  const handleFiltersChange = React.useCallback((filters: typeof activeFilters) => {
+    console.log(`[MultiSelectWatchlistSelector] Filters changed:`, filters);
+    setActiveFilters(filters);
+    
+    // Update showAllCompanies state
+    setShowAllCompanies(filters.showAllCompanies);
+    
+    // Update refined filter for API calls
+    setRefinedFilter(filters.refined);
+    
+    // Apply exchange and marker filters
+    if (filters.exchanges.length > 0) {
+      setSelectedExchange(filters.exchanges[0]);
+    } else {
+      setSelectedExchange('');
+    }
+    
+    if (filters.markers.length > 0) {
+      setSelectedMarker(filters.markers[0]);
+    } else {
+      setSelectedMarker('');
+    }
+  }, [setShowAllCompanies, setRefinedFilter]);
+
   const filteredCompanies = React.useMemo(() => {
-    const filters: any = {};
-    if (selectedExchange) filters.exchange = selectedExchange;
-    if (selectedMarker) filters.marker = selectedMarker;
-    return getFilteredCompanies(filters);
-  }, [companies, selectedExchange, selectedMarker, getFilteredCompanies]);
+    let filtered = [...companies];
+    
+    // Apply exchange filter
+    if (activeFilters.exchanges.length > 0) {
+      filtered = filtered.filter(c => activeFilters.exchanges.includes(c.exchange));
+    }
+    
+    // Apply marker filter
+    if (activeFilters.markers.length > 0) {
+      filtered = filtered.filter(c => c.marker && activeFilters.markers.includes(c.marker));
+    }
+    
+    return filtered;
+  }, [companies, activeFilters]);
 
   const handleExchangeChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedExchange(e.target.value);
@@ -133,6 +186,13 @@ export const MultiSelectWatchlistSelector = React.memo(({
   const handleMarkerChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedMarker(e.target.value);
   }, []);
+
+  const getActiveFilterCount = React.useCallback(() => {
+    if (activeFilters.showAllCompanies) return 1;
+    return activeFilters.exchanges.length + 
+           activeFilters.markers.length + 
+           (activeFilters.refined !== null ? 1 : 0);
+  }, [activeFilters]);
 
   const availableDateObjects = React.useMemo(() => 
     availableDates.map(d => new Date(d)),
@@ -147,22 +207,6 @@ export const MultiSelectWatchlistSelector = React.memo(({
           <div className="flex gap-5 items-center">
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium">Select Date</label>
-              
-              {/* Show All Companies Checkbox */}
-              <div className="flex items-center space-x-2 mb-2">
-                <Checkbox
-                  id="show-all-companies-multi"
-                  checked={showAllCompanies}
-                  onCheckedChange={handleShowAllChange}
-                  disabled={disabled}
-                />
-                <label
-                  htmlFor="show-all-companies-multi"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                >
-                  Show all companies
-                </label>
-              </div>
 
               <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
                 <PopoverTrigger asChild>
@@ -207,45 +251,27 @@ export const MultiSelectWatchlistSelector = React.memo(({
           </div>
         )}
 
-        {/* Filters */}
+        {/* Filter Button */}
         {(showExchangeFilter || showMarkerFilter) && availableExchanges.length > 0 && (
           <div className="flex flex-col gap-2 justify-center">
-            {showExchangeFilter && (
-              <div className="flex flex-col">
-                <select
-                  value={selectedExchange}
-                  onChange={handleExchangeChange}
-                  className="px-2 py-1 text-xs border rounded m-0"
-                  disabled={disabled}
-                >
-                  <option value="">All Exchanges</option>
-                  {availableExchanges.map(exchange => (
-                    <option key={exchange} value={exchange}>
-                      {exchange}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {showMarkerFilter && availableMarkers.length > 0 && (
-              <div className="flex flex-col">
-                <select
-                  value={selectedMarker}
-                  onChange={handleMarkerChange}
-                  className="px-2 py-1 text-xs border rounded m-0"
-                  disabled={disabled}
-                >
-                  <option value="">All Markers</option>
-                  {availableMarkers.map(marker => (
-                    <option key={marker} value={marker}>
-                      {marker}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsFilterModalOpen(true)}
+              className="flex items-center gap-2 h-10"
+              disabled={disabled}
+            >
+              <Filter className="h-4 w-4" />
+              Filters
+              {getActiveFilterCount() > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 px-1 text-xs">
+                  {getActiveFilterCount()}
+                </Badge>
+              )}
+            </Button>
+            
             {filteredCompanies.length !== companies.length && (
-              <div className="text-xs text-muted-foreground">
+              <div className="text-xs text-muted-foreground text-center">
                 {`${filteredCompanies.length} of ${companies.length} shown`}
               </div>
             )}
@@ -313,6 +339,20 @@ export const MultiSelectWatchlistSelector = React.memo(({
           disabled={disabled}
         />
       </div>
+
+      {/* Filter Modal */}
+      <MultiSelectFilterModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        filterOptions={{
+          exchanges: availableExchanges,
+          markers: availableMarkers
+        }}
+        activeFilters={activeFilters}
+        onFiltersChange={handleFiltersChange}
+        totalCompanies={companies.length}
+        filteredCount={filteredCompanies.length}
+      />
     </Card>
   );
 });
