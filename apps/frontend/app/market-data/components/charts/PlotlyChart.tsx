@@ -147,8 +147,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const volumeChartRef = useRef<any>(null);
 
   const [initialized, setInitialized] = useState(false);
-  // const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1D');
-  const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1m');
+  // ✅ DEFAULT: Show full trading day (9:15 AM - 3:30 PM)
+  const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1D');
 
   // const [chartType, setChartType] = useState<'line' | 'candle'>('candle');
   const [chartType, setChartType] = useState<'line' | 'candle'>('line');
@@ -349,17 +349,29 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
   // ============ ENHANCED: prepareLineChartData with chartUpdates integration ============
   const prepareLineChartData = () => {
-    // ✅ FIX: Use Map for automatic deduplication by timestamp
+    // ✅ DATA MERGE: Combine historical (pre-filtered by API) + live updates + current point
     const dataMap = new Map<number, DataPoint>();
     
-    // Add historical data
+    // 🔍 DEBUG: Log input data
+    console.log(`🔍 [prepareLineChartData] Input:`, {
+      historicalCount: historicalData.length,
+      chartUpdatesCount: chartUpdates?.length || 0,
+      hasCurrentData: !!data,
+      firstHistorical: historicalData[0],
+      lastHistorical: historicalData[historicalData.length - 1]
+    });
+    
+    // ✅ Add ALL historical data (already filtered by API to TODAY only)
     historicalData.forEach(point => {
       if (point.ltp > 0 && !isNaN(point.ltp) && point.timestamp > 0) {
-        dataMap.set(point.timestamp, point);
+        if (!dataMap.has(point.timestamp)) {
+          dataMap.set(point.timestamp, point);
+        }
       }
     });
 
     // ✨ ENHANCED: Merge chart updates for ultra-smooth line
+    // Only add updates if timestamp is NEW (don't overwrite historical data)
     if (chartUpdates && chartUpdates.length > 0) {
       chartUpdates.forEach(update => {
         if (!dataMap.has(update.timestamp)) {
@@ -375,15 +387,21 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       });
     }
     
-    // Add current data point if not already in map
+    // Add current data point if not already in map (only if new)
     if (data && data.ltp && data.ltp > 0 && !isNaN(data.ltp)) {
       if (!dataMap.has(data.timestamp)) {
         dataMap.set(data.timestamp, data);
       }
     }
 
-    // Convert to array and sort
+    // Convert to array and sort (this maintains ALL data from 9:15 AM onwards)
     const allData = Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+    
+    console.log(`📊 [prepareLineChartData] Output:`, {
+      totalPoints: allData.length,
+      firstPoint: allData[0] ? { timestamp: allData[0].timestamp, date: new Date(allData[0].timestamp * 1000), ltp: allData[0].ltp } : null,
+      lastPoint: allData[allData.length - 1] ? { timestamp: allData[allData.length - 1].timestamp, date: new Date(allData[allData.length - 1].timestamp * 1000), ltp: allData[allData.length - 1].ltp } : null
+    });
 
     const x = allData.map(point => new Date(point.timestamp * 1000));
     const y = allData.map(point => point.ltp);
@@ -822,32 +840,39 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
 
   const getTimeRange = (): [Date, Date] | undefined => {
+    // ✅ Use data as-is (already filtered by API to TODAY only)
     const dataToUse = chartType === 'line' ? historicalData : ohlcData;
     if (!dataToUse || dataToUse.length === 0) return undefined;
 
     // ✅ STEP 1: Find "now" (latest data timestamp or current time)
     const timestamps = dataToUse.map(d => d.timestamp);
-    const nowTimestamp = Math.max(...timestamps); // Latest data point = "now"
-    const now = new Date(nowTimestamp * 1000);
-    const currentTime = new Date(); // Actual current time
+    const minTimestamp = Math.min(...timestamps);
+    const maxTimestamp = Math.max(...timestamps);
+    const now = new Date(maxTimestamp * 1000);
+    const dataStartDate = new Date(minTimestamp * 1000);
+    const currentTime = new Date();
+    
+    // ✅ CRITICAL: Log data date range for debugging
+    console.log(`📊 [Chart Data Range] ${dataStartDate.toLocaleDateString()} ${dataStartDate.toLocaleTimeString()} → ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`);
     
     let startTime: Date;
     let endTime: Date;
     
     // ✅ SPECIAL CASE: 1D = Trading Day (9:15 AM to 3:30 PM)
     if (selectedTimeframe === '1D' || selectedTimeframe === '1d') {
-      // Set to today's trading hours
+      // ✅ CRITICAL FIX: Always use TODAY's date, not historical data dates
       const today = new Date();
       
-      // Trading start: 9:15 AM today
+      // Trading start: 9:15 AM TODAY
       startTime = new Date(today);
       startTime.setHours(TRADING_DAY_START_HOUR, TRADING_DAY_START_MINUTE, 0, 0);
       
-      // Trading end: 3:30 PM today + 15 min buffer
+      // Trading end: 3:30 PM TODAY + 15 min buffer
       endTime = new Date(today);
       endTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE + 15, 0, 0);
       
-      console.log('📅 [1D MODE] Trading Day Range:', {
+      console.log('📅 [1D MODE] Trading Day Range (TODAY ONLY):', {
+        today: today.toLocaleDateString(),
         startTime: startTime.toLocaleTimeString(),
         endTime: endTime.toLocaleTimeString(),
         duration: '6h 30min trading day'
@@ -877,11 +902,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           // For shorter timeframes, use latest data point as "now"
           startTime = new Date(now.getTime() - duration);
           endTime = new Date(now.getTime() + FUTURE_BUFFER_MS);
+          
+          // ✅ CRITICAL: Ensure start time is not before earliest data
+          const earliestDataTime = new Date(minTimestamp * 1000);
+          if (startTime < earliestDataTime) {
+            console.log(`⚠️ Adjusted start time from ${startTime.toLocaleTimeString()} to earliest data at ${earliestDataTime.toLocaleTimeString()}`);
+            startTime = earliestDataTime;
+          }
         }
       } else {
         // For "ALL" or unrecognized timeframes, use earliest data point
-        startTime = new Date(Math.min(...timestamps) * 1000);
-        endTime = new Date(now.getTime() + FUTURE_BUFFER_MS);
+        startTime = new Date(minTimestamp * 1000);
+        endTime = new Date(maxTimestamp * 1000 + FUTURE_BUFFER_MS);
       }
     }
     
@@ -1122,6 +1154,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       });
     }
 
+    // ✅ CRITICAL: Auto-scale y-axis when x-axis range changes
     if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
       const startDate = new Date(eventData['xaxis.range[0]']);
       const endDate = new Date(eventData['xaxis.range[1]']);
@@ -1158,14 +1191,15 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         }
       }
 
+      // ✅ CRITICAL: Apply autoscaling to y-axis based on visible data
       if (minValue !== undefined && maxValue !== undefined) {
-        const padding = (maxValue - minValue) * 0.05;
+        const padding = (maxValue - minValue) * 0.08;  // 8% padding
         const yRange = [minValue - padding, maxValue + padding];
         const plotDiv = document.getElementById('plotly-chart');
         if (plotDiv && typeof Plotly !== 'undefined') {
           Plotly.relayout(plotDiv, {
             'yaxis.range': yRange,
-            'yaxis.autorange': false
+            'yaxis.autorange': false  // Use calculated range
           });
         }
 
@@ -1475,8 +1509,16 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const colors = getColorTheme();
     let plotData: any[] = [];
 
+    console.log(`🎨 [createPlotData] Called with:`, {
+      chartType,
+      historicalDataLength: historicalData?.length || 0,
+      hasData: !!data,
+      symbol
+    });
+
     if (chartType === 'line') {
       if (historicalData && historicalData.length > 0) {
+        // ✅ Validate data (no filtering needed - API already returned TODAY only)
         const validData = historicalData.filter(point => 
           point.ltp !== null && 
           point.ltp !== undefined && 
@@ -1486,7 +1528,16 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           point.timestamp !== undefined
         );
 
-        if (validData.length === 0) return plotData;
+        console.log(`✅ [createPlotData] Valid data:`, {
+          total: historicalData.length,
+          valid: validData.length,
+          invalid: historicalData.length - validData.length
+        });
+
+        if (validData.length === 0) {
+          console.error(`❌ [createPlotData] All data invalid! Sample point:`, historicalData[0]);
+          return plotData;
+        }
 
         const sortedData = [...validData].sort((a, b) => a.timestamp - b.timestamp);
         const timeValues = sortedData.map(point => new Date(point.timestamp * 1000));
@@ -2422,13 +2473,16 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
   const createLayout = () => {
     const colors = getColorTheme();
-    const yRange = preservedAxisRanges.yaxis ? 
-      [preservedAxisRanges.yaxis[0], preservedAxisRanges.yaxis[1]] : 
-      undefined;
-
+    
+    // ✅ CRITICAL: Calculate y-range based on visible x-range
     const timeRange = preservedAxisRanges.xaxis ? 
       [preservedAxisRanges.xaxis[0], preservedAxisRanges.xaxis[1]] : 
       getTimeRange();
+    
+    // ✅ Always calculate y-range for visible data (autoscaling)
+    const yRange = preservedAxisRanges.yaxis ? 
+      [preservedAxisRanges.yaxis[0], preservedAxisRanges.yaxis[1]] : 
+      calculateYAxisRange(timeRange);
 
     let mainChartDomain = [0, 1];
     let volumeDomain = [0, 0.2];
@@ -2469,24 +2523,30 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         linecolor: colors.grid,
         tickfont: { color: colors.text },
         titlefont: { color: colors.text },
-        rangeslider: { visible: false },
-        fixedrange: false,
+        rangeslider: { 
+          visible: true,  // ✅ Enable range slider for scrolling
+          bgcolor: colors.bg,
+          bordercolor: colors.grid,
+          thickness: 0.05,  // Thin slider
+        },
+        fixedrange: false,  // ✅ Allow zooming on x-axis
       },
       yaxis: {
         title: 'Price (₹)',
-        range: yRange,
-        autorange: yRange ? false : true,
-        fixedrange: false,
+        range: yRange,  // ✅ Use calculated range for visible data
+        autorange: yRange ? false : true,  // ✅ Auto if no range calculated
+        fixedrange: false,  // ✅ Allow user to zoom y-axis if needed
         gridcolor: colors.grid,
         linecolor: colors.grid,
         tickfont: { color: colors.text },
         titlefont: { color: colors.text },
         side: 'left',
         domain: mainChartDomain,
-        zeroline: false,  // ✨ Remove zero line
-        automargin: true, // ✨ Auto margin for better spacing
+        zeroline: false,
+        automargin: true,
+        rangemode: 'normal',  // ✅ Ensure range adjusts to data
       },
-      dragmode: 'pan', // 🔥 Default to pan mode for better UX
+      dragmode: 'zoom', // ✅ Enable zoom mode for better data exploration
       hovermode: 'closest',
       showlegend: true,
       legend: {
@@ -2498,6 +2558,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       plot_bgcolor: colors.bg,
       paper_bgcolor: colors.paper,
       font: { family: 'Arial, sans-serif', color: colors.text },
+    };
+
+    // ✅ CRITICAL: Add modebar configuration for better controls
+    layout.modebar = {
+      orientation: 'v',
+      bgcolor: 'rgba(0,0,0,0.5)',
+      color: colors.text,
+      activecolor: '#3b82f6',
     };
 
     if (chartType === 'line') {
@@ -3074,7 +3142,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             modeBarButtonsToRemove: ['lasso2d', 'select2d'],
             modeBarButtonsToAdd: [],
             scrollZoom: true,
-            doubleClick: 'reset',
+            doubleClick: 'reset+autosize',  // ✅ Reset and autoscale on double-click
             toImageButtonOptions: {
               format: 'png',
               filename: `${symbol}_chart_${new Date().toISOString().split('T')[0]}`,
@@ -3083,6 +3151,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               scale: 2
             }
           }}
+          onRelayout={handleRelayout}  // ✅ CRITICAL: Handle zoom/pan for autoscaling
           useResizeHandler={true}
           style={{ width: '100%', height: '100%' }}
         />

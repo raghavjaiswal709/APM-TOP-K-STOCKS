@@ -27,6 +27,7 @@ import { ViewInDashboardButton } from "@/app/components/ViewInDashboardButton";
 import { TrendingUp, TrendingDown, Minus, Database, Wifi, Award, TrendingUpIcon, Clock, Building2 } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
 import { isMarketOpen } from "@/lib/marketHours";
+import { fetchHistoricalData, mergeHistoricalData, detectDataGaps } from "@/lib/historicalDataFetcher";
 
 // Prediction Integration
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
@@ -124,6 +125,8 @@ const MarketDataPage: React.FC = () => {
   const [showScoreTooltip, setShowScoreTooltip] = useState(false);
   const [activeTab, setActiveTab] = useState<'live' | 'predictions'>('live');
   const [marketOpen, setMarketOpen] = useState<boolean>(true);
+  const [isLoadingHistorical, setIsLoadingHistorical] = useState<boolean>(false);
+  const [historicalDataStatus, setHistoricalDataStatus] = useState<string>('');
 
   // Refs
   const updateCountRef = useRef(0);
@@ -350,7 +353,8 @@ const MarketDataPage: React.FC = () => {
       const exists = existingHistory.some(item => item.timestamp === data.timestamp);
       if (exists) return prev;
 
-      const newHistory = [...existingHistory, data].slice(-10000);
+      // ✅ CRITICAL FIX: Keep ALL data from 9:15 AM onwards (50000 points max)
+      const newHistory = [...existingHistory, data].slice(-50000);
       newHistory.sort((a, b) => a.timestamp - b.timestamp);
 
       return {
@@ -569,6 +573,7 @@ const MarketDataPage: React.FC = () => {
     };
   }, [isClient, selectedSymbol, handleConnect, handleDisconnect, handleError, handleMarketDataUpdate, handleChartUpdate, handleHistoricalData, handleOhlcData, handleHeartbeat]);
 
+  // ============ CRITICAL: Fetch historical data when symbol changes ============
   useEffect(() => {
     if (!isClient || !selectedSymbol || !socketRef.current) return;
 
@@ -581,6 +586,7 @@ const MarketDataPage: React.FC = () => {
 
     console.log('🔄 Subscribing to symbol:', selectedSymbol);
 
+    // Subscribe to real-time updates
     socket.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
       if (response && response.success) {
         isSubscribedRef.current.add(selectedSymbol);
@@ -588,14 +594,98 @@ const MarketDataPage: React.FC = () => {
       }
     });
 
+    // ✅ NEW: Fetch historical data from external server on symbol change
+    const fetchAndBackfillHistoricalData = async () => {
+      setIsLoadingHistorical(true);
+      setHistoricalDataStatus('Fetching historical data...');
+      
+      try {
+        console.log(`📡 Fetching historical data for ${selectedSymbol}...`);
+        
+        // Fetch from external server
+        const result = await fetchHistoricalData(selectedSymbol, selectedDate || new Date().toISOString().split('T')[0]);
+        
+        if (result.success && result.data.length > 0) {
+          console.log(`✅ Fetched ${result.data.length} historical points from external server`);
+          setHistoricalDataStatus(`Loaded ${result.data.length} historical data points`);
+          
+          // Convert external data format to internal MarketData format
+          const externalData: MarketData[] = result.data.map(point => ({
+            symbol: selectedSymbol,
+            ltp: point.ltp,
+            change: 0, // Calculate if needed
+            changePercent: 0,
+            open: point.open_price,
+            high: point.high_price,
+            low: point.low_price,
+            close: point.ltp,
+            volume: point.vol_traded_today,
+            timestamp: point.timestamp,
+            bid: point.bid_price,
+            ask: point.ask_price
+          }));
+          
+          // Merge with existing data
+          setHistoricalData(prev => {
+            const existingData = prev[selectedSymbol] || [];
+            const mergedData = mergeHistoricalData(existingData, externalData);
+            
+            console.log(`📊 Merged data: ${existingData.length} local + ${externalData.length} external = ${mergedData.length} total`);
+            console.log(`🔍 First merged point:`, mergedData[0] ? { timestamp: mergedData[0].timestamp, date: new Date(mergedData[0].timestamp * 1000), ltp: mergedData[0].ltp } : null);
+            console.log(`🔍 Last merged point:`, mergedData[mergedData.length - 1] ? { timestamp: mergedData[mergedData.length - 1].timestamp, date: new Date(mergedData[mergedData.length - 1].timestamp * 1000), ltp: mergedData[mergedData.length - 1].ltp } : null);
+            
+            // Check for gaps
+            const gapCheck = detectDataGaps(mergedData);
+            if (gapCheck.hasGaps) {
+              console.warn(`⚠️ Data still has ${gapCheck.missingRanges.length} gaps`);
+              setHistoricalDataStatus(`Loaded ${mergedData.length} points (${gapCheck.missingRanges.length} gaps detected)`);
+            } else {
+              setHistoricalDataStatus(`Complete data: ${mergedData.length} points`);
+            }
+            
+            return {
+              ...prev,
+              [selectedSymbol]: mergedData
+            };
+          });
+          
+          // Update latest market data
+          if (externalData.length > 0) {
+            const latestData = externalData[externalData.length - 1];
+            setMarketData(prev => ({
+              ...prev,
+              [selectedSymbol]: latestData
+            }));
+          }
+        } else {
+          console.warn(`⚠️ No historical data available: ${result.error || 'Unknown error'}`);
+          setHistoricalDataStatus('No historical data available');
+        }
+      } catch (error) {
+        console.error(`❌ Error fetching historical data:`, error);
+        setHistoricalDataStatus('Failed to load historical data');
+      } finally {
+        setIsLoadingHistorical(false);
+        // Clear status message after 5 seconds
+        setTimeout(() => setHistoricalDataStatus(''), 5000);
+      }
+    };
+
+    // Fetch historical data after a short delay to allow socket connection
+    const fetchTimer = setTimeout(() => {
+      fetchAndBackfillHistoricalData();
+    }, 1000);
+
     return () => {
+      clearTimeout(fetchTimer);
+      
       if (isSubscribedRef.current.has(selectedSymbol)) {
         console.log('🛑 Unsubscribing from:', selectedSymbol);
         socket.emit('unsubscribe', { symbol: selectedSymbol });
         isSubscribedRef.current.delete(selectedSymbol);
       }
     };
-  }, [selectedSymbol, isClient]);
+  }, [selectedSymbol, isClient, selectedDate]);
 
   // ✨ DEBUG: Log prediction data
   useEffect(() => {
@@ -770,12 +860,25 @@ const MarketDataPage: React.FC = () => {
                 </div>
 
                 <div className="p-3 border border-opacity-30 rounded-md h-24 flex items-center justify-between">
-                  <WatchlistSelector
-                    onCompanySelect={handleCompanyChange}
-                    onDateChange={handleDateChange}
-                    showExchangeFilter={true}
-                    showMarkerFilter={true}
-                  />
+                  <div className="flex-1">
+                    <WatchlistSelector
+                      onCompanySelect={handleCompanyChange}
+                      onDateChange={handleDateChange}
+                      showExchangeFilter={true}
+                      showMarkerFilter={true}
+                    />
+                    {isLoadingHistorical && (
+                      <div className="mt-2 flex items-center gap-2 text-xs text-blue-400">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-400"></div>
+                        <span>Loading historical data...</span>
+                      </div>
+                    )}
+                    {historicalDataStatus && !isLoadingHistorical && (
+                      <div className="mt-2 text-xs text-green-400">
+                        ✅ {historicalDataStatus}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex justify-end text-sm">
                     <div className="p-3 bg-zinc-800 rounded w-auto">
                       <div className="flex items-center space-x-2 mb-2">
