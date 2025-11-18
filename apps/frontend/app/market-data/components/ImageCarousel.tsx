@@ -615,11 +615,11 @@ const ChartTabs: React.FC<ChartTabsProps> = ({
   msaxCount
 }) => {
   const tabs = [
-    { key: 'intraday' as const, label: 'Intraday', count: intradayCount },
-    { key: 'interday' as const, label: 'Interday', count: interdayCount },
-    { key: 'LSTMAE' as const, label: 'LSTMAE', count: lstmaeCount },
-    { key: 'SiPR' as const, label: 'SiPR', count: siprCount },
-    { key: 'MSAX' as const, label: 'MSAX', count: msaxCount }
+    { key: 'intraday' as const, label: 'Intraday', count: intradayCount, showCount: true },
+    { key: 'interday' as const, label: 'Interday', count: interdayCount, showCount: true },
+    { key: 'LSTMAE' as const, label: 'LSTMAE', count: lstmaeCount, showCount: false },
+    { key: 'SiPR' as const, label: 'SiPR', count: siprCount, showCount: false },
+    { key: 'MSAX' as const, label: 'MSAX', count: msaxCount, showCount: false }
   ];
 
   return (
@@ -639,11 +639,13 @@ const ChartTabs: React.FC<ChartTabsProps> = ({
             `}
           >
             {tab.label}
-            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-              isActive ? 'bg-blue-500/30' : 'bg-zinc-600'
-            }`}>
-              {tab.count}
-            </span>
+            {tab.showCount && (
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                isActive ? 'bg-blue-500/30' : 'bg-zinc-600'
+              }`}>
+                {tab.count}
+              </span>
+            )}
           </button>
         );
       })}
@@ -907,12 +909,12 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   }, [allImages, activeTab]);
 
   const intradayCount = useMemo(() => {
-    return allImages.filter(image => image.chartType === 'intraday').length;
-  }, [allImages]);
+    return newsData.length;
+  }, [newsData]);
 
   const interdayCount = useMemo(() => {
-    return allImages.filter(image => image.chartType === 'interday').length;
-  }, [allImages]);
+    return newsData.length;
+  }, [newsData]);
 
   const lstmaeCount = useMemo(() => {
     return allImages.filter(image => image.chartType === 'LSTMAE').length;
@@ -1755,8 +1757,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                       </div>
                     ) : (
                       <>
-                        {/* ✅ MODIFIED - Single image view with headline at top, sentiment-based background */}
-                        <div className={`h-[1000px] flex flex-col bg-gradient-to-br ${
+                        {/* ✅ MODIFIED - Single image view with headline at top, sentiment-based background, no empty space */}
+                        <div className={`flex flex-col bg-gradient-to-br ${
                           currentNews.sentiment === 'positive' ? 'from-green-950/30 via-green-900/10 to-zinc-900' :
                           currentNews.sentiment === 'negative' ? 'from-red-950/30 via-red-900/10 to-zinc-900' : 
                           'from-zinc-900/30 via-zinc-800/10 to-zinc-900'
