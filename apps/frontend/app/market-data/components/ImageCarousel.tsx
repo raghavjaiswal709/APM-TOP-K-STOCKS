@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Loader2, ExternalLink, Clock, TrendingUp, TrendingDown, Minus, X, Calendar, Activity, RefreshCwOff, RefreshCw, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Loader2, ExternalLink, Clock, TrendingUp, TrendingDown, Minus, X, Calendar, Activity, RefreshCwOff, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -13,22 +13,10 @@ import { LSTMAEInteractiveDashboard } from '@/app/components/lstmae/LSTMAEIntera
 import { LSTMAEVisualization } from '@/app/components/lstmae/LSTMAEVisualization';
 import { useLSTMAEData } from '@/hooks/useLSTMAEData';
 
-// ✅ NEW - Pre-Market API Integration
-import { premarketService, PremarketHeadline } from '@/app/services/premarketService';
-import { 
-  constructIntradayImageUrl, 
-  constructInterdayImageUrl, 
-  getTodayDateString,
-  formatRelativeTime,
-  formatFullDate,
-  formatTimeOnly
-} from '@/lib/premarketUtils';
-
 // Base URL for on-prem server hosting the graph images
 // Using the proxied path to avoid CORS issues
 const ONPREM_BASE_URL = '/watchlist-graphs';
 
-// ✅ NEW - Enhanced NewsItem with real API data
 interface NewsItem {
   id: string;
   headline: string;
@@ -37,21 +25,8 @@ interface NewsItem {
   category: 'market' | 'company' | 'sector' | 'economy';
   relevance: 'high' | 'medium' | 'low';
   sentiment: 'positive' | 'negative' | 'neutral';
-  imageUrl1?: string;  // Intraday chart URL
-  imageUrl2?: string;  // Interday chart URL
-  // ✅ NEW - Price movement data from API
-  price_movement_1hr?: {
-    pre: string;
-    post: string;
-    price_change_pct: number;
-  };
-  rel_vol_1hr?: number;
-  price_movement_1day?: {
-    pre: string;
-    post: string;
-    price_change_pct: number;
-  };
-  rel_vol_1day?: number;
+  imageUrl1?: string;
+  imageUrl2?: string;
 }
 
 interface NewsComponentProps {
@@ -326,8 +301,6 @@ const SentimentDisplay: React.FC<SentimentDisplayProps> = ({ sentiment }) => {
 
 const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized, gradientMode, onNewsClick }) => {
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const getGradientClass = (mode: 'profit' | 'loss' | 'neutral') => {
     switch (mode) {
@@ -362,75 +335,59 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     }
   };
 
-  // ✅ NEW - Convert API sentiment to UI sentiment
-  const convertSentiment = (apiSentiment: string): NewsItem['sentiment'] => {
-    const normalized = apiSentiment.toLowerCase();
-    if (normalized.includes('positive') || normalized.includes('bullish')) return 'positive';
-    if (normalized.includes('negative') || normalized.includes('bearish')) return 'negative';
-    return 'neutral';
-  };
+  const generateRandomNews = useCallback(() => {
+    const headlines = [
+      `Lorem ipsum dolor sit amet consectetur adipiscing elit`,
+      `Sed do eiusmod tempor incididunt ut labore et dolore magna`,
+      `Ut enim ad minim veniam quis nostrud exercitation ullamco`,
+      `Duis aute irure dolor in reprehenderit in voluptate velit`,
+      `Excepteur sint occaecat cupidatat non proident sunt in culpa`,
+      `Lorem ipsum dolor sit amet consectetur adipiscing elit sed`,
+      `Tempor incididunt ut labore et dolore magna aliqua enim`,
+      `Minim veniam quis nostrud exercitation ullamco laboris nisi`,
+      `Aliquip ex ea commodo consequat duis aute irure dolor`,
+      `Reprehenderit in voluptate velit esse cillum dolore eu fugiat`,
+      `Nulla pariatur excepteur sint occaecat cupidatat non proident`,
+      `Sunt in culpa qui officia deserunt mollit anim id laborum`
+    ];
+    
+    const summaries = [
+      "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+      "Ut enim ad minim veniam quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat duis aute irure.",
+      "Dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur excepteur sint occaecat cupidatat non proident.",
+      "Sunt in culpa qui officia deserunt mollit anim id est laborum sed ut perspiciatis unde omnis iste natus error.",
+      "Sit voluptatem accusantium doloremque laudantium totam rem aperiam eaque ipsa quae ab illo inventore veritatis et quasi.",
+      "Architecto beatae vitae dicta sunt explicabo nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit.",
+      "Sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt neque porro quisquam est qui dolorem.",
+      "Ipsum quia dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna.",
+      "Aliqua ut enim ad minim veniam quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+      "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur excepteur sint.",
+      "Occaecat cupidatat non proident sunt in culpa qui officia deserunt mollit anim id est laborum sed ut perspiciatis.",
+      "Unde omnis iste natus error sit voluptatem accusantium doloremque laudantium totam rem aperiam eaque ipsa quae ab illo."
+    ];
 
-  // ✅ NEW - Fetch real headlines from Pre-Market API
-  const fetchHeadlines = useCallback(async () => {
-    if (!companyCode) return;
+    const categories: NewsItem['category'][] = ['market', 'company', 'sector', 'economy'];
+    const relevance: NewsItem['relevance'][] = ['high', 'medium', 'low'];
+    const sentiments: NewsItem['sentiment'][] = ['positive', 'negative', 'neutral'];
     
-    setIsLoading(true);
-    setError(null);
+    const news: NewsItem[] = headlines.map((headline, index) => ({
+      id: `news-${index}`,
+      headline,
+      summary: summaries[index % summaries.length],
+      timestamp: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000).toISOString(),
+      category: categories[Math.floor(Math.random() * categories.length)],
+      relevance: relevance[Math.floor(Math.random() * relevance.length)],
+      sentiment: sentiments[Math.floor(Math.random() * sentiments.length)]
+    }));
     
-    try {
-      console.log(`📰 Fetching headlines for ${companyCode}...`);
-      const response = await premarketService.fetchHeadlinesCached(companyCode);
-      
-      if (!response.headlines || response.headlines.length === 0) {
-        setError('No market news available for this stock');
-        setNewsItems([]);
-        return;
-      }
-      
-      // ✅ Convert API headlines to NewsItem format
-      const todayDate = getTodayDateString();
-      const baseUrl = 'http://100.93.172.21:5717';
-      
-      const convertedNews: NewsItem[] = response.headlines.map((headline) => {
-        const sentiment = convertSentiment(headline.gpt4o_sentiment);
-        
-        return {
-          id: headline.id,
-          headline: headline.text,
-          summary: `Price movement: ${headline.price_movement_1hr?.price_change_pct?.toFixed(2) || 'N/A'}% (1hr), ${headline.price_movement_1day?.price_change_pct?.toFixed(2) || 'N/A'}% (1day)`,
-          timestamp: headline.timestamp,
-          category: 'company' as const,
-          relevance: 'high' as const,
-          sentiment,
-          imageUrl1: constructIntradayImageUrl(baseUrl, companyCode, todayDate, headline.timestamp),
-          imageUrl2: constructInterdayImageUrl(baseUrl, companyCode, todayDate, headline.timestamp),
-          price_movement_1hr: headline.price_movement_1hr,
-          rel_vol_1hr: headline.rel_vol_1hr,
-          price_movement_1day: headline.price_movement_1day,
-          rel_vol_1day: headline.rel_vol_1day
-        };
-      });
-      
-      setNewsItems(convertedNews);
-      console.log(`✅ Loaded ${convertedNews.length} headlines for ${companyCode}`);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load market news';
-      console.error(`❌ Error fetching headlines:`, err);
-      setError(errorMessage);
-      setNewsItems([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [companyCode]);
+    return news.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, []);
 
   useEffect(() => {
     if (companyCode) {
-      fetchHeadlines();
-    } else {
-      setNewsItems([]);
-      setError(null);
+      setNewsItems(generateRandomNews());
     }
-  }, [companyCode, fetchHeadlines]);
+  }, [companyCode, generateRandomNews]);
 
   const handleNewsClick = (newsItem: NewsItem) => {
     if (onNewsClick) {
@@ -469,59 +426,14 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
   return (
     <Card className={`${getGradientClass(gradientMode)} shadow-lg ${isMaximized ? 'h-full' : 'h-auto'} border border-zinc-700/50`}>
       <CardHeader className="p-4 border-b border-zinc-700/50">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base font-semibold text-white flex items-center gap-2">
-            {companyCode} News Feed
-          </CardTitle>
-          {!isLoading && !error && newsItems.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={fetchHeadlines}
-              className="text-zinc-400 hover:text-white"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
+        <CardTitle className="text-base font-semibold text-white flex items-center gap-2">
+          {companyCode} News Feed
+        </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         <ScrollArea className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[900px]'} w-full`}>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-3" />
-                <p className="text-zinc-400 text-sm">Loading market news...</p>
-              </div>
-            </div>
-          ) : error ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center space-y-3">
-                <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
-                <p className="text-red-400 text-sm font-medium">Failed to load news</p>
-                <p className="text-zinc-500 text-xs">{error}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={fetchHeadlines}
-                  className="mt-4"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Retry
-                </Button>
-              </div>
-            </div>
-          ) : newsItems.length === 0 ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center text-zinc-400">
-                <AlertCircle className="h-10 w-10 mx-auto mb-3 text-zinc-600" />
-                <p className="text-sm">No market news available</p>
-                <p className="text-xs text-zinc-600 mt-1">Check back later</p>
-              </div>
-            </div>
-          ) : (
-            <div className="p-4 space-y-4">
-              {newsItems.map((newsItem) => {
+          <div className="p-4 space-y-4">
+            {newsItems.map((newsItem) => {
               const sentimentStyling = getSentimentStyling(newsItem.sentiment);
               return (
                 <div
@@ -558,7 +470,6 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
               );
             })}
           </div>
-        )}
         </ScrollArea>
       </CardContent>
     </Card>
@@ -762,18 +673,16 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   gradientMode = 'neutral',
   onGradientModeChange 
 }) => {
-  // ✅ NEW - activeIndex is now the Master controller (linked to news selection)
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [allImages, setAllImages] = useState<CarouselImage[]>([]);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState<Record<number, boolean>>({});
   const [activeTab, setActiveTab] = useState<'intraday' | 'interday' | 'LSTMAE' | 'SiPR' | 'MSAX'>('intraday');
   
-  // ✅ NEW - Real news data from Pre-Market API (Master data source)
-  const [newsData, setNewsData] = useState<NewsItem[]>([]);
-  const [newsLoading, setNewsLoading] = useState(false);
-  const [newsError, setNewsError] = useState<string | null>(null);
+  // State for maximized view headline carousel using existing news data
+  const [currentHeadlineIndex, setCurrentHeadlineIndex] = useState(0);
+  const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
 
   // State for news modal
   const [selectedNewsItem, setSelectedNewsItem] = useState<NewsItem | null>(null);
@@ -786,88 +695,70 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const [isSiprModalOpen, setIsSiprModalOpen] = useState(false);
   const [siprMonths, setSiprMonths] = useState(3);
 
-  // ✅ NEW - Convert API sentiment to UI sentiment
-  const convertSentiment = useCallback((apiSentiment: string): NewsItem['sentiment'] => {
-    const normalized = apiSentiment.toLowerCase();
-    if (normalized.includes('positive') || normalized.includes('bullish')) return 'positive';
-    if (normalized.includes('negative') || normalized.includes('bearish')) return 'negative';
-    return 'neutral';
+  // Generate the same news items for headline carousel
+  const generateRandomNews = useCallback(() => {
+    const headlines = [
+      `Lorem ipsum dolor sit amet consectetur adipiscing elit`,
+      `Sed do eiusmod tempor incididunt ut labore et dolore magna`,
+      `Ut enim ad minim veniam quis nostrud exercitation ullamco`,
+      `Duis aute irure dolor in reprehenderit in voluptate velit`,
+      `Excepteur sint occaecat cupidatat non proident sunt in culpa`,
+      `Lorem ipsum dolor sit amet consectetur adipiscing elit sed`,
+      `Tempor incididunt ut labore et dolore magna aliqua enim`,
+      `Minim veniam quis nostrud exercitation ullamco laboris nisi`,
+      `Aliquip ex ea commodo consequat duis aute irure dolor`,
+      `Reprehenderit in voluptate velit esse cillum dolore eu fugiat`,
+      `Nulla pariatur excepteur sint occaecat cupidatat non proident`,
+      `Sunt in culpa qui officia deserunt mollit anim id laborum`
+    ];
+    
+    const summaries = [
+      "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+      "Ut enim ad minim veniam quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat duis aute irure.",
+      "Dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur excepteur sint occaecat cupidatat non proident.",
+      "Sunt in culpa qui officia deserunt mollit anim id est laborum sed ut perspiciatis unde omnis iste natus error.",
+      "Sit voluptatem accusantium doloremque laudantium totam rem aperiam eaque ipsa quae ab illo inventore veritatis et quasi.",
+      "Architecto beatae vitae dicta sunt explicabo nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit.",
+      "Sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt neque porro quisquam est qui dolorem.",
+      "Ipsum quia dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna.",
+      "Aliqua ut enim ad minim veniam quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+      "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur excepteur sint.",
+      "Occaecat cupidatat non proident sunt in culpa qui officia deserunt mollit anim id est laborum sed ut perspiciatis.",
+      "Unde omnis iste natus error sit voluptatem accusantium doloremque laudantium totam rem aperiam eaque ipsa quae ab illo."
+    ];
+
+    const categories: NewsItem['category'][] = ['market', 'company', 'sector', 'economy'];
+    const relevance: NewsItem['relevance'][] = ['high', 'medium', 'low'];
+    const sentiments: NewsItem['sentiment'][] = ['positive', 'negative', 'neutral'];
+    
+    const news: NewsItem[] = headlines.map((headline, index) => ({
+      id: `news-${index}`,
+      headline,
+      summary: summaries[index % summaries.length],
+      timestamp: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000).toISOString(),
+      category: categories[Math.floor(Math.random() * categories.length)],
+      relevance: relevance[Math.floor(Math.random() * relevance.length)],
+      sentiment: sentiments[Math.floor(Math.random() * sentiments.length)]
+    }));
+    
+    return news.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, []);
 
-  // ✅ NEW - Fetch real headlines from Pre-Market API (Master data source)
-  const fetchNewsData = useCallback(async () => {
-    if (!companyCode) {
-      setNewsData([]);
-      setNewsError(null);
-      return;
-    }
-    
-    setNewsLoading(true);
-    setNewsError(null);
-    
-    try {
-      console.log(`📰 [CAROUSEL] Fetching headlines for ${companyCode}...`);
-      const response = await premarketService.fetchHeadlinesCached(companyCode);
-      
-      if (!response.headlines || response.headlines.length === 0) {
-        setNewsError('No market news available for this stock');
-        setNewsData([]);
-        setActiveIndex(0);
-        return;
-      }
-      
-      // ✅ Convert API headlines to NewsItem format with image URLs
-      const todayDate = getTodayDateString();
-      const baseUrl = 'http://100.93.172.21:5717';
-      
-      const convertedNews: NewsItem[] = response.headlines.map((headline) => {
-        const sentiment = convertSentiment(headline.gpt4o_sentiment);
-        
-        return {
-          id: headline.id,
-          headline: headline.text,
-          summary: `Price movement: ${headline.price_movement_1hr?.price_change_pct?.toFixed(2) || 'N/A'}% (1hr), ${headline.price_movement_1day?.price_change_pct?.toFixed(2) || 'N/A'}% (1day)`,
-          timestamp: headline.timestamp,
-          category: 'company' as const,
-          relevance: 'high' as const,
-          sentiment,
-          imageUrl1: constructIntradayImageUrl(baseUrl, companyCode, todayDate, headline.timestamp),
-          imageUrl2: constructInterdayImageUrl(baseUrl, companyCode, todayDate, headline.timestamp),
-          price_movement_1hr: headline.price_movement_1hr,
-          rel_vol_1hr: headline.rel_vol_1hr,
-          price_movement_1day: headline.price_movement_1day,
-          rel_vol_1day: headline.rel_vol_1day
-        };
-      });
-      
-      setNewsData(convertedNews);
-      setActiveIndex(0); // Reset to first news item
-      console.log(`✅ [CAROUSEL] Loaded ${convertedNews.length} headlines for ${companyCode}`);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load market news';
-      console.error(`❌ [CAROUSEL] Error fetching headlines:`, err);
-      setNewsError(errorMessage);
-      setNewsData([]);
-      setActiveIndex(0);
-    } finally {
-      setNewsLoading(false);
-    }
-  }, [companyCode, convertSentiment]);
-
-  // ✅ Fetch news data when company changes
+  // Initialize news items for headline carousel
   useEffect(() => {
-    fetchNewsData();
-  }, [fetchNewsData]);
-
-  // ✅ NEW - Handle news click (Master controls images)
-  const handleNewsClick = useCallback((newsItem: NewsItem) => {
-    const newsIndex = newsData.findIndex(item => item.id === newsItem.id);
-    if (newsIndex !== -1) {
-      setActiveIndex(newsIndex);
-      setIsMaximized(true);
-      console.log(`🎯 [MASTER-SLAVE] News selected: ${newsItem.headline} (Index: ${newsIndex})`);
+    if (companyCode) {
+      setNewsItems(generateRandomNews());
     }
-  }, [newsData]);
+  }, [companyCode, generateRandomNews]);
+
+  // Handle news click - maximize view and set headline
+  const handleNewsClick = (newsItem: NewsItem) => {
+    const newsIndex = newsItems.findIndex(item => item.id === newsItem.id);
+    if (newsIndex !== -1) {
+      setCurrentHeadlineIndex(newsIndex);
+      setIsMaximized(true);
+    }
+  };
 
   // Close news modal
   const handleCloseNewsModal = () => {
@@ -896,11 +787,6 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         };
     }
   };
-
-  // ✅ MODIFIED - Current news item (Master)
-  const currentNews = useMemo(() => {
-    return newsData[activeIndex] || null;
-  }, [newsData, activeIndex]);
 
   const filteredImages = useMemo(() => {
     return allImages.filter(image => image.chartType === activeTab);
@@ -946,8 +832,9 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     return allImages.filter(image => image.chartType === 'MSAX');
   }, [allImages]);
 
-  // ✅ Reset activeIndex when tab changes (but keep news selection)
-  // activeIndex stays the same, only the displayed image type changes
+  useEffect(() => {
+    setCurrentIndex(0);
+  }, [activeTab]);
 
   const getGradientClass = (mode: 'profit' | 'loss' | 'neutral') => {
     switch (mode) {
@@ -1170,7 +1057,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         );
         const existingImages = validatedImages.filter(img => img.exists);
         setAllImages(existingImages);
-        // activeIndex is already initialized to 0, no need to reset
+        setCurrentIndex(0);
       } catch (error) {
         console.error('Error loading images:', error);
         setAllImages([]);
@@ -1184,37 +1071,34 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     }
   }, [companyCode, exchange, generateImagePaths, checkImageExists]);
 
-  // ✅ NEW - Navigation controls activeIndex (which controls both news and images)
   const handleNext = useCallback(() => {
-    if (newsData.length === 0) return;
-    setActiveIndex((prev) => (prev + 1) % newsData.length);
-    console.log(`➡️ [NAVIGATION] Next news item (${(activeIndex + 1) % newsData.length}/${newsData.length})`);
-  }, [newsData.length, activeIndex]);
+    setCurrentIndex((prev) => (prev + 1) % filteredImages.length);
+  }, [filteredImages.length]);
 
   const handlePrevious = useCallback(() => {
-    if (newsData.length === 0) return;
-    setActiveIndex((prev) => (prev - 1 + newsData.length) % newsData.length);
-    console.log(`⬅️ [NAVIGATION] Previous news item (${(activeIndex - 1 + newsData.length) % newsData.length}/${newsData.length})`);
-  }, [newsData.length, activeIndex]);
+    setCurrentIndex((prev) => (prev - 1 + filteredImages.length) % filteredImages.length);
+  }, [filteredImages.length]);
 
-  // ✅ Image loading handlers
-  const handleImageLoad = useCallback((key: string) => {
-    setImageLoading(prev => ({ ...prev, [key]: false }));
-  }, []);
+  // Handlers for headline carousel in maximized view
+  const handleHeadlineNext = useCallback(() => {
+    setCurrentHeadlineIndex((prev) => (prev + 1) % newsItems.length);
+  }, [newsItems.length]);
 
-  const handleImageLoadStart = useCallback((key: string) => {
-    setImageLoading(prev => ({ ...prev, [key]: true }));
-  }, []);
+  const handleHeadlinePrevious = useCallback(() => {
+    setCurrentHeadlineIndex((prev) => (prev - 1 + newsItems.length) % newsItems.length);
+  }, [newsItems.length]);
 
-  const handleImageError = useCallback((key: string) => {
-    setImageLoading(prev => ({ ...prev, [key]: false }));
-    console.warn(`⚠️ [IMAGE] Failed to load image: ${key}`);
-  }, []);
+  const handleImageLoad = (index: number) => {
+    setImageLoading(prev => ({ ...prev, [index]: false }));
+  };
 
-  // ✅ Keyboard navigation for news items
+  const handleImageLoadStart = (index: number) => {
+    setImageLoading(prev => ({ ...prev, [index]: true }));
+  };
+
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (!companyCode || !exchange || newsData.length === 0) return;
+      if (!companyCode || !exchange || isMaximized) return;
       
       switch (e.key) {
         case 'ArrowLeft':
@@ -1230,158 +1114,14 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [handleNext, handlePrevious, companyCode, exchange, newsData.length]);
+  }, [handleNext, handlePrevious, companyCode, exchange, isMaximized]);
 
-  // ✅ MODIFIED - Function to render maximized view with Pre-Market charts and dashboards
+  const currentImage = filteredImages[currentIndex];
+  const currentHeadline = newsItems[currentHeadlineIndex];
+
+  // ✅ MODIFIED - Function to render images with "Open Full Dashboard" button for LSTMAE & SIPR
+  // ✅ ALWAYS show buttons even if no images available
   const renderMaximizedImages = () => {
-    // ✅ For intraday/interday tabs, show Pre-Market API charts (like non-maximized view)
-    if (activeTab === 'intraday' || activeTab === 'interday') {
-      return (
-        <div className="h-[calc(100vh-200px)] w-full flex flex-col">
-          {newsLoading ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-3" />
-                <p className="text-zinc-400">Loading market news...</p>
-              </div>
-            </div>
-          ) : newsError || !currentNews ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center space-y-3">
-                <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
-                <p className="text-zinc-400 mb-2">
-                  {newsError || 'No market news available'}
-                </p>
-                <p className="text-sm text-zinc-500">
-                  Select a company to view analysis charts
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={fetchNewsData}
-                  className="mt-4"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Retry
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Pre-Market API Charts */}
-              <div className="flex-1 flex">
-                {/* Intraday Chart (Left) */}
-                <div className="w-1/2 border-r border-zinc-700/50 p-4">
-                  <div className="relative h-full overflow-hidden rounded-lg bg-zinc-900">
-                    <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-3 py-1.5 z-10">
-                      <p className="text-sm text-zinc-300 font-medium">Intraday Analysis</p>
-                    </div>
-                    {imageLoading[`intraday-max-${activeIndex}`] && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
-                        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                      </div>
-                    )}
-                    {currentNews.imageUrl1 ? (
-                      <img
-                        src={currentNews.imageUrl1}
-                        alt={`${companyCode} Intraday Chart`}
-                        className="w-full h-full object-contain"
-                        onLoadStart={() => handleImageLoadStart(`intraday-max-${activeIndex}`)}
-                        onLoad={() => handleImageLoad(`intraday-max-${activeIndex}`)}
-                        onError={(e) => {
-                          handleImageError(`intraday-max-${activeIndex}`);
-                          (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <div className="text-center">
-                          <TrendingUp className="h-16 w-16 text-zinc-600 mx-auto mb-3" />
-                          <p className="text-zinc-500">Chart Generating...</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Interday Chart (Right) */}
-                <div className="w-1/2 p-4">
-                  <div className="relative h-full overflow-hidden rounded-lg bg-zinc-900">
-                    <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-3 py-1.5 z-10">
-                      <p className="text-sm text-zinc-300 font-medium">Interday Analysis</p>
-                    </div>
-                    {imageLoading[`interday-max-${activeIndex}`] && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
-                        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                      </div>
-                    )}
-                    {currentNews.imageUrl2 ? (
-                      <img
-                        src={currentNews.imageUrl2}
-                        alt={`${companyCode} Interday Chart`}
-                        className="w-full h-full object-contain"
-                        onLoadStart={() => handleImageLoadStart(`interday-max-${activeIndex}`)}
-                        onLoad={() => handleImageLoad(`interday-max-${activeIndex}`)}
-                        onError={(e) => {
-                          handleImageError(`interday-max-${activeIndex}`);
-                          (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <div className="text-center">
-                          <TrendingDown className="h-16 w-16 text-zinc-600 mx-auto mb-3" />
-                          <p className="text-zinc-500">Chart Generating...</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* News headline and metadata display */}
-              <div className="p-6 border-t border-zinc-700/50 bg-zinc-800/50">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <h3 className="text-xl text-white font-medium mb-3">{currentNews.headline}</h3>
-                    <div className="flex items-center gap-4 text-sm text-zinc-400">
-                      <span className={`px-3 py-1.5 rounded ${
-                        currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
-                        currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
-                        'bg-zinc-500/20 text-zinc-400'
-                      }`}>
-                        {currentNews.sentiment.toUpperCase()}
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <Clock className="h-4 w-4" />
-                        {formatRelativeTime(currentNews.timestamp)}
-                      </span>
-                      {currentNews.price_movement_1hr && (
-                        <span className="flex items-center gap-1.5">
-                          <TrendingUp className="h-4 w-4" />
-                          1hr: {currentNews.price_movement_1hr.price_change_pct.toFixed(2)}%
-                        </span>
-                      )}
-                      {currentNews.price_movement_1day && (
-                        <span className="flex items-center gap-1.5">
-                          <Calendar className="h-4 w-4" />
-                          1day: {currentNews.price_movement_1day.price_change_pct.toFixed(2)}%
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-lg text-zinc-400 font-medium">
-                    {activeIndex + 1} / {newsData.length}
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      );
-    }
-
-    // ✅ For LSTMAE/SIPR/MSAX tabs, show the original carousel images
     let leftImages: CarouselImage[] = [];
     let rightImages: CarouselImage[] = [];
     let leftTitle = '';
@@ -1390,6 +1130,18 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     let showSiprButton = false;
 
     switch (activeTab) {
+      case 'intraday':
+        leftImages = intradayImages;
+        rightImages = interdayImages;
+        leftTitle = 'Intraday Analysis';
+        rightTitle = 'Interday Analysis';
+        break;
+      case 'interday':
+        leftImages = interdayImages;
+        rightImages = intradayImages;
+        leftTitle = 'Interday Analysis';
+        rightTitle = 'Intraday Analysis';
+        break;
       case 'LSTMAE':
         leftImages = lstmaeImages;
         rightImages = [...siprImages, ...msaxImages];
@@ -1550,37 +1302,68 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         {/* Main Image Carousel */}
         <Card className={`shadow-lg border border-zinc-700/50 ${
           isMaximized 
-            ? `${getMaximizedBackgroundClass(currentNews?.sentiment || 'neutral')} w-full` 
+            ? `${getMaximizedBackgroundClass(currentHeadline?.sentiment || 'neutral')} w-full` 
             : `${getGradientClass(gradientMode)} w-3/4`
         }`}>
           <CardHeader className="flex flex-row items-center justify-between p-1 border-b border-zinc-700/50">
-              {/* Left side - Title and Counter Navigation */}
+            {/* Left side - Title and Counter Navigation */}
             <div className="flex items-center gap-4 mx-2 flex-1">
               <CardTitle className="text-base font-semibold text-white">
                 {companyCode} - Headline Analysis
               </CardTitle>
               
-              {/* ✅ NEW - Navigation Controls (always visible when news data available) */}
-              {newsData.length > 0 && !newsLoading && (
+              {/* Counter Navigation - Only show in maximized mode */}
+              {isMaximized && currentHeadline && (
+                <div className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-all duration-200 ${
+                  getSentimentStyling(currentHeadline.sentiment).background
+                }`}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleHeadlinePrevious}
+                    className="h-6 w-6 p-0"
+                    disabled={newsItems.length <= 1}
+                  >
+                    <ChevronLeft className="h-3 w-3" />
+                  </Button>
+                  
+                  <div className="text-white font-medium text-sm">
+                    {currentHeadlineIndex + 1} / {newsItems.length}
+                  </div>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleHeadlineNext}
+                    className="h-6 w-6 p-0"
+                    disabled={newsItems.length <= 1}
+                  >
+                    <ChevronRight className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              
+              {/* Navigation Controls - Hidden in maximized mode */}
+              {filteredImages.length > 0 && !isLoading && !isMaximized && (
                 <div className="flex items-center gap-1 ml-4">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handlePrevious}
                     className="h-8 w-8 p-0"
-                    disabled={newsData.length <= 1}
+                    disabled={filteredImages.length <= 1}
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <span className="text-sm text-zinc-400 px-2 min-w-[60px] text-center">
-                    {activeIndex + 1} / {newsData.length}
+                    {filteredImages.length > 0 ? `${currentIndex + 1} / ${filteredImages.length}` : '0 / 0'}
                   </span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleNext}
                     className="h-8 w-8 p-0"
-                    disabled={newsData.length <= 1}
+                    disabled={filteredImages.length <= 1}
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -1588,13 +1371,15 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               )}
               
               {/* Loading indicator */}
-              {newsLoading && (
+              {isLoading && (
                 <div className="flex items-center gap-2 ml-4">
                   <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                  <span className="text-sm text-zinc-400">Loading news...</span>
+                  <span className="text-sm text-zinc-400">Searching for graphs...</span>
                 </div>
               )}
-            </div>            {/* Right side controls */}
+            </div>
+            
+            {/* Right side controls */}
             <div className="flex items-center gap-4">
               {/* ✅ MODIFIED: Chart Type Tabs - ALWAYS VISIBLE, regardless of images */}
               <ChartTabs 
@@ -1607,9 +1392,11 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 msaxCount={msaxCount}
               />
               
-              {/* ✅ NEW - Sentiment Display based on current news */}
-              {currentNews && (
-                <SentimentDisplay sentiment={currentNews.sentiment} />
+              {/* Sentiment Display or Gradient Mode Toggle */}
+              {isMaximized ? (
+                <SentimentDisplay sentiment={currentHeadline?.sentiment || 'neutral'} />
+              ) : (
+                <GradientToggle value={gradientMode} onChange={onGradientModeChange} />
               )}
               
               {/* Maximize/Minimize button */}
@@ -1701,128 +1488,61 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                           months={siprMonths}
                         />
                       </div>
-                    ) : newsLoading ? (
+                    ) : filteredImages.length === 0 ? (
                       <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
                         <div className="text-center">
-                          <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-3" />
-                          <p className="text-zinc-400">Loading market news...</p>
-                        </div>
-                      </div>
-                    ) : newsError || !currentNews ? (
-                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
-                        <div className="text-center space-y-3">
-                          <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
                           <p className="text-zinc-400 mb-2">
-                            {newsError || 'No market news available'}
+                            No {activeTab} graphs found for {companyCode}
                           </p>
                           <p className="text-sm text-zinc-500">
-                            Select a company to view analysis charts
+                            Date: {getCurrentDateString()}
                           </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={fetchNewsData}
-                            className="mt-4"
-                          >
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            Retry
-                          </Button>
                         </div>
                       </div>
                     ) : (
                       <>
-                        {/* ✅ MODIFIED - Single image view based on active tab (intraday or interday) */}
-                        <div className="h-[500px] p-2">
-                          <div className={`relative h-full overflow-hidden rounded-lg bg-gradient-to-br ${
-                            gradientMode === 'profit' ? 'from-green-950/20 to-zinc-900' :
-                            gradientMode === 'loss' ? 'from-red-950/20 to-zinc-900' : 
-                            'from-zinc-900 to-zinc-900'
-                          }`}>
-                            <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-2 py-1 z-10">
-                              <p className="text-xs text-zinc-300 font-medium">
-                                {activeTab === 'intraday' ? 'Intraday Analysis' : 'Interday Analysis'}
-                              </p>
+                        <div className={`relative overflow-hidden rounded-lg bg-gradient-to-br ${
+                          gradientMode === 'profit' ? 'from-green-950/20 to-zinc-900' :
+                          gradientMode === 'loss' ? 'from-red-950/20 to-zinc-900' : 
+                          'from-zinc-900 to-zinc-900'
+                        } min-h-[400px]`}>
+                          {imageLoading[currentIndex] && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
+                              <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
                             </div>
-                            {imageLoading[`${activeTab}-${activeIndex}`] && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
-                                <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-                              </div>
-                            )}
-                            {activeTab === 'intraday' ? (
-                              // Show Intraday Image
-                              currentNews.imageUrl1 ? (
-                                <img
-                                  src={currentNews.imageUrl1}
-                                  alt={`${companyCode} Intraday Chart`}
-                                  className="w-full h-full object-contain"
-                                  onLoadStart={() => handleImageLoadStart(`intraday-${activeIndex}`)}
-                                  onLoad={() => handleImageLoad(`intraday-${activeIndex}`)}
-                                  onError={(e) => {
-                                    handleImageError(`intraday-${activeIndex}`);
-                                    (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
-                                  }}
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <div className="text-center">
-                                    <TrendingUp className="h-12 w-12 text-zinc-600 mx-auto mb-2" />
-                                    <p className="text-zinc-500">Intraday Chart Generating...</p>
-                                  </div>
-                                </div>
-                              )
-                            ) : (
-                              // Show Interday Image
-                              currentNews.imageUrl2 ? (
-                                <img
-                                  src={currentNews.imageUrl2}
-                                  alt={`${companyCode} Interday Chart`}
-                                  className="w-full h-full object-contain"
-                                  onLoadStart={() => handleImageLoadStart(`interday-${activeIndex}`)}
-                                  onLoad={() => handleImageLoad(`interday-${activeIndex}`)}
-                                  onError={(e) => {
-                                    handleImageError(`interday-${activeIndex}`);
-                                    (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
-                                  }}
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <div className="text-center">
-                                    <TrendingDown className="h-12 w-12 text-zinc-600 mx-auto mb-2" />
-                                    <p className="text-zinc-500">Interday Chart Generating...</p>
-                                  </div>
-                                </div>
-                              )
-                            )}
-                          </div>
+                          )}
+                          {currentImage && (
+                            <img
+                              src={currentImage.src}
+                              alt={currentImage.name}
+                              className="w-full h-auto block"
+                              style={{ 
+                                maxWidth: '100%',
+                                height: 'auto',
+                                display: 'block'
+                              }}
+                              onLoadStart={() => handleImageLoadStart(currentIndex)}
+                              onLoad={() => handleImageLoad(currentIndex)}
+                              onError={() => handleImageLoad(currentIndex)}
+                            />
+                          )}
                         </div>
                         
-                        {/* ✅ News headline and metadata display */}
-                        <div className="p-4 border-t border-zinc-700/50 bg-zinc-800/50">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <h3 className="text-white font-medium mb-2">{currentNews.headline}</h3>
-                              <div className="flex items-center gap-3 text-xs text-zinc-400">
-                                <span className={`px-2 py-1 rounded ${
-                                  currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
-                                  currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
-                                  'bg-zinc-500/20 text-zinc-400'
-                                }`}>
-                                  {currentNews.sentiment.toUpperCase()}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {formatRelativeTime(currentNews.timestamp)}
-                                </span>
-                                {currentNews.price_movement_1hr && (
-                                  <span>1hr: {currentNews.price_movement_1hr.price_change_pct.toFixed(2)}%</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-sm text-zinc-400">
-                              {activeIndex + 1} / {newsData.length}
+                        {filteredImages.length > 1 && (
+                          <div className="p-2 border-t border-zinc-700/50 bg-zinc-700/20">
+                            <div className="flex justify-center gap-1">
+                              {filteredImages.map((_, index) => (
+                                <button
+                                  key={index}
+                                  className={`w-2 h-2 rounded-full transition-colors ${
+                                    index === currentIndex ? 'bg-blue-500' : 'bg-zinc-600'
+                                  }`}
+                                  onClick={() => setCurrentIndex(index)}
+                                />
+                              ))}
                             </div>
                           </div>
-                        </div>
+                        )}
                       </>
                     )}
                   </>

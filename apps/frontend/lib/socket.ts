@@ -25,7 +25,7 @@ export const onReconnect = (callback: () => void): (() => void) => {
  */
 export const getSocket = (): Socket => {
   if (!socket) {
-    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL || 'http://localhost:5001';
+    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
     console.log(`🔌 Connecting to WebSocket server at ${SOCKET_URL}`);
     
     socket = io(SOCKET_URL, {
@@ -57,7 +57,7 @@ export const getSocket = (): Socket => {
     socket.on('connect_error', (error) => {
       reconnectAttempts++;
       const delay = Math.min(INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY);
-      console.warn(`⚠️ Socket connection error (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}):`, error instanceof Error ? error.message : String(error));
+      console.error(`❌ Socket connection error (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}):`, error.message);
       console.log(`⏳ Next retry in ${delay}ms...`);
     });
 
@@ -76,7 +76,7 @@ export const getSocket = (): Socket => {
     });
 
     socket.on('error', (error) => {
-      console.warn('⚠️ Socket error:', error);
+      console.error('❌ Socket error:', error);
     });
 
     socket.on('reconnect', (attemptNumber) => {
@@ -88,11 +88,11 @@ export const getSocket = (): Socket => {
     });
 
     socket.on('reconnect_error', (error) => {
-      console.warn('⚠️ Reconnection error:', error instanceof Error ? error.message : String(error));
+      console.error('❌ Reconnection error:', error.message);
     });
 
     socket.on('reconnect_failed', () => {
-      console.warn('⚠️ Failed to reconnect after maximum attempts');
+      console.error('❌ Failed to reconnect after maximum attempts');
       console.log('💡 Please refresh the page to reconnect');
     });
 
