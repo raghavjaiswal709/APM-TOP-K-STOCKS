@@ -205,73 +205,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     yaxis?: [number, number];
   }>({});
 
-  // ============ OPTIMIZED: Ultra-fast chart updates ============
-  const [isUpdating, setIsUpdating] = useState(false);
+  // ============ OPTIMIZED: Throttled chart updates ============
   const lastUpdateRef = useRef<number>(0);
-  const chartDataRef = useRef<any[]>([]);
-
-  // Ultra-fast chart updates using chartUpdates prop
-  useEffect(() => {
-    if (!chartUpdates || chartUpdates.length === 0 || !chartRef.current) return;
-
-    const now = Date.now();
-    // Throttle updates to maximum 10 fps (100ms) to prevent browser lag
-    if (now - lastUpdateRef.current < 100) return;
-
-    const latestUpdate = chartUpdates[chartUpdates.length - 1];
-    const plotDiv = document.getElementById('plotly-chart');
-
-    if (plotDiv && !isUpdating) {
-      setIsUpdating(true);
-
-      try {
-        // For line charts - update the price trace
-        if (chartType === 'line') {
-          const timeValues = chartUpdates.map(update => new Date(update.timestamp * 1000));
-          const priceValues = chartUpdates.map(update => update.price);
-
-          // Use Plotly.restyle for ultra-fast updates
-          if (typeof Plotly !== 'undefined' && Plotly.restyle) {
-            Plotly.restyle(plotDiv, {
-              'x': [timeValues],
-              'y': [priceValues]
-            }, [0]); // Update first trace (LTP line)
-          }
-        }
-        // For candlestick charts - just update the last candle close price
-        else if (data && ohlcData && ohlcData.length > 0) {
-          const lastCandle = ohlcData[ohlcData.length - 1];
-          if (lastCandle && latestUpdate.price !== lastCandle.close) {
-            // Update the last candle's close price in real-time
-            const updatedClose = [...ohlcData.map(candle => candle.close)];
-            updatedClose[updatedClose.length - 1] = latestUpdate.price;
-
-            if (typeof Plotly !== 'undefined' && Plotly.restyle) {
-              Plotly.restyle(plotDiv, {
-                'close': [updatedClose]
-              }, [0]); // Update candlestick trace
-            }
-          }
-        }
-
-        lastUpdateRef.current = now;
-      } catch (error) {
-        console.error('Ultra-fast chart update error:', error);
-      } finally {
-        setIsUpdating(false);
-      }
-    }
-  }, [chartUpdates, chartType, data, ohlcData, isUpdating]);
-
-  // ✨ OPTIONAL: Performance monitoring
-  useEffect(() => {
-    if (chartUpdates.length > 0) {
-      const fps = updateFrequency;
-      if (fps > 15) {
-        console.warn(`High chart update frequency: ${fps} fps - consider throttling`);
-      }
-    }
-  }, [chartUpdates, updateFrequency]);
+  const updateThrottleMs = 500; // Update chart maximum once every 500ms
 
   // ============ YOUR EXISTING CALCULATION FUNCTIONS (Keep all as is) ============
   const calculateBuySellVolume = (dataPoint: DataPoint | OHLCPoint) => {
@@ -1016,9 +952,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     // ✅ Reset user interaction tracking on manual timeframe change
     setUserHasInteracted(false);
     setPreservedRange({});
-    
-    // ✨ Prevent updates during timeframe changes
-    setIsUpdating(true);
 
     setSelectedTimeframe(timeframe);
     setPreservedAxisRanges({});
@@ -1114,9 +1047,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         }
       }, 100);
     }
-
-    // ✨ ADD THIS AT THE END
-    setTimeout(() => setIsUpdating(false), 200);
   };
 
   const toggleChartType = () => {
@@ -1272,7 +1202,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     if (!plotDiv) return;
 
     // ✅ THROTTLE: Prevent excessive re-renders during rapid updates
-    if (isUpdating) return;
+    const now = Date.now();
+    if (now - lastUpdateRef.current < updateThrottleMs) {
+      return;
+    }
+    lastUpdateRef.current = now;
 
     try {
       const layout = createLayout();
@@ -1345,8 +1279,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     mainMode, 
     secondaryView,
     lineChartData,
-    candlestickData,
-    isUpdating
+    candlestickData
   ]);
 
   // 🔀 CREATE ACTUAL DATA ONLY (No predictions for separator modal left side)
