@@ -1187,14 +1187,32 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   // ✅ NEW - Navigation controls activeIndex (which controls both news and images)
   const handleNext = useCallback(() => {
     if (newsData.length === 0) return;
-    setActiveIndex((prev) => (prev + 1) % newsData.length);
-    console.log(`➡️ [NAVIGATION] Next news item (${(activeIndex + 1) % newsData.length}/${newsData.length})`);
+    const nextIndex = (activeIndex + 1) % newsData.length;
+    setActiveIndex(nextIndex);
+    // Trigger loading state for new images
+    setImageLoading(prev => ({
+      ...prev,
+      [`intraday-${nextIndex}`]: true,
+      [`interday-${nextIndex}`]: true,
+      [`intraday-max-${nextIndex}`]: true,
+      [`interday-max-${nextIndex}`]: true
+    }));
+    console.log(`➡️ [NAVIGATION] Next news item (${nextIndex}/${newsData.length})`);
   }, [newsData.length, activeIndex]);
 
   const handlePrevious = useCallback(() => {
     if (newsData.length === 0) return;
-    setActiveIndex((prev) => (prev - 1 + newsData.length) % newsData.length);
-    console.log(`⬅️ [NAVIGATION] Previous news item (${(activeIndex - 1 + newsData.length) % newsData.length}/${newsData.length})`);
+    const prevIndex = (activeIndex - 1 + newsData.length) % newsData.length;
+    setActiveIndex(prevIndex);
+    // Trigger loading state for new images
+    setImageLoading(prev => ({
+      ...prev,
+      [`intraday-${prevIndex}`]: true,
+      [`interday-${prevIndex}`]: true,
+      [`intraday-max-${prevIndex}`]: true,
+      [`interday-max-${prevIndex}`]: true
+    }));
+    console.log(`⬅️ [NAVIGATION] Previous news item (${prevIndex}/${newsData.length})`);
   }, [newsData.length, activeIndex]);
 
   // ✅ Image loading handlers
@@ -1272,7 +1290,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               <div className="flex-1 flex">
                 {/* Intraday Chart (Left) */}
                 <div className="w-1/2 border-r border-zinc-700/50 p-4">
-                  <div className="relative h-full overflow-hidden rounded-lg bg-zinc-900">
+                  <div className="relative h-full overflow-hidden rounded-lg">
                     <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-3 py-1.5 z-10">
                       <p className="text-sm text-zinc-300 font-medium">Intraday Analysis</p>
                     </div>
@@ -1306,7 +1324,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 
                 {/* Interday Chart (Right) */}
                 <div className="w-1/2 p-4">
-                  <div className="relative h-full overflow-hidden rounded-lg bg-zinc-900">
+                  <div className="relative h-full overflow-hidden rounded-lg">
                     <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-3 py-1.5 z-10">
                       <p className="text-sm text-zinc-300 font-medium">Interday Analysis</p>
                     </div>
@@ -1339,8 +1357,12 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 </div>
               </div>
 
-              {/* News headline and metadata display */}
-              <div className="p-6 border-t border-zinc-700/50 bg-zinc-800/50">
+              {/* News headline and metadata display with sentiment-based background */}
+              <div className={`p-6 border-t ${
+                currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
+                currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
+                'border-zinc-700/50 bg-zinc-800/50'
+              }`}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <h3 className="text-xl text-white font-medium mb-3">{currentNews.headline}</h3>
@@ -1624,7 +1646,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             </div>
           </CardHeader>
 
-          <CardContent className="p-0 flex flex-col relative">
+          <CardContent className="p-0 flex flex-col relative overflow-hidden">
             {isLoading ? (
               <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
                 <div className="text-center">
@@ -1642,51 +1664,53 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 ) : (
                   // Non-maximized view
                   <>
-                    {/* ✅ MODIFIED: Quick access buttons ALWAYS visible + Show inline content for LSTMAE/SIPR */}
-                    <div className="border-b border-zinc-700/50 bg-zinc-700/20">
-                      <div className="p-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {/* ✅ Quick access button for LSTMAE - ALWAYS VISIBLE */}
-                            {activeTab === 'LSTMAE' && (
-                              <Button
-                                onClick={() => setIsLSTMAEModalOpen(true)}
-                                size="sm"
-                                variant="outline"
-                                className="gap-2"
-                              >
-                                <ExternalLink className="h-3 w-3" />
-                                Open Full LSTMAE Dashboard
-                              </Button>
-                            )}
-                            
-                            {/* ✅ NEW - Quick access button for SIPR - ALWAYS VISIBLE */}
-                            {activeTab === 'SiPR' && (
-                              <>
-                                <select
-                                  value={siprMonths}
-                                  onChange={(e) => setSiprMonths(Number(e.target.value))}
-                                  className="px-2 py-1 text-xs rounded bg-zinc-700 text-white border border-zinc-600"
-                                >
-                                  {[1, 2, 3, 6, 9, 12].map(m => (
-                                    <option key={m} value={m}>{m}M</option>
-                                  ))}
-                                </select>
+                    {/* ✅ MODIFIED: Quick access buttons ONLY for LSTMAE/SIPR tabs */}
+                    {(activeTab === 'LSTMAE' || activeTab === 'SiPR') && (
+                      <div className="border-b border-zinc-700/50 bg-zinc-700/20">
+                        <div className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {/* ✅ Quick access button for LSTMAE - ALWAYS VISIBLE */}
+                              {activeTab === 'LSTMAE' && (
                                 <Button
-                                  onClick={() => setIsSiprModalOpen(true)}
+                                  onClick={() => setIsLSTMAEModalOpen(true)}
                                   size="sm"
                                   variant="outline"
                                   className="gap-2"
                                 >
-                                  <Activity className="h-3 w-3" />
-                                  Open Full SIPR Dashboard
+                                  <ExternalLink className="h-3 w-3" />
+                                  Open Full LSTMAE Dashboard
                                 </Button>
-                              </>
-                            )}
+                              )}
+                              
+                              {/* ✅ NEW - Quick access button for SIPR - ALWAYS VISIBLE */}
+                              {activeTab === 'SiPR' && (
+                                <>
+                                  <select
+                                    value={siprMonths}
+                                    onChange={(e) => setSiprMonths(Number(e.target.value))}
+                                    className="px-2 py-1 text-xs rounded bg-zinc-700 text-white border border-zinc-600"
+                                  >
+                                    {[1, 2, 3, 6, 9, 12].map(m => (
+                                      <option key={m} value={m}>{m}M</option>
+                                    ))}
+                                  </select>
+                                  <Button
+                                    onClick={() => setIsSiprModalOpen(true)}
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-2"
+                                  >
+                                    <Activity className="h-3 w-3" />
+                                    Open Full SIPR Dashboard
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                     
                     {/* ✅ MODIFIED: Show dashboard content inline for LSTMAE/SIPR tabs */}
                     {activeTab === 'LSTMAE' ? (
@@ -1731,30 +1755,64 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                       </div>
                     ) : (
                       <>
-                        {/* ✅ MODIFIED - Single image view based on active tab (intraday or interday) */}
-                        <div className="h-[500px] p-2">
-                          <div className={`relative h-full overflow-hidden rounded-lg bg-gradient-to-br ${
-                            gradientMode === 'profit' ? 'from-green-950/20 to-zinc-900' :
-                            gradientMode === 'loss' ? 'from-red-950/20 to-zinc-900' : 
-                            'from-zinc-900 to-zinc-900'
+                        {/* ✅ MODIFIED - Single image view with headline at top, sentiment-based background */}
+                        <div className={`h-[1000px] flex flex-col bg-gradient-to-br ${
+                          currentNews.sentiment === 'positive' ? 'from-green-950/30 via-green-900/10 to-zinc-900' :
+                          currentNews.sentiment === 'negative' ? 'from-red-950/30 via-red-900/10 to-zinc-900' : 
+                          'from-zinc-900/30 via-zinc-800/10 to-zinc-900'
+                        }`}>
+                          {/* ✅ News headline at top with sentiment-based tinted background - compact padding */}
+                          <div className={`p-3 border-b ${
+                            currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
+                            currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
+                            'border-zinc-700/50 bg-zinc-800/50'
                           }`}>
-                            <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-2 py-1 z-10">
-                              <p className="text-xs text-zinc-300 font-medium">
-                                {activeTab === 'intraday' ? 'Intraday Analysis' : 'Interday Analysis'}
-                              </p>
-                            </div>
-                            {imageLoading[`${activeTab}-${activeIndex}`] && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
-                                <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <h3 className="text-white font-medium text-sm mb-1.5">{currentNews.headline}</h3>
+                                <div className="flex items-center gap-3 text-xs text-zinc-400">
+                                <span className={`px-2 py-1 rounded ${
+                                  currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
+                                  currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
+                                  'bg-zinc-500/20 text-zinc-400'
+                                }`}>
+                                  {currentNews.sentiment.toUpperCase()}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {formatRelativeTime(currentNews.timestamp)}
+                                </span>
+                                {currentNews.price_movement_1hr && (
+                                  <span>1hr: {currentNews.price_movement_1hr.price_change_pct.toFixed(2)}%</span>
+                                )}
+                                </div>
                               </div>
-                            )}
-                            {activeTab === 'intraday' ? (
-                              // Show Intraday Image
-                              currentNews.imageUrl1 ? (
-                                <img
-                                  src={currentNews.imageUrl1}
-                                  alt={`${companyCode} Intraday Chart`}
-                                  className="w-full h-full object-contain"
+                              <div className="text-sm text-zinc-400">
+                                {activeIndex + 1} / {newsData.length}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Image container - takes all available space without padding */}
+                          <div className="flex-1 relative overflow-hidden">
+                            <div className="relative h-full overflow-hidden">
+                              <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-2 py-1 z-10">
+                                <p className="text-xs text-zinc-300 font-medium">
+                                  {activeTab === 'intraday' ? 'Intraday Analysis' : 'Interday Analysis'}
+                                </p>
+                              </div>
+                              {imageLoading[`${activeTab}-${activeIndex}`] && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
+                                  <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                                </div>
+                              )}
+                              {activeTab === 'intraday' ? (
+                                // Show Intraday Image
+                                currentNews.imageUrl1 ? (
+                                  <img
+                                    src={currentNews.imageUrl1}
+                                    alt={`${companyCode} Intraday Chart`}
+                                    className="w-full h-full object-contain"
                                   onLoadStart={() => handleImageLoadStart(`intraday-${activeIndex}`)}
                                   onLoad={() => handleImageLoad(`intraday-${activeIndex}`)}
                                   onError={(e) => {
@@ -1791,35 +1849,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                                     <p className="text-zinc-500">Interday Chart Generating...</p>
                                   </div>
                                 </div>
-                              )
-                            )}
-                          </div>
-                        </div>
-                        
-                        {/* ✅ News headline and metadata display */}
-                        <div className="p-4 border-t border-zinc-700/50 bg-zinc-800/50">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <h3 className="text-white font-medium mb-2">{currentNews.headline}</h3>
-                              <div className="flex items-center gap-3 text-xs text-zinc-400">
-                                <span className={`px-2 py-1 rounded ${
-                                  currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
-                                  currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
-                                  'bg-zinc-500/20 text-zinc-400'
-                                }`}>
-                                  {currentNews.sentiment.toUpperCase()}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {formatRelativeTime(currentNews.timestamp)}
-                                </span>
-                                {currentNews.price_movement_1hr && (
-                                  <span>1hr: {currentNews.price_movement_1hr.price_change_pct.toFixed(2)}%</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-sm text-zinc-400">
-                              {activeIndex + 1} / {newsData.length}
+                                )
+                              )}
                             </div>
                           </div>
                         </div>

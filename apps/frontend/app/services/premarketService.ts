@@ -86,34 +86,58 @@ class PremarketService {
   }
 
   /**
-   * Fetch headlines for a specific stock (cached)
-   * GET /api/premarket/headlines/{stock_code}/cached
+   * Fetch headlines for a specific stock with automatic fallback
+   * 1. Try cached endpoint (fast, in-memory): /api/premarket/headlines/{stock_code}/cached
+   * 2. Fallback to on-disk endpoint (slower): /api/premarket/headlines/{stock_code}
    */
   async fetchHeadlinesCached(stockCode: string): Promise<PremarketHeadlinesResponse> {
     try {
-      const url = `${this.baseUrl}/headlines/${stockCode}/cached`;
-      console.log(`📰 Fetching cached headlines for ${stockCode} from ${url}`);
+      // First try: cached endpoint (fast)
+      const cachedUrl = `${this.baseUrl}/headlines/${stockCode}/cached`;
+      console.log(`📰 [1/2] Fetching cached headlines for ${stockCode}`);
       
-      const response = await fetch(url, {
+      const cachedResponse = await fetch(cachedUrl, {
         method: 'GET',
         headers: {
           'Accept': 'application/json'
         }
       });
 
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error(`No cached headlines found for ${stockCode}`);
-        }
-        if (response.status === 425) {
-          throw new Error('Predictions not yet generated. Call /generate first.');
-        }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (cachedResponse.ok) {
+        const data = await cachedResponse.json();
+        console.log(`✅ [CACHED] Fetched ${data.total_headlines} headlines for ${stockCode}`);
+        return data;
       }
 
-      const data = await response.json();
-      console.log(`✅ Fetched ${data.total_headlines} headlines for ${stockCode}`);
-      return data;
+      // If cached failed (404 or error), try on-disk endpoint
+      if (cachedResponse.status === 404 || cachedResponse.status === 425) {
+        console.log(`⚠️ Cached data not available (${cachedResponse.status}), trying on-disk endpoint...`);
+        
+        // Second try: on-disk endpoint (reads from disk)
+        const onDiskUrl = `${this.baseUrl}/headlines/${stockCode}`;
+        console.log(`📰 [2/2] Fetching headlines from disk for ${stockCode}`);
+        
+        const onDiskResponse = await fetch(onDiskUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+
+        if (!onDiskResponse.ok) {
+          if (onDiskResponse.status === 404) {
+            throw new Error(`No headlines found for ${stockCode} (checked cache and disk)`);
+          }
+          throw new Error(`HTTP ${onDiskResponse.status}: ${onDiskResponse.statusText}`);
+        }
+
+        const data = await onDiskResponse.json();
+        console.log(`✅ [ON-DISK] Fetched ${data.total_headlines} headlines for ${stockCode}`);
+        return data;
+      }
+
+      // Other errors from cached endpoint
+      throw new Error(`HTTP ${cachedResponse.status}: ${cachedResponse.statusText}`);
     } catch (error) {
       console.error(`❌ Error fetching headlines for ${stockCode}:`, error);
       throw error;
@@ -121,34 +145,58 @@ class PremarketService {
   }
 
   /**
-   * Fetch prediction for a specific stock (cached)
-   * GET /api/premarket/predictions/{stock_code}
+   * Fetch prediction for a specific stock with automatic fallback
+   * 1. Try cached endpoint (fast, in-memory): /api/premarket/predictions/{stock_code}
+   * 2. Fallback to on-demand endpoint (slower): /api/premarket/sentiment/{stock_code}
    */
   async fetchPrediction(stockCode: string): Promise<PremarketPrediction> {
     try {
-      const url = `${this.baseUrl}/predictions/${stockCode}`;
-      console.log(`🔮 Fetching prediction for ${stockCode} from ${url}`);
+      // First try: cached endpoint (fast)
+      const cachedUrl = `${this.baseUrl}/predictions/${stockCode}`;
+      console.log(`🔮 [1/2] Fetching cached prediction for ${stockCode}`);
       
-      const response = await fetch(url, {
+      const cachedResponse = await fetch(cachedUrl, {
         method: 'GET',
         headers: {
           'Accept': 'application/json'
         }
       });
 
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error(`No prediction found for ${stockCode}`);
-        }
-        if (response.status === 425) {
-          throw new Error('Predictions not yet generated. Call /generate first.');
-        }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (cachedResponse.ok) {
+        const data = await cachedResponse.json();
+        console.log(`✅ [CACHED] Prediction for ${stockCode}: ${data.sentiment} (${data.confidence})`);
+        return data;
       }
 
-      const data = await response.json();
-      console.log(`✅ Fetched prediction for ${stockCode}: ${data.sentiment} (${data.confidence})`);
-      return data;
+      // If cached failed (404 or 425), try on-demand endpoint
+      if (cachedResponse.status === 404 || cachedResponse.status === 425) {
+        console.log(`⚠️ Cached prediction not available (${cachedResponse.status}), computing on-demand...`);
+        
+        // Second try: on-demand endpoint (computes live)
+        const onDemandUrl = `${this.baseUrl}/sentiment/${stockCode}`;
+        console.log(`🔮 [2/2] Computing prediction on-demand for ${stockCode}`);
+        
+        const onDemandResponse = await fetch(onDemandUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+
+        if (!onDemandResponse.ok) {
+          if (onDemandResponse.status === 404) {
+            throw new Error(`No prediction available for ${stockCode} (checked cache and computed live)`);
+          }
+          throw new Error(`HTTP ${onDemandResponse.status}: ${onDemandResponse.statusText}`);
+        }
+
+        const data = await onDemandResponse.json();
+        console.log(`✅ [ON-DEMAND] Computed prediction for ${stockCode}: ${data.sentiment} (${data.confidence})`);
+        return data;
+      }
+
+      // Other errors from cached endpoint
+      throw new Error(`HTTP ${cachedResponse.status}: ${cachedResponse.statusText}`);
     } catch (error) {
       console.error(`❌ Error fetching prediction for ${stockCode}:`, error);
       throw error;
@@ -156,31 +204,55 @@ class PremarketService {
   }
 
   /**
-   * Fetch all predictions (cached)
-   * GET /api/premarket/predictions
+   * Fetch all predictions with automatic fallback
+   * 1. Try cached endpoint (fast, in-memory): /api/premarket/predictions
+   * 2. Fallback to batch endpoint (slower): /api/premarket/batch
    */
   async fetchAllPredictions(): Promise<PremarketPredictionsResponse> {
     try {
-      const url = `${this.baseUrl}/predictions`;
-      console.log(`🔮 Fetching all predictions from ${url}`);
+      // First try: cached endpoint (fast)
+      const cachedUrl = `${this.baseUrl}/predictions`;
+      console.log(`🔮 [1/2] Fetching all cached predictions`);
       
-      const response = await fetch(url, {
+      const cachedResponse = await fetch(cachedUrl, {
         method: 'GET',
         headers: {
           'Accept': 'application/json'
         }
       });
 
-      if (!response.ok) {
-        if (response.status === 425) {
-          throw new Error('Predictions not yet generated. Call /generate first.');
-        }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (cachedResponse.ok) {
+        const data = await cachedResponse.json();
+        console.log(`✅ [CACHED] Fetched ${data.total_stocks} predictions`);
+        return data;
       }
 
-      const data = await response.json();
-      console.log(`✅ Fetched ${data.total_stocks} predictions`);
-      return data;
+      // If cached failed (425 or error), try batch endpoint
+      if (cachedResponse.status === 425 || cachedResponse.status === 404) {
+        console.log(`⚠️ Cached predictions not available (${cachedResponse.status}), computing batch on-demand...`);
+        
+        // Second try: batch endpoint (computes live for all stocks)
+        const batchUrl = `${this.baseUrl}/batch`;
+        console.log(`🔮 [2/2] Computing all predictions on-demand (batch)`);
+        
+        const batchResponse = await fetch(batchUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+
+        if (!batchResponse.ok) {
+          throw new Error(`HTTP ${batchResponse.status}: ${batchResponse.statusText}`);
+        }
+
+        const data = await batchResponse.json();
+        console.log(`✅ [ON-DEMAND] Computed ${data.total_stocks} predictions (batch)`);
+        return data;
+      }
+
+      // Other errors from cached endpoint
+      throw new Error(`HTTP ${cachedResponse.status}: ${cachedResponse.statusText}`);
     } catch (error) {
       console.error(`❌ Error fetching all predictions:`, error);
       throw error;
