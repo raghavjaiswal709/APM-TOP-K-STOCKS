@@ -526,11 +526,11 @@ const ChartTabs: React.FC<ChartTabsProps> = ({
   msaxCount
 }) => {
   const tabs = [
-    { key: 'intraday' as const, label: 'Intraday', count: intradayCount },
-    { key: 'interday' as const, label: 'Interday', count: interdayCount },
-    { key: 'LSTMAE' as const, label: 'LSTMAE', count: lstmaeCount },
-    { key: 'SiPR' as const, label: 'SiPR', count: siprCount },
-    { key: 'MSAX' as const, label: 'MSAX', count: msaxCount }
+    { key: 'intraday' as const, label: 'Intraday', count: intradayCount, showCount: true },
+    { key: 'interday' as const, label: 'Interday', count: interdayCount, showCount: true },
+    { key: 'LSTMAE' as const, label: 'LSTMAE', count: lstmaeCount, showCount: false },
+    { key: 'SiPR' as const, label: 'SiPR', count: siprCount, showCount: false },
+    { key: 'MSAX' as const, label: 'MSAX', count: msaxCount, showCount: false }
   ];
 
   return (
@@ -550,11 +550,13 @@ const ChartTabs: React.FC<ChartTabsProps> = ({
             `}
           >
             {tab.label}
-            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-              isActive ? 'bg-blue-500/30' : 'bg-zinc-600'
-            }`}>
-              {tab.count}
-            </span>
+            {tab.showCount && (
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                isActive ? 'bg-blue-500/30' : 'bg-zinc-600'
+              }`}>
+                {tab.count}
+              </span>
+            )}
           </button>
         );
       })}
@@ -793,12 +795,12 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   }, [allImages, activeTab]);
 
   const intradayCount = useMemo(() => {
-    return allImages.filter(image => image.chartType === 'intraday').length;
-  }, [allImages]);
+    return newsData.length;
+  }, [newsData]);
 
   const interdayCount = useMemo(() => {
-    return allImages.filter(image => image.chartType === 'interday').length;
-  }, [allImages]);
+    return newsData.length;
+  }, [newsData]);
 
   const lstmaeCount = useMemo(() => {
     return allImages.filter(image => image.chartType === 'LSTMAE').length;
@@ -1072,17 +1074,34 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   }, [companyCode, exchange, generateImagePaths, checkImageExists]);
 
   const handleNext = useCallback(() => {
-    setCurrentIndex((prev) => (prev + 1) % filteredImages.length);
-  }, [filteredImages.length]);
+    if (newsData.length === 0) return;
+    const nextIndex = (activeIndex + 1) % newsData.length;
+    setActiveIndex(nextIndex);
+    // Trigger loading state for new images
+    setImageLoading(prev => ({
+      ...prev,
+      [`intraday-${nextIndex}`]: true,
+      [`interday-${nextIndex}`]: true,
+      [`intraday-max-${nextIndex}`]: true,
+      [`interday-max-${nextIndex}`]: true
+    }));
+    console.log(`➡️ [NAVIGATION] Next news item (${nextIndex}/${newsData.length})`);
+  }, [newsData.length, activeIndex]);
 
   const handlePrevious = useCallback(() => {
-    setCurrentIndex((prev) => (prev - 1 + filteredImages.length) % filteredImages.length);
-  }, [filteredImages.length]);
-
-  // Handlers for headline carousel in maximized view
-  const handleHeadlineNext = useCallback(() => {
-    setCurrentHeadlineIndex((prev) => (prev + 1) % newsItems.length);
-  }, [newsItems.length]);
+    if (newsData.length === 0) return;
+    const prevIndex = (activeIndex - 1 + newsData.length) % newsData.length;
+    setActiveIndex(prevIndex);
+    // Trigger loading state for new images
+    setImageLoading(prev => ({
+      ...prev,
+      [`intraday-${prevIndex}`]: true,
+      [`interday-${prevIndex}`]: true,
+      [`intraday-max-${prevIndex}`]: true,
+      [`interday-max-${prevIndex}`]: true
+    }));
+    console.log(`⬅️ [NAVIGATION] Previous news item (${prevIndex}/${newsData.length})`);
+  }, [newsData.length, activeIndex]);
 
   const handleHeadlinePrevious = useCallback(() => {
     setCurrentHeadlineIndex((prev) => (prev - 1 + newsItems.length) % newsItems.length);
@@ -1114,14 +1133,162 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [handleNext, handlePrevious, companyCode, exchange, isMaximized]);
+  }, [handleNext, handlePrevious, companyCode, exchange, newsData.length]);
 
-  const currentImage = filteredImages[currentIndex];
-  const currentHeadline = newsItems[currentHeadlineIndex];
-
-  // ✅ MODIFIED - Function to render images with "Open Full Dashboard" button for LSTMAE & SIPR
-  // ✅ ALWAYS show buttons even if no images available
+  // ✅ MODIFIED - Function to render maximized view with Pre-Market charts and dashboards
   const renderMaximizedImages = () => {
+    // ✅ For intraday/interday tabs, show Pre-Market API charts (like non-maximized view)
+    if (activeTab === 'intraday' || activeTab === 'interday') {
+      return (
+        <div className="h-[calc(100vh-200px)] w-full flex flex-col">
+          {newsLoading ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-3" />
+                <p className="text-zinc-400">Loading market news...</p>
+              </div>
+            </div>
+          ) : newsError || !currentNews ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center space-y-3">
+                <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
+                <p className="text-zinc-400 mb-2">
+                  {newsError || 'No market news available'}
+                </p>
+                <p className="text-sm text-zinc-500">
+                  Select a company to view analysis charts
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchNewsData}
+                  className="mt-4"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Retry
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Pre-Market API Charts */}
+              <div className="flex-1 flex">
+                {/* Intraday Chart (Left) */}
+                <div className="w-1/2 border-r border-zinc-700/50 p-4">
+                  <div className="relative h-full overflow-hidden rounded-lg">
+                    <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-3 py-1.5 z-10">
+                      <p className="text-sm text-zinc-300 font-medium">Intraday Analysis</p>
+                    </div>
+                    {imageLoading[`intraday-max-${activeIndex}`] && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
+                        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                      </div>
+                    )}
+                    {currentNews.imageUrl1 ? (
+                      <img
+                        src={currentNews.imageUrl1}
+                        alt={`${companyCode} Intraday Chart`}
+                        className="w-full h-full object-contain"
+                        onLoadStart={() => handleImageLoadStart(`intraday-max-${activeIndex}`)}
+                        onLoad={() => handleImageLoad(`intraday-max-${activeIndex}`)}
+                        onError={(e) => {
+                          handleImageError(`intraday-max-${activeIndex}`);
+                          (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="text-center">
+                          <TrendingUp className="h-16 w-16 text-zinc-600 mx-auto mb-3" />
+                          <p className="text-zinc-500">Chart Generating...</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Interday Chart (Right) */}
+                <div className="w-1/2 p-4">
+                  <div className="relative h-full overflow-hidden rounded-lg">
+                    <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-3 py-1.5 z-10">
+                      <p className="text-sm text-zinc-300 font-medium">Interday Analysis</p>
+                    </div>
+                    {imageLoading[`interday-max-${activeIndex}`] && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
+                        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                      </div>
+                    )}
+                    {currentNews.imageUrl2 ? (
+                      <img
+                        src={currentNews.imageUrl2}
+                        alt={`${companyCode} Interday Chart`}
+                        className="w-full h-full object-contain"
+                        onLoadStart={() => handleImageLoadStart(`interday-max-${activeIndex}`)}
+                        onLoad={() => handleImageLoad(`interday-max-${activeIndex}`)}
+                        onError={(e) => {
+                          handleImageError(`interday-max-${activeIndex}`);
+                          (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="text-center">
+                          <TrendingDown className="h-16 w-16 text-zinc-600 mx-auto mb-3" />
+                          <p className="text-zinc-500">Chart Generating...</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* News headline and metadata display with sentiment-based background */}
+              <div className={`p-6 border-t ${
+                currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
+                currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
+                'border-zinc-700/50 bg-zinc-800/50'
+              }`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <h3 className="text-xl text-white font-medium mb-3">{currentNews.headline}</h3>
+                    <div className="flex items-center gap-4 text-sm text-zinc-400">
+                      <span className={`px-3 py-1.5 rounded ${
+                        currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
+                        currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
+                        'bg-zinc-500/20 text-zinc-400'
+                      }`}>
+                        {currentNews.sentiment.toUpperCase()}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="h-4 w-4" />
+                        {formatRelativeTime(currentNews.timestamp)}
+                      </span>
+                      {currentNews.price_movement_1hr && (
+                        <span className="flex items-center gap-1.5">
+                          <TrendingUp className="h-4 w-4" />
+                          1hr: {currentNews.price_movement_1hr.price_change_pct.toFixed(2)}%
+                        </span>
+                      )}
+                      {currentNews.price_movement_1day && (
+                        <span className="flex items-center gap-1.5">
+                          <Calendar className="h-4 w-4" />
+                          1day: {currentNews.price_movement_1day.price_change_pct.toFixed(2)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-lg text-zinc-400 font-medium">
+                    {activeIndex + 1} / {newsData.length}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    // ✅ For LSTMAE/SIPR/MSAX tabs, show the original carousel images
     let leftImages: CarouselImage[] = [];
     let rightImages: CarouselImage[] = [];
     let leftTitle = '';
@@ -1411,7 +1578,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             </div>
           </CardHeader>
 
-          <CardContent className="p-0 flex flex-col relative">
+          <CardContent className="p-0 flex flex-col relative overflow-hidden">
             {isLoading ? (
               <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
                 <div className="text-center">
@@ -1429,51 +1596,53 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 ) : (
                   // Non-maximized view
                   <>
-                    {/* ✅ MODIFIED: Quick access buttons ALWAYS visible + Show inline content for LSTMAE/SIPR */}
-                    <div className="border-b border-zinc-700/50 bg-zinc-700/20">
-                      <div className="p-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {/* ✅ Quick access button for LSTMAE - ALWAYS VISIBLE */}
-                            {activeTab === 'LSTMAE' && (
-                              <Button
-                                onClick={() => setIsLSTMAEModalOpen(true)}
-                                size="sm"
-                                variant="outline"
-                                className="gap-2"
-                              >
-                                <ExternalLink className="h-3 w-3" />
-                                Open Full LSTMAE Dashboard
-                              </Button>
-                            )}
-                            
-                            {/* ✅ NEW - Quick access button for SIPR - ALWAYS VISIBLE */}
-                            {activeTab === 'SiPR' && (
-                              <>
-                                <select
-                                  value={siprMonths}
-                                  onChange={(e) => setSiprMonths(Number(e.target.value))}
-                                  className="px-2 py-1 text-xs rounded bg-zinc-700 text-white border border-zinc-600"
-                                >
-                                  {[1, 2, 3, 6, 9, 12].map(m => (
-                                    <option key={m} value={m}>{m}M</option>
-                                  ))}
-                                </select>
+                    {/* ✅ MODIFIED: Quick access buttons ONLY for LSTMAE/SIPR tabs */}
+                    {(activeTab === 'LSTMAE' || activeTab === 'SiPR') && (
+                      <div className="border-b border-zinc-700/50 bg-zinc-700/20">
+                        <div className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {/* ✅ Quick access button for LSTMAE - ALWAYS VISIBLE */}
+                              {activeTab === 'LSTMAE' && (
                                 <Button
-                                  onClick={() => setIsSiprModalOpen(true)}
+                                  onClick={() => setIsLSTMAEModalOpen(true)}
                                   size="sm"
                                   variant="outline"
                                   className="gap-2"
                                 >
-                                  <Activity className="h-3 w-3" />
-                                  Open Full SIPR Dashboard
+                                  <ExternalLink className="h-3 w-3" />
+                                  Open Full LSTMAE Dashboard
                                 </Button>
-                              </>
-                            )}
+                              )}
+                              
+                              {/* ✅ NEW - Quick access button for SIPR - ALWAYS VISIBLE */}
+                              {activeTab === 'SiPR' && (
+                                <>
+                                  <select
+                                    value={siprMonths}
+                                    onChange={(e) => setSiprMonths(Number(e.target.value))}
+                                    className="px-2 py-1 text-xs rounded bg-zinc-700 text-white border border-zinc-600"
+                                  >
+                                    {[1, 2, 3, 6, 9, 12].map(m => (
+                                      <option key={m} value={m}>{m}M</option>
+                                    ))}
+                                  </select>
+                                  <Button
+                                    onClick={() => setIsSiprModalOpen(true)}
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-2"
+                                  >
+                                    <Activity className="h-3 w-3" />
+                                    Open Full SIPR Dashboard
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                     
                     {/* ✅ MODIFIED: Show dashboard content inline for LSTMAE/SIPR tabs */}
                     {activeTab === 'LSTMAE' ? (
@@ -1501,48 +1670,105 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                       </div>
                     ) : (
                       <>
-                        <div className={`relative overflow-hidden rounded-lg bg-gradient-to-br ${
-                          gradientMode === 'profit' ? 'from-green-950/20 to-zinc-900' :
-                          gradientMode === 'loss' ? 'from-red-950/20 to-zinc-900' : 
-                          'from-zinc-900 to-zinc-900'
-                        } min-h-[400px]`}>
-                          {imageLoading[currentIndex] && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
-                              <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-                            </div>
-                          )}
-                          {currentImage && (
-                            <img
-                              src={currentImage.src}
-                              alt={currentImage.name}
-                              className="w-full h-auto block"
-                              style={{ 
-                                maxWidth: '100%',
-                                height: 'auto',
-                                display: 'block'
-                              }}
-                              onLoadStart={() => handleImageLoadStart(currentIndex)}
-                              onLoad={() => handleImageLoad(currentIndex)}
-                              onError={() => handleImageLoad(currentIndex)}
-                            />
-                          )}
-                        </div>
-                        
-                        {filteredImages.length > 1 && (
-                          <div className="p-2 border-t border-zinc-700/50 bg-zinc-700/20">
-                            <div className="flex justify-center gap-1">
-                              {filteredImages.map((_, index) => (
-                                <button
-                                  key={index}
-                                  className={`w-2 h-2 rounded-full transition-colors ${
-                                    index === currentIndex ? 'bg-blue-500' : 'bg-zinc-600'
-                                  }`}
-                                  onClick={() => setCurrentIndex(index)}
-                                />
-                              ))}
+                        {/* ✅ MODIFIED - Single image view with headline at top, sentiment-based background, no empty space */}
+                        <div className={`flex flex-col bg-gradient-to-br ${
+                          currentNews.sentiment === 'positive' ? 'from-green-950/30 via-green-900/10 to-zinc-900' :
+                          currentNews.sentiment === 'negative' ? 'from-red-950/30 via-red-900/10 to-zinc-900' : 
+                          'from-zinc-900/30 via-zinc-800/10 to-zinc-900'
+                        }`}>
+                          {/* ✅ News headline at top with sentiment-based tinted background - compact padding */}
+                          <div className={`p-3 border-b ${
+                            currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
+                            currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
+                            'border-zinc-700/50 bg-zinc-800/50'
+                          }`}>
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <h3 className="text-white font-medium text-sm mb-1.5">{currentNews.headline}</h3>
+                                <div className="flex items-center gap-3 text-xs text-zinc-400">
+                                <span className={`px-2 py-1 rounded ${
+                                  currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
+                                  currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
+                                  'bg-zinc-500/20 text-zinc-400'
+                                }`}>
+                                  {currentNews.sentiment.toUpperCase()}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {formatRelativeTime(currentNews.timestamp)}
+                                </span>
+                                {currentNews.price_movement_1hr && (
+                                  <span>1hr: {currentNews.price_movement_1hr.price_change_pct.toFixed(2)}%</span>
+                                )}
+                                </div>
+                              </div>
+                              <div className="text-sm text-zinc-400">
+                                {activeIndex + 1} / {newsData.length}
+                              </div>
                             </div>
                           </div>
-                        )}
+
+                          {/* Image container - takes all available space without padding */}
+                          <div className="flex-1 relative overflow-hidden">
+                            <div className="relative h-full overflow-hidden">
+                              <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-2 py-1 z-10">
+                                <p className="text-xs text-zinc-300 font-medium">
+                                  {activeTab === 'intraday' ? 'Intraday Analysis' : 'Interday Analysis'}
+                                </p>
+                              </div>
+                              {imageLoading[`${activeTab}-${activeIndex}`] && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
+                                  <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                                </div>
+                              )}
+                              {activeTab === 'intraday' ? (
+                                // Show Intraday Image
+                                currentNews.imageUrl1 ? (
+                                  <img
+                                    src={currentNews.imageUrl1}
+                                    alt={`${companyCode} Intraday Chart`}
+                                    className="w-full h-full object-contain"
+                                  onLoadStart={() => handleImageLoadStart(`intraday-${activeIndex}`)}
+                                  onLoad={() => handleImageLoad(`intraday-${activeIndex}`)}
+                                  onError={(e) => {
+                                    handleImageError(`intraday-${activeIndex}`);
+                                    (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <div className="text-center">
+                                    <TrendingUp className="h-12 w-12 text-zinc-600 mx-auto mb-2" />
+                                    <p className="text-zinc-500">Intraday Chart Generating...</p>
+                                  </div>
+                                </div>
+                              )
+                            ) : (
+                              // Show Interday Image
+                              currentNews.imageUrl2 ? (
+                                <img
+                                  src={currentNews.imageUrl2}
+                                  alt={`${companyCode} Interday Chart`}
+                                  className="w-full h-full object-contain"
+                                  onLoadStart={() => handleImageLoadStart(`interday-${activeIndex}`)}
+                                  onLoad={() => handleImageLoad(`interday-${activeIndex}`)}
+                                  onError={(e) => {
+                                    handleImageError(`interday-${activeIndex}`);
+                                    (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <div className="text-center">
+                                    <TrendingDown className="h-12 w-12 text-zinc-600 mx-auto mb-2" />
+                                    <p className="text-zinc-500">Interday Chart Generating...</p>
+                                  </div>
+                                </div>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </>
                     )}
                   </>
