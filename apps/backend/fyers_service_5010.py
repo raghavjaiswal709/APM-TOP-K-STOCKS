@@ -37,9 +37,9 @@ sio = socketio.Server(
 app = socketio.WSGIApp(sio)
 
 # Fyers API credentials
-client_id = "150HUKJSWG-100"
-secret_key = "18YYNXCAS7"
-redirect_uri = "https://raghavjaiswal709.github.io/DAKSphere_redirect_PROD/"
+client_id = "VEACWVGEUC-100"
+secret_key = "2O7GBQ7A7H"
+redirect_uri = "https://daksphere.com/"
 response_type = "code"
 grant_type = "authorization_code"
 
