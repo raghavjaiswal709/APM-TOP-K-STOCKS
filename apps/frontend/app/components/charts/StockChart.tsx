@@ -66,8 +66,11 @@ const CHART_PERFORMANCE_CONFIG = Object.freeze({
     STANDARD: 4/3,
     SQUARE: 1/1
   },
-  RELAYOUT_DEBOUNCE: 300,
+  RELAYOUT_DEBOUNCE: 150,  // Reduced from 300 for faster gap detection
   UPDATE_DEBOUNCE: 200,
+  BUFFER_THRESHOLD: 200,  // Reduced from 500 - More aggressive proactive loading
+  THROTTLE_INTERVAL: 100,  // Throttle interval for buffer zone checks
+  AGGRESSIVE_GAP_FILL: true, // Enable immediate gap filling on visible range
   STABLE_UI_REVISION: 'stable-v2',
   PRICE_CHART_HEIGHT_RATIO: 0.60, 
   VOLUME_CHART_HEIGHT_RATIO: 0.40, 
@@ -195,35 +198,25 @@ interface StockChartProps {
   onIntervalChange?: (interval: string) => void;
   onRangeChange?: (startDate: Date, endDate: Date) => Promise<void>;
 }
+// ✅ NON-BLOCKING: Small corner loading indicator (chart remains interactive)
 const LoadingIndicator = ({ show }: { show: boolean }) => {
   if (!show) return null;
+  
   return (
     <div 
-      className="fixed top-4 right-4 z-50 bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-lg shadow-2xl"
+      className="fixed bottom-4 right-4 z-50 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg"
       style={{
-        animation: 'slideInScale 0.3s ease-out forwards',
-        transformOrigin: 'top right'
+        animation: 'slideInUp 0.3s ease-out'
       }}
     >
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center gap-2">
         <div 
-          className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
+          className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
           style={{
             animation: 'spin 1s linear infinite'
           }}
-        ></div>
-        <div className="flex flex-col">
-          <span className="text-sm font-semibold">Loading Chart Data</span>
-          <span className="text-xs opacity-90">Expanding timeline...</span>
-        </div>
-      </div>
-      <div className="mt-2 w-full bg-blue-300 bg-opacity-30 rounded-full h-1">
-        <div 
-          className="bg-white h-1 rounded-full"
-          style={{
-            animation: 'progress 2s ease-in-out infinite'
-          }}
-        ></div>
+        />
+        <span className="text-xs font-medium">Loading...</span>
       </div>
     </div>
   );
@@ -417,6 +410,7 @@ export function StockChart({
   const anchorTimestampRef = useRef<string | null>(null);
   const prevXRangeRef = useRef<[number, number] | null>(null);
   const wasLoadingRef = useRef<boolean>(false);
+  const throttleTimerRef = useRef<NodeJS.Timeout | null>(null); // For proactive buffer zone throttling
   useEffect(() => {
     const loadingStyles = `
       @keyframes slideInScale {
@@ -437,6 +431,30 @@ export function StockChart({
         0% { width: 0%; }
         50% { width: 70%; }
         100% { width: 100%; }
+      }
+      @keyframes fadeIn {
+        0% { opacity: 0; }
+        100% { opacity: 1; }
+      }
+      @keyframes scaleIn {
+        0% { 
+          opacity: 0;
+          transform: scale(0.9);
+        }
+        100% { 
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      @keyframes slideInUp {
+        0% { 
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        100% { 
+          opacity: 1;
+          transform: translateY(0);
+        }
       }
     `;
     const styleSheet = document.createElement('style');
@@ -849,6 +867,69 @@ export function StockChart({
           range: prevXRangeRef.current 
         });
       }
+    }
+    
+    // ✅ PROACTIVE BUFFER ZONE LOADING: Throttled check for edges (TradingView-style)
+    if (newXRange && masterTimeline.length > 0 && !isLoadingMoreData) {
+      // Clear existing throttle timer
+      if (throttleTimerRef.current) {
+        clearTimeout(throttleTimerRef.current);
+      }
+      
+      // Throttle buffer checks to 100ms
+      throttleTimerRef.current = setTimeout(() => {
+        const [start, end] = newXRange;
+        const bufferSize = CHART_PERFORMANCE_CONFIG.BUFFER_THRESHOLD; // 200 points
+        
+        console.log('⚡ Proactive buffer check:', {
+          start,
+          end,
+          timelineLength: masterTimeline.length,
+          bufferSize,
+          leftDistance: start,
+          rightDistance: masterTimeline.length - end
+        });
+        
+        const gaps = [];
+        
+        // Check if approaching LEFT edge
+        if (start < bufferSize) {
+          console.log('⚡ PROACTIVE: Approaching LEFT edge, triggering fetch');
+          const startLabel = masterTimeline[0];
+          if (startLabel) {
+            const startDate = parseISTTimestamp(startLabel);
+            const bufferTime = bufferSize * getIntervalInMs(selectedInterval);
+            gaps.push({
+              type: 'before',
+              start: new Date(startDate.getTime() - bufferTime),
+              end: startDate,
+              priority: 'high'
+            });
+          }
+        }
+        
+        // Check if approaching RIGHT edge
+        if (end > masterTimeline.length - bufferSize) {
+          console.log('⚡ PROACTIVE: Approaching RIGHT edge, triggering fetch');
+          const endLabel = masterTimeline[masterTimeline.length - 1];
+          if (endLabel) {
+            const endDate = parseISTTimestamp(endLabel);
+            const bufferTime = bufferSize * getIntervalInMs(selectedInterval);
+            gaps.push({
+              type: 'after',
+              start: endDate,
+              end: new Date(endDate.getTime() + bufferTime),
+              priority: 'high'
+            });
+          }
+        }
+        
+        // Immediate background fetch if gaps detected
+        if (gaps.length > 0) {
+          console.log('⚡ Triggering IMMEDIATE proactive fetch:', gaps);
+          fetchMissingData(gaps);
+        }
+      }, CHART_PERFORMANCE_CONFIG.THROTTLE_INTERVAL); // 100ms throttle
     }
     
     // ✅ Debounced gap detection with category-to-date conversion
