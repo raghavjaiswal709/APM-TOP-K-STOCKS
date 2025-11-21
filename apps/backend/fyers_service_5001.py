@@ -28,8 +28,8 @@ logger = logging.getLogger("FyersServer")
 sio = socketio.Server(cors_allowed_origins='*', async_mode='eventlet')
 app = socketio.WSGIApp(sio)
 
-client_id = "150HUKJSWG-100"
-secret_key = "18YYNXCAS7"
+client_id = "VEACWVGEUC-100"
+secret_key = "2O7GBQ7A7H"
 redirect_uri = "https://raghavjaiswal709.github.io/DAKSphere_redirect_PROD/"
 response_type = "code"
 grant_type = "authorization_code"
