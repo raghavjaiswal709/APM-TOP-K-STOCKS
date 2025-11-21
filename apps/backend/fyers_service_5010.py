@@ -36,11 +36,12 @@ sio = socketio.Server(
 )
 app = socketio.WSGIApp(sio)
 
-# Fyers API credentials
-client_id = "VEACWVGEUC-100"
-secret_key = "2O7GBQ7A7H"
-redirect_uri = "https://raghavjaiswal709.github.io/DAKSphere_redirect_PROD/"
-response_type = "code"
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+client_id = os.getenv("FYERS_CLIENT_ID")
+secret_key = os.getenv("FYERS_SECRET_ID")
+redirect_uri = os.getenv("FYERS_REDIRECT_URI")
+access_token = os.getenv("FYERS_ACCESS_TOKEN")
 grant_type = "authorization_code"
 
 # Global variables
