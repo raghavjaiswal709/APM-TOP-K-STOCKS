@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { LstmaeModule } from './lstmae/lstmae.module';
 import { SiprModule } from './sipr/sipr.module';
 import { PredictionModule } from './prediction/prediction.module';
+import { PremarketModule } from './premarket/premarket.module';
 import { HttpModule } from '@nestjs/axios';
 
 @Module({
@@ -25,6 +26,7 @@ import { HttpModule } from '@nestjs/axios';
     LstmaeModule,
     SiprModule,
     PredictionModule,
+    PremarketModule,
   ],
   controllers: [AppController],
   providers: [AppService],

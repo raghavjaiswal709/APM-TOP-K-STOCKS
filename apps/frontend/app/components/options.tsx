@@ -28,7 +28,7 @@ export function CardWithForm({
   onIntervalChange,
   onIndicatorsChange,
   selectedWatchlist,
-  onWatchlistChange,
+  // onWatchlistChange,
   loading = false,
 }: CardWithFormProps) {
   const [selectedCompany, setSelectedCompany] = React.useState<{
@@ -37,10 +37,13 @@ export function CardWithForm({
   } | null>(null);
   const [isCarouselOpen, setIsCarouselOpen] = React.useState(false);
   const [watchlistSelectedDate, setWatchlistSelectedDate] = React.useState<string | null>(null);
+  /*
   const handleDateRangeChange = React.useCallback((startDate: Date | undefined, endDate: Date | undefined) => {
     console.log('CardWithForm received date range change:', startDate, endDate);
     onDateRangeChange(startDate, endDate);
   }, [onDateRangeChange]);
+  */
+
   const handleCompanySelect = React.useCallback((companyCode: string | null, exchange?: string, marker?: string) => {
     console.log('CardWithForm received company change:', companyCode, 'on exchange:', exchange, 'marker:', marker);
     if (companyCode && exchange) {
@@ -50,18 +53,23 @@ export function CardWithForm({
     }
     onCompanyChange(companyCode, exchange, marker);
   }, [onCompanyChange]);
+
+  /*
   const handleFetchData = React.useCallback(() => {
     console.log('CardWithForm received fetch data request');
     onFetchData();
   }, [onFetchData]);
+
   const handleIntervalChange = React.useCallback((interval: string) => {
     console.log('CardWithForm received interval change:', interval);
     onIntervalChange(interval);
   }, [onIntervalChange]);
+
   const handleIndicatorsChange = React.useCallback((indicators: string[]) => {
     console.log('CardWithForm received indicators change:', indicators);
     onIndicatorsChange(indicators);
   }, [onIndicatorsChange]);
+  */
 
   const handleWatchlistDateChange = React.useCallback((date: string) => {
     console.log('🗓️ [CardWithForm] Watchlist date changed to:', date);
@@ -79,27 +87,27 @@ export function CardWithForm({
       <Card className="border-none w-full">
         <CardContent className="p-4 w-full">
           <div className="space-y-2">
-            {}
+            { }
             <div className="flex justify-end gap-2">
               <div className="p-3 border border-opacity-30 rounded-md flex-1 gap-4 h-24 flex items-center">
-                <WatchlistSelector 
-                  onCompanySelect={handleCompanySelect}  
+                <WatchlistSelector
+                  onCompanySelect={handleCompanySelect}
                   onDateChange={handleWatchlistDateChange}
                 />
 
                 <div className=" flex items-center justify-center min-w-[120px] absolute right-[395px]">
-                <Button
-                  onClick={handleOpenCarousel}
-                  disabled={!selectedCompany}
-                  variant="outline"
-                  className="flex items-center justify-center gap-2 h-20"
-                >
-                  {}
-                  <span className="text-sm">View Graphs</span>
-                </Button>
-              </div>
-                 {}
-              
+                  <Button
+                    onClick={handleOpenCarousel}
+                    disabled={!selectedCompany}
+                    variant="outline"
+                    className="flex items-center justify-center gap-2 h-20"
+                  >
+                    { }
+                    <span className="text-sm">View Graphs</span>
+                  </Button>
+                </div>
+                { }
+
               </div>
             </div>
           </div>

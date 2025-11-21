@@ -1,6 +1,6 @@
 // Pre-Market API Service
 // Base URL for Pre-Market API - routes through backend to avoid CORS issues
-export const PREMARKET_API_BASE_URL = process.env.NEXT_PUBLIC_PREMARKET_API || '/api/premarket';
+export const PREMARKET_API_BASE_URL = '/api/premarket';
 
 /**
  * Types for Pre-Market API responses
@@ -95,7 +95,7 @@ class PremarketService {
       // First try: cached endpoint (fast)
       const cachedUrl = `${this.baseUrl}/headlines/${stockCode}/cached`;
       console.log(`📰 [1/2] Fetching cached headlines for ${stockCode}`);
-      
+
       const cachedResponse = await fetch(cachedUrl, {
         method: 'GET',
         headers: {
@@ -112,11 +112,11 @@ class PremarketService {
       // If cached failed (404 or error), try on-disk endpoint
       if (cachedResponse.status === 404 || cachedResponse.status === 425) {
         console.log(`⚠️ Cached data not available (${cachedResponse.status}), trying on-disk endpoint...`);
-        
+
         // Second try: on-disk endpoint (reads from disk)
         const onDiskUrl = `${this.baseUrl}/headlines/${stockCode}`;
         console.log(`📰 [2/2] Fetching headlines from disk for ${stockCode}`);
-        
+
         const onDiskResponse = await fetch(onDiskUrl, {
           method: 'GET',
           headers: {
@@ -154,7 +154,7 @@ class PremarketService {
       // First try: cached endpoint (fast)
       const cachedUrl = `${this.baseUrl}/predictions/${stockCode}`;
       console.log(`🔮 [1/2] Fetching cached prediction for ${stockCode}`);
-      
+
       const cachedResponse = await fetch(cachedUrl, {
         method: 'GET',
         headers: {
@@ -171,11 +171,11 @@ class PremarketService {
       // If cached failed (404 or 425), try on-demand endpoint
       if (cachedResponse.status === 404 || cachedResponse.status === 425) {
         console.log(`⚠️ Cached prediction not available (${cachedResponse.status}), computing on-demand...`);
-        
+
         // Second try: on-demand endpoint (computes live)
         const onDemandUrl = `${this.baseUrl}/sentiment/${stockCode}`;
         console.log(`🔮 [2/2] Computing prediction on-demand for ${stockCode}`);
-        
+
         const onDemandResponse = await fetch(onDemandUrl, {
           method: 'GET',
           headers: {
@@ -213,7 +213,7 @@ class PremarketService {
       // First try: cached endpoint (fast)
       const cachedUrl = `${this.baseUrl}/predictions`;
       console.log(`🔮 [1/2] Fetching all cached predictions`);
-      
+
       const cachedResponse = await fetch(cachedUrl, {
         method: 'GET',
         headers: {
@@ -230,11 +230,11 @@ class PremarketService {
       // If cached failed (425 or error), try batch endpoint
       if (cachedResponse.status === 425 || cachedResponse.status === 404) {
         console.log(`⚠️ Cached predictions not available (${cachedResponse.status}), computing batch on-demand...`);
-        
+
         // Second try: batch endpoint (computes live for all stocks)
         const batchUrl = `${this.baseUrl}/batch`;
         console.log(`🔮 [2/2] Computing all predictions on-demand (batch)`);
-        
+
         const batchResponse = await fetch(batchUrl, {
           method: 'GET',
           headers: {
@@ -265,12 +265,12 @@ class PremarketService {
    */
   async listCharts(stockCode: string, date?: string): Promise<PremarketChartListResponse> {
     try {
-      const url = date 
+      const url = date
         ? `${this.baseUrl}/charts/${stockCode}?date=${date}`
         : `${this.baseUrl}/charts/${stockCode}`;
-      
+
       console.log(`📊 Listing charts for ${stockCode} from ${url}`);
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -310,7 +310,7 @@ class PremarketService {
     try {
       const url = `${this.baseUrl}/status`;
       console.log(`⏱️ Checking generation status from ${url}`);
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -339,7 +339,7 @@ class PremarketService {
     try {
       const url = `${this.baseUrl}/generate`;
       console.log(`🚀 Triggering prediction generation at ${url}`);
-      
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {

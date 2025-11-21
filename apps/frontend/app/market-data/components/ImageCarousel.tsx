@@ -15,9 +15,9 @@ import { useLSTMAEData } from '@/hooks/useLSTMAEData';
 
 // ✅ NEW - Pre-Market API Integration
 import { premarketService, PremarketHeadline } from '@/app/services/premarketService';
-import { 
-  constructIntradayImageUrl, 
-  constructInterdayImageUrl, 
+import {
+  constructIntradayImageUrl,
+  constructInterdayImageUrl,
   getTodayDateString,
   formatRelativeTime,
   formatFullDate,
@@ -79,24 +79,24 @@ const NewsModal: React.FC<NewsModalProps> = ({ isOpen, onClose, newsItem }) => {
   const getSentimentConfig = () => {
     switch (newsItem.sentiment) {
       case 'positive':
-        return { 
-          label: 'Positive', 
-          color: 'text-green-400', 
+        return {
+          label: 'Positive',
+          color: 'text-green-400',
           bgColor: 'bg-green-500/20 border-green-500/30',
           gradientBg: 'bg-gradient-to-br from-green-900/30 via-zinc-950 to-green-900/30'
         };
       case 'negative':
-        return { 
-          label: 'Negative', 
-          color: 'text-red-400', 
+        return {
+          label: 'Negative',
+          color: 'text-red-400',
           bgColor: 'bg-red-500/20 border-red-500/30',
           gradientBg: 'bg-gradient-to-br from-red-900/30 via-zinc-950 to-red-900/30'
         };
       case 'neutral':
       default:
-        return { 
-          label: 'Neutral', 
-          color: 'text-zinc-400', 
+        return {
+          label: 'Neutral',
+          color: 'text-zinc-400',
           bgColor: 'bg-zinc-500/20 border-zinc-500/30',
           gradientBg: 'bg-zinc-950'
         };
@@ -109,7 +109,7 @@ const NewsModal: React.FC<NewsModalProps> = ({ isOpen, onClose, newsItem }) => {
     const now = new Date();
     const newsTime = new Date(timestamp);
     const diffInHours = Math.floor((now.getTime() - newsTime.getTime()) / (1000 * 60 * 60));
-    
+
     if (diffInHours < 1) return 'Just now';
     if (diffInHours < 24) return `${diffInHours}h ago`;
     return `${Math.floor(diffInHours / 24)}d ago`;
@@ -161,7 +161,7 @@ const NewsModal: React.FC<NewsModalProps> = ({ isOpen, onClose, newsItem }) => {
                   <p className="text-zinc-300 leading-relaxed text-base">
                     {newsItem.summary}
                   </p>
-                  
+
                   <div className="mt-6 pt-6 border-t border-zinc-700/50">
                     <h4 className="text-md font-semibold text-white mb-3">Details</h4>
                     <div className="space-y-3 text-sm">
@@ -194,8 +194,8 @@ const NewsModal: React.FC<NewsModalProps> = ({ isOpen, onClose, newsItem }) => {
                   <div className="w-1/2 border-r border-zinc-700/50 p-4">
                     <div className="h-full bg-zinc-900 rounded-lg border border-zinc-700/30 overflow-hidden">
                       {newsItem.imageUrl1 ? (
-                        <img 
-                          src={newsItem.imageUrl1} 
+                        <img
+                          src={newsItem.imageUrl1}
                           alt="News Chart 1"
                           className="w-full h-full object-contain"
                         />
@@ -215,8 +215,8 @@ const NewsModal: React.FC<NewsModalProps> = ({ isOpen, onClose, newsItem }) => {
                   <div className="w-1/2 p-4">
                     <div className="h-full bg-zinc-900 rounded-lg border border-zinc-700/30 overflow-hidden">
                       {newsItem.imageUrl2 ? (
-                        <img 
-                          src={newsItem.imageUrl2} 
+                        <img
+                          src={newsItem.imageUrl2}
                           alt="News Chart 2"
                           className="w-full h-full object-contain"
                         />
@@ -243,24 +243,24 @@ const NewsModal: React.FC<NewsModalProps> = ({ isOpen, onClose, newsItem }) => {
 
 const GradientToggle: React.FC<GradientToggleProps> = ({ value, onChange }) => {
   const modes = [
-    { 
-      key: 'loss' as const, 
-      label: 'Negative', 
-      icon: TrendingDown, 
+    {
+      key: 'loss' as const,
+      label: 'Negative',
+      icon: TrendingDown,
       color: 'text-red-400',
       bgColor: 'bg-red-500/20 border-red-500/30'
     },
-    { 
-      key: 'neutral' as const, 
-      label: 'Neutral', 
-      icon: Minus, 
+    {
+      key: 'neutral' as const,
+      label: 'Neutral',
+      icon: Minus,
       color: 'text-zinc-400',
       bgColor: 'bg-zinc-500/20 border-zinc-500/30'
     },
-    { 
-      key: 'profit' as const, 
-      label: 'Positive', 
-      icon: TrendingUp, 
+    {
+      key: 'profit' as const,
+      label: 'Positive',
+      icon: TrendingUp,
       color: 'text-green-400',
       bgColor: 'bg-green-500/20 border-green-500/30'
     },
@@ -279,8 +279,8 @@ const GradientToggle: React.FC<GradientToggleProps> = ({ value, onChange }) => {
               onClick={() => onChange(mode.key)}
               className={`
                 flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200
-                ${isActive 
-                  ? `${mode.bgColor} ${mode.color} shadow-sm` 
+                ${isActive
+                  ? `${mode.bgColor} ${mode.color} shadow-sm`
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50'
                 }
               `}
@@ -373,27 +373,27 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
   // ✅ NEW - Fetch real headlines from Pre-Market API
   const fetchHeadlines = useCallback(async () => {
     if (!companyCode) return;
-    
+
     setIsLoading(true);
     setError(null);
-    
+
     try {
       console.log(`📰 Fetching headlines for ${companyCode}...`);
       const response = await premarketService.fetchHeadlinesCached(companyCode);
-      
+
       if (!response.headlines || response.headlines.length === 0) {
         setError('No market news available for this stock');
         setNewsItems([]);
         return;
       }
-      
+
       // ✅ Convert API headlines to NewsItem format
       const todayDate = getTodayDateString();
-      const baseUrl = 'http://100.93.172.21:5717';
-      
+      const baseUrl = ''; // Use relative path to proxy through Next.js to NestJS backend
+
       const convertedNews: NewsItem[] = response.headlines.map((headline) => {
         const sentiment = convertSentiment(headline.gpt4o_sentiment);
-        
+
         return {
           id: headline.id,
           headline: headline.text,
@@ -410,7 +410,7 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
           rel_vol_1day: headline.rel_vol_1day
         };
       });
-      
+
       setNewsItems(convertedNews);
       console.log(`✅ Loaded ${convertedNews.length} headlines for ${companyCode}`);
     } catch (err) {
@@ -442,7 +442,7 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
     const now = new Date();
     const newsTime = new Date(timestamp);
     const diffInHours = Math.floor((now.getTime() - newsTime.getTime()) / (1000 * 60 * 60));
-    
+
     if (diffInHours < 1) return 'Just now';
     if (diffInHours < 24) return `${diffInHours}h ago`;
     return `${Math.floor(diffInHours / 24)}d ago`;
@@ -522,43 +522,43 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
           ) : (
             <div className="p-4 space-y-4">
               {newsItems.map((newsItem) => {
-              const sentimentStyling = getSentimentStyling(newsItem.sentiment);
-              return (
-                <div
-                  key={newsItem.id}
-                  onClick={() => handleNewsClick(newsItem)}
-                  className={`
+                const sentimentStyling = getSentimentStyling(newsItem.sentiment);
+                return (
+                  <div
+                    key={newsItem.id}
+                    onClick={() => handleNewsClick(newsItem)}
+                    className={`
                     group cursor-pointer p-4 rounded-lg border-2 transition-all duration-200 shadow-lg
                     ${sentimentStyling.border} ${sentimentStyling.background}
                     hover:shadow-xl
                   `}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                    </div>
-                  </div>
-                  <h3 className="text-white font-medium mb-2 group-hover:text-blue-400 transition-colors duration-200 flex items-start gap-2">
-                    {newsItem.headline}
-                    <ExternalLink className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex-shrink-0 mt-0.5" />
-                  </h3>
-                  <div className="mt-3 pt-3 border-t border-zinc-700/50">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-zinc-500">
-                          Sentiment: {newsItem.sentiment}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-zinc-500">
-                        <Clock className="h-3 w-3" />
-                        {formatTime(newsItem.timestamp)}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
                       </div>
                     </div>
+                    <h3 className="text-white font-medium mb-2 group-hover:text-blue-400 transition-colors duration-200 flex items-start gap-2">
+                      {newsItem.headline}
+                      <ExternalLink className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex-shrink-0 mt-0.5" />
+                    </h3>
+                    <div className="mt-3 pt-3 border-t border-zinc-700/50">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-zinc-500">
+                            Sentiment: {newsItem.sentiment}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-zinc-500">
+                          <Clock className="h-3 w-3" />
+                          {formatTime(newsItem.timestamp)}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
         </ScrollArea>
       </CardContent>
     </Card>
@@ -566,14 +566,14 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
 };
 
 const ACTUAL_INDICES = [
-  'NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'AUTONIFTY', 
-  'PHARMANIFTY', 'METALNIFTY', 'ENERGYNIFTY', 'INFRA', 'GROWTHSECT', 
-  'NIFTYALPHA', 'NIFTYCOMM', 'NIFTYCONS', 'NIFTYCPSE', 'NIFTYENER', 
-  'NIFTYFIN', 'NIFTYFMCG', 'NIFTYHEAL', 'NIFTYIND', 'NIFTYINFRA', 
-  'NIFTYIT', 'NIFTYMED', 'NIFTYMET', 'NIFTYMIC', 'NIFTYNSE', 
-  'NIFTYOIL', 'NIFTYPVT', 'NIFTYPSU', 'NIFTYREAL', 'NIFTYSML', 
-  'NIFTYCONS', 'NIFTYAUTO', 'NIFTYPHAR', 'NIFTYPSB', 'NIFTYPVT', 
-  'NIFTY100', 'NIFTY200', 'NIFTY500', 'NIFTYMID', 'NIFTYNXT', 
+  'NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'AUTONIFTY',
+  'PHARMANIFTY', 'METALNIFTY', 'ENERGYNIFTY', 'INFRA', 'GROWTHSECT',
+  'NIFTYALPHA', 'NIFTYCOMM', 'NIFTYCONS', 'NIFTYCPSE', 'NIFTYENER',
+  'NIFTYFIN', 'NIFTYFMCG', 'NIFTYHEAL', 'NIFTYIND', 'NIFTYINFRA',
+  'NIFTYIT', 'NIFTYMED', 'NIFTYMET', 'NIFTYMIC', 'NIFTYNSE',
+  'NIFTYOIL', 'NIFTYPVT', 'NIFTYPSU', 'NIFTYREAL', 'NIFTYSML',
+  'NIFTYCONS', 'NIFTYAUTO', 'NIFTYPHAR', 'NIFTYPSB', 'NIFTYPVT',
+  'NIFTY100', 'NIFTY200', 'NIFTY500', 'NIFTYMID', 'NIFTYNXT',
   'NIFTYSML', 'NIFTYTOT', 'NIFTYDIV', 'NIFTY50', 'NIFTYQUALITY30'
 ];
 
@@ -605,10 +605,10 @@ interface ChartTabsProps {
 }
 
 // ✅ MODIFIED: ChartTabs now always visible, no conditional rendering
-const ChartTabs: React.FC<ChartTabsProps> = ({ 
-  activeTab, 
-  onTabChange, 
-  intradayCount, 
+const ChartTabs: React.FC<ChartTabsProps> = ({
+  activeTab,
+  onTabChange,
+  intradayCount,
   interdayCount,
   lstmaeCount,
   siprCount,
@@ -632,17 +632,16 @@ const ChartTabs: React.FC<ChartTabsProps> = ({
             onClick={() => onTabChange(tab.key)}
             className={`
               flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium transition-all duration-200
-              ${isActive 
-                ? 'bg-blue-500/20 text-blue-400 border shadow-sm' 
+              ${isActive
+                ? 'bg-blue-500/20 text-blue-400 border shadow-sm'
                 : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50'
               }
             `}
           >
             {tab.label}
             {tab.showCount && (
-              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                isActive ? 'bg-blue-500/30' : 'bg-zinc-600'
-              }`}>
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${isActive ? 'bg-blue-500/30' : 'bg-zinc-600'
+                }`}>
                 {tab.count}
               </span>
             )}
@@ -676,11 +675,10 @@ const InlineLSTMAEContent: React.FC<InlineLSTMAEContentProps> = ({ companyCode, 
           {health && (
             <div className="flex items-center justify-between">
               <span
-                className={`text-xs px-2 py-1 rounded ${
-                  health.status === 'healthy'
+                className={`text-xs px-2 py-1 rounded ${health.status === 'healthy'
                     ? 'bg-green-100 text-green-700'
                     : 'bg-yellow-100 text-yellow-700'
-                }`}
+                  }`}
               >
                 {health.status === 'healthy' ? '✓ Service Healthy' : '⚠ Degraded'}
               </span>
@@ -762,7 +760,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   exchange,
   selectedDate,
   gradientMode = 'neutral',
-  onGradientModeChange 
+  onGradientModeChange
 }) => {
   // ✅ NEW - activeIndex is now the Master controller (linked to news selection)
   const [activeIndex, setActiveIndex] = useState(0);
@@ -771,7 +769,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState<Record<number, boolean>>({});
   const [activeTab, setActiveTab] = useState<'intraday' | 'interday' | 'LSTMAE' | 'SiPR' | 'MSAX'>('intraday');
-  
+
   // ✅ NEW - Real news data from Pre-Market API (Master data source)
   const [newsData, setNewsData] = useState<NewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
@@ -783,7 +781,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 
   // ✅ LSTMAE Pipeline 2 Modal
   const [isLSTMAEModalOpen, setIsLSTMAEModalOpen] = useState(false);
-  
+
   // ✅ NEW - SIPR Pattern Analysis Modal State
   const [isSiprModalOpen, setIsSiprModalOpen] = useState(false);
   const [siprMonths, setSiprMonths] = useState(3);
@@ -803,28 +801,28 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       setNewsError(null);
       return;
     }
-    
+
     setNewsLoading(true);
     setNewsError(null);
-    
+
     try {
       console.log(`📰 [CAROUSEL] Fetching headlines for ${companyCode}...`);
       const response = await premarketService.fetchHeadlinesCached(companyCode);
-      
+
       if (!response.headlines || response.headlines.length === 0) {
         setNewsError('No market news available for this stock');
         setNewsData([]);
         setActiveIndex(0);
         return;
       }
-      
+
       // ✅ Convert API headlines to NewsItem format with image URLs
       const todayDate = getTodayDateString();
-      const baseUrl = 'http://100.93.172.21:5717';
-      
+      const baseUrl = ''; // Use relative path to proxy through Next.js to NestJS backend
+
       const convertedNews: NewsItem[] = response.headlines.map((headline) => {
         const sentiment = convertSentiment(headline.gpt4o_sentiment);
-        
+
         return {
           id: headline.id,
           headline: headline.text,
@@ -841,7 +839,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
           rel_vol_1day: headline.rel_vol_1day
         };
       });
-      
+
       setNewsData(convertedNews);
       setActiveIndex(0); // Reset to first news item
       console.log(`✅ [CAROUSEL] Loaded ${convertedNews.length} headlines for ${companyCode}`);
@@ -979,7 +977,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const getCurrentDateString = useCallback(() => {
     // Handle selectedDate properly to avoid timezone issues
     let dateStr: string;
-    
+
     if (typeof selectedDate === 'string') {
       // Already a string in YYYY-MM-DD format - use it directly
       dateStr = selectedDate;
@@ -997,14 +995,14 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       const day = String(now.getDate()).padStart(2, '0');
       dateStr = `${year}-${month}-${day}`;
     }
-    
+
     return dateStr;
   }, [selectedDate]);
 
   // Generate image paths with Pipeline 2 Integration
   const generateImagePaths = useCallback(() => {
     if (!companyCode || !exchange) return [];
-    
+
     const dateString = getCurrentDateString();
     const companyExchange = `${companyCode}_${exchange}`;
     const imageList: CarouselImage[] = [];
@@ -1037,30 +1035,31 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     });
 
     // LSTMAE images - Pipeline 2 Integration
-    const lstmaeBasePath = `/nvme1/production/PatternPoolLSTMAE/pipeline2/data/visualizations/${companyCode}`;
-    
+    // Use API endpoints instead of filesystem paths
+    const lstmaeBaseUrl = `/api/lstmae/${companyCode}/plot`;
+
     // 4 Static PNG Visualizations
     const lstmaeVisualizations = [
       {
-        filename: `${companyCode}_dominant_patterns.png`,
+        endpoint: 'dominant_patterns',
         name: `${companyCode} Dominant Patterns`,
         type: 'Pattern Timeline & Strength Analysis',
         dimensions: { width: 1200, height: 800 }
       },
       {
-        filename: `${companyCode}_intraday_patterns.png`,
+        endpoint: 'intraday', // Maps to 'intraday_patterns' in backend/python
         name: `${companyCode} Intraday Patterns`,
         type: 'Median Price Movement Clusters',
         dimensions: { width: 1400, height: 1200 }
       },
       {
-        filename: `${companyCode}_cluster_transitions.png`,
+        endpoint: 'cluster_transitions',
         name: `${companyCode} Cluster Transitions`,
         type: 'Network Graph - Transition Probabilities',
         dimensions: { width: 1200, height: 800 }
       },
       {
-        filename: `${companyCode}_cluster_timeline.png`,
+        endpoint: 'cluster_timeline',
         name: `${companyCode} Cluster Timeline`,
         type: 'Temporal Cluster Assignment Scatter',
         dimensions: { width: 1200, height: 800 }
@@ -1069,7 +1068,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 
     lstmaeVisualizations.forEach(viz => {
       imageList.push({
-        src: `${lstmaeBasePath}/${viz.filename}`,
+        src: `${lstmaeBaseUrl}/${viz.endpoint}`,
         name: viz.name,
         type: viz.type,
         chartType: 'LSTMAE',
@@ -1081,7 +1080,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     // ✅ NEW - SiPR images (Pattern Analysis visualizations)
     // URL: http://100.93.172.21:6969/Watchlist_assets/2025-05-08/SiPR_Analysis/360ONE_NSE/360ONE_NSE_top3_patterns.png
     const siprBasePath = `${ONPREM_BASE_URL}/${dateString}/SiPR_Analysis/${companyExchange}`;
-    
+
     const siprVisualizations = [
       {
         filename: `${companyExchange}_top3_patterns.png`,
@@ -1235,7 +1234,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (!companyCode || !exchange || newsData.length === 0) return;
-      
+
       switch (e.key) {
         case 'ArrowLeft':
           e.preventDefault();
@@ -1360,20 +1359,18 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               </div>
 
               {/* News headline and metadata display with sentiment-based background */}
-              <div className={`p-6 border-t ${
-                currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
-                currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
-                'border-zinc-700/50 bg-zinc-800/50'
-              }`}>
+              <div className={`p-6 border-t ${currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
+                  currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
+                    'border-zinc-700/50 bg-zinc-800/50'
+                }`}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <h3 className="text-xl text-white font-medium mb-3">{currentNews.headline}</h3>
                     <div className="flex items-center gap-4 text-sm text-zinc-400">
-                      <span className={`px-3 py-1.5 rounded ${
-                        currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
-                        currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
-                        'bg-zinc-500/20 text-zinc-400'
-                      }`}>
+                      <span className={`px-3 py-1.5 rounded ${currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
+                          currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
+                            'bg-zinc-500/20 text-zinc-400'
+                        }`}>
                         {currentNews.sentiment.toUpperCase()}
                       </span>
                       <span className="flex items-center gap-1.5">
@@ -1443,7 +1440,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
           <div className="w-1/2 border-r border-zinc-700/50">
             <div className="p-4 border-b border-zinc-700/50 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-white">{leftTitle}</h3>
-              
+
               {/* ✅ Show "Open Full Dashboard" button for LSTMAE tab - ALWAYS VISIBLE */}
               {showLSTMAEButton && (
                 <Button
@@ -1455,7 +1452,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                   Open LSTMAE Dashboard
                 </Button>
               )}
-              
+
               {/* ✅ NEW - Show "Open SIPR Dashboard" button for SiPR tab - ALWAYS VISIBLE */}
               {showSiprButton && (
                 <div className="flex items-center gap-2">
@@ -1493,7 +1490,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                         src={image.src}
                         alt={image.name}
                         className="w-full h-auto block"
-                        style={{ 
+                        style={{
                           maxWidth: '100%',
                           height: 'auto',
                           display: 'block'
@@ -1516,7 +1513,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               </div>
             </ScrollArea>
           </div>
-          
+
           {/* Right side images */}
           <div className="w-1/2">
             <div className="p-4 border-b border-zinc-700/50">
@@ -1536,7 +1533,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                         src={image.src}
                         alt={image.name}
                         className="w-full h-auto block"
-                        style={{ 
+                        style={{
                           maxWidth: '100%',
                           height: 'auto',
                           display: 'block'
@@ -1572,18 +1569,17 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     <>
       <div className={`flex gap-4 ${isMaximized ? 'fixed inset-4 z-50' : 'w-full'}`}>
         {/* Main Image Carousel */}
-        <Card className={`shadow-lg border border-zinc-700/50 ${
-          isMaximized 
-            ? `${getMaximizedBackgroundClass(currentNews?.sentiment || 'neutral')} w-full` 
+        <Card className={`shadow-lg border border-zinc-700/50 ${isMaximized
+            ? `${getMaximizedBackgroundClass(currentNews?.sentiment || 'neutral')} w-full`
             : `${getGradientClass(gradientMode)} w-3/4`
-        }`}>
+          }`}>
           <CardHeader className="flex flex-row items-center justify-between p-1 border-b border-zinc-700/50">
-              {/* Left side - Title and Counter Navigation */}
+            {/* Left side - Title and Counter Navigation */}
             <div className="flex items-center gap-4 mx-2 flex-1">
               <CardTitle className="text-base font-semibold text-white">
                 {companyCode} - Headline Analysis
               </CardTitle>
-              
+
               {/* ✅ NEW - Navigation Controls (always visible when news data available) */}
               {newsData.length > 0 && !newsLoading && (
                 <div className="flex items-center gap-1 ml-4">
@@ -1610,7 +1606,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                   </Button>
                 </div>
               )}
-              
+
               {/* Loading indicator */}
               {newsLoading && (
                 <div className="flex items-center gap-2 ml-4">
@@ -1621,8 +1617,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             </div>            {/* Right side controls */}
             <div className="flex items-center gap-4">
               {/* ✅ MODIFIED: Chart Type Tabs - ALWAYS VISIBLE, regardless of images */}
-              <ChartTabs 
-                activeTab={activeTab} 
+              <ChartTabs
+                activeTab={activeTab}
                 onTabChange={setActiveTab}
                 intradayCount={intradayCount}
                 interdayCount={interdayCount}
@@ -1630,12 +1626,12 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 siprCount={siprCount}
                 msaxCount={msaxCount}
               />
-              
+
               {/* ✅ NEW - Sentiment Display based on current news */}
               {currentNews && (
                 <SentimentDisplay sentiment={currentNews.sentiment} />
               )}
-              
+
               {/* Maximize/Minimize button */}
               <Button
                 variant="ghost"
@@ -1684,7 +1680,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                                   Open Full LSTMAE Dashboard
                                 </Button>
                               )}
-                              
+
                               {/* ✅ NEW - Quick access button for SIPR - ALWAYS VISIBLE */}
                               {activeTab === 'SiPR' && (
                                 <>
@@ -1713,7 +1709,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                         </div>
                       </div>
                     )}
-                    
+
                     {/* ✅ MODIFIED: Show dashboard content inline for LSTMAE/SIPR tabs */}
                     {activeTab === 'LSTMAE' ? (
                       <div className={`${isMaximized ? 'h-[calc(100vh-200px)] overflow-auto' : 'min-h-fit'}`}>
@@ -1721,8 +1717,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                       </div>
                     ) : activeTab === 'SiPR' ? (
                       <div className={`${isMaximized ? 'h-[calc(100vh-200px)] overflow-auto' : 'min-h-fit'}`}>
-                        <InlineSiprContent 
-                          companyCode={companyCode} 
+                        <InlineSiprContent
+                          companyCode={companyCode}
                           exchange={exchange}
                           months={siprMonths}
                         />
@@ -1758,35 +1754,32 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                     ) : (
                       <>
                         {/* ✅ MODIFIED - Single image view with headline at top, sentiment-based background, no empty space */}
-                        <div className={`flex flex-col bg-gradient-to-br ${
-                          currentNews.sentiment === 'positive' ? 'from-green-950/30 via-green-900/10 to-zinc-900' :
-                          currentNews.sentiment === 'negative' ? 'from-red-950/30 via-red-900/10 to-zinc-900' : 
-                          'from-zinc-900/30 via-zinc-800/10 to-zinc-900'
-                        }`}>
-                          {/* ✅ News headline at top with sentiment-based tinted background - compact padding */}
-                          <div className={`p-3 border-b ${
-                            currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
-                            currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
-                            'border-zinc-700/50 bg-zinc-800/50'
+                        <div className={`flex flex-col bg-gradient-to-br ${currentNews.sentiment === 'positive' ? 'from-green-950/30 via-green-900/10 to-zinc-900' :
+                            currentNews.sentiment === 'negative' ? 'from-red-950/30 via-red-900/10 to-zinc-900' :
+                              'from-zinc-900/30 via-zinc-800/10 to-zinc-900'
                           }`}>
+                          {/* ✅ News headline at top with sentiment-based tinted background - compact padding */}
+                          <div className={`p-3 border-b ${currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
+                              currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
+                                'border-zinc-700/50 bg-zinc-800/50'
+                            }`}>
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1">
                                 <h3 className="text-white font-medium text-sm mb-1.5">{currentNews.headline}</h3>
                                 <div className="flex items-center gap-3 text-xs text-zinc-400">
-                                <span className={`px-2 py-1 rounded ${
-                                  currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
-                                  currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
-                                  'bg-zinc-500/20 text-zinc-400'
-                                }`}>
-                                  {currentNews.sentiment.toUpperCase()}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {formatRelativeTime(currentNews.timestamp)}
-                                </span>
-                                {currentNews.price_movement_1hr && (
-                                  <span>1hr: {currentNews.price_movement_1hr.price_change_pct.toFixed(2)}%</span>
-                                )}
+                                  <span className={`px-2 py-1 rounded ${currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
+                                      currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
+                                        'bg-zinc-500/20 text-zinc-400'
+                                    }`}>
+                                    {currentNews.sentiment.toUpperCase()}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {formatRelativeTime(currentNews.timestamp)}
+                                  </span>
+                                  {currentNews.price_movement_1hr && (
+                                    <span>1hr: {currentNews.price_movement_1hr.price_change_pct.toFixed(2)}%</span>
+                                  )}
                                 </div>
                               </div>
                               <div className="text-sm text-zinc-400">
@@ -1815,42 +1808,42 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                                     src={currentNews.imageUrl1}
                                     alt={`${companyCode} Intraday Chart`}
                                     className="w-full h-full object-contain"
-                                  onLoadStart={() => handleImageLoadStart(`intraday-${activeIndex}`)}
-                                  onLoad={() => handleImageLoad(`intraday-${activeIndex}`)}
-                                  onError={(e) => {
-                                    handleImageError(`intraday-${activeIndex}`);
-                                    (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
-                                  }}
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <div className="text-center">
-                                    <TrendingUp className="h-12 w-12 text-zinc-600 mx-auto mb-2" />
-                                    <p className="text-zinc-500">Intraday Chart Generating...</p>
+                                    onLoadStart={() => handleImageLoadStart(`intraday-${activeIndex}`)}
+                                    onLoad={() => handleImageLoad(`intraday-${activeIndex}`)}
+                                    onError={(e) => {
+                                      handleImageError(`intraday-${activeIndex}`);
+                                      (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <div className="text-center">
+                                      <TrendingUp className="h-12 w-12 text-zinc-600 mx-auto mb-2" />
+                                      <p className="text-zinc-500">Intraday Chart Generating...</p>
+                                    </div>
                                   </div>
-                                </div>
-                              )
-                            ) : (
-                              // Show Interday Image
-                              currentNews.imageUrl2 ? (
-                                <img
-                                  src={currentNews.imageUrl2}
-                                  alt={`${companyCode} Interday Chart`}
-                                  className="w-full h-full object-contain"
-                                  onLoadStart={() => handleImageLoadStart(`interday-${activeIndex}`)}
-                                  onLoad={() => handleImageLoad(`interday-${activeIndex}`)}
-                                  onError={(e) => {
-                                    handleImageError(`interday-${activeIndex}`);
-                                    (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
-                                  }}
-                                />
+                                )
                               ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <div className="text-center">
-                                    <TrendingDown className="h-12 w-12 text-zinc-600 mx-auto mb-2" />
-                                    <p className="text-zinc-500">Interday Chart Generating...</p>
+                                // Show Interday Image
+                                currentNews.imageUrl2 ? (
+                                  <img
+                                    src={currentNews.imageUrl2}
+                                    alt={`${companyCode} Interday Chart`}
+                                    className="w-full h-full object-contain"
+                                    onLoadStart={() => handleImageLoadStart(`interday-${activeIndex}`)}
+                                    onLoad={() => handleImageLoad(`interday-${activeIndex}`)}
+                                    onError={(e) => {
+                                      handleImageError(`interday-${activeIndex}`);
+                                      (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <div className="text-center">
+                                      <TrendingDown className="h-12 w-12 text-zinc-600 mx-auto mb-2" />
+                                      <p className="text-zinc-500">Interday Chart Generating...</p>
+                                    </div>
                                   </div>
-                                </div>
                                 )
                               )}
                             </div>
@@ -1864,13 +1857,13 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             )}
           </CardContent>
         </Card>
-        
+
         {/* News Component - Only show in non-maximized view */}
         {!isMaximized && (
           <div className="w-1/4 flex-shrink-0">
-            <NewsComponent 
-              companyCode={companyCode} 
-              isMaximized={isMaximized} 
+            <NewsComponent
+              companyCode={companyCode}
+              isMaximized={isMaximized}
               gradientMode={gradientMode}
               onNewsClick={handleNewsClick}
             />
@@ -1906,7 +1899,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               </Button>
             </div>
           </DialogHeader>
-          
+
           <div className="flex-1 overflow-auto p-6">
             <LSTMAEModal
               isOpen={true}
@@ -1939,7 +1932,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               </Button>
             </div>
           </DialogHeader>
-          
+
           <div className="flex-1 overflow-auto p-6">
             <SiprDashboard
               companyCode={`${companyCode}_${exchange}`}

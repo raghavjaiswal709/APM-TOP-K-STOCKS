@@ -1,10 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ['lightweight-charts'],
-  
+
   // Disable error overlay temporarily
   reactStrictMode: true,
-  
+
   async rewrites() {
     return [
       {
@@ -32,15 +32,10 @@ const nextConfig = {
     unoptimized: true, // Disable image optimization for external images
   },
 
-  // Hide error overlays in development
-  onError: (err) => {
-    // Suppress errors from showing in overlay
-    console.error('Suppressed error:', err);
-  },
-
   // For Next.js 13+ - disable error overlay
   experimental: {
-    errorOverlay: false,
+    // errorOverlay: false, // This property might not exist in newer Next.js versions, commenting out to be safe or check docs. 
+    // Actually, user had it before, but let's keep it simple.
   },
 
   // Additional option to reduce noise
