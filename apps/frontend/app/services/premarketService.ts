@@ -93,7 +93,7 @@ class PremarketService {
   async fetchHeadlinesCached(stockCode: string): Promise<PremarketHeadlinesResponse> {
     try {
       // First try: cached endpoint (fast)
-      const cachedUrl = `${this.baseUrl}/headlines/${stockCode}/cached`;
+      const cachedUrl = `${this.baseUrl}/headlines/${stockCode}`;
       console.log(`📰 [1/2] Fetching cached headlines for ${stockCode}`);
 
       const cachedResponse = await fetch(cachedUrl, {

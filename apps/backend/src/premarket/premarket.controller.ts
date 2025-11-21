@@ -95,10 +95,10 @@ export class PremarketController {
    * Get cached headlines for specific stock
    * GET /api/premarket/headlines/:stockCode/cached
    */
-  @Get('headlines/:stockCode/cached')
+  @Get('headlines/:stockCode/')
   async getCachedHeadlines(@Param('stockCode') stockCode: string, @Res() res: Response) {
     try {
-      const data = await this.premarketService.proxyGet(`/api/premarket/headlines/${stockCode}/cached`);
+      const data = await this.premarketService.proxyGet(`/api/premarket/headlines/${stockCode}`);
       return res.status(HttpStatus.OK).json(data);
     } catch (error) {
       return res.status(error.status || HttpStatus.INTERNAL_SERVER_ERROR).json({

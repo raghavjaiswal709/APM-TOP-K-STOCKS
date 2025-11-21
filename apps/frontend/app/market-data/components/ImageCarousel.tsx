@@ -3,7 +3,6 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Loader2, ExternalLink, Clock, TrendingUp, TrendingDown, Minus, X, Calendar, Activity, RefreshCwOff, RefreshCw, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import Image from 'next/image';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 // ✅ LSTMAE Pipeline 2 Integration
@@ -20,9 +19,9 @@ import {
   constructIntradayImageUrl,
   constructInterdayImageUrl,
   getTodayDateString,
-  formatRelativeTime
-  // formatFullDate,
-  // formatTimeOnly
+  formatRelativeTime,
+  formatFullDate,
+  formatTimeOnly
 } from '@/lib/premarketUtils';
 
 // Base URL for on-prem server hosting the graph images
@@ -432,28 +431,6 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
       setError(null);
     }
   }, [companyCode, fetchHeadlines]);
-
-  // Update global sentiment for description section
-  useEffect(() => {
-    if (newsItems && newsItems.length > 0) {
-      const currentSentiment = newsItems[0].sentiment;
-      let label = 'Neutral Sentiment';
-      let text = 'text-zinc-400';
-      let background = 'bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40';
-      if (currentSentiment === 'positive') {
-        label = 'Positive Sentiment';
-        text = 'text-green-400';
-        background = 'bg-gradient-to-r from-green-500/10 to-green-900/10 border-green-500/40';
-      } else if (currentSentiment === 'negative') {
-        label = 'Negative Sentiment';
-        text = 'text-red-400';
-        background = 'bg-gradient-to-r from-red-500/10 to-red-900/10 border-red-500/40';
-      }
-      if (typeof window !== 'undefined') {
-        window.__latestCompanySentiment = { label, text, background };
-      }
-    }
-  }, [newsItems]);
 
   const handleNewsClick = (newsItem: NewsItem) => {
     if (onNewsClick) {
@@ -1324,12 +1301,16 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                       </div>
                     )}
                     {currentNews.imageUrl1 ? (
-                      <Image
+                      <img
                         src={currentNews.imageUrl1}
                         alt={`${companyCode} Intraday Chart`}
-                        width={400}
-                        height={200}
                         className="w-full h-full object-contain"
+                        onLoadStart={() => handleImageLoadStart(`intraday-max-${activeIndex}`)}
+                        onLoad={() => handleImageLoad(`intraday-max-${activeIndex}`)}
+                        onError={(e) => {
+                          handleImageError(`intraday-max-${activeIndex}`);
+                          (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
+                        }}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
@@ -1354,12 +1335,16 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                       </div>
                     )}
                     {currentNews.imageUrl2 ? (
-                      <Image
+                      <img
                         src={currentNews.imageUrl2}
                         alt={`${companyCode} Interday Chart`}
-                        width={400}
-                        height={200}
                         className="w-full h-full object-contain"
+                        onLoadStart={() => handleImageLoadStart(`interday-max-${activeIndex}`)}
+                        onLoad={() => handleImageLoad(`interday-max-${activeIndex}`)}
+                        onError={(e) => {
+                          handleImageError(`interday-max-${activeIndex}`);
+                          (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
+                        }}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
@@ -1501,17 +1486,18 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                           <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
                         </div>
                       )}
-                      <Image
+                      <img
                         src={image.src}
                         alt={image.name}
-                        width={400}
-                        height={200}
                         className="w-full h-auto block"
                         style={{
                           maxWidth: '100%',
                           height: 'auto',
                           display: 'block'
                         }}
+                        onLoadStart={() => handleImageLoadStart(`left-${index}` as any)}
+                        onLoad={() => handleImageLoad(`left-${index}` as any)}
+                        onError={() => handleImageLoad(`left-${index}` as any)}
                       />
                       <div className="absolute bottom-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-2 py-1">
                         <p className="text-xs text-zinc-300">{image.name}</p>
@@ -1543,17 +1529,18 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                           <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
                         </div>
                       )}
-                      <Image
+                      <img
                         src={image.src}
                         alt={image.name}
-                        width={400}
-                        height={200}
                         className="w-full h-auto block"
                         style={{
                           maxWidth: '100%',
                           height: 'auto',
                           display: 'block'
                         }}
+                        onLoadStart={() => handleImageLoadStart(`right-${index}` as any)}
+                        onLoad={() => handleImageLoad(`right-${index}` as any)}
+                        onError={() => handleImageLoad(`right-${index}` as any)}
                       />
                       <div className="absolute bottom-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-2 py-1">
                         <p className="text-xs text-zinc-300">{image.name}</p>
@@ -1817,12 +1804,16 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                               {activeTab === 'intraday' ? (
                                 // Show Intraday Image
                                 currentNews.imageUrl1 ? (
-                                  <Image
+                                  <img
                                     src={currentNews.imageUrl1}
                                     alt={`${companyCode} Intraday Chart`}
-                                    width={400}
-                                    height={200}
                                     className="w-full h-full object-contain"
+                                    onLoadStart={() => handleImageLoadStart(`intraday-${activeIndex}`)}
+                                    onLoad={() => handleImageLoad(`intraday-${activeIndex}`)}
+                                    onError={(e) => {
+                                      handleImageError(`intraday-${activeIndex}`);
+                                      (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
+                                    }}
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center">
@@ -1835,12 +1826,16 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                               ) : (
                                 // Show Interday Image
                                 currentNews.imageUrl2 ? (
-                                  <Image
+                                  <img
                                     src={currentNews.imageUrl2}
                                     alt={`${companyCode} Interday Chart`}
-                                    width={400}
-                                    height={200}
                                     className="w-full h-full object-contain"
+                                    onLoadStart={() => handleImageLoadStart(`interday-${activeIndex}`)}
+                                    onLoad={() => handleImageLoad(`interday-${activeIndex}`)}
+                                    onError={(e) => {
+                                      handleImageError(`interday-${activeIndex}`);
+                                      (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
+                                    }}
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center">
