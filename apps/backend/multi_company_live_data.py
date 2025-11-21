@@ -112,6 +112,10 @@ def get_trading_hours():
 
 def is_trading_hours():
     """Check if current time is within trading hours."""
+    # Check environment variable for forced open state
+    if os.getenv('FORCE_MARKET_OPEN', 'false').lower() == 'true':
+        return True
+
     now = datetime.datetime.now(INDIA_TZ)
     start_time, end_time = get_trading_hours()
     if now.weekday() >= 5:  # Saturday or Sunday
@@ -418,7 +422,11 @@ def fetch_historical_intraday_data(symbol, date=None):
         market_close = date_obj.replace(hour=15, minute=30, second=0, microsecond=0)
         
         now = datetime.datetime.now(INDIA_TZ)
-        if date == now.strftime('%Y-%m-%d') and now < market_open:
+        
+        # Check if market is open or forced open
+        force_open = os.getenv('FORCE_MARKET_OPEN', 'false').lower() == 'true'
+        
+        if not force_open and date == now.strftime('%Y-%m-%d') and now < market_open:
             logger.info(f"Market not yet open for {date}")
             return []
         

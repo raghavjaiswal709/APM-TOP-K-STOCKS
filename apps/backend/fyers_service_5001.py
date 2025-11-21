@@ -28,9 +28,14 @@ logger = logging.getLogger("FyersServer")
 sio = socketio.Server(cors_allowed_origins='*', async_mode='eventlet')
 app = socketio.WSGIApp(sio)
 
-client_id = "VEACWVGEUC-100"
-secret_key = "2O7GBQ7A7H"
-redirect_uri = "https://raghavjaiswal709.github.io/DAKSphere_redirect_PROD/"
+
+# Load Fyers credentials from .env
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+client_id = os.getenv("FYERS_CLIENT_ID")
+secret_key = os.getenv("FYERS_SECRET_ID")
+redirect_uri = os.getenv("FYERS_REDIRECT_URI")
+access_token = os.getenv("FYERS_ACCESS_TOKEN")
 response_type = "code"
 grant_type = "authorization_code"
 
@@ -82,6 +87,8 @@ def initialize_fyers():
     auth_file_path = os.path.join('data', 'fyers_data_auth.json')
     
     try:
+        # Log the credentials being used
+        logger.info(f"FYERS CREDS: client_id={client_id}, secret_key={secret_key}, redirect_uri={redirect_uri}, access_token={access_token}")
         if not os.path.exists(auth_file_path):
             logger.info("ℹ️ No auth file found")
             return False

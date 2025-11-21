@@ -1105,13 +1105,24 @@ const MarketDataPage: React.FC = () => {
                               {formatChange(currentData.change, currentData.changePercent)}
                             </div>
 
+                            {/* Update sentiment display to show actual sentiment from ImageCarousel/news */}
                             {(() => {
-                              const sentiment = getSentimentIndicator(gradientMode);
+                              // Get sentiment from ImageCarousel/newsData if available
+                              // Fallback to gradientMode if not available
+                              let sentimentLabel = 'Neutral Sentiment';
+                              let sentimentColor = 'text-zinc-400';
+                              let sentimentBg = 'bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40';
+                              if (window && window.__latestCompanySentiment) {
+                                // This global is set by ImageCarousel when sentiment changes
+                                sentimentLabel = window.__latestCompanySentiment.label;
+                                sentimentColor = window.__latestCompanySentiment.text;
+                                sentimentBg = window.__latestCompanySentiment.background;
+                              }
                               return (
-                                <div className={`mt-3 p-3 rounded-lg border-2 ${sentiment.background} backdrop-blur-sm`}>
+                                <div className={`mt-3 p-3 rounded-lg border-2 ${sentimentBg} backdrop-blur-sm`}>
                                   <div className="flex items-center gap-2">
-                                    <span className={`text-sm font-medium ${sentiment.text}`}>
-                                      {sentiment.label}
+                                    <span className={`text-sm font-medium ${sentimentColor}`}>
+                                      {sentimentLabel}
                                     </span>
                                   </div>
                                 </div>
