@@ -598,7 +598,7 @@ interface CarouselImage {
 }
 
 interface ChartTabsProps {
-  activeTab: 'intraday' | 'interday' | 'LSTMAE' | 'SiPR' | 'MSAX';
+  activeTab: 'intraday' | 'interday' | 'LSTMAE' | 'SiPR' | 'MSAX' | null;
   onTabChange: (tab: 'intraday' | 'interday' | 'LSTMAE' | 'SiPR' | 'MSAX') => void;
   intradayCount: number;
   interdayCount: number;
@@ -771,7 +771,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const [isMaximized, setIsMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState<Record<string, boolean>>({});
-  const [activeTab, setActiveTab] = useState<'intraday' | 'interday' | 'LSTMAE' | 'SiPR' | 'MSAX'>('intraday');
+  const [activeTab, setActiveTab] = useState<'intraday' | 'interday' | 'LSTMAE' | 'SiPR' | 'MSAX' | null>(null);
+  const [imagesLoaded, setImagesLoaded] = useState(false);
 
   // ✅ NEW - Real news data from Pre-Market API (Master data source)
   const [newsData, setNewsData] = useState<NewsItem[]>([]);
@@ -820,7 +821,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       }
 
       // ✅ Convert API headlines to NewsItem format with image URLs
-      const todayDate = getTodayDateString();
+      const todayDate = '2025-11-21'; // Hardcoded date as requested
       const baseUrl = ''; // Use relative path to proxy through Next.js to NestJS backend
 
       const convertedNews: NewsItem[] = response.headlines.map((headline) => {
@@ -1006,7 +1007,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const generateImagePaths = useCallback(() => {
     if (!companyCode || !exchange) return [];
 
-    const dateString = getCurrentDateString();
+    const dateString = '2025-11-21'; // Hardcoded date as requested
     const companyExchange = `${companyCode}_${exchange}`;
     const imageList: CarouselImage[] = [];
 
@@ -1157,8 +1158,17 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
     });
   }, []);
 
+  // ✅ Reset state when company changes
+  useEffect(() => {
+    setActiveTab(null);
+    setAllImages([]);
+    setImagesLoaded(false);
+  }, [companyCode]);
+
   useEffect(() => {
     const loadImages = async () => {
+      if (imagesLoaded) return; // Prevent double loading
+
       setIsLoading(true);
       try {
         const imageList = generateImagePaths();
@@ -1174,7 +1184,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
         );
         const existingImages = validatedImages.filter(img => img.exists);
         setAllImages(existingImages);
-        // activeIndex is already initialized to 0, no need to reset
+        setImagesLoaded(true);
       } catch (error) {
         console.error('Error loading images:', error);
         setAllImages([]);
@@ -1183,10 +1193,11 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       }
     };
 
-    if (companyCode && exchange) {
+    // ✅ Only load images if a tab is selected AND we haven't loaded them yet
+    if (companyCode && exchange && activeTab && !imagesLoaded && !isLoading) {
       loadImages();
     }
-  }, [companyCode, exchange, generateImagePaths, checkImageExists]);
+  }, [companyCode, exchange, activeTab, imagesLoaded, isLoading, generateImagePaths, checkImageExists]);
 
   // ✅ NEW - Navigation controls activeIndex (which controls both news and images)
   const handleNext = useCallback(() => {
@@ -1640,7 +1651,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsMaximized(!isMaximized)}
-                className="text-zinc-400 hover:text-white"
+                disabled={!activeTab}
+                className={`text-zinc-400 hover:text-white ${!activeTab ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </Button>
@@ -1714,7 +1726,19 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                     )}
 
                     {/* ✅ MODIFIED: Show dashboard content inline for LSTMAE/SIPR tabs */}
-                    {activeTab === 'LSTMAE' ? (
+                    {activeTab === null ? (
+                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
+                        <div className="text-center space-y-4 animate-in fade-in zoom-in duration-300">
+                          <div className="bg-zinc-800/50 p-6 rounded-full inline-flex mb-2 border border-zinc-700/50 shadow-xl">
+                            <Activity className="h-12 w-12 text-blue-500" />
+                          </div>
+                          <h3 className="text-2xl font-semibold text-white tracking-tight">Select Analysis Module</h3>
+                          <p className="text-zinc-400 max-w-md mx-auto text-base leading-relaxed">
+                            Choose a service from the tabs above to view detailed market insights, patterns, and regime data for <span className="text-blue-400 font-semibold">{companyCode}</span>.
+                          </p>
+                        </div>
+                      </div>
+                    ) : activeTab === 'LSTMAE' ? (
                       <div className={`${isMaximized ? 'h-[calc(100vh-200px)] overflow-auto' : 'min-h-fit'}`}>
                         <InlineLSTMAEContent companyCode={companyCode} exchange={exchange} />
                       </div>
