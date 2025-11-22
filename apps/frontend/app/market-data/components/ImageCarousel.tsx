@@ -13,6 +13,9 @@ import { LSTMAEInteractiveDashboard } from '@/app/components/lstmae/LSTMAEIntera
 import { LSTMAEVisualization } from '@/app/components/lstmae/LSTMAEVisualization';
 import { useLSTMAEData } from '@/hooks/useLSTMAEData';
 
+// ✅ NEW - MSAX Integration
+import { MsaxDashboard } from './msax/MsaxDashboard';
+
 // ✅ NEW - Pre-Market API Integration
 import { premarketService, PremarketHeadline } from '@/app/services/premarketService';
 import {
@@ -676,8 +679,8 @@ const InlineLSTMAEContent: React.FC<InlineLSTMAEContentProps> = ({ companyCode, 
             <div className="flex items-center justify-between">
               <span
                 className={`text-xs px-2 py-1 rounded ${health.status === 'healthy'
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-yellow-100 text-yellow-700'
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-yellow-100 text-yellow-700'
                   }`}
               >
                 {health.status === 'healthy' ? '✓ Service Healthy' : '⚠ Degraded'}
@@ -767,7 +770,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const [allImages, setAllImages] = useState<CarouselImage[]>([]);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [imageLoading, setImageLoading] = useState<Record<number, boolean>>({});
+  const [imageLoading, setImageLoading] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<'intraday' | 'interday' | 'LSTMAE' | 'SiPR' | 'MSAX'>('intraday');
 
   // ✅ NEW - Real news data from Pre-Market API (Master data source)
@@ -1360,16 +1363,16 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 
               {/* News headline and metadata display with sentiment-based background */}
               <div className={`p-6 border-t ${currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
-                  currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
-                    'border-zinc-700/50 bg-zinc-800/50'
+                currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
+                  'border-zinc-700/50 bg-zinc-800/50'
                 }`}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <h3 className="text-xl text-white font-medium mb-3">{currentNews.headline}</h3>
                     <div className="flex items-center gap-4 text-sm text-zinc-400">
                       <span className={`px-3 py-1.5 rounded ${currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
-                          currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
-                            'bg-zinc-500/20 text-zinc-400'
+                        currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
+                          'bg-zinc-500/20 text-zinc-400'
                         }`}>
                         {currentNews.sentiment.toUpperCase()}
                       </span>
@@ -1570,8 +1573,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       <div className={`flex gap-4 ${isMaximized ? 'fixed inset-4 z-50' : 'w-full'}`}>
         {/* Main Image Carousel */}
         <Card className={`shadow-lg border border-zinc-700/50 ${isMaximized
-            ? `${getMaximizedBackgroundClass(currentNews?.sentiment || 'neutral')} w-full`
-            : `${getGradientClass(gradientMode)} w-3/4`
+          ? `${getMaximizedBackgroundClass(currentNews?.sentiment || 'neutral')} w-full`
+          : `${getGradientClass(gradientMode)} w-3/4`
           }`}>
           <CardHeader className="flex flex-row items-center justify-between p-1 border-b border-zinc-700/50">
             {/* Left side - Title and Counter Navigation */}
@@ -1723,6 +1726,10 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                           months={siprMonths}
                         />
                       </div>
+                    ) : activeTab === 'MSAX' ? (
+                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)] overflow-auto' : 'min-h-fit'}`}>
+                        <MsaxDashboard companyCode={companyCode} exchange={exchange} />
+                      </div>
                     ) : newsLoading ? (
                       <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
                         <div className="text-center">
@@ -1755,21 +1762,21 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                       <>
                         {/* ✅ MODIFIED - Single image view with headline at top, sentiment-based background, no empty space */}
                         <div className={`flex flex-col bg-gradient-to-br ${currentNews.sentiment === 'positive' ? 'from-green-950/30 via-green-900/10 to-zinc-900' :
-                            currentNews.sentiment === 'negative' ? 'from-red-950/30 via-red-900/10 to-zinc-900' :
-                              'from-zinc-900/30 via-zinc-800/10 to-zinc-900'
+                          currentNews.sentiment === 'negative' ? 'from-red-950/30 via-red-900/10 to-zinc-900' :
+                            'from-zinc-900/30 via-zinc-800/10 to-zinc-900'
                           }`}>
                           {/* ✅ News headline at top with sentiment-based tinted background - compact padding */}
                           <div className={`p-3 border-b ${currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
-                              currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
-                                'border-zinc-700/50 bg-zinc-800/50'
+                            currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
+                              'border-zinc-700/50 bg-zinc-800/50'
                             }`}>
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1">
                                 <h3 className="text-white font-medium text-sm mb-1.5">{currentNews.headline}</h3>
                                 <div className="flex items-center gap-3 text-xs text-zinc-400">
                                   <span className={`px-2 py-1 rounded ${currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
-                                      currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
-                                        'bg-zinc-500/20 text-zinc-400'
+                                    currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
+                                      'bg-zinc-500/20 text-zinc-400'
                                     }`}>
                                     {currentNews.sentiment.toUpperCase()}
                                   </span>
