@@ -778,6 +778,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const [newsData, setNewsData] = useState<NewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
+  const [isWeekendFallback, setIsWeekendFallback] = useState(false);
 
   // State for news modal
   const [selectedNewsItem, setSelectedNewsItem] = useState<NewsItem | null>(null);
@@ -811,9 +812,46 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 
     try {
       console.log(`📰 [CAROUSEL] Fetching headlines for ${companyCode}...`);
-      const response = await premarketService.fetchHeadlinesCached(companyCode);
 
-      if (!response.headlines || response.headlines.length === 0) {
+      // ✅ 1. Date Logic (The Weekend Trap)
+      const getMarketDate = () => {
+        const today = new Date();
+        const day = today.getDay(); // 0 = Sunday, 6 = Saturday
+        let targetDate = today;
+        let isFallback = false;
+
+        if (day === 0) { // Sunday
+          targetDate = new Date(today);
+          targetDate.setDate(today.getDate() - 2); // Friday
+          isFallback = true;
+        } else if (day === 6) { // Saturday
+          targetDate = new Date(today);
+          targetDate.setDate(today.getDate() - 1); // Friday
+          isFallback = true;
+        }
+
+        // Format YYYY-MM-DD
+        const year = targetDate.getFullYear();
+        const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+        const date = String(targetDate.getDate()).padStart(2, '0');
+
+        return { dateString: `${year}-${month}-${date}`, isFallback };
+      };
+
+      const { dateString, isFallback } = getMarketDate();
+      setIsWeekendFallback(isFallback);
+      console.log(`📅 Market Date: ${dateString} (Fallback: ${isFallback})`);
+
+      // Fetch headlines and charts in parallel
+      const [headlinesResponse, chartsResponse] = await Promise.all([
+        premarketService.fetchHeadlinesCached(companyCode),
+        premarketService.listCharts(companyCode, dateString).catch(err => {
+          console.error('Failed to fetch charts list:', err);
+          return null;
+        })
+      ]);
+
+      if (!headlinesResponse.headlines || headlinesResponse.headlines.length === 0) {
         setNewsError('No market news available for this stock');
         setNewsData([]);
         setActiveIndex(0);
@@ -821,11 +859,46 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       }
 
       // ✅ Convert API headlines to NewsItem format with image URLs
-      const todayDate = '2025-11-21'; // Hardcoded date as requested
-      const baseUrl = ''; // Use relative path to proxy through Next.js to NestJS backend
+      const apiBaseUrl = 'http://100.93.172.21:5717'; // Direct API URL for charts
 
-      const convertedNews: NewsItem[] = response.headlines.map((headline) => {
+      const convertedNews: NewsItem[] = headlinesResponse.headlines.map((headline) => {
         const sentiment = convertSentiment(headline.gpt4o_sentiment);
+
+        // Find matching chart from the list if available
+        let intradayUrl = '';
+        let interdayUrl = '';
+
+        if (chartsResponse) {
+          // Helper to construct correct URL from file path
+          const constructUrlFromPath = (filePath: string) => {
+            // Extract filename from path (e.g., /nas1/.../20251119_105500_interday.png -> 20251119_105500_interday.png)
+            const filename = filePath.split('/').pop();
+            if (!filename) return '';
+            // Construct URL: http://100.93.172.21:5717/api/premarket/charts/{STOCK}/{DATE}/{FILENAME}
+            return `${apiBaseUrl}/api/premarket/charts/${companyCode}/${dateString}/${filename}`;
+          };
+
+          if (chartsResponse.intraday_charts && chartsResponse.intraday_charts.length > 0) {
+            // Use the last chart in the list (most recent)
+            const chartPath = chartsResponse.intraday_charts[chartsResponse.intraday_charts.length - 1];
+            intradayUrl = constructUrlFromPath(chartPath);
+            console.log(`🔗 Constructed Intraday URL: ${intradayUrl}`);
+          }
+
+          if (chartsResponse.interday_charts && chartsResponse.interday_charts.length > 0) {
+            const chartPath = chartsResponse.interday_charts[chartsResponse.interday_charts.length - 1];
+            interdayUrl = constructUrlFromPath(chartPath);
+            console.log(`🔗 Constructed Interday URL: ${interdayUrl}`);
+          }
+        }
+
+        // Fallback to existing construction if no charts found in list (or list failed)
+        if (!intradayUrl) {
+          intradayUrl = constructIntradayImageUrl('', companyCode, dateString, headline.timestamp);
+        }
+        if (!interdayUrl) {
+          interdayUrl = constructInterdayImageUrl('', companyCode, dateString, headline.timestamp);
+        }
 
         return {
           id: headline.id,
@@ -835,8 +908,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
           category: 'company' as const,
           relevance: 'high' as const,
           sentiment,
-          imageUrl1: constructIntradayImageUrl(baseUrl, companyCode, todayDate, headline.timestamp),
-          imageUrl2: constructInterdayImageUrl(baseUrl, companyCode, todayDate, headline.timestamp),
+          imageUrl1: intradayUrl,
+          imageUrl2: interdayUrl,
           price_movement_1hr: headline.price_movement_1hr,
           rel_vol_1hr: headline.rel_vol_1hr,
           price_movement_1day: headline.price_movement_1day,
@@ -1007,7 +1080,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const generateImagePaths = useCallback(() => {
     if (!companyCode || !exchange) return [];
 
-    const dateString = '2025-11-21'; // Hardcoded date as requested
+    const dateString = getCurrentDateString();
     const companyExchange = `${companyCode}_${exchange}`;
     const imageList: CarouselImage[] = [];
 
@@ -1592,6 +1665,11 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             <div className="flex items-center gap-4 mx-2 flex-1">
               <CardTitle className="text-base font-semibold text-white">
                 {companyCode} - Headline Analysis
+                {isWeekendFallback && (
+                  <div className="-ml-1 text-xs font-normal text-amber-400 bg-amber-950/30 px-2 py-0.5 rounded border border-amber-700/50">
+                    Showing image for last market day
+                  </div>
+                )}
               </CardTitle>
 
               {/* ✅ NEW - Navigation Controls (always visible when news data available) */}
