@@ -118,6 +118,7 @@ interface PlotlyChartProps {
   predictions?: CompanyPredictions | null;  // ✨ NEW: Prediction data
   showPredictions?: boolean;          // ✨ NEW: Toggle predictions
   predictionRevision?: number;        // ✨ CRITICAL: Force re-render when predictions update
+  desirabilityScore?: number | null;  // ✨ NEW: Desirability score for dynamic background
   tradingHours: {
     start: string;
     end: string;
@@ -126,16 +127,17 @@ interface PlotlyChartProps {
   };
 }
 
-const PlotlyChart: React.FC<PlotlyChartProps> = ({ 
-  symbol, 
-  data, 
-  historicalData, 
-  ohlcData = [], 
+const PlotlyChart: React.FC<PlotlyChartProps> = ({
+  symbol,
+  data,
+  historicalData,
+  ohlcData = [],
   chartUpdates = [],          // ✨ NEW PROP
   updateFrequency = 0,        // ✨ NEW PROP
   predictions = null,         // ✨ NEW: Prediction data
   showPredictions = false,    // ✨ NEW: Toggle predictions
   predictionRevision = 0,     // ✨ CRITICAL: Force re-render counter
+  desirabilityScore = null,   // ✨ NEW: Desirability score for dynamic background
   tradingHours,
 }) => {
   const chartRef = useRef<any>(null);
@@ -249,7 +251,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     // Calculate spread based on volatility and volume
     const windowSize = 20;
     let prices: number[] = [];
-    
+
     if (chartType === 'line') {
       const startIndex = Math.max(0, index - windowSize + 1);
       prices = historicalData.slice(startIndex, index + 1).map(p => p.ltp);
@@ -257,24 +259,24 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       const startIndex = Math.max(0, index - windowSize + 1);
       prices = ohlcData.slice(startIndex, index + 1).map(c => c.close);
     }
-    
+
     // Calculate volatility (standard deviation)
     if (prices.length > 1) {
       const mean = prices.reduce((sum, p) => sum + p, 0) / prices.length;
       const squaredDiffs = prices.map(p => Math.pow(p - mean, 2));
       const avgSquaredDiff = squaredDiffs.reduce((sum, sq) => sum + sq, 0) / squaredDiffs.length;
       const volatility = Math.sqrt(avgSquaredDiff);
-      
+
       // Spread based on volatility (typically 0.1% to 1% of price)
       const spreadPercent = Math.min(Math.max(volatility / currentPrice, 0.001), 0.01);
       const halfSpread = currentPrice * spreadPercent / 2;
-      
+
       return {
         buyPrice: currentPrice + halfSpread,
         sellPrice: currentPrice - halfSpread
       };
     }
-    
+
     // Fallback to simple 0.1% spread
     const defaultSpread = currentPrice * 0.001;
     return {
@@ -287,11 +289,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const prepareLineChartData = useMemo(() => {
     // ✅ DATA MERGE: Combine historical (pre-filtered by API) + live updates + current point
     const dataMap = new Map<number, DataPoint>();
-    
+
     // ✅ CRITICAL FIX: NO FILTERING - API already returns TODAY's data only (9:15 AM onwards)
     // The old logic incorrectly calculated tradingStartTimestamp using local browser time,
     // causing valid intraday data to be filtered out.
-    
+
     // 🔍 DEBUG: Log input data
     console.log(`🔍 [prepareLineChartData] Input:`, {
       historicalCount: historicalData.length,
@@ -300,7 +302,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       firstHistorical: historicalData[0],
       lastHistorical: historicalData[historicalData.length - 1]
     });
-    
+
     // ✅ Add ALL historical data (API guarantees TODAY only, no filtering needed)
     historicalData.forEach(point => {
       if (point.ltp > 0 && !isNaN(point.ltp) && point.timestamp > 0) {
@@ -326,7 +328,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         }
       });
     }
-    
+
     // Add current data point if not already in map (only if new)
     if (data && data.ltp && data.ltp > 0 && !isNaN(data.ltp)) {
       if (!dataMap.has(data.timestamp)) {
@@ -336,7 +338,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
     // Convert to array and sort (this maintains ALL data from 9:15 AM onwards)
     const allData = Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
-    
+
     console.log(`📊 [prepareLineChartData] Output:`, {
       totalPoints: allData.length,
       firstPoint: allData[0] ? { timestamp: allData[0].timestamp, date: new Date(allData[0].timestamp * 1000), ltp: allData[0].ltp } : null,
@@ -558,7 +560,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       return { x: [], open: [], high: [], low: [], close: [], volume: [], volumeStdDev: [], buyVolumes: [], sellVolumes: [], buyPrices: [], sellPrices: [], buySellSpreads: [] };
     }
 
-    const validOhlcData = ohlcData.filter(candle => 
+    const validOhlcData = ohlcData.filter(candle =>
       candle.open !== null && candle.open !== undefined &&
       candle.high !== null && candle.high !== undefined &&
       candle.low !== null && candle.low !== undefined &&
@@ -578,11 +580,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         uniqueData.set(candle.timestamp, candle);
       }
     });
-    
+
     const sortedData = Array.from(uniqueData.values()).sort((a, b) => a.timestamp - b.timestamp);
     const buyVolumes = sortedData.map(candle => calculateBuySellVolume(candle).buyVolume);
     const sellVolumes = sortedData.map(candle => calculateBuySellVolume(candle).sellVolume);
-    const volumeStdDev = sortedData.map((candle, index) => 
+    const volumeStdDev = sortedData.map((candle, index) =>
       calculateVolumeStandardDeviation(candle, index)
     );
     const buyPrices = sortedData.map((candle, index) => calculateBuySellPrices(candle, index).buyPrice);
@@ -627,26 +629,26 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
     if (chartType === 'line') {
       if (historicalData.length === 0) return undefined;
-      
+
       // ✅ Use ALL data points within the time range
       const validData = historicalData.filter(
         point => point.timestamp >= startTime && point.timestamp <= endTime
       );
-      
+
       if (validData.length > 0) {
         const historicalPrices = validData.map(point => point.ltp).filter(p => p !== null && p !== undefined);
         allPrices.push(...historicalPrices);
       }
     } else {
       if (!ohlcData || ohlcData.length === 0) return undefined;
-      
+
       // ✅ Use ALL candles within the time range
       const validCandles = ohlcData.filter(
         candle => candle.timestamp >= startTime && candle.timestamp <= endTime
       );
-      
+
       if (validCandles.length > 0) {
-        const filteredCandles = validCandles.filter(candle => 
+        const filteredCandles = validCandles.filter(candle =>
           candle.high !== null && candle.high !== undefined &&
           candle.low !== null && candle.low !== undefined
         );
@@ -659,7 +661,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     // ✅ CRITICAL: Include ALL predictions within the time range
     if (showPredictions && predictions && predictions.count > 0) {
       const predictionEntries = Object.entries(predictions.predictions);
-      
+
       const predictionPrices = predictionEntries
         .map(([key, pred]) => {
           const predTime = new Date(pred.timestamp || key).getTime() / 1000;
@@ -669,7 +671,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           return null;
         })
         .filter(p => p !== null && p !== undefined) as number[];
-      
+
       if (predictionPrices.length > 0) {
         allPrices.push(...predictionPrices);
       }
@@ -680,13 +682,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const minPrice = Math.min(...allPrices);
     const maxPrice = Math.max(...allPrices);
     const range = maxPrice - minPrice;
-    
+
     // ✅ Extra padding for future buffer zone (top and bottom)
     const padding = range * Y_AXIS_BASE_PADDING;
-    
+
     const yMin = minPrice - padding;
     const yMax = maxPrice + padding * Y_AXIS_TOP_MULTIPLIER; // Extra padding at top for predictions
-    
+
     return [yMin, yMax];
   };
 
@@ -790,47 +792,47 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const now = new Date(maxTimestamp * 1000);
     const dataStartDate = new Date(minTimestamp * 1000);
     const currentTime = new Date();
-    
+
     // ✅ CRITICAL: Log data date range for debugging
     console.log(`📊 [Chart Data Range] ${dataStartDate.toLocaleDateString()} ${dataStartDate.toLocaleTimeString()} → ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`);
-    
+
     let startTime: Date;
     let endTime: Date;
-    
+
     // ✅ SPECIAL CASE: 1D = Trading Day (9:15 AM to 3:30 PM)
     if (selectedTimeframe === '1D' || selectedTimeframe === '1d') {
       // ✅ CRITICAL FIX: Always use TODAY's date, not historical data dates
       const today = new Date();
-      
+
       // Trading start: 9:15 AM TODAY
       startTime = new Date(today);
       startTime.setHours(TRADING_DAY_START_HOUR, TRADING_DAY_START_MINUTE, 0, 0);
-      
+
       // Trading end: 3:30 PM TODAY + 15 min buffer
       endTime = new Date(today);
       endTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE + 15, 0, 0);
-      
+
       console.log('📅 [1D MODE] Trading Day Range (TODAY ONLY):', {
         today: today.toLocaleDateString(),
         startTime: startTime.toLocaleTimeString(),
         endTime: endTime.toLocaleTimeString(),
         duration: '6h 30min trading day'
       });
-      
+
     } else {
       // ✅ STEP 2: Calculate start time based on selected timeframe
       // Format: [now - X, now + 15m] where X is the timeframe duration
-      
+
       // Use constant lookup for known timeframes
       const duration = TIMEFRAME_DURATIONS[selectedTimeframe as keyof typeof TIMEFRAME_DURATIONS];
-      
+
       if (duration) {
         // ✅ CRITICAL FIX: For 6H, 12H - use current time, NOT data timestamp
         // This ensures we ALWAYS show the full duration back from NOW
         if (selectedTimeframe === '6H' || selectedTimeframe === '12H') {
           startTime = new Date(currentTime.getTime() - duration);
           endTime = new Date(currentTime.getTime() + FUTURE_BUFFER_MS);
-          
+
           console.log(`⏰ [${selectedTimeframe} MODE] Fixed Duration from Current Time:`, {
             currentTime: currentTime.toLocaleTimeString(),
             startTime: startTime.toLocaleTimeString(),
@@ -841,7 +843,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           // For shorter timeframes, use latest data point as "now"
           startTime = new Date(now.getTime() - duration);
           endTime = new Date(now.getTime() + FUTURE_BUFFER_MS);
-          
+
           // ✅ CRITICAL: Ensure start time is not before earliest data
           const earliestDataTime = new Date(minTimestamp * 1000);
           if (startTime < earliestDataTime) {
@@ -855,7 +857,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         endTime = new Date(maxTimestamp * 1000 + FUTURE_BUFFER_MS);
       }
     }
-    
+
     // ✅ STEP 3: Extend end time if predictions go beyond the buffer
     if (showPredictions && predictions && predictions.count > 0) {
       const predictionEntries = Object.entries(predictions.predictions);
@@ -864,23 +866,23 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           new Date(pred.timestamp || key).getTime()
         );
         const maxPredTime = Math.max(...predictionTimes);
-        
+
         // Only extend if predictions go beyond our current end time
         if (maxPredTime > endTime.getTime()) {
           endTime = new Date(maxPredTime + PREDICTION_EXTENSION_MS);
         }
       }
     }
-    
+
     // ✅ STEP 4: For shorter timeframes (NOT 6H, 12H, 1D), limit to available data
-    if (selectedTimeframe !== '6H' && selectedTimeframe !== '12H' && 
-        selectedTimeframe !== '1D' && selectedTimeframe !== '1d') {
+    if (selectedTimeframe !== '6H' && selectedTimeframe !== '12H' &&
+      selectedTimeframe !== '1D' && selectedTimeframe !== '1d') {
       const minDataTime = new Date(Math.min(...timestamps) * 1000);
       if (startTime < minDataTime) {
         startTime = minDataTime;
       }
     }
-    
+
     console.log('⏱️ [TIMEFRAME] Time Range Calculated:', {
       selectedTimeframe,
       startTime: startTime.toLocaleTimeString(),
@@ -888,14 +890,80 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       duration: `${((endTime.getTime() - startTime.getTime()) / 60000).toFixed(1)} minutes`,
       futureBuffer: `${((endTime.getTime() - now.getTime()) / 60000).toFixed(1)} minutes`
     });
-    
+
     return [startTime, endTime];
   };
 
-  const getColorTheme = () => {
+  // ✨ NEW: Helper function to calculate background colors based on desirability score
+  const getDesirabilityBackgroundColors = (score: number | null): { bg: string; paper: string } => {
+    // Default dark theme colors when no score is available
+    if (score === null || score === undefined) {
+      return {
+        bg: '#18181b',
+        paper: '#18181b',
+      };
+    }
+
+    // Apply color tint based on desirability score thresholds
+    if (score >= 0.70) {
+      // Green tint for highly desirable (>= 70%)
+      return {
+        bg: 'rgba(34, 197, 94, 0.10)', // plot_bgcolor with subtle green tint
+        paper: 'rgba(34, 197, 94, 0.05)', // paper_bgcolor with very subtle green tint
+      };
+    }
+
+    if (score >= 0.50) {
+      // Yellow tint for moderately desirable (50-69%)
+      return {
+        bg: 'rgba(234, 179, 8, 0.10)', // plot_bgcolor with subtle yellow tint
+        paper: 'rgba(234, 179, 8, 0.05)', // paper_bgcolor with very subtle yellow tint
+      };
+    }
+
+    if (score >= 0.30) {
+      // Orange tint for acceptable (30-49%)
+      return {
+        bg: 'rgba(249, 115, 22, 0.10)', // plot_bgcolor with subtle orange tint
+        paper: 'rgba(249, 115, 22, 0.05)', // paper_bgcolor with very subtle orange tint
+      };
+    }
+
+    // Red tint for not desirable (< 30%)
     return {
-      bg: '#18181b',
-      paper: '#18181b',
+      bg: 'rgba(239, 68, 68, 0.10)', // plot_bgcolor with subtle red tint
+      paper: 'rgba(239, 68, 68, 0.05)', // paper_bgcolor with very subtle red tint
+    };
+  };
+
+  // ✨ Gradient Logic - Top Left corner fading to transparent
+  const getDesirabilityGradientClass = (score: number | null): string => {
+    if (score === null || score === undefined) return ''; // Default no tint
+
+    // Using radial-gradient starting at top left
+    if (score >= 0.70) {
+      // High Desirability: Green Tint
+      return 'bg-[radial-gradient(circle_at_top_left,_rgba(34,197,94,0.15),_transparent_50%)]';
+    }
+    if (score >= 0.50) {
+      // Moderate: Yellow Tint
+      return 'bg-[radial-gradient(circle_at_top_left,_rgba(234,179,8,0.15),_transparent_50%)]';
+    }
+    if (score >= 0.30) {
+      // Acceptable: Orange Tint
+      return 'bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.15),_transparent_50%)]';
+    }
+    // Low: Red Tint
+    return 'bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.15),_transparent_50%)]';
+  };
+
+  const getColorTheme = () => {
+    // Get dynamic background colors based on desirability score
+    const backgroundColors = getDesirabilityBackgroundColors(desirabilityScore);
+
+    return {
+      bg: 'rgba(0,0,0,0)',
+      paper: 'rgba(0,0,0,0)',
       text: '#e4e4e7',
       grid: '#27272a',
       line: getLineColor(),
@@ -1080,9 +1148,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     if (eventData['xaxis.range[0]'] || eventData['yaxis.range[0]']) {
       setUserHasInteracted(true);
       setPreservedRange({
-        xaxis: eventData['xaxis.range[0]'] ? 
+        xaxis: eventData['xaxis.range[0]'] ?
           [eventData['xaxis.range[0]'], eventData['xaxis.range[1]']] : preservedRange.xaxis,
-        yaxis: eventData['yaxis.range[0]'] ? 
+        yaxis: eventData['yaxis.range[0]'] ?
           [eventData['yaxis.range[0]'], eventData['yaxis.range[1]']] : preservedRange.yaxis,
       });
     }
@@ -1111,7 +1179,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           candle => candle.timestamp >= startTime && candle.timestamp <= endTime
         );
         if (visibleData.length > 0) {
-          const validCandles = visibleData.filter(candle => 
+          const validCandles = visibleData.filter(candle =>
             candle.high !== null && candle.high !== undefined &&
             candle.low !== null && candle.low !== undefined
           );
@@ -1197,7 +1265,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       if (!initialized) setInitialized(true);
       return;
     }
-    
+
     const plotDiv = document.getElementById('plotly-chart');
     if (!plotDiv) return;
 
@@ -1210,7 +1278,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
     try {
       const layout = createLayout();
-      
+
       if (chartType === 'line') {
         if (!lineChartData || lineChartData.x.length === 0) return;
         if (typeof Plotly !== 'undefined' && Plotly.react) {
@@ -1270,13 +1338,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
   }, [
     // ✅ OPTIMIZED: Only re-render when these critical values change
-    predictionKey, 
-    showPredictions, 
-    initialized, 
-    selectedTimeframe, 
-    chartType, 
-    showIndicators, 
-    mainMode, 
+    predictionKey,
+    showPredictions,
+    initialized,
+    selectedTimeframe,
+    chartType,
+    showIndicators,
+    mainMode,
     secondaryView,
     lineChartData,
     candlestickData
@@ -1289,10 +1357,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
     if (chartType === 'line') {
       if (historicalData && historicalData.length > 0) {
-        const validData = historicalData.filter(point => 
-          point.ltp !== null && 
-          point.ltp !== undefined && 
-          point.ltp > 0 && 
+        const validData = historicalData.filter(point =>
+          point.ltp !== null &&
+          point.ltp !== undefined &&
+          point.ltp > 0 &&
           !isNaN(point.ltp) &&
           point.timestamp !== null &&
           point.timestamp !== undefined
@@ -1318,9 +1386,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           },
           connectgaps: false,
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Price: ₹%{y:.2f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Price: ₹%{y:.2f}<br>' +
+            '<extra></extra>',
           showlegend: true
         });
 
@@ -1371,7 +1439,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       return timeA - timeB;
     });
 
-    const predictionTimes = sortedPredictions.map(([key, pred]) => 
+    const predictionTimes = sortedPredictions.map(([key, pred]) =>
       new Date(pred.timestamp || key)
     );
     const predictionValues = sortedPredictions.map(([, pred]) => Number(pred.close));
@@ -1406,9 +1474,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       },
       connectgaps: true,
       hovertemplate: '<b>%{fullData.name}</b><br>' +
-                    'Time: %{x|%H:%M:%S}<br>' +
-                    'Predicted Price: ₹%{y:.2f}<br>' +
-                    '<extra></extra>',
+        'Time: %{x|%H:%M:%S}<br>' +
+        'Predicted Price: ₹%{y:.2f}<br>' +
+        '<extra></extra>',
       showlegend: true
     });
 
@@ -1429,10 +1497,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     if (chartType === 'line') {
       if (historicalData && historicalData.length > 0) {
         // ✅ Validate data (no filtering needed - API already returned TODAY only)
-        const validData = historicalData.filter(point => 
-          point.ltp !== null && 
-          point.ltp !== undefined && 
-          point.ltp > 0 && 
+        const validData = historicalData.filter(point =>
+          point.ltp !== null &&
+          point.ltp !== undefined &&
+          point.ltp > 0 &&
           !isNaN(point.ltp) &&
           point.timestamp !== null &&
           point.timestamp !== undefined
@@ -1466,9 +1534,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           },
           connectgaps: false,
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Price: ₹%{y:.2f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Price: ₹%{y:.2f}<br>' +
+            '<extra></extra>',
           showlegend: true
         });
 
@@ -1491,7 +1559,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               return timeA - timeB;
             });
 
-            const predictionTimes = sortedPredictions.map(([key, pred]) => 
+            const predictionTimes = sortedPredictions.map(([key, pred]) =>
               new Date(pred.timestamp || key)
             );
             const predictionValues = sortedPredictions.map(([, pred]) => Number(pred.close));
@@ -1530,9 +1598,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               },
               connectgaps: true,
               hovertemplate: '<b>%{fullData.name}</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'Predicted Price: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
+                'Time: %{x|%H:%M:%S}<br>' +
+                'Predicted Price: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
               showlegend: true,
               visible: true  // Ensure it's visible
             });
@@ -1579,9 +1647,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             },
             yaxis: 'y3',
             hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'Volume: %{y:,.0f}<br>' +
-                          '<extra></extra>',
+              'Time: %{x|%H:%M:%S}<br>' +
+              'Volume: %{y:,.0f}<br>' +
+              '<extra></extra>',
             showlegend: true
           });
         }
@@ -1602,9 +1670,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               },
               connectgaps: false,
               hovertemplate: '<b>%{fullData.name}</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'SMA20: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
+                'Time: %{x|%H:%M:%S}<br>' +
+                'SMA20: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
               showlegend: true
             });
           }
@@ -1626,9 +1694,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               },
               connectgaps: false,
               hovertemplate: '<b>%{fullData.name}</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'EMA9: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
+                'Time: %{x|%H:%M:%S}<br>' +
+                'EMA9: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
               showlegend: true
             });
           }
@@ -1650,9 +1718,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               },
               connectgaps: false,
               hovertemplate: '<b>%{fullData.name}</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'Upper: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
+                'Time: %{x|%H:%M:%S}<br>' +
+                'Upper: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
               showlegend: true
             });
 
@@ -1668,9 +1736,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               },
               connectgaps: false,
               hovertemplate: '<b>%{fullData.name}</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'Middle: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
+                'Time: %{x|%H:%M:%S}<br>' +
+                'Middle: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
               showlegend: true
             });
 
@@ -1689,9 +1757,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               fillcolor: 'rgba(100, 116, 139, 0.1)',
               connectgaps: false,
               hovertemplate: '<b>%{fullData.name}</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'Lower: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
+                'Time: %{x|%H:%M:%S}<br>' +
+                'Lower: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
               showlegend: true
             });
           }
@@ -1701,7 +1769,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       const { x, open, high, low, close, volume } = candlestickData;
       if (x.length === 0) return plotData;
 
-      const hoverText = x.map((date: Date, i: number) => 
+      const hoverText = x.map((date: Date, i: number) =>
         `${date.toLocaleDateString()} ${date.toLocaleTimeString()}<br>` +
         `Open: ${open[i]?.toFixed(2) || 'N/A'}<br>` +
         `High: ${high[i]?.toFixed(2) || 'N/A'}<br>` +
@@ -1747,9 +1815,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             },
             connectgaps: false,
             hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'SMA20: ₹%{y:.2f}<br>' +
-                          '<extra></extra>',
+              'Time: %{x|%H:%M:%S}<br>' +
+              'SMA20: ₹%{y:.2f}<br>' +
+              '<extra></extra>',
             showlegend: true
           });
         }
@@ -1771,9 +1839,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             },
             connectgaps: false,
             hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'EMA9: ₹%{y:.2f}<br>' +
-                          '<extra></extra>',
+              'Time: %{x|%H:%M:%S}<br>' +
+              'EMA9: ₹%{y:.2f}<br>' +
+              '<extra></extra>',
             showlegend: true
           });
         }
@@ -1795,9 +1863,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             },
             connectgaps: false,
             hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'Upper: ₹%{y:.2f}<br>' +
-                          '<extra></extra>',
+              'Time: %{x|%H:%M:%S}<br>' +
+              'Upper: ₹%{y:.2f}<br>' +
+              '<extra></extra>',
             showlegend: true
           });
 
@@ -1813,9 +1881,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             },
             connectgaps: false,
             hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'Middle: ₹%{y:.2f}<br>' +
-                          '<extra></extra>',
+              'Time: %{x|%H:%M:%S}<br>' +
+              'Middle: ₹%{y:.2f}<br>' +
+              '<extra></extra>',
             showlegend: true
           });
 
@@ -1834,9 +1902,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             fillcolor: 'rgba(100, 116, 139, 0.1)',
             connectgaps: false,
             hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'Lower: ₹%{y:.2f}<br>' +
-                          '<extra></extra>',
+              'Time: %{x|%H:%M:%S}<br>' +
+              'Lower: ₹%{y:.2f}<br>' +
+              '<extra></extra>',
             showlegend: true
           });
         }
@@ -1858,9 +1926,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             },
             connectgaps: false,
             hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'VWAP: ₹%{y:.2f}<br>' +
-                          '<extra></extra>',
+              'Time: %{x|%H:%M:%S}<br>' +
+              'VWAP: ₹%{y:.2f}<br>' +
+              '<extra></extra>',
             showlegend: true
           });
         }
@@ -1872,10 +1940,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       let timeData: Date[] = [];
 
       if (chartType === 'line') {
-        const validData = historicalData?.filter(point => 
-          point.ltp !== null && 
-          point.ltp !== undefined && 
-          point.ltp > 0 && 
+        const validData = historicalData?.filter(point =>
+          point.ltp !== null &&
+          point.ltp !== undefined &&
+          point.ltp > 0 &&
           !isNaN(point.ltp)
         ) || [];
         priceData = validData.map(point => Number(point.ltp));
@@ -1883,7 +1951,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       } else {
         const { close: candleClose, x: candleX } = candlestickData;
         if (Array.isArray(candleClose)) {
-          priceData = candleClose.filter(price => 
+          priceData = candleClose.filter(price =>
             price !== null && price !== undefined && !isNaN(price)
           );
           timeData = Array.isArray(candleX) ? candleX.slice(14) : [];
@@ -1906,9 +1974,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             yaxis: 'y2',
             connectgaps: false,
             hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'RSI: %{y:.2f}<br>' +
-                          '<extra></extra>',
+              'Time: %{x|%H:%M:%S}<br>' +
+              'RSI: %{y:.2f}<br>' +
+              '<extra></extra>',
             showlegend: true
           });
 
@@ -1969,10 +2037,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       let timeDataSignal: Date[] = [];
 
       if (chartType === 'line') {
-        const validData = historicalData?.filter(point => 
-          point.ltp !== null && 
-          point.ltp !== undefined && 
-          point.ltp > 0 && 
+        const validData = historicalData?.filter(point =>
+          point.ltp !== null &&
+          point.ltp !== undefined &&
+          point.ltp > 0 &&
           !isNaN(point.ltp)
         ) || [];
         priceData = validData.map(point => Number(point.ltp));
@@ -1981,7 +2049,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       } else {
         const { close: candleClose, x: candleX } = candlestickData;
         if (Array.isArray(candleClose)) {
-          priceData = candleClose.filter(price => 
+          priceData = candleClose.filter(price =>
             price !== null && price !== undefined && !isNaN(price)
           );
           timeDataMACD = Array.isArray(candleX) ? candleX.slice(25) : [];
@@ -1991,9 +2059,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
       if (priceData.length >= 35) {
         const macdData = calculateMACD(priceData, 12, 26, 9);
-        if (macdData && macdData.macdLine && macdData.signalLine && macdData.histogram && 
-            timeDataMACD.length === macdData.macdLine.length && 
-            timeDataSignal.length === macdData.signalLine.length) {
+        if (macdData && macdData.macdLine && macdData.signalLine && macdData.histogram &&
+          timeDataMACD.length === macdData.macdLine.length &&
+          timeDataSignal.length === macdData.signalLine.length) {
           plotData.push({
             x: timeDataMACD,
             y: macdData.macdLine,
@@ -2007,9 +2075,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             yaxis: showIndicators.rsi ? 'y4' : 'y2',
             connectgaps: false,
             hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'MACD: %{y:.4f}<br>' +
-                          '<extra></extra>',
+              'Time: %{x|%H:%M:%S}<br>' +
+              'MACD: %{y:.4f}<br>' +
+              '<extra></extra>',
             showlegend: true
           });
 
@@ -2027,9 +2095,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             yaxis: showIndicators.rsi ? 'y4' : 'y2',
             connectgaps: false,
             hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'Signal: %{y:.4f}<br>' +
-                          '<extra></extra>',
+              'Time: %{x|%H:%M:%S}<br>' +
+              'Signal: %{y:.4f}<br>' +
+              '<extra></extra>',
             showlegend: true
           });
 
@@ -2044,9 +2112,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             },
             yaxis: showIndicators.rsi ? 'y4' : 'y2',
             hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'Histogram: %{y:.4f}<br>' +
-                          '<extra></extra>',
+              'Time: %{x|%H:%M:%S}<br>' +
+              'Histogram: %{y:.4f}<br>' +
+              '<extra></extra>',
             showlegend: true
           });
         }
@@ -2086,9 +2154,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           line: { color: colors.indicator.bid, width: 2 },
           name: 'Bid Std Dev',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         },
         {
           x,
@@ -2098,9 +2166,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           line: { color: colors.indicator.ask, width: 2 },
           name: 'Ask Std Dev',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         }
       ];
     } else {
@@ -2142,9 +2210,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           line: { color: colors.indicator.buyPrice, width: 2 },
           name: 'Buy Price Std Dev',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         },
         {
           x,
@@ -2154,9 +2222,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           line: { color: colors.indicator.sellPrice, width: 2 },
           name: 'Sell Price Std Dev',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         }
       ];
     } else {
@@ -2183,9 +2251,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           line: { color: colors.indicator.buyPrice, width: 2 },
           name: 'Buy Price',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Price: ₹%{y:.2f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Price: ₹%{y:.2f}<br>' +
+            '<extra></extra>',
         },
         {
           x,
@@ -2195,9 +2263,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           line: { color: colors.indicator.sellPrice, width: 2 },
           name: 'Sell Price',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Price: ₹%{y:.2f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Price: ₹%{y:.2f}<br>' +
+            '<extra></extra>',
         }
       ];
     }
@@ -2225,9 +2293,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       line: { color: colors.indicator.buySellSpread, width: 1.5 },
       name: 'Buy-Sell Spread',
       hovertemplate: '<b>%{fullData.name}</b><br>' +
-                    'Time: %{x|%H:%M:%S}<br>' +
-                    'Spread: ₹%{y:.4f}<br>' +
-                    '<extra></extra>',
+        'Time: %{x|%H:%M:%S}<br>' +
+        'Spread: ₹%{y:.4f}<br>' +
+        '<extra></extra>',
     }];
   };
 
@@ -2264,14 +2332,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       y: volumes,
       type: 'bar',
       name: 'Volume',
-      marker: { 
+      marker: {
         color: volumeColors,
-        opacity: 0.8 
+        opacity: 0.8
       },
       hovertemplate: '<b>%{fullData.name}</b><br>' +
-                    'Time: %{x|%H:%M:%S}<br>' +
-                    'Volume: %{y:,.0f}<br>' +
-                    '<extra></extra>',
+        'Time: %{x|%H:%M:%S}<br>' +
+        'Volume: %{y:,.0f}<br>' +
+        '<extra></extra>',
     }];
   };
 
@@ -2286,28 +2354,28 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           y: bidStdDev,
           type: 'bar',
           name: 'Bid Volume Std Dev',
-          marker: { 
+          marker: {
             color: colors.indicator.bid,
-            opacity: 0.8 
+            opacity: 0.8
           },
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Bid Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Bid Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         },
         {
           x,
           y: askStdDev,
           type: 'bar',
           name: 'Ask Volume Std Dev',
-          marker: { 
+          marker: {
             color: colors.indicator.ask,
-            opacity: 0.8 
+            opacity: 0.8
           },
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Ask Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Ask Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         }
       ];
     } else if (mainMode === 'buySell') {
@@ -2318,28 +2386,28 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           y: buyStdDev,
           type: 'bar',
           name: 'Buy Volume Std Dev',
-          marker: { 
+          marker: {
             color: colors.indicator.buyPrice,
-            opacity: 0.8 
+            opacity: 0.8
           },
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Buy Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Buy Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         },
         {
           x,
           y: sellStdDev,
           type: 'bar',
           name: 'Sell Volume Std Dev',
-          marker: { 
+          marker: {
             color: colors.indicator.sellPrice,
-            opacity: 0.8 
+            opacity: 0.8
           },
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Sell Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Sell Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         }
       ];
     } else {
@@ -2348,7 +2416,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
       if (chartType === 'line') {
         x = lineChartData.x;
-        volumeStdDev = lineChartData.allData.map((point: DataPoint, index: number) => 
+        volumeStdDev = lineChartData.allData.map((point: DataPoint, index: number) =>
           calculateVolumeStandardDeviation(point, index)
         );
       } else {
@@ -2361,29 +2429,29 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         y: volumeStdDev,
         type: 'bar',
         name: 'Volume Std Dev',
-        marker: { 
+        marker: {
           color: colors.indicator.std,
-          opacity: 0.8 
+          opacity: 0.8
         },
         hovertemplate: '<b>%{fullData.name}</b><br>' +
-                      'Time: %{x|%H:%M:%S}<br>' +
-                      'Std Dev: %{y:.4f}<br>' +
-                      '<extra></extra>',
+          'Time: %{x|%H:%M:%S}<br>' +
+          'Std Dev: %{y:.4f}<br>' +
+          '<extra></extra>',
       }];
     }
   };
 
   const createLayout = () => {
     const colors = getColorTheme();
-    
+
     // ✅ CRITICAL: Calculate y-range based on visible x-range
-    const timeRange = preservedAxisRanges.xaxis ? 
-      [preservedAxisRanges.xaxis[0], preservedAxisRanges.xaxis[1]] : 
+    const timeRange = preservedAxisRanges.xaxis ?
+      [preservedAxisRanges.xaxis[0], preservedAxisRanges.xaxis[1]] :
       getTimeRange();
-    
+
     // ✅ Always calculate y-range for visible data (autoscaling)
-    const yRange = preservedAxisRanges.yaxis ? 
-      [preservedAxisRanges.yaxis[0], preservedAxisRanges.yaxis[1]] : 
+    const yRange = preservedAxisRanges.yaxis ?
+      [preservedAxisRanges.yaxis[0], preservedAxisRanges.yaxis[1]] :
       calculateYAxisRange(timeRange);
 
     let mainChartDomain = [0, 1];
@@ -2434,7 +2502,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         linecolor: colors.grid,
         tickfont: { color: colors.text },
         titlefont: { color: colors.text },
-        rangeslider: { 
+        rangeslider: {
           visible: true,  // ✅ Enable range slider for scrolling
           bgcolor: colors.bg,
           bordercolor: colors.grid,
@@ -2791,7 +2859,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     } else {
       let volumeStdDev: number[] = [];
       if (chartType === 'line') {
-        volumeStdDev = historicalData.map((point, index) => 
+        volumeStdDev = historicalData.map((point, index) =>
           calculateVolumeStandardDeviation(point, index)
         );
       } else {
@@ -2855,21 +2923,20 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     { label: '6H', value: '6H' },
     { label: '1D', value: '1D' },
   ];
-
+  const gradientClass = getDesirabilityGradientClass(desirabilityScore);
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className={`w-full h-full flex flex-col transition-all duration-500 ${gradientClass}`}>
       {/* Controls */}
-      <div className="flex justify-between mb-2 space-x-2">
+      <div className="flex justify-between mb-2 space-x-2 z-10 px-2 pt-2">
         {/* Timeframe Buttons */}
-        <div className="flex space-x-1 bg-zinc-900 p-1 rounded-md border border-zinc-700">
+        <div className="flex space-x-1 bg-zinc-900/80 p-1 rounded-md border border-zinc-700 backdrop-blur-sm">
           {timeframeButtons.map((button) => (
             <button
               key={button.value}
-              className={`px-2 py-1 text-xs rounded ${
-                selectedTimeframe === button.value
-                  ? `bg-blue-600 text-white`
-                  : `bg-zinc-800 text-zinc-300 hover:bg-zinc-700`
-              }`}
+              className={`px-2 py-1 text-xs rounded ${selectedTimeframe === button.value
+                ? `bg-blue-600 text-white`
+                : `bg-zinc-800 text-zinc-300 hover:bg-zinc-700`
+                }`}
               onClick={() => handleTimeframeChange(button.value)}
             >
               {button.label}
@@ -2893,18 +2960,16 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           {/* Chart Type Toggle */}
           <div className="flex space-x-1 bg-zinc-800 p-1 rounded-md border border-zinc-600">
             <button
-              className={`p-1 rounded ${
-                chartType === 'line' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-              }`}
+              className={`p-1 rounded ${chartType === 'line' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                }`}
               onClick={() => setChartType('line')}
               title="Line Chart (LTP)"
             >
               <LineChart className="h-5 w-5" />
             </button>
             <button
-              className={`p-1 rounded ${
-                chartType === 'candle' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-              }`}
+              className={`p-1 rounded ${chartType === 'candle' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                }`}
               onClick={() => setChartType('candle')}
               title="Candlestick Chart (OHLC)"
             >
@@ -2915,45 +2980,40 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           {/* Indicator Toggles */}
           <div className="flex space-x-1 bg-slate-800 p-1 rounded-md border border-slate-600">
             <button
-              className={`p-1 rounded ${
-                showIndicators.sma20 ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`p-1 rounded ${showIndicators.sma20 ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
               onClick={() => toggleIndicator('sma20')}
               title="SMA 20"
             >
               <span className="text-xs font-bold">SMA</span>
             </button>
             <button
-              className={`p-1 rounded ${
-                showIndicators.ema9 ? 'bg-purple-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`p-1 rounded ${showIndicators.ema9 ? 'bg-purple-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
               onClick={() => toggleIndicator('ema9')}
               title="EMA 9"
             >
               <span className="text-xs font-bold">EMA</span>
             </button>
             <button
-              className={`p-1 rounded ${
-                showIndicators.rsi ? 'bg-pink-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`p-1 rounded ${showIndicators.rsi ? 'bg-pink-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
               onClick={() => toggleIndicator('rsi')}
               title="RSI"
             >
               <span className="text-xs font-bold">RSI</span>
             </button>
             <button
-              className={`p-1 rounded ${
-                showIndicators.macd ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`p-1 rounded ${showIndicators.macd ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
               onClick={() => toggleIndicator('macd')}
               title="MACD"
             >
               <span className="text-xs font-bold">MACD</span>
             </button>
             <button
-              className={`p-1 rounded ${
-                showIndicators.bb ? 'bg-slate-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`p-1 rounded ${showIndicators.bb ? 'bg-slate-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
               onClick={() => toggleIndicator('bb')}
               title="Bollinger Bands"
             >
@@ -2961,9 +3021,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             </button>
             {chartType === 'candle' && (
               <button
-                className={`p-1 rounded ${
-                  showIndicators.vwap ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                }`}
+                className={`p-1 rounded ${showIndicators.vwap ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
                 onClick={() => toggleIndicator('vwap')}
                 title="VWAP"
               >
@@ -2975,18 +3034,16 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           {/* Advanced Analysis Modes */}
           <div className="flex space-x-1 bg-emerald-900 p-1 rounded-md border border-emerald-700">
             <button
-              className={`p-1 rounded ${
-                mainMode === 'bidAsk' ? 'bg-green-600 text-white' : 'bg-emerald-800 text-emerald-300 hover:bg-emerald-700'
-              }`}
+              className={`p-1 rounded ${mainMode === 'bidAsk' ? 'bg-green-600 text-white' : 'bg-emerald-800 text-emerald-300 hover:bg-emerald-700'
+                }`}
               onClick={() => toggleMainMode('bidAsk')}
               title="Bid/Ask Analysis"
             >
               <span className="text-xs font-bold">B/A</span>
             </button>
             <button
-              className={`p-1 rounded ${
-                mainMode === 'buySell' ? 'bg-emerald-600 text-white' : 'bg-emerald-800 text-emerald-300 hover:bg-emerald-700'
-              }`}
+              className={`p-1 rounded ${mainMode === 'buySell' ? 'bg-emerald-600 text-white' : 'bg-emerald-800 text-emerald-300 hover:bg-emerald-700'
+                }`}
               onClick={() => toggleMainMode('buySell')}
               title="Buy/Sell Analysis"
             >
@@ -2998,27 +3055,24 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               <>
                 <div className="w-px h-6 bg-emerald-600 mx-1"></div>
                 <button
-                  className={`p-1 rounded ${
-                    secondaryView === 'line' ? 'bg-blue-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
-                  }`}
+                  className={`p-1 rounded ${secondaryView === 'line' ? 'bg-blue-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
+                    }`}
                   onClick={() => toggleSecondaryView('line')}
                   title="Line View"
                 >
                   <span className="text-xs font-bold">Line</span>
                 </button>
                 <button
-                  className={`p-1 rounded ${
-                    secondaryView === 'spread' ? 'bg-purple-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
-                  }`}
+                  className={`p-1 rounded ${secondaryView === 'spread' ? 'bg-purple-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
+                    }`}
                   onClick={() => toggleSecondaryView('spread')}
                   title="Spread View"
                 >
                   <span className="text-xs font-bold">Spread</span>
                 </button>
                 <button
-                  className={`p-1 rounded ${
-                    secondaryView === 'std' ? 'bg-orange-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
-                  }`}
+                  className={`p-1 rounded ${secondaryView === 'std' ? 'bg-orange-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
+                    }`}
                   onClick={() => toggleSecondaryView('std')}
                   title="Standard Deviation View"
                 >
@@ -3031,9 +3085,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           {/* Volume Toggle */}
           <div className="flex space-x-1 bg-amber-900 p-1 rounded-md border border-amber-700">
             <button
-              className={`p-1 rounded ${
-                showIndicators.volume ? 'bg-amber-600 text-white' : 'bg-amber-800 text-amber-300 hover:bg-amber-700'
-              }`}
+              className={`p-1 rounded ${showIndicators.volume ? 'bg-amber-600 text-white' : 'bg-amber-800 text-amber-300 hover:bg-amber-700'
+                }`}
               onClick={() => toggleIndicator('volume')}
               title="Volume Chart"
             >
@@ -3217,7 +3270,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                   </h3>
                   <p className="text-sm text-gray-400">Real-time market data from {symbol}</p>
                 </div>
-                
+
                 <div className="flex-1 min-h-0">
                   {/* Render ONLY actual data - no predictions */}
                   {chartType === 'line' ? (
@@ -3281,7 +3334,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                       : 'No predictions available'}
                   </p>
                 </div>
-                
+
                 <div className="flex-1 min-h-0">
                   {showPredictions && predictions && predictions.count > 0 ? (
                     <Plot

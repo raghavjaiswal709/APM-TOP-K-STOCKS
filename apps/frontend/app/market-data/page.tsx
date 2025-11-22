@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { getSocket, onReconnect, isSocketConnected } from '@/lib/socket';
 import dynamic from 'next/dynamic';
 import { AppSidebar } from "@/app/components/app-sidebar";
+
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -23,19 +24,24 @@ import { Card, CardContent } from "@/components/ui/card";
 import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelector2/WatchlistSelector";
 import { ImageCarousel } from "./components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
-import { ViewInDashboardButton } from "@/app/components/ViewInDashboardButton";
-import { TrendingUp, TrendingDown, Minus, Database, Wifi, Award, TrendingUpIcon, Clock, Building2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
 import { isMarketOpen } from "@/lib/marketHours";
 import { fetchHistoricalData, detectDataGaps } from "@/lib/historicalDataFetcher";
+import { useDesirability } from "@/hooks/useDesirability";
+import { DesirabilityPanel } from "./components/DesirabilityPanel";
 
 // Prediction Integration
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
-import PredictionChart from './components/PredictionChart';
 import PredictionTimer from './components/PredictionTimer';
-import PredictionStatus from './components/PredictionStatus';
 import PredictionControlPanel from './components/PredictionControlPanel';
 import PredictionOverlay from './components/PredictionOverlay';
+
+declare global {
+  interface Window {
+    __latestCompanySentiment?: any;
+  }
+}
 
 const PlotlyChart = dynamic(() => import('./components/charts/PlotlyChart'), {
   ssr: false,
@@ -179,6 +185,31 @@ const MarketDataPage: React.FC = () => {
     },
   });
 
+  const {
+    score: desirabilityScore,
+    classification: desirabilityClassification,
+    loading: desirabilityLoading,
+    error: desirabilityError,
+    refetch: refetchDesirability,
+  } = useDesirability(selectedSymbol);
+
+  // Alias for the button
+  const isLoadingDesirability = desirabilityLoading;
+
+  // Manual fetch handler
+  const handleFetchDesirabilityScore = useCallback(() => {
+    refetchDesirability();
+  }, [refetchDesirability]);
+
+  // Helper for description text
+  const desirabilityDescription = useMemo(() => {
+    if (!desirabilityScore) return 'N/A';
+    if (desirabilityScore >= 0.7) return 'Highly Desirable';
+    if (desirabilityScore >= 0.5) return 'Moderately Desirable';
+    if (desirabilityScore >= 0.3) return 'Acceptable';
+    return 'Not Desirable';
+  }, [desirabilityScore]);
+
   // ✅ OPTIMIZED: Use updateTrigger directly from hook (single source of truth)
   const predictionRevision = useMemo(() => {
     if (!predictions || predictions.count === 0) return 0;
@@ -189,19 +220,19 @@ const MarketDataPage: React.FC = () => {
   // ✅ OPTIMIZED: Stable callback using refs to avoid stale closures
   const handleTimerEnd = useCallback(async () => {
     console.log('⏰ [TIMER END] Timer reached 0 - triggering immediate refresh');
-    
+
     try {
       const result = await refetchPredictions();
       console.log('✅ [TIMER END] Refresh completed:', result?.count || 0, 'predictions');
     } catch (error) {
       console.error('❌ [TIMER END] Refresh failed:', error);
     }
-  }, [refetchPredictions]); // Only depends on refetchPredictions
+  }, [refetchPredictions]);
 
   // ✅ OPTIMIZED: Stable callback for manual refresh
   const handleManualRefresh = useCallback(async () => {
     console.log('🔄 [MANUAL REFRESH] Button clicked, fetching predictions...');
-    
+
     try {
       const result = await refetchPredictions();
       console.log('✅ [MANUAL REFRESH] Predictions refreshed:', result?.count || 0, 'predictions');
@@ -214,12 +245,10 @@ const MarketDataPage: React.FC = () => {
   const validateAndFormatSymbol = useCallback((companyCode: string, exchange: string, marker?: string): string => {
     const cleanSymbol = companyCode.replace(/[^A-Z0-9]/g, '').toUpperCase();
     if (!cleanSymbol || cleanSymbol.length === 0) return '';
-    
-    // Use the provided marker, or default to 'EQ' if not provided
+
     const finalMarker = marker && marker.trim() ? marker.trim().toUpperCase() : 'EQ';
-    
-    console.log(`🔍 [validateAndFormatSymbol] Input: ${companyCode}, Exchange: ${exchange}, Marker: "${marker}" (type: ${typeof marker})`);
-    console.log(`🔍 [validateAndFormatSymbol] Final Marker: "${finalMarker}"`);
+
+    console.log(`🔍 [validateAndFormatSymbol] Input: ${companyCode}, Exchange: ${exchange}, Marker: "${marker}"`);
 
     switch (exchange.toUpperCase()) {
       case 'NSE':
@@ -232,11 +261,8 @@ const MarketDataPage: React.FC = () => {
   }, []);
 
   const handleCompanyChange = useCallback((companyCode: string | null, exchange?: string, marker?: string) => {
-    console.log(`🏢 [handleCompanyChange] Company selected: ${companyCode}`);
-    console.log(`🏢 [handleCompanyChange] Exchange: "${exchange}" (type: ${typeof exchange})`);
-    console.log(`🏢 [handleCompanyChange] Marker: "${marker}" (type: ${typeof marker})`);
     console.log(`🏢 [handleCompanyChange] Full arguments:`, { companyCode, exchange, marker });
-    
+
     setSelectedCompany(companyCode);
     setSelectedExchange(exchange || null);
 
@@ -251,8 +277,6 @@ const MarketDataPage: React.FC = () => {
 
   const handleDateChange = useCallback((date: string) => {
     console.log(`Date changed to: ${date}`);
-    // Date change is handled by the WatchlistSelector internally
-    // It will automatically clear the company selection
   }, []);
 
   const handleWatchlistChange = useCallback((watchlist: string) => {
@@ -280,7 +304,6 @@ const MarketDataPage: React.FC = () => {
     setIsReconnecting(false);
 
     if (socketRef.current) {
-      // Get trading status
       socketRef.current.emit('get_trading_status', {}, (response: any) => {
         if (response) {
           setTradingHours({
@@ -299,7 +322,6 @@ const MarketDataPage: React.FC = () => {
         }
       });
 
-      // 🔄 Re-subscribe to current symbol if we have one
       if (selectedSymbol && !isSubscribedRef.current.has(selectedSymbol)) {
         console.log('🔄 Re-subscribing to symbol after reconnection:', selectedSymbol);
         socketRef.current.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
@@ -314,8 +336,7 @@ const MarketDataPage: React.FC = () => {
 
   const handleDisconnect = useCallback((reason: string) => {
     console.log('❌ Disconnected:', reason);
-    
-    // Show reconnecting status for automatic reconnections
+
     if (reason !== 'io client disconnect') {
       setSocketStatus('Reconnecting...');
       setIsReconnecting(true);
@@ -324,8 +345,6 @@ const MarketDataPage: React.FC = () => {
       setSocketStatus(`Disconnected: ${reason}`);
       setIsReconnecting(false);
     }
-    
-    // Clear subscription state on disconnect
     isSubscribedRef.current.clear();
   }, []);
 
@@ -352,16 +371,13 @@ const MarketDataPage: React.FC = () => {
 
       // ✅ CRITICAL FIX: Use Map for efficient deduplication and merging
       const dataMap = new Map<number, MarketData>();
-      
-      // Add all existing data
+
       existingHistory.forEach(point => {
         dataMap.set(point.timestamp, point);
       });
-      
-      // Add new data point (will overwrite if duplicate timestamp exists)
+
       dataMap.set(data.timestamp, data);
-      
-      // Convert back to sorted array (keep last 50000 points)
+
       const newHistory = Array.from(dataMap.values())
         .sort((a, b) => a.timestamp - b.timestamp)
         .slice(-50000);
@@ -426,7 +442,6 @@ const MarketDataPage: React.FC = () => {
     if (!data || !data.symbol || !Array.isArray(data.data)) return;
 
     console.log(`📊 Received OHLC data for ${data.symbol}: ${data.data.length} candles`);
-
     const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
 
     setOhlcData(prev => ({
@@ -509,22 +524,18 @@ const MarketDataPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // ❌ REMOVED AUTO-SELECTION - Company should only be selected when user clicks it
-  // This prevents automatic data fetching when date is changed
-
   useEffect(() => {
     setIsClient(true);
     console.log('Component mounted');
-    
-    // Check market status
+
     const checkMarketStatus = () => {
       const status = isMarketOpen();
       setMarketOpen(status.isOpen);
     };
-    
+
     checkMarketStatus();
-    const interval = setInterval(checkMarketStatus, 60000); // Check every minute
-    
+    const interval = setInterval(checkMarketStatus, 60000);
+
     return () => clearInterval(interval);
   }, []);
 
@@ -545,23 +556,15 @@ const MarketDataPage: React.FC = () => {
     socket.on('ohlcData', handleOhlcData);
     socket.on('heartbeat', handleHeartbeat);
 
-    // 🔄 Register reconnection callback to re-subscribe when connection is restored
     const unsubscribeReconnect = onReconnect(() => {
       console.log('🔄 Reconnection callback triggered');
-      
-      // Re-subscribe to current symbol
       if (selectedSymbol && socketRef.current) {
         console.log('🔄 Re-subscribing to symbol after reconnection:', selectedSymbol);
-        
-        // Clear subscription state and re-subscribe
         isSubscribedRef.current.clear();
-        
         socketRef.current.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
           if (response && response.success) {
             isSubscribedRef.current.add(selectedSymbol);
             console.log(`✅ Successfully re-subscribed to ${selectedSymbol} after reconnection`);
-          } else {
-            console.error('❌ Failed to re-subscribe after reconnection:', response);
           }
         });
       }
@@ -576,8 +579,6 @@ const MarketDataPage: React.FC = () => {
       socket.off('historicalData', handleHistoricalData);
       socket.off('ohlcData', handleOhlcData);
       socket.off('heartbeat', handleHeartbeat);
-      
-      // Unregister reconnection callback
       unsubscribeReconnect();
     };
   }, [isClient, selectedSymbol, handleConnect, handleDisconnect, handleError, handleMarketDataUpdate, handleChartUpdate, handleHistoricalData, handleOhlcData, handleHeartbeat]);
@@ -595,7 +596,6 @@ const MarketDataPage: React.FC = () => {
 
     console.log('🔄 Subscribing to symbol:', selectedSymbol);
 
-    // Subscribe to real-time updates
     socket.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
       if (response && response.success) {
         isSubscribedRef.current.add(selectedSymbol);
@@ -607,22 +607,20 @@ const MarketDataPage: React.FC = () => {
     const fetchAndBackfillHistoricalData = async () => {
       setIsLoadingHistorical(true);
       setHistoricalDataStatus('Fetching historical data...');
-      
+
       try {
         console.log(`📡 Fetching historical data for ${selectedSymbol}...`);
-        
-        // Fetch from external server
+
         const result = await fetchHistoricalData(selectedSymbol, selectedDate || new Date().toISOString().split('T')[0]);
-        
+
         if (result.success && result.data.length > 0) {
           console.log(`✅ Fetched ${result.data.length} historical points from external server`);
           setHistoricalDataStatus(`Loaded ${result.data.length} historical data points`);
-          
-          // Convert external data format to internal MarketData format
+
           const externalData: MarketData[] = result.data.map(point => ({
             symbol: selectedSymbol,
             ltp: point.ltp,
-            change: 0, // Calculate if needed
+            change: 0,
             changePercent: 0,
             open: point.open_price,
             high: point.high_price,
@@ -633,33 +631,23 @@ const MarketDataPage: React.FC = () => {
             bid: point.bid_price,
             ask: point.ask_price
           }));
-          
+
           // ✅ CRITICAL FIX: Use Map for efficient deduplication during merge
           setHistoricalData(prev => {
             const existingData = prev[selectedSymbol] || [];
-            
-            // Use Map for O(1) deduplication
             const dataMap = new Map<number, MarketData>();
-            
-            // Add existing data first
+
             existingData.forEach(point => {
               dataMap.set(point.timestamp, point);
             });
-            
-            // Add external data (will overwrite if timestamps match, keeping newer data)
+
             externalData.forEach(point => {
               dataMap.set(point.timestamp, point);
             });
-            
-            // Convert to sorted array
+
             const mergedData = Array.from(dataMap.values())
               .sort((a, b) => a.timestamp - b.timestamp);
-            
-            console.log(`📊 Merged data: ${existingData.length} local + ${externalData.length} external = ${mergedData.length} total (${existingData.length + externalData.length - mergedData.length} duplicates removed)`);
-            console.log(`🔍 First merged point:`, mergedData[0] ? { timestamp: mergedData[0].timestamp, date: new Date(mergedData[0].timestamp * 1000), ltp: mergedData[0].ltp } : null);
-            console.log(`🔍 Last merged point:`, mergedData[mergedData.length - 1] ? { timestamp: mergedData[mergedData.length - 1].timestamp, date: new Date(mergedData[mergedData.length - 1].timestamp * 1000), ltp: mergedData[mergedData.length - 1].ltp } : null);
-            
-            // Check for gaps
+
             const gapCheck = detectDataGaps(mergedData);
             if (gapCheck.hasGaps) {
               console.warn(`⚠️ Data still has ${gapCheck.missingRanges.length} gaps`);
@@ -667,14 +655,13 @@ const MarketDataPage: React.FC = () => {
             } else {
               setHistoricalDataStatus(`Complete data: ${mergedData.length} points`);
             }
-            
+
             return {
               ...prev,
               [selectedSymbol]: mergedData
             };
           });
-          
-          // Update latest market data
+
           if (externalData.length > 0) {
             const latestData = externalData[externalData.length - 1];
             setMarketData(prev => ({
@@ -691,19 +678,17 @@ const MarketDataPage: React.FC = () => {
         setHistoricalDataStatus('Failed to load historical data');
       } finally {
         setIsLoadingHistorical(false);
-        // Clear status message after 5 seconds
         setTimeout(() => setHistoricalDataStatus(''), 5000);
       }
     };
 
-    // Fetch historical data after a short delay to allow socket connection
     const fetchTimer = setTimeout(() => {
       fetchAndBackfillHistoricalData();
     }, 1000);
 
     return () => {
       clearTimeout(fetchTimer);
-      
+
       if (isSubscribedRef.current.has(selectedSymbol)) {
         console.log('🛑 Unsubscribing from:', selectedSymbol);
         socket.emit('unsubscribe', { symbol: selectedSymbol });
@@ -717,44 +702,35 @@ const MarketDataPage: React.FC = () => {
     console.log('🔮 Prediction State Changed:', {
       showPredictions,
       hasPredictions: !!predictions,
-      predictionsCount: predictions?.count || 0,
-      predictionCompany: predictions?.company,
-      selectedCompany,
-      predictionLoading,
-      predictionError,
-      samplePrediction: predictions?.predictions ? Object.values(predictions.predictions)[0] : null
+      predictionsCount: predictions?.count || 0
     });
-  }, [predictions, showPredictions, selectedCompany, predictionLoading, predictionError]);
+  }, [predictions, showPredictions]);
 
-  // 🔍 Connection Health Monitor - Detect stale connections and auto-recover
+  // 🔍 Connection Health Monitor
   useEffect(() => {
     if (!isClient || !socketRef.current || !selectedSymbol) return;
-    
-    const STALE_THRESHOLD = 60000; // 60 seconds without data during trading hours
-    
+
+    const STALE_THRESHOLD = 60000;
+
     const healthCheckInterval = setInterval(() => {
       const socket = socketRef.current;
       if (!socket) return;
-      
+
       const isConnected = isSocketConnected();
-      const timeSinceLastData = lastDataReceived 
-        ? Date.now() - lastDataReceived.getTime() 
+      const timeSinceLastData = lastDataReceived
+        ? Date.now() - lastDataReceived.getTime()
         : null;
-      
-      // If socket says connected but no data for 60 seconds during trading hours
+
       if (isConnected && tradingHours.isActive && timeSinceLastData && timeSinceLastData > STALE_THRESHOLD) {
         console.warn('⚠️ Connection appears stale (no data for 60s), forcing reconnection...');
-        
-        // Clear subscriptions and force reconnect
         isSubscribedRef.current.clear();
         socket.disconnect();
-        
         setTimeout(() => {
           socket.connect();
         }, 1000);
       }
-    }, 30000); // Check every 30 seconds
-    
+    }, 30000);
+
     return () => clearInterval(healthCheckInterval);
   }, [isClient, selectedSymbol, lastDataReceived, tradingHours.isActive]);
 
@@ -777,12 +753,6 @@ const MarketDataPage: React.FC = () => {
   const symbolChartUpdates = useMemo(() =>
     chartUpdates[selectedSymbol] || [],
     [chartUpdates, selectedSymbol]
-  );
-
-  const totalCachedSymbols = useMemo(() => Object.keys(marketData).length, [marketData]);
-  const totalHistoricalPoints = useMemo(() =>
-    Object.values(historicalData).reduce((sum, data) => sum + data.length, 0),
-    [historicalData]
   );
 
   const isDataStale = useMemo(() => predictionDataAge > 600, [predictionDataAge]);
@@ -853,31 +823,28 @@ const MarketDataPage: React.FC = () => {
                   <h3 className="text-lg font-medium">Live Market</h3>
                   <div className="flex items-center space-x-4">
                     <div className="flex items-center space-x-2">
-                      <span className={`inline-block w-2 h-2 rounded-full ${
-                        socketStatus.includes('Connected') 
-                          ? 'bg-green-500 animate-pulse' 
-                          : isReconnecting 
-                          ? 'bg-yellow-500 animate-pulse' 
+                      <span className={`inline-block w-2 h-2 rounded-full ${socketStatus.includes('Connected')
+                        ? 'bg-green-500 animate-pulse'
+                        : isReconnecting
+                          ? 'bg-yellow-500 animate-pulse'
                           : 'bg-red-500'
-                      }`}></span>
-                      <span className={`text-sm ${
-                        socketStatus.includes('Connected')
-                          ? 'text-green-600 dark:text-green-400'
-                          : isReconnecting
+                        }`}></span>
+                      <span className={`text-sm ${socketStatus.includes('Connected')
+                        ? 'text-green-600 dark:text-green-400'
+                        : isReconnecting
                           ? 'text-yellow-600 dark:text-yellow-400'
                           : 'text-red-600 dark:text-red-400'
-                      }`}>
+                        }`}>
                         {socketStatus}
                         {isReconnecting && ' 🔄'}
                       </span>
                     </div>
                     <button
                       onClick={() => setShowPredictions(!showPredictions)}
-                      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                        showPredictions
-                          ? 'bg-blue-600 text-white hover:bg-blue-700'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
+                      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${showPredictions
+                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
                     >
                       {showPredictions ? '🔮 Predictions ON' : '🔮 Predictions OFF'}
                     </button>
@@ -929,31 +896,6 @@ const MarketDataPage: React.FC = () => {
                         )}
                       </div>
                     </div>
-
-                    {/* <div className="p-3 bg-zinc-800 rounded">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <Database className="h-4 w-4 text-blue-500" />
-                        <span className="text-blue-400 font-medium">Cached Data ({Object.keys(historicalData).length})</span>
-                      </div>
-                      <div className="max-h-20 overflow-y-auto">
-                        {Object.keys(historicalData).length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {Object.keys(historicalData).slice(0, 5).map(symbol => (
-                              <span key={symbol} className="text-xs bg-blue-900/50 text-blue-300 px-2 py-1 rounded">
-                                {symbol.split(':')[1]?.split('-')[0] || symbol}
-                              </span>
-                            ))}
-                            {Object.keys(historicalData).length > 5 && (
-                              <span className="text-xs bg-blue-900/50 text-blue-300 px-2 py-1 rounded">
-                                +{Object.keys(historicalData).length - 5} more
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-zinc-500 text-xs">No cached data</span>
-                        )}
-                      </div>
-                    </div> */}
                   </div>
                 </div>
 
@@ -1012,6 +954,7 @@ const MarketDataPage: React.FC = () => {
                           predictions={predictions}
                           showPredictions={showPredictions}
                           predictionRevision={predictionRevision}
+                          desirabilityScore={desirabilityScore}
                         />
                       </div>
                     ) : (
@@ -1031,11 +974,10 @@ const MarketDataPage: React.FC = () => {
                   <div className="flex gap-2 mb-4 bg-zinc-900 p-1 rounded-lg">
                     <button
                       onClick={() => setActiveTab('live')}
-                      className={`flex-1 py-2 px-4 rounded-md transition-all duration-200 font-medium ${
-                        activeTab === 'live'
-                          ? 'bg-zinc-700 text-white shadow-lg'
-                          : 'text-zinc-400 hover:text-white'
-                      }`}
+                      className={`flex-1 py-2 px-4 rounded-md transition-all duration-200 font-medium ${activeTab === 'live'
+                        ? 'bg-zinc-700 text-white shadow-lg'
+                        : 'text-zinc-400 hover:text-white'
+                        }`}
                     >
                       <div className="flex items-center justify-center gap-2">
                         <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -1044,17 +986,16 @@ const MarketDataPage: React.FC = () => {
                     </button>
                     <button
                       onClick={() => setActiveTab('predictions')}
-                      className={`flex-1 py-2 px-4 rounded-md transition-all duration-200 font-medium ${
-                        activeTab === 'predictions'
-                          ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg'
-                          : 'text-zinc-400 hover:text-white'
-                      }`}
+                      className={`flex-1 py-2 px-4 rounded-md transition-all duration-200 font-medium ${activeTab === 'predictions'
+                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg'
+                        : 'text-zinc-400 hover:text-white'
+                        }`}
                     >
                       <div className="flex items-center justify-center gap-2">
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>
                         </svg>
-                      Predictions
+                        Predictions
                       </div>
                     </button>
                   </div>
@@ -1105,29 +1046,36 @@ const MarketDataPage: React.FC = () => {
                               {formatChange(currentData.change, currentData.changePercent)}
                             </div>
 
-                            {/* Update sentiment display to show actual sentiment from ImageCarousel/news */}
                             {(() => {
-                              // Get sentiment from ImageCarousel/newsData if available
-                              // Fallback to gradientMode if not available
-                              let sentimentLabel = 'Neutral Sentiment';
-                              let sentimentColor = 'text-zinc-400';
-                              let sentimentBg = 'bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40';
-                              if (window && window.__latestCompanySentiment) {
-                                // This global is set by ImageCarousel when sentiment changes
-                                sentimentLabel = window.__latestCompanySentiment.label;
-                                sentimentColor = window.__latestCompanySentiment.text;
-                                sentimentBg = window.__latestCompanySentiment.background;
-                              }
+                              const sentiment = getSentimentIndicator(gradientMode);
                               return (
-                                <div className={`mt-3 p-3 rounded-lg border-2 ${sentimentBg} backdrop-blur-sm`}>
+                                <div className={`mt-3 p-3 rounded-lg border-2 ${sentiment.background} backdrop-blur-sm`}>
                                   <div className="flex items-center gap-2">
-                                    <span className={`text-sm font-medium ${sentimentColor}`}>
-                                      {sentimentLabel}
+                                    <span className={`text-sm font-medium ${sentiment.text}`}>
+                                      {sentiment.label}
                                     </span>
                                   </div>
                                 </div>
                               );
                             })()}
+
+                            <div className="w-full">
+                              {selectedSymbol ? (
+                                <DesirabilityPanel
+                                  score={desirabilityScore}
+                                  classification={desirabilityClassification}
+                                  loading={desirabilityLoading}
+                                  onFetch={handleFetchDesirabilityScore}
+                                />
+                              ) : (
+                                <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-full flex flex-col items-center justify-center">
+                                  <Building2 className="h-12 w-12 text-zinc-600 mb-4" />
+                                  <p className="text-zinc-500 text-sm text-center">
+                                    Select a symbol to view market desirability score
+                                  </p>
+                                </div>
+                              )}
+                            </div>
 
                             <div className="grid grid-cols-2 gap-4 mt-6">
                               <div className="bg-zinc-700 p-3 rounded">
@@ -1188,6 +1136,8 @@ const MarketDataPage: React.FC = () => {
                                 </div>
                               </div>
                             )}
+
+
 
                             <div className="mt-4">
                               {usefulnessScore === null ? (
@@ -1256,18 +1206,6 @@ const MarketDataPage: React.FC = () => {
                                 <p className="text-zinc-400 text-sm">Enable predictions to view AI forecasts</p>
                               </div>
                             )}
-
-                            {/* PREDICTION STATUS */}
-                            {/* {showPredictions && (
-                              <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900/20 to-slate-900 rounded-lg border border-purple-500/20">
-                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(120,119,198,0.05),transparent_50%)]"></div>
-                                <PredictionStatus
-                                  company={selectedCompany || ''}
-                                  lastUpdated={predictionLastUpdated}
-                                  isStale={isDataStale}
-                                />
-                              </div>
-                            )} */}
 
                             {/* PREDICTION TIMER - Circular countdown to next update */}
                             {showPredictions && (

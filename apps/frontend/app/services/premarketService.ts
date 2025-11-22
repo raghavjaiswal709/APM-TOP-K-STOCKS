@@ -126,7 +126,12 @@ class PremarketService {
 
         if (!onDiskResponse.ok) {
           if (onDiskResponse.status === 404) {
-            throw new Error(`No headlines found for ${stockCode} (checked cache and disk)`);
+            console.warn(`⚠️ No headlines found for ${stockCode} (checked cache and disk)`);
+            return this.createEmptyHeadlinesResponse(stockCode);
+          }
+          if (onDiskResponse.status >= 500) {
+            console.error(`❌ Server error (${onDiskResponse.status}) for ${stockCode}, returning empty data`);
+            return this.createEmptyHeadlinesResponse(stockCode);
           }
           throw new Error(`HTTP ${onDiskResponse.status}: ${onDiskResponse.statusText}`);
         }
@@ -136,12 +141,32 @@ class PremarketService {
         return data;
       }
 
-      // Other errors from cached endpoint
-      throw new Error(`HTTP ${cachedResponse.status}: ${cachedResponse.statusText}`);
+      // Handle server errors (500+) gracefully
+      if (cachedResponse.status >= 500) {
+        console.error(`❌ Server error (${cachedResponse.status}) for ${stockCode}, returning empty data`);
+        return this.createEmptyHeadlinesResponse(stockCode);
+      }
+
+      // Other client errors (400-499) should still throw
+      console.error(`❌ HTTP ${cachedResponse.status} error for ${stockCode}`);
+      return this.createEmptyHeadlinesResponse(stockCode);
     } catch (error) {
       console.error(`❌ Error fetching headlines for ${stockCode}:`, error);
-      throw error;
+      // Return empty data instead of throwing to prevent UI crashes
+      return this.createEmptyHeadlinesResponse(stockCode);
     }
+  }
+
+  /**
+   * Create an empty headlines response for graceful degradation
+   */
+  private createEmptyHeadlinesResponse(stockCode: string): PremarketHeadlinesResponse {
+    return {
+      stock_ticker: stockCode,
+      headlines: [],
+      total_headlines: 0,
+      cached: false
+    };
   }
 
   /**
@@ -185,7 +210,12 @@ class PremarketService {
 
         if (!onDemandResponse.ok) {
           if (onDemandResponse.status === 404) {
-            throw new Error(`No prediction available for ${stockCode} (checked cache and computed live)`);
+            console.warn(`⚠️ No prediction available for ${stockCode}`);
+            return this.createNeutralPrediction(stockCode);
+          }
+          if (onDemandResponse.status >= 500) {
+            console.error(`❌ Server error (${onDemandResponse.status}) for ${stockCode}, returning neutral prediction`);
+            return this.createNeutralPrediction(stockCode);
           }
           throw new Error(`HTTP ${onDemandResponse.status}: ${onDemandResponse.statusText}`);
         }
@@ -195,12 +225,35 @@ class PremarketService {
         return data;
       }
 
-      // Other errors from cached endpoint
-      throw new Error(`HTTP ${cachedResponse.status}: ${cachedResponse.statusText}`);
+      // Handle server errors (500+) gracefully
+      if (cachedResponse.status >= 500) {
+        console.error(`❌ Server error (${cachedResponse.status}) for ${stockCode}, returning neutral prediction`);
+        return this.createNeutralPrediction(stockCode);
+      }
+
+      // Other client errors
+      console.error(`❌ HTTP ${cachedResponse.status} error for ${stockCode}`);
+      return this.createNeutralPrediction(stockCode);
     } catch (error) {
       console.error(`❌ Error fetching prediction for ${stockCode}:`, error);
-      throw error;
+      // Return neutral prediction instead of throwing
+      return this.createNeutralPrediction(stockCode);
     }
+  }
+
+  /**
+   * Create a neutral prediction for graceful degradation
+   */
+  private createNeutralPrediction(stockCode: string): PremarketPrediction {
+    return {
+      stock_ticker: stockCode,
+      sentiment: 'NEUTRAL',
+      confidence: 'LOW',
+      score: 0,
+      reasoning: 'Prediction unavailable due to service error',
+      headlines_analyzed: 0,
+      timestamp: new Date().toISOString()
+    };
   }
 
   /**

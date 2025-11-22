@@ -10,6 +10,7 @@ import { LstmaeModule } from './lstmae/lstmae.module';
 import { SiprModule } from './sipr/sipr.module';
 import { PredictionModule } from './prediction/prediction.module';
 import { PremarketModule } from './premarket/premarket.module';
+import { MarketDataModule } from './market-data/market-data.module';
 import { HttpModule } from '@nestjs/axios';
 
 @Module({
@@ -27,8 +28,9 @@ import { HttpModule } from '@nestjs/axios';
     SiprModule,
     PredictionModule,
     PremarketModule,
+    MarketDataModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }
