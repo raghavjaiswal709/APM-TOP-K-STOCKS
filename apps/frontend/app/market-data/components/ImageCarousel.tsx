@@ -586,6 +586,7 @@ interface ImageCarouselProps {
   selectedDate?: Date | string; // Accept both Date and string to avoid timezone issues
   gradientMode: 'profit' | 'loss' | 'neutral';
   onGradientModeChange: (mode: 'profit' | 'loss' | 'neutral') => void;
+  onSentimentLoadingChange?: (loading: boolean) => void;
 }
 
 interface CarouselImage {
@@ -763,7 +764,8 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   exchange,
   selectedDate,
   gradientMode = 'neutral',
-  onGradientModeChange
+  onGradientModeChange,
+  onSentimentLoadingChange
 }) => {
   // ✅ NEW - activeIndex is now the Master controller (linked to news selection)
   const [activeIndex, setActiveIndex] = useState(0);
@@ -809,6 +811,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 
     setNewsLoading(true);
     setNewsError(null);
+    if (onSentimentLoadingChange) onSentimentLoadingChange(true);
 
     try {
       console.log(`📰 [CAROUSEL] Fetching headlines for ${companyCode}...`);
@@ -928,6 +931,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
       setActiveIndex(0);
     } finally {
       setNewsLoading(false);
+      if (onSentimentLoadingChange) onSentimentLoadingChange(false);
     }
   }, [companyCode, convertSentiment]);
 
@@ -978,6 +982,24 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const currentNews = useMemo(() => {
     return newsData[activeIndex] || null;
   }, [newsData, activeIndex]);
+
+  // ✅ NEW - Sync sentiment with parent component (Description Panel)
+  useEffect(() => {
+    if (onGradientModeChange) {
+      let newMode: 'profit' | 'loss' | 'neutral' = 'neutral';
+
+      if (currentNews) {
+        if (currentNews.sentiment === 'positive') newMode = 'profit';
+        else if (currentNews.sentiment === 'negative') newMode = 'loss';
+      }
+
+      // Only update if different to avoid loops/unnecessary renders
+      if (gradientMode !== newMode) {
+        console.log(`🎨 [SENTIMENT SYNC] Updating gradient mode to: ${newMode} (News: ${currentNews?.headline || 'None'})`);
+        onGradientModeChange(newMode);
+      }
+    }
+  }, [currentNews, onGradientModeChange, gradientMode]);
 
   const filteredImages = useMemo(() => {
     return allImages.filter(image => image.chartType === activeTab);

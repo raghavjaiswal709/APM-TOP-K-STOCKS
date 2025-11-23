@@ -127,6 +127,7 @@ const MarketDataPage: React.FC = () => {
   const [activeSymbols, setActiveSymbols] = useState<string[]>([]);
   const [backgroundDataPoints, setBackgroundDataPoints] = useState<number>(0);
   const [gradientMode, setGradientMode] = useState<'profit' | 'loss' | 'neutral'>('neutral');
+  const [sentimentLoading, setSentimentLoading] = useState(false);
   const [usefulnessScore, setUsefulnessScore] = useState<number | null>(null);
   const [showScoreTooltip, setShowScoreTooltip] = useState(false);
   const [activeTab, setActiveTab] = useState<'live' | 'predictions'>('live');
@@ -1047,6 +1048,19 @@ const MarketDataPage: React.FC = () => {
                             </div>
 
                             {(() => {
+                              if (sentimentLoading) {
+                                return (
+                                  <div className="mt-3 p-3 rounded-lg border-2 bg-zinc-900/50 border-zinc-800 backdrop-blur-sm">
+                                    <div className="flex items-center gap-2">
+                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-400"></div>
+                                      <span className="text-sm font-medium text-zinc-500">
+                                        Loading Sentiment...
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+
                               const sentiment = getSentimentIndicator(gradientMode);
                               return (
                                 <div className={`mt-3 p-3 rounded-lg border-2 ${sentiment.background} backdrop-blur-sm`}>
@@ -1255,6 +1269,7 @@ const MarketDataPage: React.FC = () => {
                   exchange={selectedExchange || ''}
                   gradientMode={gradientMode}
                   onGradientModeChange={setGradientMode}
+                  onSentimentLoadingChange={setSentimentLoading}
                   selectedDate={selectedDate || undefined}
                 />
               </div>
