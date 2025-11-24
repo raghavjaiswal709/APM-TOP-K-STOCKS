@@ -35,6 +35,26 @@ export class DesirabilityController {
     }
 
     /**
+     * GET /desirability/top-pattern/:symbol
+     * New endpoint to match frontend request
+     */
+    @Get('top-pattern/:symbol')
+    async getTopPattern(
+        @Param('symbol') symbol: string,
+        @Query('method') method?: string,
+    ) {
+        try {
+            // Re-using the service method which is already updated to fetch top-pattern
+            return await this.desirabilityService.getDesirabilityScore(symbol, method);
+        } catch (error) {
+            throw new HttpException(
+                error.message || 'Failed to fetch top pattern',
+                error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    /**
      * POST /desirability/analyze/:symbol
      */
     @Post('analyze/:symbol')

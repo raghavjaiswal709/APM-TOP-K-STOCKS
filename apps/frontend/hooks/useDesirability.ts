@@ -1,24 +1,26 @@
 import { useState, useEffect, useCallback } from 'react';
 
-export interface ClusterDetails {
-    time_above_open_pct: number;
-    slope: number;
-    final_position: number;
-    max_drawdown: number;
-    recovery_time_minutes: number | null;
-    trend_strength: number;
-    pattern_length: number;
-}
-
-export interface DesirabilityData {
+interface DesirabilityData {
     symbol: string;
-    maxScore: number | null;
-    classification: string | null;
+    exchange: string;
     method: string;
+    top_pattern: {
+        cluster_id: number;
+        strength_score: number;
+        desirability_score: number;
+        classification: string;
+        directional_bias: number;
+        recovery_quality: number;
+        upward_momentum: number;
+        drawdown_penalty: number;
+        recurrence_rate: number;
+        persistence_days: number;
+        avg_movement: number;
+        volatility: number;
+        details: any;
+    };
+    all_patterns_count: number;
     timestamp: string;
-    rawScores?: Record<string, number>;
-    clusterId?: string;
-    details?: ClusterDetails;
 }
 
 interface UseDesirabilityReturn {
@@ -51,13 +53,12 @@ export function useDesirability(symbol: string): UseDesirabilityReturn {
         setLoading(true);
         setError(null);
 
-        // Extract clean symbol (e.g., "NSE:HDFCBANK-EQ" -> "HDFCBANK")
         const cleanSymbol = symbol.includes(':') ? symbol.split(':')[1]?.split('-')[0] : symbol;
         console.log(`🔍 [useDesirability] Fetching for symbol: ${symbol} (Clean: ${cleanSymbol})`);
 
         try {
             const response = await fetch(
-                `http://localhost:5000/desirability/scores/${cleanSymbol}`,
+                `${process.env.NEXT_PUBLIC_BACKEND_URL}/desirability/top-pattern/${cleanSymbol}`,
                 {
                     method: 'GET',
                     headers: {
@@ -86,8 +87,8 @@ export function useDesirability(symbol: string): UseDesirabilityReturn {
     }, [fetchDesirability]);
 
     return {
-        score: data?.maxScore ?? null,
-        classification: data?.classification ?? null,
+        score: data?.top_pattern?.desirability_score ?? null,
+        classification: data?.top_pattern?.classification ?? null,
         loading,
         error,
         data,

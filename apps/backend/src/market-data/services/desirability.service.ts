@@ -202,6 +202,10 @@ export class DesirabilityService {
                 `📊 Top pattern for ${symbol}: ${topPattern.desirability_score} (cluster ${topPattern.cluster_id}, ${topPattern.classification})`,
             );
 
+            // Return the raw data as requested by the user
+            return data as any;
+
+            /*
             return {
                 symbol: data.symbol,
                 maxScore: topPattern.desirability_score,
@@ -211,6 +215,7 @@ export class DesirabilityService {
                 clusterId: topPattern.cluster_id?.toString(),
                 details: topPattern.details
             };
+            */
 
         } catch (error: any) {
             this.logger.error(`❌ [DEBUG] Request Failed!`);
