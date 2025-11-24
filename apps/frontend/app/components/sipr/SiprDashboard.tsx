@@ -2,11 +2,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  Activity, 
-  TrendingUp, 
-  Loader2, 
-  AlertCircle, 
+import {
+  Activity,
+  TrendingUp,
+  Loader2,
+  AlertCircle,
   ExternalLink,
   Clock,
   BarChart3,
@@ -32,8 +32,8 @@ const extractCompanyCode = (fullCode: string): string => {
 };
 
 // ✅ FIXED: Pattern Card Component with most_frequent_days
-const PatternCard: React.FC<{ 
-  pattern: SiprPatternInfo; 
+const PatternCard: React.FC<{
+  pattern: SiprPatternInfo;
   rank: number;
   totalSegments: number;
 }> = ({ pattern, rank, totalSegments }) => {
@@ -90,22 +90,33 @@ const PatternCard: React.FC<{
       </CardHeader>
       <CardContent>
         {/* ✅ NEW: Most Frequent Days - ALWAYS VISIBLE (not in expanded) */}
-        {pattern.most_frequent_days && pattern.most_frequent_days.length > 0 && (
+        {pattern.most_frequent_days && (
           <div className="mb-4 p-3 bg-blue-500/10 rounded-lg border border-blue-500/30">
             <h4 className="text-sm font-semibold text-blue-300 flex items-center gap-2 mb-2">
               <CalendarDays className="h-4 w-4" />
               Most Frequent Days
             </h4>
             <div className="flex flex-wrap gap-2">
-              {pattern.most_frequent_days.map((day, index) => (
-                <Badge 
-                  key={index}
-                  variant="outline"
-                  className="bg-blue-600/30 border-blue-500/50 text-blue-100 font-medium"
-                >
-                  {day}
-                </Badge>
-              ))}
+              {(() => {
+                const formatDaysDisplay = (days: string | undefined) => {
+                  if (!days) return "N/A";
+                  // Detect if it covers the full work week
+                  if ((days.includes("Monday") && days.includes("Friday") && days.includes("Wednesday")) ||
+                    days === "Monday, Tuesday, Wednesday, Thursday, Friday") {
+                    return "All Trading Days";
+                  }
+                  return days;
+                };
+
+                return (
+                  <Badge
+                    variant="outline"
+                    className="bg-blue-600/30 border-blue-500/50 text-blue-100 font-medium"
+                  >
+                    {formatDaysDisplay(pattern.most_frequent_days)}
+                  </Badge>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -169,14 +180,14 @@ const PatternCard: React.FC<{
         {expanded && (
           <>
             <Separator className="my-3 bg-white/10" />
-            
+
             {/* Time Ranges */}
             <div className="space-y-2 mb-3">
               <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
                 <Clock className="h-4 w-4" />
                 Temporal Information
               </h4>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 <div className="bg-zinc-800/50 p-3 rounded border border-zinc-700">
                   <p className="text-xs text-gray-400 mb-1">Time Found Range</p>
@@ -184,7 +195,7 @@ const PatternCard: React.FC<{
                     {pattern.time_found_range || 'N/A'}
                   </p>
                 </div>
-                
+
                 <div className="bg-zinc-800/50 p-3 rounded border border-zinc-700">
                   <p className="text-xs text-gray-400 mb-1">Most Prominent Hour</p>
                   <p className="text-sm font-mono text-gray-200">
@@ -462,11 +473,10 @@ export const SiprDashboard: React.FC<SiprDashboardProps> = ({
                       </div>
                       <div className="h-3 bg-zinc-800 rounded-full overflow-hidden">
                         <div
-                          className={`h-full ${
-                            index === 0 ? 'bg-yellow-500' :
-                            index === 1 ? 'bg-gray-400' :
-                            'bg-orange-600'
-                          }`}
+                          className={`h-full ${index === 0 ? 'bg-yellow-500' :
+                              index === 1 ? 'bg-gray-400' :
+                                'bg-orange-600'
+                            }`}
                           style={{ width: `${percentage}%` }}
                         />
                       </div>

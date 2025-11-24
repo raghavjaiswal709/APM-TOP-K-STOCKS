@@ -128,6 +128,24 @@ class SiprService {
 
     const url = `${getApiUrl(SIPR_CONSTANTS.ENDPOINTS.TOP3(companyCode))}?months=${months}`;
     const response = await this.fetchWithRetry<SiprTop3Response>(url);
+
+    // ✅ Apply Fallback Logic for 'most_frequent_days'
+    if (response && response.top_patterns) {
+      response.top_patterns.forEach(pattern => {
+        if (!pattern.most_frequent_days || pattern.most_frequent_days.length === 0) {
+          // @ts-ignore - The type definition expects string[] but we are assigning string based on user request "Monday, Tuesday..."
+          // Wait, the user request says: "If most_frequent_days is null, undefined, or empty, strictly inject the following string: 'Monday, Tuesday, Wednesday, Thursday, Friday'"
+          // BUT the type definition I just saw had `most_frequent_days: string[]`.
+          // The user instruction says: "Add a new optional field: most_frequent_days?: string;"
+          // So I should have changed the type to `string` not `string[]`.
+          // Let me double check the previous tool call.
+          // I replaced `most_frequent_days: string[]` with `most_frequent_days?: string`.
+          // So here I should assign the string.
+          pattern.most_frequent_days = "Monday, Tuesday, Wednesday, Thursday, Friday";
+        }
+      });
+    }
+
     this.saveToCache(cacheKey, response);
     return response;
   }
@@ -137,7 +155,7 @@ class SiprService {
     months: number = siprConfig.defaultMonths
   ): Promise<string> {
     const url = `${getApiUrl(SIPR_CONSTANTS.ENDPOINTS.TOP3_HTML(companyCode))}?months=${months}`;
-    
+
     const response = await fetch(url, {
       signal: AbortSignal.timeout(siprConfig.timeout),
     });
@@ -168,7 +186,7 @@ class SiprService {
     months: number = siprConfig.defaultMonths
   ): Promise<string> {
     const url = `${getApiUrl(SIPR_CONSTANTS.ENDPOINTS.SEGMENTATION_HTML(companyCode))}?months=${months}`;
-    
+
     const response = await fetch(url, {
       signal: AbortSignal.timeout(siprConfig.timeout),
     });
@@ -199,7 +217,7 @@ class SiprService {
     months: number = siprConfig.defaultMonths
   ): Promise<string> {
     const url = `${getApiUrl(SIPR_CONSTANTS.ENDPOINTS.CLUSTER_HTML(companyCode))}?months=${months}`;
-    
+
     const response = await fetch(url, {
       signal: AbortSignal.timeout(siprConfig.timeout),
     });
@@ -230,7 +248,7 @@ class SiprService {
     months: number = siprConfig.defaultMonths
   ): Promise<string> {
     const url = `${getApiUrl(SIPR_CONSTANTS.ENDPOINTS.CENTROIDS_HTML(companyCode))}?months=${months}`;
-    
+
     const response = await fetch(url, {
       signal: AbortSignal.timeout(siprConfig.timeout),
     });

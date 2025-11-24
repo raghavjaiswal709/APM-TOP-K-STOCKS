@@ -30,6 +30,8 @@ import { isMarketOpen } from "@/lib/marketHours";
 import { fetchHistoricalData, detectDataGaps } from "@/lib/historicalDataFetcher";
 import { useDesirability } from "@/hooks/useDesirability";
 import { DesirabilityPanel } from "./components/DesirabilityPanel";
+import { sentimentService } from '@/app/services/sentimentService';
+
 
 // Prediction Integration
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
@@ -134,6 +136,8 @@ const MarketDataPage: React.FC = () => {
   const [marketOpen, setMarketOpen] = useState<boolean>(true);
   const [isLoadingHistorical, setIsLoadingHistorical] = useState<boolean>(false);
   const [historicalDataStatus, setHistoricalDataStatus] = useState<string>('');
+  const [overallSentiment, setOverallSentiment] = useState<string>('NEUTRAL');
+  const [isSentimentFetching, setIsSentimentFetching] = useState<boolean>(false);
 
   // Refs
   const updateCountRef = useRef(0);
@@ -499,7 +503,7 @@ const MarketDataPage: React.FC = () => {
           background: 'bg-gradient-to-r from-red-500/10 to-red-900/10 border-red-500/40',
           text: 'text-red-400',
           icon: TrendingDown,
-          label: 'Negative Sentiment'
+          label: 'Overall Setinemt : Negative'
         };
       case 'neutral':
       default:
@@ -698,6 +702,32 @@ const MarketDataPage: React.FC = () => {
       }
     };
   }, [selectedSymbol, isClient, selectedDate]);
+
+  useEffect(() => {
+    const fetchSentiment = async () => {
+      if (!selectedSymbol) {
+        setOverallSentiment('NEUTRAL');
+        return;
+      }
+      setIsSentimentFetching(true);
+      try {
+        const sentiment = await sentimentService.fetchSentiment(selectedSymbol);
+        setOverallSentiment(sentiment);
+
+        // Optional: Sync gradient mode if you want the whole UI to react
+        // if (sentiment === 'POSITIVE') setGradientMode('profit');
+        // else if (sentiment === 'NEGATIVE') setGradientMode('loss');
+        // else setGradientMode('neutral');
+
+      } catch (error) {
+        console.error('Failed to fetch sentiment:', error);
+        setOverallSentiment('NEUTRAL');
+      } finally {
+        setIsSentimentFetching(false);
+      }
+    };
+    fetchSentiment();
+  }, [selectedSymbol]);
 
   // ✨ DEBUG: Log prediction data
   useEffect(() => {
@@ -1048,26 +1078,44 @@ const MarketDataPage: React.FC = () => {
                               {formatChange(currentData.change, currentData.changePercent)}
                             </div>
 
+                            {/* ✅ NEW: Dynamic Sentiment Display */}
                             {(() => {
-                              if (sentimentLoading) {
+                              if (isSentimentFetching) {
                                 return (
                                   <div className="mt-3 p-3 rounded-lg border-2 bg-zinc-900/50 border-zinc-800 backdrop-blur-sm">
                                     <div className="flex items-center gap-2">
                                       <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-400"></div>
                                       <span className="text-sm font-medium text-zinc-500">
-                                        Loading Sentiment...
+                                        Fetching Sentiment...
                                       </span>
                                     </div>
                                   </div>
                                 );
                               }
-
-                              const sentiment = getSentimentIndicator(gradientMode);
+                              // Map API sentiment to UI styles
+                              let sentimentStyle = {
+                                background: 'bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40',
+                                text: 'text-zinc-400',
+                                label: 'Overall Sentinemt : Neutral'
+                              };
+                              if (overallSentiment === 'POSITIVE') {
+                                sentimentStyle = {
+                                  background: 'bg-gradient-to-r from-green-500/10 to-green-900/10 border-green-500/40',
+                                  text: 'text-green-400',
+                                  label: 'Overall Sentinemt : Positive'
+                                };
+                              } else if (overallSentiment === 'NEGATIVE') {
+                                sentimentStyle = {
+                                  background: 'bg-gradient-to-r from-red-500/10 to-red-900/10 border-red-500/40',
+                                  text: 'text-red-400',
+                                  label: 'Overall Sentinemt : Negative'
+                                };
+                              }
                               return (
-                                <div className={`mt-3 p-3 rounded-lg border-2 ${sentiment.background} backdrop-blur-sm`}>
+                                <div className={`mt-3 p-3 rounded-lg border-2 ${sentimentStyle.background} backdrop-blur-sm`}>
                                   <div className="flex items-center gap-2">
-                                    <span className={`text-sm font-medium ${sentiment.text}`}>
-                                      {sentiment.label}
+                                    <span className={`text-sm font-medium ${sentimentStyle.text}`}>
+                                      {sentimentStyle.label}
                                     </span>
                                   </div>
                                 </div>

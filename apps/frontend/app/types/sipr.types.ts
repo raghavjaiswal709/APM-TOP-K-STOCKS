@@ -20,7 +20,7 @@ export interface SiprPatternInfo {
   avg_time_minutes: number;     // Average duration in minutes
   time_found_range: string | null;      // e.g., "08:00 - 18:00"
   most_prominent_range: string | null;  // e.g., "14:00 - 15:00"
-  most_frequent_days: string[];          // ✅ NEW: Calculated field
+  most_frequent_days?: string;          // ✅ NEW: Optional field from API v1.0.0
 }
 
 export interface SiprTop3Response {

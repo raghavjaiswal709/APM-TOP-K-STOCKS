@@ -8,6 +8,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: '/api/sentiment/:path*',
+        destination: 'http://100.93.172.21:5717/api/premarket/predictions/:path*',
+      },
+      {
         source: '/api/:path*',
         destination: 'http://localhost:5000/api/:path*', // Adjust to your NestJS port
       },

@@ -119,13 +119,13 @@ export function DesirabilityPanel({ score, classification, loading, onFetch, dat
                                         {config.label}
                                     </div>
                                 </div>
-                                <button
+                                {/* <button
                                     onClick={onFetch}
                                     disabled={loading}
                                     className="px-2 py-1 text-xs bg-[#dbeafe] hover:bg-[#c0e0ff] text-zinc-800 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {loading ? 'Analyzing...' : 'Fetch'}
-                                </button>
+                                </button> */}
                             </div>
                         </div>
 
