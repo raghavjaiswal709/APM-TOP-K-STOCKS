@@ -175,9 +175,8 @@ export class DesirabilityService {
         symbol: string,
         method: string = 'spectral',
     ): Promise<DesirabilityResultDto> {
-        // FORCE THE URL FOR DEBUGGING
-        const baseUrl = 'http://100.93.172.21:8508';
-        const url = `${baseUrl}/desirability/top-pattern/${symbol}?method=${method}&exchange=NSE`;
+        // Use environment variable (now correctly set in .env)
+        const url = `${this.DESIRABILITY_API_URL}/desirability/top-pattern/${symbol}?method=${method}&exchange=NSE`;
 
         this.logger.log(`� [DEBUG] Requesting Desirability Score`);
         this.logger.log(`   👉 URL: ${url}`);
