@@ -128,7 +128,7 @@ const MarketDataPage: React.FC = () => {
   const [backgroundDataPoints, setBackgroundDataPoints] = useState<number>(0);
   const [gradientMode, setGradientMode] = useState<'profit' | 'loss' | 'neutral'>('neutral');
   const [sentimentLoading, setSentimentLoading] = useState(false);
-  const [usefulnessScore, setUsefulnessScore] = useState<number | null>(null);
+  // const [usefulnessScore, setUsefulnessScore] = useState<number | null>(null);
   const [showScoreTooltip, setShowScoreTooltip] = useState(false);
   const [activeTab, setActiveTab] = useState<'live' | 'predictions'>('live');
   const [marketOpen, setMarketOpen] = useState<boolean>(true);
@@ -191,6 +191,7 @@ const MarketDataPage: React.FC = () => {
     classification: desirabilityClassification,
     loading: desirabilityLoading,
     error: desirabilityError,
+    data: desirabilityData, // <--- Add this line
     refetch: refetchDesirability,
   } = useDesirability(selectedSymbol);
 
@@ -287,16 +288,16 @@ const MarketDataPage: React.FC = () => {
     setSelectedSymbol('');
   }, []);
 
-  const handleFetchUsefulnessScore = useCallback(() => {
-    setUsefulnessScore(90);
-  }, []);
+  // const handleFetchUsefulnessScore = useCallback(() => {
+  //   setUsefulnessScore(90);
+  // }, []);
 
-  const getScoreEvaluation = useCallback((score: number) => {
-    if (score >= 80) return { text: 'Great', color: 'text-green-400', bgColor: 'bg-green-500/10', borderColor: 'border-green-500/40' };
-    if (score >= 60) return { text: 'Good', color: 'text-blue-400', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500/40' };
-    if (score >= 40) return { text: 'Average', color: 'text-yellow-400', bgColor: 'bg-yellow-500/10', borderColor: 'border-yellow-500/40' };
-    return { text: 'Poor', color: 'text-red-400', bgColor: 'bg-red-500/10', borderColor: 'border-red-500/40' };
-  }, []);
+  // const getScoreEvaluation = useCallback((score: number) => {
+  //   if (score >= 80) return { text: 'Great', color: 'text-green-400', bgColor: 'bg-green-500/10', borderColor: 'border-green-500/40' };
+  //   if (score >= 60) return { text: 'Good', color: 'text-blue-400', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500/40' };
+  //   if (score >= 40) return { text: 'Average', color: 'text-yellow-400', bgColor: 'bg-yellow-500/10', borderColor: 'border-yellow-500/40' };
+  //   return { text: 'Poor', color: 'text-red-400', bgColor: 'bg-red-500/10', borderColor: 'border-red-500/40' };
+  // }, []);
 
   // ============ EVENT HANDLERS ============
   const handleConnect = useCallback(() => {
@@ -1075,12 +1076,15 @@ const MarketDataPage: React.FC = () => {
 
                             <div className="w-full">
                               {selectedSymbol ? (
-                                <DesirabilityPanel
-                                  score={desirabilityScore}
-                                  classification={desirabilityClassification}
-                                  loading={desirabilityLoading}
-                                  onFetch={handleFetchDesirabilityScore}
-                                />
+                                <div className="mt-4">
+                                  <DesirabilityPanel
+                                    score={desirabilityScore}
+                                    classification={desirabilityClassification}
+                                    loading={desirabilityLoading}
+                                    onFetch={handleFetchDesirabilityScore}
+                                    data={desirabilityData}
+                                  />
+                                </div>
                               ) : (
                                 <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-full flex flex-col items-center justify-center">
                                   <Building2 className="h-12 w-12 text-zinc-600 mb-4" />
@@ -1153,7 +1157,7 @@ const MarketDataPage: React.FC = () => {
 
 
 
-                            <div className="mt-4">
+                            {/* <div className="mt-4">
                               {usefulnessScore === null ? (
                                 <button
                                   onClick={handleFetchUsefulnessScore}
@@ -1195,7 +1199,7 @@ const MarketDataPage: React.FC = () => {
                                   })()}
                                 </div>
                               )}
-                            </div>
+                            </div> */}
                           </div>
                         )}
 

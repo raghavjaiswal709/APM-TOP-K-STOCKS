@@ -6,6 +6,11 @@ import {
     ScoreResponseDto,
     DesirabilityResultDto,
     ClassificationEnum,
+    AnalyzeResponseDto,
+    ClassificationResponseDto,
+    FilterResponseDto,
+    GetDesirableResponseDto,
+    MetricsResponseDto,
 } from '../dto/desirability.dto';
 
 @Injectable()
@@ -21,70 +26,212 @@ export class DesirabilityService {
     }
 
     /**
+     * Health Check
+     * GET /health
+     */
+    async checkHealth(): Promise<any> {
+        try {
+            const response = await firstValueFrom(
+                this.httpService.get(`${this.DESIRABILITY_API_URL}/health`, {
+                    timeout: 5000,
+                }),
+            );
+            return response.data;
+        } catch (error: any) {
+            this.logger.error('❌ Desirability API health check failed:', error.message);
+            return { status: 'unhealthy', error: error.message };
+        }
+    }
+
+    /**
+     * Analyze All Clusters
+     * POST /desirability/analyze/{symbol}
+     */
+    async analyzeAllClusters(
+        symbol: string,
+        method: string = 'spectral',
+        computeAllClusters: boolean = true,
+    ): Promise<AnalyzeResponseDto> {
+        try {
+            const url = `${this.DESIRABILITY_API_URL}/desirability/analyze/${symbol}`;
+            const response = await firstValueFrom(
+                this.httpService.post(url, {
+                    symbol,
+                    method,
+                    compute_all_clusters: computeAllClusters,
+                    exchange: 'NSE' // Defaulting to NSE as per typical usage
+                }, { timeout: this.TIMEOUT }),
+            );
+            return response.data;
+        } catch (error: any) {
+            this.handleError(error, symbol, 'analyzeAllClusters');
+            throw error;
+        }
+    }
+
+    /**
+     * Get Single Cluster Classification
+     * GET /desirability/classification/{symbol}/{cluster_id}
+     */
+    async getClusterClassification(
+        symbol: string,
+        clusterId: number,
+        method: string = 'spectral',
+    ): Promise<ClassificationResponseDto> {
+        try {
+            const url = `${this.DESIRABILITY_API_URL}/desirability/classification/${symbol}/${clusterId}?method=${method}`;
+            const response = await firstValueFrom(
+                this.httpService.get(url, { timeout: this.TIMEOUT }),
+            );
+            return response.data;
+        } catch (error: any) {
+            this.handleError(error, symbol, 'getClusterClassification');
+            throw error;
+        }
+    }
+
+    /**
+     * Filter Patterns by Desirability
+     * POST /desirability/filter-patterns
+     */
+    async filterPatterns(
+        symbol: string,
+        clusterIds: number[],
+        method: string = 'spectral',
+        minThreshold: number = 0.5,
+    ): Promise<FilterResponseDto> {
+        try {
+            const url = `${this.DESIRABILITY_API_URL}/desirability/filter-patterns`;
+            const response = await firstValueFrom(
+                this.httpService.post(url, {
+                    symbol,
+                    cluster_ids: clusterIds,
+                    method,
+                    min_threshold: minThreshold,
+                }, { timeout: this.TIMEOUT }),
+            );
+            return response.data;
+        } catch (error: any) {
+            this.handleError(error, symbol, 'filterPatterns');
+            throw error;
+        }
+    }
+
+    /**
+     * Get Desirable Clusters
+     * POST /desirability/get-desirable
+     */
+    async getDesirableClusters(
+        symbol: string,
+        method: string = 'spectral',
+        minThreshold: number = 0.5,
+    ): Promise<GetDesirableResponseDto> {
+        try {
+            const url = `${this.DESIRABILITY_API_URL}/desirability/get-desirable`;
+            const response = await firstValueFrom(
+                this.httpService.post(url, {
+                    symbol,
+                    method,
+                    min_threshold: minThreshold,
+                }, { timeout: this.TIMEOUT }),
+            );
+            return response.data;
+        } catch (error: any) {
+            this.handleError(error, symbol, 'getDesirableClusters');
+            throw error;
+        }
+    }
+
+    /**
+     * Get Top Pattern Details
+     * GET /desirability/metrics/{symbol}/{cluster_id}
+     */
+    async getTopPatternDetails(
+        symbol: string,
+        clusterId: number,
+        method: string = 'spectral',
+    ): Promise<MetricsResponseDto> {
+        try {
+            const url = `${this.DESIRABILITY_API_URL}/desirability/metrics/${symbol}/${clusterId}?method=${method}`;
+            const response = await firstValueFrom(
+                this.httpService.get(url, { timeout: this.TIMEOUT }),
+            );
+            return response.data;
+        } catch (error: any) {
+            this.handleError(error, symbol, 'getTopPatternDetails');
+            throw error;
+        }
+    }
+
+    /**
      * Fetches the desirability score for a given stock symbol
-     * @param symbol - The stock symbol to analyze
-     * @param method - Optional clustering method (default: 'spectral')
-     * @returns The maximum desirability score and its classification
+     * Updated to use /desirability/top-pattern endpoint
+     */
+    /**
+     * Fetches the desirability score for a given stock symbol
+     * Updated to use /desirability/top-pattern endpoint
      */
     async getDesirabilityScore(
         symbol: string,
         method: string = 'spectral',
     ): Promise<DesirabilityResultDto> {
-        try {
-            const url = `${this.DESIRABILITY_API_URL}/desirability/scores/${symbol}?method=${method}`;
-            this.logger.debug(`🔄 Fetching desirability score from: ${url}`);
+        // FORCE THE URL FOR DEBUGGING
+        const baseUrl = 'http://100.93.172.21:8508';
+        const url = `${baseUrl}/desirability/top-pattern/${symbol}?method=${method}&exchange=NSE`;
 
-            const response: AxiosResponse<ScoreResponseDto> = await firstValueFrom(
-                this.httpService.get(url, {
-                    timeout: this.TIMEOUT,
-                }),
+        this.logger.log(`� [DEBUG] Requesting Desirability Score`);
+        this.logger.log(`   👉 URL: ${url}`);
+        this.logger.log(`   👉 Symbol: ${symbol}`);
+
+        try {
+            const response = await firstValueFrom(
+                this.httpService.get(url, { timeout: this.TIMEOUT }),
             );
 
-            this.logger.debug(`✅ Desirability scores fetched for ${symbol}`);
-
+            this.logger.log(`✅ [DEBUG] Response Status: ${response.status}`);
             const data = response.data;
+            // this.logger.log(`   👉 Data: ${JSON.stringify(data).substring(0, 200)}...`);
 
-            // Find the maximum score across all clusters
-            const scores = data.scores;
-            const scoreEntries = Object.entries(scores);
-
-            if (scoreEntries.length === 0) {
-                this.logger.warn(`⚠️ No scores returned for ${symbol}`);
+            if (!data.top_pattern) {
+                this.logger.warn(`⚠️ [DEBUG] No top_pattern found in response`);
                 return this.createNeutralResponse(symbol, method);
             }
 
-            // Find cluster with maximum score
-            const [maxClusterId, maxScore] = scoreEntries.reduce(
-                (max, current) => (current[1] > max[1] ? current : max),
-                scoreEntries[0],
-            );
-
-            const classification = data.classifications[maxClusterId];
+            const topPattern = data.top_pattern;
 
             this.logger.log(
-                `📊 Max score for ${symbol}: ${maxScore} (cluster ${maxClusterId}, ${classification})`,
+                `📊 Top pattern for ${symbol}: ${topPattern.desirability_score} (cluster ${topPattern.cluster_id}, ${topPattern.classification})`,
             );
 
             return {
-                symbol,
-                maxScore,
-                classification,
-                method,
+                symbol: data.symbol,
+                maxScore: topPattern.desirability_score,
+                classification: topPattern.classification,
+                method: data.method,
                 timestamp: new Date(data.timestamp),
-                rawScores: scores,
-                clusterId: maxClusterId,
+                clusterId: topPattern.cluster_id?.toString(),
+                details: topPattern.details
             };
+
         } catch (error: any) {
-            // Graceful degradation: return neutral response instead of throwing
-            this.logger.error(
-                `❌ Failed to fetch desirability for ${symbol}:`,
-                error.message,
-            );
-            this.logger.warn(
-                `⚠️ Returning neutral response for ${symbol} due to service unavailability`,
-            );
+            this.logger.error(`❌ [DEBUG] Request Failed!`);
+            this.logger.error(`   👉 Error Message: ${error.message}`);
+            if (error.response) {
+                this.logger.error(`   👉 Status: ${error.response.status}`);
+                this.logger.error(`   👉 Data: ${JSON.stringify(error.response.data)}`);
+            } else if (error.request) {
+                this.logger.error(`   👉 No response received (Network Error?)`);
+            }
 
             return this.createNeutralResponse(symbol, method);
+        }
+    }
+
+    private handleError(error: any, symbol: string, method: string) {
+        this.logger.error(`❌ Error in ${method} for ${symbol}: ${error.message}`);
+        if (error.response) {
+            this.logger.error(`   Status: ${error.response.status}`);
+            this.logger.error(`   Data: ${JSON.stringify(error.response.data)}`);
         }
     }
 

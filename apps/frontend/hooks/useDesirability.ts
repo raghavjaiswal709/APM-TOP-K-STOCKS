@@ -1,6 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 
-interface DesirabilityData {
+export interface ClusterDetails {
+    time_above_open_pct: number;
+    slope: number;
+    final_position: number;
+    max_drawdown: number;
+    recovery_time_minutes: number | null;
+    trend_strength: number;
+    pattern_length: number;
+}
+
+export interface DesirabilityData {
     symbol: string;
     maxScore: number | null;
     classification: string | null;
@@ -8,6 +18,7 @@ interface DesirabilityData {
     timestamp: string;
     rawScores?: Record<string, number>;
     clusterId?: string;
+    details?: ClusterDetails;
 }
 
 interface UseDesirabilityReturn {

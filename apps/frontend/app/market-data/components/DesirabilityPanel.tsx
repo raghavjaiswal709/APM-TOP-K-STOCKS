@@ -1,14 +1,22 @@
 'use client';
 
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, AlertTriangle, XCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { TrendingUp, TrendingDown, AlertTriangle, XCircle, Info } from 'lucide-react';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { DesirabilityData } from '@/hooks/useDesirability';
 
 interface DesirabilityPanelProps {
     score: number | null;
     classification: string | null;
     loading: boolean;
     onFetch: () => void;
+    data: DesirabilityData | null;
 }
 
 interface ScoreConfig {
@@ -41,7 +49,7 @@ function getScoreConfig(score: number | null): ScoreConfig {
             borderColor: 'border-green-500/40',
             textColor: 'text-green-300',
             label: 'Highly Desirable',
-            description: 'Strong long opportunity with high confidence',
+            description: 'Strong long opportunity',
             Icon: TrendingUp,
         };
     }
@@ -53,7 +61,7 @@ function getScoreConfig(score: number | null): ScoreConfig {
             borderColor: 'border-yellow-500/40',
             textColor: 'text-yellow-300',
             label: 'Moderately Desirable',
-            description: 'Good opportunity with favorable conditions',
+            description: 'Good opportunity',
             Icon: TrendingUp,
         };
     }
@@ -65,7 +73,7 @@ function getScoreConfig(score: number | null): ScoreConfig {
             borderColor: 'border-orange-500/40',
             textColor: 'text-orange-300',
             label: 'Acceptable',
-            description: 'Marginal opportunity with mixed signals',
+            description: 'Marginal opportunity',
             Icon: AlertTriangle,
         };
     }
@@ -76,23 +84,17 @@ function getScoreConfig(score: number | null): ScoreConfig {
         borderColor: 'border-red-500/40',
         textColor: 'text-red-300',
         label: 'Not Desirable',
-        description: 'Weak structure - avoid or consider inverse',
+        description: 'Weak structure',
         Icon: TrendingDown,
     };
 }
 
-export function DesirabilityPanel({ score, classification, loading, onFetch }: DesirabilityPanelProps) {
+export function DesirabilityPanel({ score, classification, loading, onFetch, data }: DesirabilityPanelProps) {
     const config = getScoreConfig(score);
-    const Icon = config.Icon;
 
     return (
         <Card className="bg-zinc-800 border-zinc-700 h-full flex flex-col">
             <CardHeader className="pb-2 px-4 pt-3 flex flex-row items-center justify-between space-y-0">
-                {/* <CardTitle className="text-sm font-semibold text-white flex items-center gap-1.5">
-                    <Icon className={`h-4 w-4 ${config.color}`} />
-                    Market Desirability
-                </CardTitle> */}
-
             </CardHeader>
             <CardContent className="space-y-2 flex-1">
                 {loading ? (
@@ -134,20 +136,14 @@ export function DesirabilityPanel({ score, classification, loading, onFetch }: D
                             </p>
                         </div>
 
-                        {/* Additional Info - Compact Grid */}
-                        {score !== null && (
+                        {/* Detailed Metrics Grid */}
+                        {data?.details && (
                             <div className="pt-2 border-t border-zinc-700">
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                                    <div className="flex justify-between">
-                                        <span className="text-zinc-500">Method:</span>
-                                        <span className="text-zinc-400">Spectral</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-zinc-500">Confidence:</span>
-                                        <span className={`${config.textColor} font-medium`}>
-                                            {score >= 0.70 ? 'High' : score >= 0.50 ? 'Med' : 'Low'}
-                                        </span>
-                                    </div>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                    <MetricRow label="Trend Strength" value={data.details.trend_strength} tooltip="Overall strength of the trend (0-1)" />
+                                    <MetricRow label="Recovery" value={data.details.recovery_time_minutes} suffix="m" tooltip="Time to recover from dips" />
+                                    <MetricRow label="Drawdown" value={data.details.max_drawdown} suffix="%" tooltip="Maximum percentage drop" />
+                                    <MetricRow label="Slope" value={data.details.slope} tooltip="Normalized price slope" />
                                 </div>
                             </div>
                         )}
@@ -155,5 +151,34 @@ export function DesirabilityPanel({ score, classification, loading, onFetch }: D
                 )}
             </CardContent>
         </Card>
+    );
+}
+
+function MetricRow({ label, value, suffix = '', tooltip }: { label: string, value: number | null | undefined, suffix?: string, tooltip: string }) {
+    if (value === null || value === undefined) return null;
+
+    const displayValue = typeof value === 'number'
+        ? (Math.abs(value) < 0.01 && value !== 0 ? value.toExponential(1) : value.toFixed(2))
+        : value;
+
+    return (
+        <div className="flex justify-between items-center group">
+            <TooltipProvider>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <div className="flex items-center gap-1 cursor-help">
+                            <span className="text-zinc-500">{label}</span>
+                            <Info className="w-3 h-3 text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                        <p>{tooltip}</p>
+                    </TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+            <span className="text-zinc-300 font-medium">
+                {displayValue}{suffix}
+            </span>
+        </div>
     );
 }
