@@ -17,6 +17,7 @@ interface WatchlistSelectorProps {
   showMarkerFilter?: boolean;
   showSentimentFilter?: boolean;
   showDateSelector?: boolean;
+  onFilteredDataChange?: (companies: any[]) => void;
 }
 
 interface ActiveFilters {
@@ -30,6 +31,7 @@ interface ActiveFilters {
 export const WatchlistSelector = React.memo(({ 
   onCompanySelect,
   onDateChange,
+  onFilteredDataChange,
   showExchangeFilter = true,
   showMarkerFilter = true,
   showSentimentFilter = true,
@@ -150,6 +152,12 @@ export const WatchlistSelector = React.memo(({
     console.log(`[WatchlistSelector] Filtered companies: ${filtered.length} out of ${companies.length}`);
     return filtered;
   }, [companies, activeFilters]);
+
+   React.useEffect(() => {
+    if (onFilteredDataChange) {
+      onFilteredDataChange(filteredCompanies);
+    }
+  }, [filteredCompanies, onFilteredDataChange]);
 
   const handleFiltersChange = React.useCallback((filters: ActiveFilters) => {
     console.log(`[WatchlistSelector] Filters changed:`, filters);

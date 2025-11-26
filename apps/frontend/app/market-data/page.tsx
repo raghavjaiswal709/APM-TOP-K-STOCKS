@@ -156,6 +156,7 @@ const MarketDataPage: React.FC = () => {
   const [isSubscribing, setIsSubscribing] = useState(false);
   // Lifted state for date synchronization
   const [currentDate, setCurrentDate] = useState<string | null>(null);
+  const [filteredCompanies, setFilteredCompanies] = useState<any[]>([]);
 
   const {
     companies,
@@ -329,6 +330,7 @@ const MarketDataPage: React.FC = () => {
     setCurrentDate(date);
   }, []);
 
+
   // ============ SUBSCRIPTION HANDLERS ============
 
   const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -394,7 +396,9 @@ const MarketDataPage: React.FC = () => {
       clearTimeout(subscriptionTimeoutRef.current);
     }
 
-    const symbols = companies.map(c =>
+    const targetList = filteredCompanies.length > 0 ? filteredCompanies : companies;
+    
+    const symbols = targetList.map((c: any) =>
       validateAndFormatSymbol(c.company_code, c.exchange, c.marker)
     ).filter(Boolean);
 
@@ -996,6 +1000,7 @@ const MarketDataPage: React.FC = () => {
                       <WatchlistSelector
                         onCompanySelect={handleCompanyChange}
                         onDateChange={handleDateChange}
+                        onFilteredDataChange={setFilteredCompanies} // <--- Pass the setter
                         showExchangeFilter={true}
                         showMarkerFilter={true}
                       />
@@ -1480,7 +1485,8 @@ const MarketDataPage: React.FC = () => {
           <SubscriptionManagerModal
             isOpen={isSubscriptionModalOpen}
             onClose={() => setIsSubscriptionModalOpen(false)}
-            availableCompanies={companies}
+            availableCompanies={companies} // Pass ALL companies (Modal handles filtering)
+            filteredCompanies={filteredCompanies} // <--- Pass filtered list
             currentSubscriptions={Array.from(isSubscribedRef.current)}
             onConfirm={handleSubscribeCompanies}
           />

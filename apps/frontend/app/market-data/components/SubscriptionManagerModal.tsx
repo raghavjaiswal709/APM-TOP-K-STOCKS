@@ -16,6 +16,7 @@ interface SubscriptionManagerModalProps {
     isOpen: boolean;
     onClose: () => void;
     availableCompanies: Company[];
+    filteredCompanies?: Company[]; 
     currentSubscriptions: string[];
     onConfirm: (selectedSymbols: string[]) => Promise<void>;
 }
@@ -24,6 +25,7 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
     isOpen,
     onClose,
     availableCompanies,
+    filteredCompanies,
     currentSubscriptions,
     onConfirm
 }) => {
@@ -68,15 +70,24 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
 
     const subscribedList: Company[] = [];
     const availableList: Company[] = [];
-
+    // 1. Populate Subscribed List (Always from ALL available companies)
     availableCompanies.forEach(company => {
         const symbol = formatSymbol(company);
         if (selectedSymbols.has(symbol)) {
             subscribedList.push(company);
-        } else {
+        }
+    });
+    // 2. Populate Available List (Respect Filters)
+    // If filteredCompanies is provided, use it. Otherwise use availableCompanies.
+    const sourceList = filteredCompanies && filteredCompanies.length > 0 ? filteredCompanies : availableCompanies;
+    sourceList.forEach(company => {
+        const symbol = formatSymbol(company);
+        // Only add if NOT already subscribed (to avoid duplicates)
+        if (!selectedSymbols.has(symbol)) {
             availableList.push(company);
         }
     });
+
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
