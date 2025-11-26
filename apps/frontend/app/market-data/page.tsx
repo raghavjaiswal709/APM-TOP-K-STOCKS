@@ -54,6 +54,15 @@ const PlotlyChart = dynamic(() => import('./components/charts/PlotlyChart'), {
   )
 });
 
+const GttPredictionChart = dynamic(() => import('./components/charts/GttPredictionChart'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-zinc-900">
+      <div className="animate-pulse text-purple-500">Loading GTT Engine...</div>
+    </div>
+  )
+});
+
 interface MarketData {
   symbol: string;
   ltp: number;
@@ -145,6 +154,7 @@ const MarketDataPage: React.FC = () => {
   const frequencyIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const socketRef = useRef<any>(null);
   const isSubscribedRef = useRef<Set<string>>(new Set());
+  const [isGttEnabled, setIsGttEnabled] = useState(false); // New GTT State
 
   const {
     companies,
@@ -872,6 +882,15 @@ const MarketDataPage: React.FC = () => {
                       </span>
                     </div>
                     <button
+                      onClick={() => setIsGttEnabled(!isGttEnabled)}
+                      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${isGttEnabled
+                        ? 'bg-purple-600 text-white hover:bg-purple-700'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                    >
+                      {isGttEnabled ? '⚡ GTT View ON' : '⚡ GTT View OFF'}
+                    </button>
+                    <button
                       onClick={() => setShowPredictions(!showPredictions)}
                       className={`px-3 py-1 rounded text-sm font-medium transition-colors ${showPredictions
                         ? 'bg-blue-600 text-white hover:bg-blue-700'
@@ -975,19 +994,30 @@ const MarketDataPage: React.FC = () => {
                       </div>
                     ) : symbolHistory.length > 0 || symbolChartUpdates.length > 0 ? (
                       <div className="w-full h-full">
-                        <PlotlyChart
-                          symbol={selectedSymbol}
-                          data={currentData}
-                          historicalData={symbolHistory}
-                          ohlcData={symbolOhlc}
-                          chartUpdates={symbolChartUpdates}
-                          tradingHours={tradingHours}
-                          updateFrequency={updateFrequency}
-                          predictions={predictions}
-                          showPredictions={showPredictions}
-                          predictionRevision={predictionRevision}
-                          desirabilityScore={desirabilityScore}
-                        />
+                        {isGttEnabled ? (
+                          <GttPredictionChart
+                            symbol={selectedSymbol}
+                            data={currentData}
+                            historicalData={symbolHistory}
+                            ohlcData={symbolOhlc}
+                            chartUpdates={symbolChartUpdates}
+                            tradingHours={tradingHours}
+                          />
+                        ) : (
+                          <PlotlyChart
+                            symbol={selectedSymbol}
+                            data={currentData}
+                            historicalData={symbolHistory}
+                            ohlcData={symbolOhlc}
+                            chartUpdates={symbolChartUpdates}
+                            tradingHours={tradingHours}
+                            updateFrequency={updateFrequency}
+                            predictions={predictions}
+                            showPredictions={showPredictions}
+                            predictionRevision={predictionRevision}
+                            desirabilityScore={desirabilityScore}
+                          />
+                        )}
                       </div>
                     ) : (
                       <div className="h-full flex items-center justify-center">

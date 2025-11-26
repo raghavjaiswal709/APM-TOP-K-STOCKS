@@ -125,6 +125,8 @@ interface PlotlyChartProps {
     current: string;
     isActive: boolean;
   };
+  isGttEnabled?: boolean;
+  onToggleGtt?: () => void;
 }
 
 const PlotlyChart: React.FC<PlotlyChartProps> = ({
@@ -139,6 +141,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   predictionRevision = 0,     // ✨ CRITICAL: Force re-render counter
   desirabilityScore = null,   // ✨ NEW: Desirability score for dynamic background
   tradingHours,
+  isGttEnabled = false,
+  onToggleGtt,
 }) => {
   const chartRef = useRef<any>(null);
   const spreadChartRef = useRef<any>(null);
@@ -2947,6 +2951,20 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         <div className="flex space-x-4">
           {/* 🔀 Separator Button - Opens Modal with Split View */}
           <div className="flex space-x-1 bg-gradient-to-r from-purple-900 to-indigo-900 p-1 rounded-md border border-purple-600">
+            {/* ✨ NEW: GTT Toggle Button */}
+            <button
+              className={`px-3 py-1 rounded flex items-center space-x-2 transition-all ${isGttEnabled
+                ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white shadow-lg'
+                : 'bg-transparent text-purple-200 hover:bg-purple-800/50'
+                }`}
+              onClick={onToggleGtt}
+              title="Toggle GTT Prediction View"
+            >
+              <span className="text-xs font-bold">GTT</span>
+            </button>
+
+            <div className="w-px h-4 bg-purple-700 my-auto mx-1"></div>
+
             <button
               className="px-3 py-1 rounded bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 flex items-center space-x-2 transition-all"
               onClick={() => setIsSeparatorModalOpen(true)}
