@@ -154,6 +154,33 @@ const MarketDataPage: React.FC = () => {
   // Subscription Management State
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
+  // Lifted state for date synchronization
+  const [currentDate, setCurrentDate] = useState<string | null>(null);
+
+  const {
+    companies,
+    loading: watchlistLoading,
+    error: watchlistError,
+    selectedDate: hookSelectedDate, // Rename to avoid confusion
+    availableDates,
+  } = useWatchlist({ date: currentDate || undefined });
+
+
+// ============ DATE SYNCHRONIZATION LOGIC ============
+  
+  // Determine the effective date (either user-selected or hook-default)
+  const effectiveDate = currentDate || hookSelectedDate;
+  // Calculate the latest available date from the dataset
+  const latestAvailableDate = useMemo(() => {
+    if (!availableDates || availableDates.length === 0) return null;
+    return [...availableDates].sort().reverse()[0];
+  }, [availableDates]);
+  // Determine if the currently selected date is the latest one
+  const isLatestDate = useMemo(() => {
+    if (!effectiveDate || !latestAvailableDate) return true; 
+    return effectiveDate === latestAvailableDate;
+  }, [effectiveDate, latestAvailableDate]);
+  // NOTE: Auto-close effect removed so user can view past data in modal
 
   // Refs
   const updateCountRef = useRef(0);
@@ -163,12 +190,7 @@ const MarketDataPage: React.FC = () => {
   const isSubscribedRef = useRef<Set<string>>(new Set());
   const [isGttEnabled, setIsGttEnabled] = useState(false); // New GTT State
 
-  const {
-    companies,
-    loading: watchlistLoading,
-    error: watchlistError,
-    selectedDate,
-  } = useWatchlist();
+  
 
   // ============ PREDICTION POLLING INTEGRATION ============
   const {
@@ -304,6 +326,7 @@ const MarketDataPage: React.FC = () => {
   //   return { text: 'Poor', color: 'text-red-400', bgColor: 'bg-red-500/10', borderColor: 'border-red-500/40' };
   const handleDateChange = useCallback((date: string) => {
     console.log(`Date changed to: ${date}`);
+    setCurrentDate(date);
   }, []);
 
   // ============ SUBSCRIPTION HANDLERS ============
@@ -311,8 +334,12 @@ const MarketDataPage: React.FC = () => {
   const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleSubscribeCompanies = useCallback(async (symbols: string[]) => {
+    // ✅ STRICT CHECK: Prevent subscription on past dates
+    if (!isLatestDate) {
+      toast.error("Real-time subscriptions are only allowed for the latest market date.");
+      return;
+    }
     if (!symbols || symbols.length === 0) return;
-
     setIsSubscribing(true);
     try {
       console.log(`📤 Sending subscription request for ${symbols.length} symbols`);
@@ -345,9 +372,13 @@ const MarketDataPage: React.FC = () => {
     } finally {
       setIsSubscribing(false);
     }
-  }, []);
+  }, [isLatestDate]);
 
   const handleSubscribeAll = useCallback(() => {
+    if (!isLatestDate) {
+      toast.error("Cannot subscribe to past data.");
+      return;
+    }
     if (isSubscribing) {
       toast.warning("Subscription already in progress");
       return;
@@ -368,7 +399,7 @@ const MarketDataPage: React.FC = () => {
     ).filter(Boolean);
 
     handleSubscribeCompanies(symbols);
-  }, [companies, validateAndFormatSymbol, handleSubscribeCompanies, isSubscribing]);
+  }, [companies, validateAndFormatSymbol, handleSubscribeCompanies, isSubscribing, isLatestDate]);
 
   // ============ EVENT HANDLERS ============
   const handleConnect = useCallback(() => {
@@ -768,7 +799,7 @@ const MarketDataPage: React.FC = () => {
         isSubscribedRef.current.delete(selectedSymbol);
       }
     };
-  }, [selectedSymbol, isClient, selectedDate]);
+  }, [selectedSymbol, isClient, effectiveDate]);
 
   useEffect(() => {
     const fetchSentiment = async () => {
@@ -970,28 +1001,30 @@ const MarketDataPage: React.FC = () => {
                       />
 
                       <div className="flex items-center gap-2 ml-4 border-l pl-4 h-12">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleSubscribeAll}
-                          disabled={isSubscribing || !companies.length}
-                          className="h-9"
-                        >
-                          {isSubscribing ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
-                          ) : (
-                            <ListChecks className="mr-2 h-4 w-4 text-green-500" />
-                          )}
-                          Subscribe All
-                        </Button>
+                        <div title={!isLatestDate ? "Real-time subscription is only available for the latest market date" : ""}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSubscribeAll}
+                            disabled={isSubscribing || !companies.length || !isLatestDate} // <--- Add !isLatestDate
+                            className="h-9"
+                          >
+                            {isSubscribing ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
+                            ) : (
+                              <ListChecks className="mr-2 h-4 w-4 text-green-500" />
+                            )}
+                            Subscribe All
+                          </Button>
+                        </div>
 
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => setIsSubscriptionModalOpen(true)}
-                          disabled={isSubscribing}
+                          disabled={isSubscribing} // Kept enabled for viewing, but action will be blocked
                           className="h-9 w-9"
-                          title="Manage Subscriptions"
+                          title={!isLatestDate ? "View Subscriptions (Read Only)" : "Manage Subscriptions"}
                         >
                           <Settings2 className="h-4 w-4" />
                         </Button>
@@ -1439,7 +1472,7 @@ const MarketDataPage: React.FC = () => {
                   gradientMode={gradientMode}
                   onGradientModeChange={setGradientMode}
                   onSentimentLoadingChange={setSentimentLoading}
-                  selectedDate={selectedDate || undefined}
+                  selectedDate={effectiveDate || undefined} // Use effectiveDate
                 />
               </div>
             </div>

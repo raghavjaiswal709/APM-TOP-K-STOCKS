@@ -16,7 +16,7 @@ interface SubscriptionManagerModalProps {
     isOpen: boolean;
     onClose: () => void;
     availableCompanies: Company[];
-    currentSubscriptions: string[]; // List of symbols e.g. "NSE:RELIANCE-EQ"
+    currentSubscriptions: string[];
     onConfirm: (selectedSymbols: string[]) => Promise<void>;
 }
 
@@ -30,12 +30,15 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
     const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Initialize state from props when modal opens
     useEffect(() => {
-        if (isOpen) {
-            setSelectedSymbols(new Set(currentSubscriptions));
-        }
-    }, [isOpen, currentSubscriptions]);
+    if (isOpen) {
+        // Initialize from current subscriptions when opening
+        setSelectedSymbols(new Set(currentSubscriptions));
+    } else {
+        // Optional: Reset when closing (if needed)
+        // setSelectedSymbols(new Set());
+    }
+}, [isOpen]);
 
     const formatSymbol = (company: Company) => {
         return `${company.exchange}:${company.company_code}-${company.marker || 'EQ'}`;
@@ -63,7 +66,6 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
         }
     };
 
-    // Split companies into subscribed and available
     const subscribedList: Company[] = [];
     const availableList: Company[] = [];
 
@@ -83,15 +85,17 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
                     <DialogTitle>Manage Subscriptions</DialogTitle>
                 </DialogHeader>
 
-                <div className="flex-1 grid grid-cols-2 gap-4 min-h-0">
-                    {/* Top/Left Section: Subscribed */}
-                    <div className="flex flex-col border rounded-md p-4 bg-zinc-900/50">
-                        <h3 className="font-semibold mb-3 flex items-center gap-2 text-green-400">
+                {/* ✅ FIXED: Added overflow-hidden and proper height constraints */}
+                <div className="flex-1 grid grid-cols-2 gap-4 min-h-0 overflow-hidden">
+                    {/* Subscribed Section */}
+                    <div className="flex flex-col border rounded-md p-4 bg-zinc-900/50 min-h-0 overflow-hidden">
+                        <h3 className="font-semibold mb-3 flex items-center gap-2 text-green-400 flex-shrink-0">
                             <Check className="w-4 h-4" />
                             To Subscribe / Subscribed ({subscribedList.length})
                         </h3>
-                        <ScrollArea className="flex-1 pr-4">
-                            <div className="flex flex-wrap gap-2">
+                        {/* ✅ FIXED: Added explicit height calculation and proper className */}
+                        <ScrollArea className="flex-1 min-h-0 h-full">
+                            <div className="flex flex-wrap gap-2 pr-4">
                                 {subscribedList.length === 0 && (
                                     <p className="text-sm text-muted-foreground italic w-full text-center py-8">
                                         No companies selected. Click companies from the available list to add them.
@@ -112,14 +116,15 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
                         </ScrollArea>
                     </div>
 
-                    {/* Bottom/Right Section: Available */}
-                    <div className="flex flex-col border rounded-md p-4 bg-zinc-900/50">
-                        <h3 className="font-semibold mb-3 flex items-center gap-2 text-blue-400">
+                    {/* Available Section */}
+                    <div className="flex flex-col border rounded-md p-4 bg-zinc-900/50 min-h-0 overflow-hidden">
+                        <h3 className="font-semibold mb-3 flex items-center gap-2 text-blue-400 flex-shrink-0">
                             <Plus className="w-4 h-4" />
                             Available Companies ({availableList.length})
                         </h3>
-                        <ScrollArea className="flex-1 pr-4">
-                            <div className="flex flex-wrap gap-2">
+                        {/* ✅ FIXED: Same fixes applied here */}
+                        <ScrollArea className="flex-1 min-h-0 h-full">
+                            <div className="flex flex-wrap gap-2 pr-4">
                                 {availableList.length === 0 && (
                                     <p className="text-sm text-muted-foreground italic w-full text-center py-8">
                                         All companies selected.
@@ -141,7 +146,7 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
                     </div>
                 </div>
 
-                <DialogFooter className="mt-4">
+                <DialogFooter className="mt-4 flex-shrink-0">
                     <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
                         Cancel
                     </Button>
