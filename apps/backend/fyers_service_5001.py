@@ -80,9 +80,10 @@ def extract_jwt_token(full_token):
 
 def initialize_fyers():
     """Initialize Fyers client and WebSocket with auto authentication."""
-    global fyers_client, fyers, auth_initialized
+    global fyers_client, fyers, auth_initialized, client_id
     
-    auth_file_path = os.path.join('data', 'fyers_data_auth.json')
+    auth_file_path = os.path.abspath(os.path.join('data', 'fyers_data_auth.json'))
+    logger.info(f"📂 Checking auth file at: {auth_file_path}")
     
     try:
         if not os.path.exists(auth_file_path):
@@ -106,10 +107,18 @@ def initialize_fyers():
         if not full_access_token:
             logger.warning("⚠️ No access token found in auth file")
             return False
+
+        # ✅ Use client_id from file if not in env
+        if not client_id and auth_data.get('client_id'):
+            client_id = auth_data.get('client_id')
+            logger.info(f"🔑 Using client_id from auth file: {client_id}")
+        
+        if not client_id:
+            logger.error("❌ Client ID is missing (not in env or auth file)")
+            return False
         
         jwt_token = extract_jwt_token(full_access_token)
         logger.info(f"🔍 JWT token: {jwt_token[:30]}...")
-        logger.info(f"🔍 Full token: {full_access_token[:30]}...")
         
         # Initialize REST API client
         try:
@@ -127,11 +136,11 @@ def initialize_fyers():
                 logger.info(f"✅ REST API client initialized - User: {user_name}")
             else:
                 logger.error(f"❌ REST API test failed: {response}")
-                return False
+                # Don't return False yet, try WebSocket anyway as it might work
                 
         except Exception as e:
             logger.error(f"❌ REST client error: {e}")
-            return False
+            # Continue to try WebSocket
         
         # Initialize WebSocket client
         try:
@@ -153,6 +162,7 @@ def initialize_fyers():
         except Exception as e:
             logger.error(f"❌ WebSocket initialization error: {e}")
             fyers = None
+            return False
         
         auth_initialized = True
         return True
@@ -541,6 +551,70 @@ def unsubscribe(sid, data):
             # Note: We intentionally don't unsubscribe from Fyers to keep background collection
 
     return {'success': True, 'symbol': symbol}
+
+
+@sio.event
+def subscribe_companies(sid, data, **kwargs):  # ✅ Accept extra params
+    """Subscribe to multiple companies at once - FIXED VERSION."""
+    symbols = data.get('symbols', [])
+    
+    # Input validation
+    if not symbols or not isinstance(symbols, list):
+        return {'success': False, 'error': 'No symbols list provided'}
+
+    if not auth_initialized:
+        return {'success': False, 'error': 'Authentication not initialized'}
+
+    logger.info(f"📥 Client {sid} subscribing to {len(symbols)} symbols")
+
+    try:
+        # ✅ Process in smaller batches to avoid blocking
+        BATCH_SIZE = 10
+        subscribed_count = 0
+        
+        for i in range(0, len(symbols), BATCH_SIZE):
+            batch = symbols[i:i + BATCH_SIZE]
+            
+            for symbol in batch:
+                clients[sid]['subscriptions'].add(symbol)
+                if symbol not in symbol_to_clients:
+                    symbol_to_clients[symbol] = set()
+                symbol_to_clients[symbol].add(sid)
+                
+                symbol_subscriptions[symbol] += 1
+                active_symbols.add(symbol)
+                subscribed_count += 1
+            
+            # ✅ Yield control back to eventlet every batch
+            eventlet.sleep(0)
+
+        # ✅ Subscribe to Fyers in background (non-blocking)
+        if fyers and hasattr(fyers, 'subscribe'):
+            def do_fyers_subscribe():
+                try:
+                    fyers.subscribe(symbols=symbols, data_type="SymbolUpdate")
+                    logger.info(f"✅ Fyers subscription completed for {len(symbols)} symbols")
+                except Exception as e:
+                    logger.error(f"❌ Fyers subscription error: {e}")
+            
+            # ✅ Spawn background task
+            eventlet.spawn(do_fyers_subscribe)
+        else:
+            logger.warning("⚠️ Fyers instance not ready")
+            return {'success': False, 'error': 'Fyers WebSocket not ready'}
+
+        # ✅ Return response (automatically sent as acknowledgment)
+        return {
+            'success': True, 
+            'count': subscribed_count, 
+            'message': f'Successfully subscribed to {subscribed_count} companies'
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error in subscribe_companies: {e}")
+        import traceback
+        traceback.print_exc()
+        return {'success': False, 'error': str(e)}
 
 
 @sio.event

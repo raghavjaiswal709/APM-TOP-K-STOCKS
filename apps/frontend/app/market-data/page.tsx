@@ -31,6 +31,10 @@ import { fetchHistoricalData, detectDataGaps } from "@/lib/historicalDataFetcher
 import { useDesirability } from "@/hooks/useDesirability";
 import { DesirabilityPanel } from "./components/DesirabilityPanel";
 import { sentimentService } from '@/app/services/sentimentService';
+import { SubscriptionManagerModal } from "./components/SubscriptionManagerModal";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { ListChecks, Settings2 } from 'lucide-react';
 
 
 // Prediction Integration
@@ -147,6 +151,9 @@ const MarketDataPage: React.FC = () => {
   const [historicalDataStatus, setHistoricalDataStatus] = useState<string>('');
   const [overallSentiment, setOverallSentiment] = useState<string>('NEUTRAL');
   const [isSentimentFetching, setIsSentimentFetching] = useState<boolean>(false);
+  // Subscription Management State
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [isSubscribing, setIsSubscribing] = useState(false);
 
   // Refs
   const updateCountRef = useRef(0);
@@ -290,28 +297,78 @@ const MarketDataPage: React.FC = () => {
       setSelectedSymbol('');
     }
   }, [validateAndFormatSymbol]);
-
-  const handleDateChange = useCallback((date: string) => {
-    console.log(`Date changed to: ${date}`);
-  }, []);
-
-  const handleWatchlistChange = useCallback((watchlist: string) => {
-    console.log(`Watchlist changed to: ${watchlist}`);
-    setSelectedWatchlist(watchlist);
-    setSelectedCompany(null);
-    setSelectedSymbol('');
-  }, []);
-
-  // const handleFetchUsefulnessScore = useCallback(() => {
-  //   setUsefulnessScore(90);
-  // }, []);
-
   // const getScoreEvaluation = useCallback((score: number) => {
   //   if (score >= 80) return { text: 'Great', color: 'text-green-400', bgColor: 'bg-green-500/10', borderColor: 'border-green-500/40' };
   //   if (score >= 60) return { text: 'Good', color: 'text-blue-400', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500/40' };
   //   if (score >= 40) return { text: 'Average', color: 'text-yellow-400', bgColor: 'bg-yellow-500/10', borderColor: 'border-yellow-500/40' };
   //   return { text: 'Poor', color: 'text-red-400', bgColor: 'bg-red-500/10', borderColor: 'border-red-500/40' };
-  // }, []);
+  const handleDateChange = useCallback((date: string) => {
+    console.log(`Date changed to: ${date}`);
+  }, []);
+
+  // ============ SUBSCRIPTION HANDLERS ============
+
+  const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleSubscribeCompanies = useCallback(async (symbols: string[]) => {
+    if (!symbols || symbols.length === 0) return;
+
+    setIsSubscribing(true);
+    try {
+      console.log(`📤 Sending subscription request for ${symbols.length} symbols`);
+
+      const response = await fetch('/api/market-data/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ symbols }),
+      });
+
+      // ✅ Extract error details from response
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error('❌ Subscription failed:', result);
+        throw new Error(result.error || result.message || 'Failed to subscribe');
+      }
+
+      console.log('✅ Subscription successful:', result);
+      toast.success(`Successfully subscribed to ${result.count} companies`);
+
+      // Optimistically update subscribed set
+      symbols.forEach(s => isSubscribedRef.current.add(s));
+
+    } catch (error: any) {
+      console.error('❌ Subscription error:', error);
+      toast.error(error.message || 'Failed to update subscriptions');
+    } finally {
+      setIsSubscribing(false);
+    }
+  }, []);
+
+  const handleSubscribeAll = useCallback(() => {
+    if (isSubscribing) {
+      toast.warning("Subscription already in progress");
+      return;
+    }
+
+    if (!companies || companies.length === 0) {
+      toast.error("No companies available");
+      return;
+    }
+
+    // ✅ Clear any pending subscription
+    if (subscriptionTimeoutRef.current) {
+      clearTimeout(subscriptionTimeoutRef.current);
+    }
+
+    const symbols = companies.map(c =>
+      validateAndFormatSymbol(c.company_code, c.exchange, c.marker)
+    ).filter(Boolean);
+
+    handleSubscribeCompanies(symbols);
+  }, [companies, validateAndFormatSymbol, handleSubscribeCompanies, isSubscribing]);
 
   // ============ EVENT HANDLERS ============
   const handleConnect = useCallback(() => {
@@ -904,12 +961,42 @@ const MarketDataPage: React.FC = () => {
 
                 <div className="p-3 border border-opacity-30 rounded-md h-24 flex items-center justify-between">
                   <div className="flex-1">
-                    <WatchlistSelector
-                      onCompanySelect={handleCompanyChange}
-                      onDateChange={handleDateChange}
-                      showExchangeFilter={true}
-                      showMarkerFilter={true}
-                    />
+                    <div className="flex items-center gap-4">
+                      <WatchlistSelector
+                        onCompanySelect={handleCompanyChange}
+                        onDateChange={handleDateChange}
+                        showExchangeFilter={true}
+                        showMarkerFilter={true}
+                      />
+
+                      <div className="flex items-center gap-2 ml-4 border-l pl-4 h-12">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSubscribeAll}
+                          disabled={isSubscribing || !companies.length}
+                          className="h-9"
+                        >
+                          {isSubscribing ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
+                          ) : (
+                            <ListChecks className="mr-2 h-4 w-4 text-green-500" />
+                          )}
+                          Subscribe All
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setIsSubscriptionModalOpen(true)}
+                          disabled={isSubscribing}
+                          className="h-9 w-9"
+                          title="Manage Subscriptions"
+                        >
+                          <Settings2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                     {isLoadingHistorical && (
                       <div className="mt-2 flex items-center gap-2 text-xs text-blue-400">
                         <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-400"></div>
@@ -1357,6 +1444,13 @@ const MarketDataPage: React.FC = () => {
               </div>
             </div>
           </div>
+          <SubscriptionManagerModal
+            isOpen={isSubscriptionModalOpen}
+            onClose={() => setIsSubscriptionModalOpen(false)}
+            availableCompanies={companies}
+            currentSubscriptions={Array.from(isSubscribedRef.current)}
+            onConfirm={handleSubscribeCompanies}
+          />
         </div>
       </SidebarInset>
     </SidebarProvider>
