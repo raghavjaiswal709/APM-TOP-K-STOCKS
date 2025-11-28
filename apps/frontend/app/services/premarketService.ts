@@ -130,7 +130,7 @@ class PremarketService {
             return this.createEmptyHeadlinesResponse(stockCode);
           }
           if (onDiskResponse.status >= 500) {
-            console.error(`❌ Server error (${onDiskResponse.status}) for ${stockCode}, returning empty data`);
+            console.warn(`⚠️ Server error (${onDiskResponse.status}) for ${stockCode}, returning empty data`);
             return this.createEmptyHeadlinesResponse(stockCode);
           }
           throw new Error(`HTTP ${onDiskResponse.status}: ${onDiskResponse.statusText}`);
@@ -143,7 +143,7 @@ class PremarketService {
 
       // Handle server errors (500+) gracefully
       if (cachedResponse.status >= 500) {
-        console.error(`❌ Server error (${cachedResponse.status}) for ${stockCode}, returning empty data`);
+        console.warn(`⚠️ Server error (${cachedResponse.status}) for ${stockCode}, returning empty data`);
         return this.createEmptyHeadlinesResponse(stockCode);
       }
 
@@ -214,7 +214,7 @@ class PremarketService {
             return this.createNeutralPrediction(stockCode);
           }
           if (onDemandResponse.status >= 500) {
-            console.error(`❌ Server error (${onDemandResponse.status}) for ${stockCode}, returning neutral prediction`);
+            console.warn(`⚠️ Server error (${onDemandResponse.status}) for ${stockCode}, returning neutral prediction`);
             return this.createNeutralPrediction(stockCode);
           }
           throw new Error(`HTTP ${onDemandResponse.status}: ${onDemandResponse.statusText}`);
@@ -227,7 +227,7 @@ class PremarketService {
 
       // Handle server errors (500+) gracefully
       if (cachedResponse.status >= 500) {
-        console.error(`❌ Server error (${cachedResponse.status}) for ${stockCode}, returning neutral prediction`);
+        console.warn(`⚠️ Server error (${cachedResponse.status}) for ${stockCode}, returning neutral prediction`);
         return this.createNeutralPrediction(stockCode);
       }
 
@@ -334,6 +334,16 @@ class PremarketService {
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error(`No charts found for ${stockCode}`);
+        }
+        if (response.status >= 500) {
+          console.warn(`⚠️ Server error (${response.status}) listing charts for ${stockCode}, returning empty list`);
+          return {
+            stock_ticker: stockCode,
+            date: date || new Date().toISOString().split('T')[0],
+            intraday_charts: [],
+            interday_charts: [],
+            total_charts: 0
+          };
         }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }

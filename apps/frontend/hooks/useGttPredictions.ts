@@ -1,102 +1,154 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { gttService, type GttStockHistoryResponse, type GttPrediction } from '@/app/services/gttService';
 
-export interface GttPrediction {
-    prediction_time: string;
-    input_close: number;
-    H1_pred: number;
-    H2_pred: number;
-    H3_pred: number;
-    H4_pred: number;
-    H5_pred: number;
-    timestamp: string;
-}
-
-export interface GttStockResponse {
+interface UseGttPredictionsOptions {
     symbol: string;
-    total_predictions: number;
-    predictions: GttPrediction[];
-    latest: GttPrediction;
+    enabled: boolean;
+    autoRefresh?: boolean;
+    refreshInterval?: number; // milliseconds
 }
 
-interface UseGttPredictionsResult {
-    predictions: GttStockResponse | null;
+interface UseGttPredictionsReturn {
+    predictions: GttStockHistoryResponse | null;
+    latestPrediction: GttPrediction | null;
     loading: boolean;
     error: string | null;
+    isHealthy: boolean;
     refetch: () => Promise<void>;
+    clearCache: () => void;
 }
 
-export const useGttPredictions = (symbol: string, isEnabled: boolean): UseGttPredictionsResult => {
-    const [predictions, setPredictions] = useState<GttStockResponse | null>(null);
+export function useGttPredictions({
+    symbol,
+    enabled,
+    autoRefresh = false,
+    refreshInterval = 5 * 60 * 1000 // 5 minutes default
+}: UseGttPredictionsOptions): UseGttPredictionsReturn {
+
+    const [predictions, setPredictions] = useState<GttStockHistoryResponse | null>(null);
+    const [latestPrediction, setLatestPrediction] = useState<GttPrediction | null>(null);
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-    const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const [isHealthy, setIsHealthy] = useState<boolean>(false);
 
+    const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const isMountedRef = useRef<boolean>(true);
+
+    // ============ FETCH PREDICTIONS ============
     const fetchPredictions = useCallback(async () => {
-        if (!symbol) return;
-
-        // Don't set loading to true on background polls to avoid UI flickering
-        // Only set it on initial fetch if data is missing
-        if (!predictions) {
-            setLoading(true);
+        if (!symbol || !enabled) {
+            return;
         }
+
+        setLoading(true);
+        setError(null);
 
         try {
-            // Use the NestJS proxy endpoint
-            // Assuming the backend is running on port 5000 and proxied via Next.js or directly accessible
-            // Since this is a client-side hook, we should use the Next.js API route or the backend URL directly.
-            // Based on context, the backend is on port 5000. 
-            // We'll try to use a relative path if Next.js rewrites are set up, or the full URL.
-            // Given the user instructions "Backend: Create a NestJS proxy module... Frontend: Poll the backend /gtt/stock/:symbol",
-            // I will assume the frontend can hit the backend directly or via proxy.
-            // I'll use the environment variable if available, or default to localhost:5000 for dev.
+            console.log(`🔮 [useGttPredictions] Fetching for ${symbol}`);
+            const data = await gttService.fetchPredictions(symbol);
 
-            const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-            const cleanSymbol = symbol.replace('NSE:', '').replace('-EQ', ''); // Adjust symbol format if needed by GTT
+            if (!isMountedRef.current) return;
 
-            // The user's backend service expects "NSE:RELIANCE-EQ" or similar? 
-            // The GttService calls `${this.GTT_ENGINE_URL}/api/predictions/stock/${symbol}`.
-            // The GTT engine likely expects the full symbol or a specific format.
-            // I'll pass the symbol as is for now, assuming the backend or GTT handles it.
-
-            const response = await fetch(`${backendUrl}/gtt/stock/${encodeURIComponent(symbol)}`);
-
-            if (!response.ok) {
-                throw new Error(`Error fetching predictions: ${response.statusText}`);
-            }
-
-            const data: GttStockResponse = await response.json();
             setPredictions(data);
-            setError(null);
-        } catch (err: any) {
-            console.error('Failed to fetch GTT predictions:', err);
-            setError(err.message || 'Failed to fetch predictions');
-        } finally {
-            setLoading(false);
-        }
-    }, [symbol, predictions]);
+            setLatestPrediction(data.predictions[data.predictions.length - 1] || null);
+            setIsHealthy(true);
 
-    useEffect(() => {
-        if (!isEnabled || !symbol) {
+            console.log(`✅ [useGttPredictions] Loaded ${data.count} predictions for ${symbol}`);
+        } catch (err: any) {
+            if (!isMountedRef.current) return;
+
+            const errorMessage = err.message || 'Failed to load GTT predictions';
+            setError(errorMessage);
             setPredictions(null);
-            if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current);
-                pollIntervalRef.current = null;
+            setLatestPrediction(null);
+            setIsHealthy(false);
+
+            console.error(`❌ [useGttPredictions] Error:`, errorMessage);
+        } finally {
+            if (isMountedRef.current) {
+                setLoading(false);
+            }
+        }
+    }, [symbol, enabled]);
+
+    // ============ HEALTH CHECK ============
+    const checkHealth = useCallback(async () => {
+        try {
+            const healthy = await gttService.healthCheck();
+            if (isMountedRef.current) {
+                setIsHealthy(healthy);
+            }
+        } catch {
+            if (isMountedRef.current) {
+                setIsHealthy(false);
+            }
+        }
+    }, []);
+
+    // ============ CLEAR CACHE ============
+    const clearCache = useCallback(() => {
+        gttService.clearCache(symbol);
+        setPredictions(null);
+        setLatestPrediction(null);
+    }, [symbol]);
+
+    // ============ EFFECTS ============
+
+    // Initial fetch + health check
+    useEffect(() => {
+        if (enabled && symbol) {
+            checkHealth();
+            fetchPredictions();
+        } else {
+            // Reset state when disabled
+            setPredictions(null);
+            setLatestPrediction(null);
+            setError(null);
+        }
+    }, [symbol, enabled, fetchPredictions, checkHealth]);
+
+    // Auto-refresh logic
+    useEffect(() => {
+        if (!enabled || !autoRefresh || !symbol) {
+            if (refreshTimerRef.current) {
+                clearInterval(refreshTimerRef.current);
+                refreshTimerRef.current = null;
             }
             return;
         }
 
-        // Initial fetch
-        fetchPredictions();
+        console.log(`🔄 [useGttPredictions] Auto-refresh enabled (${refreshInterval}ms)`);
 
-        // Start polling every 45 seconds
-        pollIntervalRef.current = setInterval(fetchPredictions, 45000);
+        refreshTimerRef.current = setInterval(() => {
+            console.log(`🔄 [useGttPredictions] Auto-refreshing predictions`);
+            fetchPredictions();
+        }, refreshInterval);
 
         return () => {
-            if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current);
+            if (refreshTimerRef.current) {
+                clearInterval(refreshTimerRef.current);
+                refreshTimerRef.current = null;
             }
         };
-    }, [isEnabled, symbol, fetchPredictions]);
+    }, [enabled, autoRefresh, refreshInterval, symbol, fetchPredictions]);
 
-    return { predictions, loading, error, refetch: fetchPredictions };
-};
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            isMountedRef.current = false;
+            if (refreshTimerRef.current) {
+                clearInterval(refreshTimerRef.current);
+            }
+        };
+    }, []);
+
+    return {
+        predictions,
+        latestPrediction,
+        loading,
+        error,
+        isHealthy,
+        refetch: fetchPredictions,
+        clearCache
+    };
+}

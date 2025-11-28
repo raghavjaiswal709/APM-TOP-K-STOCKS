@@ -30,8 +30,12 @@ export const sentimentService = {
             }
 
             return 'NEUTRAL';
-        } catch (error) {
-            console.error(`Error fetching sentiment for ${cleanTicker}:`, error);
+        } catch (error: any) {
+            if (axios.isAxiosError(error) && error.response?.status && error.response.status >= 500) {
+                console.warn(`⚠️ Sentiment service error (${error.response.status}) for ${cleanTicker}, defaulting to NEUTRAL`);
+            } else {
+                console.error(`Error fetching sentiment for ${cleanTicker}:`, error);
+            }
             return 'NEUTRAL';
         }
     }

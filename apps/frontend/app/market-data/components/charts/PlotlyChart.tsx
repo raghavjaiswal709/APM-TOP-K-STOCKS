@@ -1,7 +1,11 @@
 'use client';
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+
 import Plot from 'react-plotly.js';
 import { ChevronRight, TrendingUp, BarChart3, LineChart, CandlestickChart, ArrowLeftRight, ShoppingCart, TrendingDown, Maximize2, X } from 'lucide-react';
+import { gttService, type GttPrediction } from '@/app/services/gttService';
+import { toast } from 'sonner';
+import { Zap } from 'lucide-react';
 
 // Add Plotly import for restyle operations
 declare const Plotly: any;
@@ -125,8 +129,8 @@ interface PlotlyChartProps {
     current: string;
     isActive: boolean;
   };
-  isGttEnabled?: boolean;
-  onToggleGtt?: () => void;
+  // isGttEnabled?: boolean;
+  // onToggleGtt?: () => void;
 }
 
 const PlotlyChart: React.FC<PlotlyChartProps> = ({
@@ -141,8 +145,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   predictionRevision = 0,     // ✨ CRITICAL: Force re-render counter
   desirabilityScore = null,   // ✨ NEW: Desirability score for dynamic background
   tradingHours,
-  isGttEnabled = false,
-  onToggleGtt,
+  // isGttEnabled = false,
+  // onToggleGtt,
 }) => {
   const chartRef = useRef<any>(null);
   const spreadChartRef = useRef<any>(null);
@@ -155,6 +159,54 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const [initialized, setInitialized] = useState(false);
   // ✅ DEFAULT: Show 1 hour view
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1H');
+
+  const [isGttMode, setIsGttMode] = useState(false);
+  const [gttPredictions, setGttPredictions] = useState<GttPrediction[]>([]);
+  const [isLoadingGtt, setIsLoadingGtt] = useState(false);
+  const [gttError, setGttError] = useState<string | null>(null);
+  const lastSymbolRef = useRef<string>('');
+
+  const handleGttToggle = useCallback(async () => {
+    const newGttMode = !isGttMode;
+    setIsGttMode(newGttMode);
+    if (newGttMode) {
+      // Force candlestick mode when GTT is enabled
+      setChartType('candle');
+
+      // Fetch GTT predictions
+      setIsLoadingGtt(true);
+      setGttError(null);
+
+      try {
+        const response = await gttService.fetchPredictions(symbol);
+
+        if (response.success && response.predictions.length > 0) {
+          setGttPredictions(response.predictions);
+          toast.success(`Loaded ${response.count} GTT predictions for ${symbol}`);
+        } else {
+          throw new Error('No predictions available');
+        }
+      } catch (error: any) {
+        console.error('[GTT Toggle] Error:', error);
+        setGttError(error.message);
+        toast.error(`GTT Error: ${error.message}`);
+        setIsGttMode(false); // Revert toggle on error
+      } finally {
+        setIsLoadingGtt(false);
+      }
+    } else {
+      // Clear GTT data when disabled
+      setGttPredictions([]);
+      setGttError(null);
+    }
+  }, [isGttMode, symbol]);
+  // ============ AUTO-REFRESH GTT when symbol changes ============
+  useEffect(() => {
+    if (isGttMode && symbol !== lastSymbolRef.current) {
+      lastSymbolRef.current = symbol;
+      handleGttToggle(); // Re-fetch for new symbol
+    }
+  }, [symbol, isGttMode]);
 
   // const [chartType, setChartType] = useState<'line' | 'candle'>('candle');
   const [chartType, setChartType] = useState<'line' | 'candle'>('line');
@@ -189,7 +241,57 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   // � Track prediction revision changes
   useEffect(() => {
     console.log(`🔄 [PREDICTION REVISION CHANGE] predictionRevision=${predictionRevision}, predictionKey=${predictionKey}`);
+
+
   }, [predictionRevision, predictionKey]);
+
+  // ✅ GTT Prediction Traces (New Logic)
+  const gttTraces = useMemo(() => {
+    if (!isGttMode || gttPredictions.length === 0) return [];
+
+    const traces: any[] = [];
+    const latestPrediction = gttPredictions[gttPredictions.length - 1];
+    const baseTime = latestPrediction.timestamp * 1000;
+    // Current price marker
+    traces.push({
+      type: 'scatter',
+      mode: 'markers',
+      x: [new Date(baseTime)],
+      y: [latestPrediction.input_close],
+      name: 'Current Price',
+      marker: { size: 12, color: '#8b5cf6', symbol: 'circle' },
+    });
+    // H1-H5 prediction lines (extending into future)
+    const predictionHorizons = [
+      { label: 'H1 (+15m)', value: latestPrediction.H1_pred, offset: 15 * 60 * 1000, color: '#10b981' },
+      { label: 'H2 (+30m)', value: latestPrediction.H2_pred, offset: 30 * 60 * 1000, color: '#3b82f6' },
+      { label: 'H3 (+45m)', value: latestPrediction.H3_pred, offset: 45 * 60 * 1000, color: '#f59e0b' },
+      { label: 'H4 (+60m)', value: latestPrediction.H4_pred, offset: 60 * 60 * 1000, color: '#ef4444' },
+      { label: 'H5 (+75m)', value: latestPrediction.H5_pred, offset: 75 * 60 * 1000, color: '#8b5cf6' },
+    ];
+    predictionHorizons.forEach(({ label, value, offset, color }) => {
+      traces.push({
+        type: 'scatter',
+        mode: 'lines+markers',
+        x: [new Date(baseTime), new Date(baseTime + offset)],
+        y: [latestPrediction.input_close, value],
+        name: label,
+        line: { color, width: 2, dash: 'dash' },
+        marker: { size: 8, color },
+      });
+    });
+    // Add annotation for GTT overlay
+    traces.push({
+      type: 'scatter',
+      mode: 'text',
+      x: [new Date(baseTime + 37.5 * 60 * 1000)], // Middle of prediction range
+      y: [Math.max(...predictionHorizons.map(h => h.value)) * 1.02],
+      text: ['GTT AI Predictions'],
+      textfont: { size: 14, color: '#8b5cf6', family: 'Arial Black' },
+      showlegend: false,
+    });
+    return traces;
+  }, [isGttMode, gttPredictions]);
 
   // �🔀 Separator Modal State
   const [isSeparatorModalOpen, setIsSeparatorModalOpen] = useState(false);
@@ -663,9 +765,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
 
     // ✅ CRITICAL: Include ALL predictions within the time range
-    if (showPredictions && predictions && predictions.count > 0) {
-      const predictionEntries = Object.entries(predictions.predictions);
-
+    const predictionsToUse = isGttMode ? gttPredictions : (showPredictions ? predictions : null);
+    if (predictionsToUse && predictionsToUse.count > 0) {
+      const predictionEntries = Object.entries(predictionsToUse.predictions);
       const predictionPrices = predictionEntries
         .map(([key, pred]) => {
           const predTime = new Date(pred.timestamp || key).getTime() / 1000;
@@ -863,8 +965,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
 
     // ✅ STEP 3: Extend end time if predictions go beyond the buffer
-    if (showPredictions && predictions && predictions.count > 0) {
-      const predictionEntries = Object.entries(predictions.predictions);
+    const predictionsToUse = isGttMode ? gttPredictions : (showPredictions ? predictions : null);
+    if (predictionsToUse && predictionsToUse.count > 0) {
+      const predictionEntries = Object.entries(predictionsToUse.predictions);
       if (predictionEntries.length > 0) {
         const predictionTimes = predictionEntries.map(([key, pred]) =>
           new Date(pred.timestamp || key).getTime()
@@ -1351,7 +1454,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     mainMode,
     secondaryView,
     lineChartData,
-    candlestickData
+    candlestickData,
+    // ✅ CRITICAL FIX: Add GTT dependencies so chart updates on toggle
+    isGttMode,
+    gttTraces
   ]);
 
   // 🔀 CREATE ACTUAL DATA ONLY (No predictions for separator modal left side)
@@ -1418,7 +1524,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       }
     }
 
-    return plotData;
+    return [...plotData, ...gttTraces];
   };
 
   // 🔮 CREATE PREDICTION DATA ONLY (for separator modal right side)
@@ -2953,14 +3059,20 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           <div className="flex space-x-1 bg-gradient-to-r from-purple-900 to-indigo-900 p-1 rounded-md border border-purple-600">
             {/* ✨ NEW: GTT Toggle Button */}
             <button
-              className={`px-3 py-1 rounded flex items-center space-x-2 transition-all ${isGttEnabled
-                ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white shadow-lg'
+              onClick={handleGttToggle}
+              disabled={isLoadingGtt}
+              className={`px-3 py-1 rounded flex items-center space-x-2 transition-all ${isGttMode
+                ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-500/50'
                 : 'bg-transparent text-purple-200 hover:bg-purple-800/50'
-                }`}
-              onClick={onToggleGtt}
-              title="Toggle GTT Prediction View"
+                } ${isLoadingGtt ? 'opacity-50 cursor-wait' : ''}`}
+              title="Toggle GTT AI Predictions"
             >
-              <span className="text-xs font-bold">GTT</span>
+              {isLoadingGtt ? (
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
+              ) : (
+                <Zap className="w-3 h-3" />
+              )}
+              <span className="text-xs font-bold">{isGttMode ? 'GTT ON' : 'GTT'}</span>
             </button>
 
             <div className="w-px h-4 bg-purple-700 my-auto mx-1"></div>
@@ -3113,6 +3225,25 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ✅ GTT Status Panel */}
+      {/* GTT Error Banner */}
+      {gttError && (
+        <div className="px-2 mb-2">
+          <div className="p-2 bg-red-900/20 border border-red-600 rounded text-red-300 text-sm">
+            <strong>GTT Error:</strong> {gttError}
+          </div>
+        </div>
+      )}
+      {/* GTT Info Banner */}
+      {isGttMode && gttPredictions.length > 0 && (
+        <div className="px-2 mb-2">
+          <div className="p-2 bg-purple-900/20 border border-purple-600 rounded text-purple-300 text-sm flex justify-between items-center">
+            <span><strong>⚡ GTT Predictions Active:</strong> Showing {gttPredictions.length} AI forecast(s)</span>
+            <span className="text-xs text-purple-400">Horizons: H1 (+15m) to H5 (+75m)</span>
+          </div>
+        </div>
+      )}
 
       {/* Main Chart */}
       <div className="flex-1">

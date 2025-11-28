@@ -44,6 +44,8 @@ import { SubscriptionManagerModal } from "./components/SubscriptionManagerModal"
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ListChecks, Settings2 } from 'lucide-react';
+import { gttService, type GttPrediction } from '@/app/services/gttService';
+import { Zap } from 'lucide-react';
 
 
 // Prediction Integration
@@ -129,6 +131,8 @@ const MarketDataPage: React.FC = () => {
   // Prediction Integration State
   const [showPredictions, setShowPredictions] = useState(true);
   const [predictionMode, setPredictionMode] = useState<'overlay' | 'comparison'>('overlay');
+  // onst[isGttEnabled, setIsGttEnabled] = useState<boolean>(false);
+  const [gttChartType, setGttChartType] = useState<'candlestick' | 'line'>('candlestick');
 
   // Market Data State
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
@@ -198,7 +202,7 @@ const MarketDataPage: React.FC = () => {
   const frequencyIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const socketRef = useRef<any>(null);
   const isSubscribedRef = useRef<Set<string>>(new Set());
-  const [isGttEnabled, setIsGttEnabled] = useState(false); // New GTT State
+
 
 
 
@@ -724,7 +728,7 @@ const MarketDataPage: React.FC = () => {
       try {
         console.log(`📡 Fetching historical data for ${selectedSymbol}...`);
 
-        const result = await fetchHistoricalData(selectedSymbol, selectedDate || new Date().toISOString().split('T')[0]);
+        const result = await fetchHistoricalData(selectedSymbol, effectiveDate || new Date().toISOString().split('T')[0]);
 
         if (result.success && result.data.length > 0) {
           console.log(`✅ Fetched ${result.data.length} historical points from external server`);
@@ -978,7 +982,7 @@ const MarketDataPage: React.FC = () => {
                         {isReconnecting && ' 🔄'}
                       </span>
                     </div>
-                    <button
+                    {/* <button
                       onClick={() => setIsGttEnabled(!isGttEnabled)}
                       className={`px-3 py-1 rounded text-sm font-medium transition-colors ${isGttEnabled
                         ? 'bg-purple-600 text-white hover:bg-purple-700'
@@ -986,7 +990,7 @@ const MarketDataPage: React.FC = () => {
                         }`}
                     >
                       {isGttEnabled ? '⚡ GTT View ON' : '⚡ GTT View OFF'}
-                    </button>
+                    </button> */}
                     <button
                       onClick={() => setShowPredictions(!showPredictions)}
                       className={`px-3 py-1 rounded text-sm font-medium transition-colors ${showPredictions
@@ -1207,30 +1211,19 @@ const MarketDataPage: React.FC = () => {
                       </div>
                     ) : symbolHistory.length > 0 || symbolChartUpdates.length > 0 ? (
                       <div className="w-full h-full">
-                        {isGttEnabled ? (
-                          <GttPredictionChart
-                            symbol={selectedSymbol}
-                            data={currentData}
-                            historicalData={symbolHistory}
-                            ohlcData={symbolOhlc}
-                            chartUpdates={symbolChartUpdates}
-                            tradingHours={tradingHours}
-                          />
-                        ) : (
-                          <PlotlyChart
-                            symbol={selectedSymbol}
-                            data={currentData}
-                            historicalData={symbolHistory}
-                            ohlcData={symbolOhlc}
-                            chartUpdates={symbolChartUpdates}
-                            tradingHours={tradingHours}
-                            updateFrequency={updateFrequency}
-                            predictions={predictions}
-                            showPredictions={showPredictions}
-                            predictionRevision={predictionRevision}
-                            desirabilityScore={desirabilityScore}
-                          />
-                        )}
+                        <PlotlyChart
+                          symbol={selectedSymbol}
+                          data={currentData}
+                          historicalData={symbolHistory}
+                          ohlcData={symbolOhlc}
+                          chartUpdates={symbolChartUpdates}
+                          tradingHours={tradingHours}
+                          updateFrequency={updateFrequency}
+                          predictions={predictions}
+                          showPredictions={showPredictions}
+                          predictionRevision={predictionRevision}
+                          desirabilityScore={desirabilityScore}
+                        />
                       </div>
                     ) : (
                       <div className="h-full flex items-center justify-center">
