@@ -50,6 +50,8 @@ import { Zap } from 'lucide-react';
 
 // Prediction Integration
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
+import { useGttPolling } from '@/hooks/useGttPolling';
+import { transformGttToChartPredictions } from '@/lib/gttTransformers';
 import PredictionTimer from './components/PredictionTimer';
 import PredictionControlPanel from './components/PredictionControlPanel';
 import PredictionOverlay from './components/PredictionOverlay';
@@ -133,6 +135,7 @@ const MarketDataPage: React.FC = () => {
   const [predictionMode, setPredictionMode] = useState<'overlay' | 'comparison'>('overlay');
   // onst[isGttEnabled, setIsGttEnabled] = useState<boolean>(false);
   const [gttChartType, setGttChartType] = useState<'candlestick' | 'line'>('candlestick');
+  const [isGttEnabled, setIsGttEnabled] = useState<boolean>(false);
 
   // Market Data State
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
@@ -243,6 +246,25 @@ const MarketDataPage: React.FC = () => {
     },
   });
 
+  // ============ GTT POLLING INTEGRATION (NEW) ============
+  const {
+    predictions: rawGttPredictions,
+    loading: gttLoading,
+    error: gttError,
+    lastUpdated: gttLastUpdated,
+    isPolling: isGttPolling,
+    startPolling: startGttPolling,
+    stopPolling: stopGttPolling
+  } = useGttPolling({
+    symbol: selectedSymbol,
+    enabled: isGttEnabled && isClient && !!selectedSymbol,
+    pollInterval: 60000 // 1 minute
+  });
+  // Transform GTT data for the chart
+  const gttChartData = useMemo(() => {
+    if (!rawGttPredictions) return null;
+    return transformGttToChartPredictions(rawGttPredictions);
+  }, [rawGttPredictions]);
   const {
     score: desirabilityScore,
     classification: desirabilityClassification,
@@ -1223,7 +1245,13 @@ const MarketDataPage: React.FC = () => {
                           showPredictions={showPredictions}
                           predictionRevision={predictionRevision}
                           desirabilityScore={desirabilityScore}
+                          gttExternalData={gttChartData}
+                          isGttEnabled={isGttEnabled}
+                          onGttToggle={setIsGttEnabled}
+                          gttLoading={gttLoading}
+                          gttError={gttError}
                         />
+
                       </div>
                     ) : (
                       <div className="h-full flex items-center justify-center">

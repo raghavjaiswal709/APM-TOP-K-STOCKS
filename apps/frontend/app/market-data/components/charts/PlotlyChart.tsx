@@ -114,40 +114,43 @@ interface CompanyPredictions {
 
 interface PlotlyChartProps {
   symbol: string;
-  data: DataPoint | null;
-  historicalData: DataPoint[];
-  ohlcData?: OHLCPoint[];
-  chartUpdates: ChartUpdate[];        // ✨ NEW PROP
-  updateFrequency?: number;           // ✨ NEW PROP
-  predictions?: CompanyPredictions | null;  // ✨ NEW: Prediction data
-  showPredictions?: boolean;          // ✨ NEW: Toggle predictions
-  predictionRevision?: number;        // ✨ CRITICAL: Force re-render when predictions update
-  desirabilityScore?: number | null;  // ✨ NEW: Desirability score for dynamic background
-  tradingHours: {
-    start: string;
-    end: string;
-    current: string;
-    isActive: boolean;
-  };
-  // isGttEnabled?: boolean;
-  // onToggleGtt?: () => void;
+  data: MarketData | null;
+  historicalData: MarketData[];
+  ohlcData?: OHLCData[];
+  chartUpdates?: ChartUpdate[];
+  tradingHours?: any;
+  updateFrequency?: number;
+  predictions?: any;
+  showPredictions?: boolean;
+  predictionRevision?: number;
+  desirabilityScore?: number | null;
+  gttExternalData?: CompanyPredictions | null;
+  isGttEnabled?: boolean;
+  onGttToggle?: (enabled: boolean) => void;
+  gttLoading?: boolean;
+  gttError?: string | null;
 }
+
 
 const PlotlyChart: React.FC<PlotlyChartProps> = ({
   symbol,
   data,
   historicalData,
   ohlcData = [],
-  chartUpdates = [],          // ✨ NEW PROP
-  updateFrequency = 0,        // ✨ NEW PROP
-  predictions = null,         // ✨ NEW: Prediction data
-  showPredictions = false,    // ✨ NEW: Toggle predictions
-  predictionRevision = 0,     // ✨ CRITICAL: Force re-render counter
-  desirabilityScore = null,   // ✨ NEW: Desirability score for dynamic background
+  chartUpdates = [],
   tradingHours,
-  // isGttEnabled = false,
-  // onToggleGtt,
+  updateFrequency = 0,
+  predictions,
+  showPredictions = false,
+  predictionRevision = 0,
+  desirabilityScore,
+  gttExternalData = null,
+  isGttEnabled = false,
+  onGttToggle,
+  gttLoading = false,
+  // gttError = null,
 }) => {
+
   const chartRef = useRef<any>(null);
   const spreadChartRef = useRef<any>(null);
   const bidAskChartRef = useRef<any>(null);
@@ -780,6 +783,23 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
       if (predictionPrices.length > 0) {
         allPrices.push(...predictionPrices);
+      }
+    }
+
+    // ✅ NEW: Include GTT External Data in Y-Axis Range Calculation
+    if (gttExternalData && gttExternalData.count > 0) {
+      const gttEntries = Object.entries(gttExternalData.predictions);
+      const gttPrices = gttEntries
+        .map(([key, pred]) => {
+          const predTime = new Date(pred.timestamp || key).getTime() / 1000;
+          if (predTime >= startTime && predTime <= endTime) {
+            return Number(pred.close);
+          }
+          return null;
+        })
+        .filter(p => p !== null && p !== undefined) as number[];
+      if (gttPrices.length > 0) {
+        allPrices.push(...gttPrices);
       }
     }
 
@@ -1649,6 +1669,132 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             '<extra></extra>',
           showlegend: true
         });
+
+        // ============ GTT PREDICTION RENDERING ============
+        if (isGttEnabled && gttExternalData && gttExternalData.count > 0) {
+          const gttEntries = Object.entries(gttExternalData.predictions);
+
+          if (gttEntries.length > 0) {
+            console.log('🎯 [PlotlyChart] Rendering GTT predictions:', {
+              totalPredictions: gttEntries.length,
+              company: gttExternalData.company
+            });
+
+            // Sort predictions by timestamp
+            const sortedGtt = gttEntries.sort((a, b) => {
+              const timeA = new Date(a[1].timestamp || a[0]).getTime();
+              const timeB = new Date(b[1].timestamp || b[0]).getTime();
+              return timeA - timeB;
+            });
+
+            const gttTimes = sortedGtt.map(([key, pred]) =>
+              new Date(pred.timestamp || key)
+            );
+            const gttValues = sortedGtt.map(([, pred]) => Number(pred.close));
+
+            // Filter valid values
+            const validIndices = gttValues
+              .map((val, idx) => (!isNaN(val) && val > 0 ? idx : -1))
+              .filter(idx => idx !== -1);
+
+            if (validIndices.length > 0) {
+              const validTimes = validIndices.map(idx => gttTimes[idx]);
+              const validValues = validIndices.map(idx => gttValues[idx]);
+
+              // ✅ CONNECTOR LINE: Bridge from last historical point to first GTT prediction
+              if (timeValues.length > 0 && validTimes.length > 0) {
+                const lastHistoricalTime = timeValues[timeValues.length - 1];
+                const lastHistoricalPrice = priceValues[priceValues.length - 1];
+                const firstPredTime = validTimes[0];
+                const firstPredPrice = validValues[0];
+
+                plotData.push({
+                  x: [lastHistoricalTime, firstPredTime],
+                  y: [lastHistoricalPrice, firstPredPrice],
+                  type: 'scatter',
+                  mode: 'lines',
+                  name: 'GTT Bridge',
+                  line: {
+                    color: 'rgba(168, 85, 247, 0.5)',
+                    width: 2,
+                    dash: 'dot'
+                  },
+                  showlegend: false,
+                  hoverinfo: 'skip'
+                } as any);
+              }
+
+              // ✅ MAIN GTT PREDICTION LINE
+              plotData.push({
+                x: validTimes,
+                y: validValues,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: `⚡ GTT Predictions (${validValues.length}pts)`,
+                line: {
+                  color: '#A855F7',
+                  width: 3,
+                  dash: 'dash'
+                },
+                marker: {
+                  size: 8,
+                  color: '#A855F7',
+                  symbol: 'diamond',
+                  line: {
+                    color: '#7C3AED',
+                    width: 2
+                  }
+                },
+                connectgaps: true,
+                hovertemplate: '<b>⚡ GTT Prediction</b><br>' +
+                  'Time: %{x|%H:%M:%S}<br>' +
+                  'Predicted Price: ₹%{y:.2f}<br>' +
+                  '<extra></extra>',
+                showlegend: true,
+                visible: true
+              } as any);
+
+              // ✅ PREDICTION MARKERS WITH LABELS
+              validTimes.forEach((time, idx) => {
+                if (idx === 0) return; // Skip anchor point
+
+                const horizonLabel = `H${idx}`;
+                plotData.push({
+                  x: [time],
+                  y: [validValues[idx]],
+                  type: 'scatter',
+                  mode: 'markers+text',
+                  name: horizonLabel,
+                  text: [horizonLabel],
+                  textposition: 'top center',
+                  textfont: {
+                    size: 10,
+                    color: '#A855F7',
+                    family: 'Arial, sans-serif'
+                  },
+                  marker: {
+                    size: 10,
+                    color: '#A855F7',
+                    symbol: 'diamond',
+                    line: {
+                      color: '#ffffff',
+                      width: 2
+                    }
+                  },
+                  showlegend: false,
+                  hoverinfo: 'skip'
+                } as any);
+              });
+
+              console.log(`✅ [PlotlyChart] GTT predictions rendered:`, {
+                points: validValues.length,
+                timeRange: `${validTimes[0].toLocaleTimeString()} → ${validTimes[validTimes.length - 1].toLocaleTimeString()}`,
+                priceRange: `₹${Math.min(...validValues).toFixed(2)} → ₹${Math.max(...validValues).toFixed(2)}`
+              });
+            }
+          }
+        }
+
 
         // ✨ NEW: Add prediction line if available
         if (showPredictions && predictions && predictions.count > 0) {
@@ -3059,20 +3205,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           <div className="flex space-x-1 bg-gradient-to-r from-purple-900 to-indigo-900 p-1 rounded-md border border-purple-600">
             {/* ✨ NEW: GTT Toggle Button */}
             <button
-              onClick={handleGttToggle}
-              disabled={isLoadingGtt}
-              className={`px-3 py-1 rounded flex items-center space-x-2 transition-all ${isGttMode
-                ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-500/50'
-                : 'bg-transparent text-purple-200 hover:bg-purple-800/50'
-                } ${isLoadingGtt ? 'opacity-50 cursor-wait' : ''}`}
-              title="Toggle GTT AI Predictions"
+              onClick={() => onGttToggle?.(!isGttEnabled)}
+              disabled={!symbol || gttLoading}
+              className={`px-3 py-1.5 rounded transition-all flex items-center gap-2 ${isGttEnabled
+                ? 'bg-purple-600 text-white hover:bg-purple-700'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                } ${(!symbol || gttLoading) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={isGttEnabled ? 'Disable GTT Predictions' : 'Enable GTT Predictions'}
             >
-              {isLoadingGtt ? (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
-              ) : (
-                <Zap className="w-3 h-3" />
-              )}
-              <span className="text-xs font-bold">{isGttMode ? 'GTT ON' : 'GTT'}</span>
+              <Zap className={`h-4 w-4 ${isGttEnabled ? 'animate-pulse' : ''}`} />
+              <span className="text-xs font-medium">
+                {gttLoading ? 'Loading...' : (isGttEnabled ? 'GTT ON' : 'GTT OFF')}
+              </span>
             </button>
 
             <div className="w-px h-4 bg-purple-700 my-auto mx-1"></div>
@@ -3211,6 +3355,23 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               </>
             )}
           </div>
+          {/* GTT Status Indicator */}
+          {isGttEnabled && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-900/30 border border-purple-500/50 rounded">
+              <Zap className="h-4 w-4 text-purple-400 animate-pulse" />
+              <span className="text-xs text-purple-300 font-medium">
+                GTT Active {gttExternalData ? `(${gttExternalData.count} predictions)` : ''}
+              </span>
+            </div>
+          )}
+
+          {/* GTT Error Display */}
+          {isGttEnabled && gttError && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-900/30 border border-red-500/50 rounded">
+              <span className="text-xs text-red-300">⚠️ {gttError}</span>
+            </div>
+          )}
+
 
           {/* Volume Toggle */}
           <div className="flex space-x-1 bg-amber-900 p-1 rounded-md border border-amber-700">

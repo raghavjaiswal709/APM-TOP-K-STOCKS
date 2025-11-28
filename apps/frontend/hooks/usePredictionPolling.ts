@@ -21,21 +21,21 @@ const getNextSyncTime = (): Date => {
   const minutes = now.getMinutes();
   const seconds = now.getSeconds();
   const milliseconds = now.getMilliseconds();
-  
+
   // Round up to next 5-minute interval
   const nextMinute = Math.ceil((minutes + 1) / 5) * 5;
-  
+
   const next = new Date(now);
   next.setMinutes(nextMinute);
   next.setSeconds(0);
   next.setMilliseconds(0);
-  
+
   // If we've passed into the next hour, adjust
   if (nextMinute >= 60) {
     next.setHours(next.getHours() + 1);
     next.setMinutes(nextMinute % 60);
   }
-  
+
   return next;
 };
 
@@ -107,8 +107,8 @@ export const usePredictionPolling = (config: PollingConfig) => {
   const onUpdateRef = useRef(onUpdate);
   const onErrorRef = useRef(onError);
   const errorRef = useRef(error);
-  const fetchAtSyncTimeRef = useRef<() => Promise<void>>(async () => {});
-  
+  const fetchAtSyncTimeRef = useRef<() => Promise<void>>(async () => { });
+
   useEffect(() => {
     onUpdateRef.current = onUpdate;
     onErrorRef.current = onError;
@@ -126,11 +126,11 @@ export const usePredictionPolling = (config: PollingConfig) => {
 
     const timeUntilNext = getTimeUntilNextSync();
     const nextTime = getNextSyncTime();
-    
+
     setNextPollTime(nextTime);
-    
+
     console.log(`⏰ [SYNC] Next poll scheduled for: ${nextTime.toLocaleTimeString()} (in ${Math.round(timeUntilNext / 1000)}s)`);
-    
+
     syncTimeoutRef.current = setTimeout(() => {
       fetchAtSyncTimeRef.current?.();
     }, timeUntilNext);
@@ -148,32 +148,32 @@ export const usePredictionPolling = (config: PollingConfig) => {
     const now = new Date();
     pollCountRef.current += 1;
     const currentPollCount = pollCountRef.current;
-    
+
     console.log(`🔄 [SYNC] Fetching predictions for ${company} at ${now.toLocaleTimeString()} (Poll #${currentPollCount})`);
-    
+
     // ✅ CRITICAL: Show cached data immediately for stable UI
     const cachedData = predictionCache.get(`predictions_${company}`);
     if (cachedData && currentPollCount > 1) {
       // Keep showing cached while fetching fresh (prevents flicker)
       console.log(`📦 Showing cached predictions during fetch (${cachedData.count} predictions)`);
     }
-    
+
     // Fetch fresh data
     const freshData = await refetch();
     if (freshData) {
       // ✅ PERFORMANCE FIX: Replace JSON.stringify with metadata comparison
-      const dataChanged = !cachedData || 
-                          cachedData.count !== freshData.count ||
-                          cachedData.starttime !== freshData.starttime ||
-                          cachedData.endtime !== freshData.endtime;
-      
+      const dataChanged = !cachedData ||
+        cachedData.count !== freshData.count ||
+        cachedData.starttime !== freshData.starttime ||
+        cachedData.endtime !== freshData.endtime;
+
       // ALWAYS update poll metadata
       setPollCount(currentPollCount);
       lastPollRef.current = now;
-      
+
       if (dataChanged) {
         onUpdateRef.current?.(freshData);
-        
+
         const predictions = Object.values(freshData.predictions);
         if (predictions.length > 0) {
           const latestPrediction = predictions[predictions.length - 1];
@@ -206,7 +206,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
     }
 
     console.log(`� [SYNC] Starting synchronized prediction polling for ${company}`);
-    
+
     setIsPolling(true);
     startTimeRef.current = new Date();
     lastPollRef.current = new Date();
@@ -240,7 +240,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
       setPollCount(1);
       onUpdate?.(data);
       console.log(`✅ [SYNC] Initial fetch successful: ${data.count} predictions`);
-      
+
       // Log current server time from data
       const predictions = Object.values(data.predictions);
       if (predictions.length > 0) {
@@ -285,13 +285,13 @@ export const usePredictionPolling = (config: PollingConfig) => {
       clearTimeout(totalDurationRef.current);
       totalDurationRef.current = null;
     }
-    
+
     setIsPolling(false);
     startTimeRef.current = null;
     lastPollRef.current = null;
     setNextPollTime(null);
     setTimeUntilNextPoll(0);
-    
+
     console.log('🛑 [SYNC] Polling stopped');
   }, []);
 
@@ -314,7 +314,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
       totalDurationRef.current = null;
     }
     setIsPolling(false);
-    
+
     console.log('⏸️ [SYNC] Polling paused');
   }, []);
 
