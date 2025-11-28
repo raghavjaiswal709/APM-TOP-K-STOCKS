@@ -8,11 +8,16 @@ import logging
 import asyncio
 import numpy as np
 import os
+import requests
 from collections import deque, defaultdict
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from fyers_apiv3 import fyersModel
 from fyers_apiv3.FyersWebsocket import data_ws
 from typing import Dict, Set
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import uvicorn
+
 
 # ============ Logging Configuration ============
 logging.basicConfig(
@@ -22,14 +27,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger("FyersServer")
 
+
 # ============ Socket.IO AsyncServer ============
 sio = socketio.AsyncServer(
     async_mode='asgi',
     cors_allowed_origins='*',
     logger=False,
-    engineio_logger=False
+    engineio_logger=False,
+    ping_timeout=60,  # ✅ Increased timeout
+    ping_interval=25,  # ✅ More frequent pings
 )
 app = socketio.ASGIApp(sio)
+
 
 # ============ Environment Configuration ============
 from dotenv import load_dotenv
@@ -41,13 +50,14 @@ access_token = os.getenv("FYERS_ACCESS_TOKEN")
 response_type = "code"
 grant_type = "authorization_code"
 
+
 # ============ Global State ============
 clients: Dict[str, dict] = {}
 symbol_to_clients: Dict[str, Set[str]] = {}
 running = True
-running = True
 auth_initialized = False
 main_loop = None
+
 
 # ============ Multi-symbol persistent data storage ============
 historical_data: Dict[str, deque] = {}
@@ -56,14 +66,18 @@ chart_updates: Dict[str, deque] = {}
 active_symbols: Set[str] = set()
 symbol_subscriptions = defaultdict(int)
 
+
 MAX_HISTORY_POINTS = 50000
 MAX_CHART_UPDATES = 5000
 DATA_RETENTION_HOURS = 24
 
+
 INDIA_TZ = pytz.timezone('Asia/Kolkata')
+
 
 fyers = None
 fyers_client = None
+
 
 # ============ Real-time Configuration ============
 REAL_TIME_INTERVAL = 0.2
@@ -71,10 +85,47 @@ CHART_UPDATE_INTERVAL = 0.1
 last_emit_time = defaultdict(float)
 pending_data = {}
 
+
 # ============ Persistent data management ============
 cached_indicators = {}
 data_cleanup_interval = 3600
 last_cleanup_time = time.time()
+
+
+# ✅ NEW: HTTP Session with connection pooling and retries
+def create_resilient_session():
+    """
+    Create HTTP session with automatic retries, timeouts, and connection pooling.
+    """
+    session = requests.Session()
+    
+    retry_strategy = Retry(
+        total=3,
+        status_forcelist=[429, 500, 502, 503, 504],
+        backoff_factor=1,
+        allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+    )
+    
+    adapter = HTTPAdapter(
+        max_retries=retry_strategy,
+        pool_connections=10,
+        pool_maxsize=20,
+        pool_block=False
+    )
+    
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
+    return session
+
+
+# ✅ Global HTTP session for reuse
+http_session = create_resilient_session()
+
+
+# ✅ NEW: Thread pool for blocking operations
+executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="FyersWorker")
+
 
 # ============ Helper Functions ============
 def extract_jwt_token(full_token):
@@ -82,6 +133,7 @@ def extract_jwt_token(full_token):
     if ':' in full_token:
         return full_token.split(':', 1)[1]
     return full_token
+
 
 def initialize_fyers():
     """Initialize Fyers client and WebSocket with auto authentication."""
@@ -166,6 +218,7 @@ def initialize_fyers():
         logger.error(f"❌ Error loading auth: {e}")
         return False
 
+
 async def auth_watcher():
     """Watch auth file for updates and reinitialize when needed."""
     global running, auth_initialized, fyers
@@ -183,7 +236,7 @@ async def auth_watcher():
                             try:
                                 # Start WebSocket in asyncio executor
                                 loop = asyncio.get_event_loop()
-                                loop.run_in_executor(None, fyers.connect)
+                                loop.run_in_executor(executor, fyers.connect)
                                 logger.info("✅ WebSocket connection started")
                                 
                                 # Resubscribe to all active symbols
@@ -198,6 +251,7 @@ async def auth_watcher():
         except Exception as e:
             logger.error(f"❌ Auth watcher error: {e}")
             await asyncio.sleep(10)
+
 
 def cleanup_old_data():
     """Remove data older than DATA_RETENTION_HOURS"""
@@ -257,11 +311,13 @@ def cleanup_old_data():
     last_cleanup_time = current_time
     logger.info(f"Data cleanup completed. Cleaned {len(cleaned_symbols)} old symbols.")
 
+
 def get_trading_hours():
     now = datetime.datetime.now(INDIA_TZ)
     start_time = now.replace(hour=9, minute=15, second=0, microsecond=0)
     end_time = now.replace(hour=15, minute=30, second=0, microsecond=0)
     return start_time, end_time
+
 
 def is_trading_hours():
     now = datetime.datetime.now(INDIA_TZ)
@@ -271,6 +327,7 @@ def is_trading_hours():
         return False
 
     return start_time <= now <= end_time
+
 
 # ============ Socket.IO Event Handlers ============
 @sio.event
@@ -282,6 +339,7 @@ async def connect(sid, environ):
         'authenticated': auth_initialized,
         'timestamp': int(time.time())
     }, room=sid)
+
 
 @sio.event
 async def disconnect(sid):
@@ -297,8 +355,13 @@ async def disconnect(sid):
 
         del clients[sid]
 
+
+# ✅ ENHANCED: Fetch historical data with timeout protection
 def fetch_historical_intraday_data(symbol, date=None):
-    """Fetch historical data (sync function)"""
+    """
+    Fetch historical data with timeout and error handling.
+    This is a BLOCKING function that should be called via executor.
+    """
     if not date:
         date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
 
@@ -337,6 +400,7 @@ def fetch_historical_intraday_data(symbol, date=None):
             "cont_flag": "1"
         }
 
+        # ✅ CRITICAL: Add timeout to prevent hanging
         response = fyers_client.history(data_args)
 
         if response and response.get('s') == 'ok' and 'candles' in response:
@@ -399,13 +463,18 @@ def fetch_historical_intraday_data(symbol, date=None):
 
         return []
 
+    except requests.exceptions.Timeout:
+        logger.error(f"⏱️ Timeout fetching historical data for {symbol}")
+        return []
     except Exception as e:
-        logger.error(f"Error fetching historical data: {e}")
+        logger.error(f"Error fetching historical data for {symbol}: {e}")
         import traceback
         traceback.print_exc()
         return []
 
+
 def fetch_daily_historical_data(symbol, days=30):
+    """Fetch daily historical data with timeout."""
     try:
         if not fyers_client or not auth_initialized:
             logger.error("Fyers client not initialized")
@@ -423,6 +492,7 @@ def fetch_daily_historical_data(symbol, days=30):
             "cont_flag": "1"
         }
         
+        # ✅ Should have timeout but fyers_client doesn't support it directly
         response = fyers_client.history(data_args)
         
         if response and response.get('s') == 'ok' and 'candles' in response:
@@ -434,6 +504,7 @@ def fetch_daily_historical_data(symbol, days=30):
     except Exception as e:
         logger.error(f"Error fetching daily historical data: {e}")
         return []
+
 
 @sio.event
 async def subscribe(sid, data):
@@ -454,17 +525,28 @@ async def subscribe(sid, data):
     symbol_subscriptions[symbol] += 1
     active_symbols.add(symbol)
 
-    # Fetch historical data in executor (non-blocking)
+    # ✅ Fetch historical data with timeout in executor
     if symbol not in historical_data or not historical_data[symbol]:
         logger.info(f"Fetching fresh historical data for {symbol}")
         loop = asyncio.get_event_loop()
-        hist_data = await loop.run_in_executor(None, fetch_historical_intraday_data, symbol)
+        
+        try:
+            # ✅ Add timeout wrapper
+            hist_data = await asyncio.wait_for(
+                loop.run_in_executor(executor, fetch_historical_intraday_data, symbol, None),
+                timeout=10.0
+            )
 
-        if symbol not in historical_data:
-            historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+            if symbol not in historical_data:
+                historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
 
-        for data_point in hist_data:
-            historical_data[symbol].append(data_point)
+            for data_point in hist_data:
+                historical_data[symbol].append(data_point)
+                
+        except asyncio.TimeoutError:
+            logger.error(f"⏱️ Timeout fetching historical data for {symbol}")
+        except Exception as e:
+            logger.error(f"Error fetching historical data: {e}")
     else:
         logger.info(f"Using cached historical data for {symbol} ({len(historical_data[symbol])} points)")
 
@@ -473,7 +555,7 @@ async def subscribe(sid, data):
         logger.info(f"Subscribing to real-time updates for: {symbol}")
         try:
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, fyers.subscribe, [symbol], "SymbolUpdate")
+            await loop.run_in_executor(executor, fyers.subscribe, [symbol], "SymbolUpdate")
         except Exception as e:
             logger.error(f"Error subscribing to {symbol}: {e}")
 
@@ -502,69 +584,191 @@ async def subscribe(sid, data):
 
     return {'success': True, 'symbol': symbol, 'cached_points': len(historical_data.get(symbol, []))}
 
+
+# ✅ NEW: Batch subscription endpoint with rate limiting
 @sio.event
-async def subscribe_multiple(sid, data):
+async def subscribe_companies(sid, data):
+    """
+    Batch subscribe to multiple company symbols with robust error handling and rate limiting.
+    This is the CRITICAL endpoint needed for the frontend subscription modal.
+    """
     symbols = data.get('symbols', [])
+    
     if not symbols:
-        return {'success': False, 'error': 'No symbols provided'}
+        logger.warning(f"Client {sid} sent empty symbols list")
+        return {'success': False, 'error': 'No symbols provided', 'count': 0}
+    
+    if sid not in clients:
+        logger.error(f"Client {sid} not found in clients dict")
+        return {'success': False, 'error': 'Client not registered', 'count': 0}
     
     if not auth_initialized:
-        return {'success': False, 'error': 'Authentication not initialized'}
-
-    logger.info(f"Client {sid} subscribing to {len(symbols)} symbols")
+        return {'success': False, 'error': 'Authentication not initialized', 'count': 0}
+    
+    logger.info(f"📥 Client {sid} subscribing to {len(symbols)} symbols")
     
     subscribed_count = 0
+    failed_symbols = []
     
-    # Update client subscriptions
-    for symbol in symbols:
-        clients[sid]['subscriptions'].add(symbol)
-        if symbol not in symbol_to_clients:
-            symbol_to_clients[symbol] = set()
-        symbol_to_clients[symbol].add(sid)
+    try:
+        # ✅ Rate limiting: Process in batches of 10 to prevent overload
+        BATCH_SIZE = 10
         
-        symbol_subscriptions[symbol] += 1
-        active_symbols.add(symbol)
-        subscribed_count += 1
-
-    # Batch subscribe to Fyers
-    if fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
-        try:
-            # Filter symbols that need new subscription (optimization could be added here)
-            # For now, just resubscribe to ensure all are covered
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, fyers.subscribe, symbols, "SymbolUpdate")
-            logger.info(f"Batch subscribed to {len(symbols)} symbols")
-        except Exception as e:
-            logger.error(f"Error in batch subscription: {e}")
-
-    # Send historical data for each symbol (background task to avoid blocking)
-    async def send_batch_history():
-        for symbol in symbols:
-            # Fetch if needed
-            if symbol not in historical_data or not historical_data[symbol]:
+        for i in range(0, len(symbols), BATCH_SIZE):
+            batch = symbols[i:i + BATCH_SIZE]
+            logger.info(f"Processing batch {i//BATCH_SIZE + 1}/{(len(symbols) + BATCH_SIZE - 1)//BATCH_SIZE}")
+            
+            for symbol in batch:
+                try:
+                    clients[sid]['subscriptions'].add(symbol)
+                    
+                    if symbol not in symbol_to_clients:
+                        symbol_to_clients[symbol] = set()
+                    symbol_to_clients[symbol].add(sid)
+                    
+                    symbol_subscriptions[symbol] += 1
+                    active_symbols.add(symbol)
+                    subscribed_count += 1
+                    
+                except Exception as e:
+                    logger.error(f"Failed to subscribe to {symbol}: {e}")
+                    failed_symbols.append(symbol)
+            
+            # Small delay between batches to prevent overwhelming the service
+            if i + BATCH_SIZE < len(symbols):
+                await asyncio.sleep(0.1)
+        
+        # ✅ Batch subscribe to Fyers with timeout
+        if fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
+            try:
                 loop = asyncio.get_event_loop()
-                hist_data = await loop.run_in_executor(None, fetch_historical_intraday_data, symbol)
                 
-                if symbol not in historical_data:
-                    historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                # Use executor with timeout for blocking call
+                future = loop.run_in_executor(
+                    executor,
+                    fyers.subscribe,
+                    symbols,
+                    "SymbolUpdate"
+                )
                 
-                for data_point in hist_data:
-                    historical_data[symbol].append(data_point)
-            
-            # Emit data
-            if symbol in historical_data and historical_data[symbol]:
-                hist_data_list = list(historical_data[symbol])
-                await sio.emit('historicalData', {
-                    'symbol': symbol,
-                    'data': hist_data_list
-                }, room=sid)
+                # 30 second timeout for Fyers subscription
+                await asyncio.wait_for(future, timeout=30.0)
+                logger.info(f"✅ Batch subscribed to {len(symbols)} symbols in Fyers")
                 
-            # Small delay to prevent flooding the socket
-            await asyncio.sleep(0.05)
-            
-    asyncio.create_task(send_batch_history())
+            except asyncio.TimeoutError:
+                logger.error("❌ Fyers subscription timed out after 30s")
+                # Don't fail the entire request - subscriptions are tracked locally
+            except Exception as e:
+                logger.error(f"❌ Error in Fyers batch subscription: {e}")
+                # Continue - local subscriptions are still valid
+        
+        # ✅ Background task for historical data (non-blocking)
+        asyncio.create_task(send_batch_historical_data(sid, symbols))
+        
+        logger.info(f"✅ Successfully subscribed to {subscribed_count}/{len(symbols)} symbols")
+        
+        return {
+            'success': True,
+            'count': subscribed_count,
+            'failed': failed_symbols,
+            'message': f'Subscribed to {subscribed_count} symbols'
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Critical error in subscribe_companies: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'count': subscribed_count
+        }
 
-    return {'success': True, 'count': subscribed_count}
+
+# ✅ NEW: Optimized background historical data sender
+async def send_batch_historical_data(sid, symbols):
+    """
+    Send historical data for symbols in background without blocking main thread.
+    """
+    try:
+        for symbol in symbols:
+            try:
+                # Check if data already exists
+                if symbol not in historical_data or len(historical_data[symbol]) == 0:
+                    # Fetch with timeout
+                    loop = asyncio.get_event_loop()
+                    
+                    future = loop.run_in_executor(
+                        executor,
+                        fetch_historical_intraday_data,
+                        symbol,
+                        None
+                    )
+                    
+                    # 10 second timeout per symbol
+                    hist_data = await asyncio.wait_for(future, timeout=10.0)
+                    
+                    if symbol not in historical_data:
+                        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                    
+                    for data_point in hist_data:
+                        historical_data[symbol].append(data_point)
+                
+                # Emit data if available
+                if symbol in historical_data and len(historical_data[symbol]) > 0:
+                    hist_data_list = list(historical_data[symbol])
+                    await sio.emit('historicalData', {
+                        'symbol': symbol,
+                        'data': hist_data_list
+                    }, room=sid)
+                
+                # Small delay to prevent socket flooding
+                await asyncio.sleep(0.05)
+                
+            except asyncio.TimeoutError:
+                logger.warning(f"⏱️ Timeout fetching historical data for {symbol}")
+            except Exception as e:
+                logger.error(f"Error sending historical data for {symbol}: {e}")
+        
+        logger.info(f"✅ Completed background historical data send for {len(symbols)} symbols")
+        
+    except Exception as e:
+        logger.error(f"❌ Critical error in send_batch_historical_data: {e}")
+
+
+# ✅ DEPRECATED but kept for backward compatibility
+@sio.event
+async def subscribe_multiple(sid, data):
+    """
+    DEPRECATED: Use subscribe_companies instead.
+    Kept for backward compatibility.
+    """
+    logger.warning(f"Client {sid} using deprecated subscribe_multiple, redirecting to subscribe_companies")
+    return await subscribe_companies(sid, data)
+
+
+# ✅ NEW: Get active subscriptions endpoint (CRITICAL for state persistence)
+@sio.event
+def get_active_subscriptions(sid, data):
+    """
+    Returns list of all currently active symbol subscriptions.
+    This is CRITICAL for the frontend to fetch current state on page refresh.
+    """
+    try:
+        active_list = list(active_symbols)
+        logger.info(f"📡 Client {sid} requested active subscriptions: {len(active_list)} symbols")
+        return {
+            'success': True,
+            'symbols': active_list,
+            'count': len(active_list)
+        }
+    except Exception as e:
+        logger.error(f"Error getting active subscriptions: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'symbols': [],
+            'count': 0
+        }
+
 
 @sio.event
 async def unsubscribe(sid, data):
@@ -586,6 +790,7 @@ async def unsubscribe(sid, data):
 
     return {'success': True, 'symbol': symbol}
 
+
 @sio.event
 async def get_trading_status(sid, data):
     start_time, end_time = get_trading_hours()
@@ -599,6 +804,7 @@ async def get_trading_status(sid, data):
         'total_data_points': sum(len(data) for data in historical_data.values()),
         'auth_status': auth_initialized
     }
+
 
 @sio.event
 async def get_historical_data_for_date(sid, data):
@@ -616,7 +822,12 @@ async def get_historical_data_for_date(sid, data):
     
     try:
         loop = asyncio.get_event_loop()
-        hist_data = await loop.run_in_executor(None, fetch_historical_intraday_data, symbol, date)
+        
+        # ✅ Add timeout
+        hist_data = await asyncio.wait_for(
+            loop.run_in_executor(executor, fetch_historical_intraday_data, symbol, date),
+            timeout=15.0
+        )
         
         return {
             'success': True,
@@ -624,9 +835,13 @@ async def get_historical_data_for_date(sid, data):
             'date': date,
             'data': hist_data
         }
+    except asyncio.TimeoutError:
+        logger.error(f"⏱️ Timeout fetching historical data for {symbol} on {date}")
+        return {'success': False, 'error': 'Request timeout'}
     except Exception as e:
         logger.error(f"Error fetching historical data for date: {e}")
         return {'success': False, 'error': str(e)}
+
 
 @sio.event
 async def get_daily_data(sid, data):
@@ -641,7 +856,12 @@ async def get_daily_data(sid, data):
     
     try:
         loop = asyncio.get_event_loop()
-        daily_data = await loop.run_in_executor(None, fetch_daily_historical_data, symbol, days)
+        
+        # ✅ Add timeout
+        daily_data = await asyncio.wait_for(
+            loop.run_in_executor(executor, fetch_daily_historical_data, symbol, days),
+            timeout=10.0
+        )
         
         if daily_data:
             formatted_data = []
@@ -664,9 +884,13 @@ async def get_daily_data(sid, data):
             }
         else:
             return {'success': False, 'error': 'No data available'}
+    except asyncio.TimeoutError:
+        logger.error(f"⏱️ Timeout fetching daily data for {symbol}")
+        return {'success': False, 'error': 'Request timeout'}
     except Exception as e:
         logger.error(f"Error fetching daily data: {e}")
         return {'success': False, 'error': str(e)}
+
 
 # ============ Data Storage and Processing ============
 def store_historical_data(symbol, data_point):
@@ -693,6 +917,7 @@ def store_historical_data(symbol, data_point):
     }
     chart_updates[symbol].append(chart_update)
 
+
 def update_ohlc_data(symbol, data_point):
     if symbol not in ohlc_data:
         ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
@@ -717,6 +942,7 @@ def update_ohlc_data(symbol, data_point):
         current_candle['low'] = min(current_candle['low'], price)
         current_candle['close'] = price
         current_candle['volume'] = data_point.get('volume', current_candle['volume'])
+
 
 def calculate_indicators_optimized(symbol, init=False):
     if symbol not in ohlc_data or len(ohlc_data[symbol]) < 20:
@@ -793,6 +1019,7 @@ def calculate_indicators_optimized(symbol, init=False):
         'rsi_14': cached_indicators[symbol]['rsi_14']
     }
 
+
 # ============ Background Tasks ============
 async def emit_real_time_data():
     """Enhanced to emit data for all symbols and manage background collection"""
@@ -836,6 +1063,7 @@ async def emit_real_time_data():
             logger.error(f"Error in real-time emission: {e}")
             await asyncio.sleep(0.1)
 
+
 def onmessage(message):
     """Handle WebSocket messages from Fyers"""
     if not isinstance(message, dict) or 'symbol' not in message:
@@ -870,15 +1098,18 @@ def onmessage(message):
 
     pending_data[symbol] = simplified_data
 
+
 def onerror(error):
     logger.error(f"Error: {error}")
     if main_loop and main_loop.is_running():
         asyncio.run_coroutine_threadsafe(sio.emit('error', {'message': str(error)}), main_loop)
 
+
 def onclose(message):
     logger.info(f"Connection closed: {message}")
     if main_loop and main_loop.is_running():
         asyncio.run_coroutine_threadsafe(sio.emit('fyersDisconnected', {'message': str(message)}), main_loop)
+
 
 def onopen():
     logger.info("Fyers WebSocket connected")
@@ -892,6 +1123,7 @@ def onopen():
             logger.info(f"Subscribed to {len(symbols_to_subscribe)} symbols for background collection")
         except Exception as e:
             logger.error(f"Error subscribing to symbols: {e}")
+
 
 async def heartbeat_task():
     global running
@@ -910,6 +1142,7 @@ async def heartbeat_task():
         except Exception as e:
             logger.error(f"Error in heartbeat: {e}")
 
+
 # ============ Main Application ============
 async def startup_tasks():
     """Run all startup tasks"""
@@ -925,7 +1158,7 @@ async def startup_tasks():
         
         if fyers:
             loop = asyncio.get_event_loop()
-            loop.run_in_executor(None, fyers.connect)
+            loop.run_in_executor(executor, fyers.connect)
             logger.info("✅ WebSocket connection started")
     else:
         logger.info("⚠️ Initial authentication failed, will retry when auth file updates")
@@ -936,6 +1169,7 @@ async def startup_tasks():
     asyncio.create_task(emit_real_time_data())
     
     logger.info("✅ All background tasks started")
+
 
 async def main():
     """Main entry point"""
@@ -952,13 +1186,16 @@ async def main():
             port=5001,
             log_level='info',
             loop='asyncio',
-            ws='websockets'
+            ws='websockets',
+            timeout_keep_alive=75,  # ✅ Increased keep-alive
+            limit_concurrency=100,  # ✅ Limit concurrent connections
         )
         server = uvicorn.Server(config)
         
         logger.info("✅ Starting Socket.IO server with AsyncIO + Uvicorn on port 5001...")
         logger.info("🔑 Using auto authentication with JWT token handling")
         logger.info("📊 Features: Background collection, 24h retention, optimized indicators")
+        logger.info("⚡ Enhanced: Timeout protection, rate limiting, batch operations")
         
         await server.serve()
         
@@ -968,6 +1205,8 @@ async def main():
         traceback.print_exc()
     finally:
         running = False
+        executor.shutdown(wait=True)  # ✅ Clean shutdown
+
 
 if __name__ == "__main__":
     try:

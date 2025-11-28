@@ -13,6 +13,15 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+
+// Add to existing imports at the top
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { Separator } from "@/components/ui/separator";
 import {
   SidebarInset,
@@ -167,8 +176,8 @@ const MarketDataPage: React.FC = () => {
   } = useWatchlist({ date: currentDate || undefined });
 
 
-// ============ DATE SYNCHRONIZATION LOGIC ============
-  
+  // ============ DATE SYNCHRONIZATION LOGIC ============
+
   // Determine the effective date (either user-selected or hook-default)
   const effectiveDate = currentDate || hookSelectedDate;
   // Calculate the latest available date from the dataset
@@ -178,7 +187,7 @@ const MarketDataPage: React.FC = () => {
   }, [availableDates]);
   // Determine if the currently selected date is the latest one
   const isLatestDate = useMemo(() => {
-    if (!effectiveDate || !latestAvailableDate) return true; 
+    if (!effectiveDate || !latestAvailableDate) return true;
     return effectiveDate === latestAvailableDate;
   }, [effectiveDate, latestAvailableDate]);
   // NOTE: Auto-close effect removed so user can view past data in modal
@@ -191,7 +200,7 @@ const MarketDataPage: React.FC = () => {
   const isSubscribedRef = useRef<Set<string>>(new Set());
   const [isGttEnabled, setIsGttEnabled] = useState(false); // New GTT State
 
-  
+
 
   // ============ PREDICTION POLLING INTEGRATION ============
   const {
@@ -333,15 +342,14 @@ const MarketDataPage: React.FC = () => {
 
   // ============ SUBSCRIPTION HANDLERS ============
 
+  // ============ SUBSCRIPTION HANDLERS ============
+
   const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // ✅ CRITICAL FIX: Remove date restriction - subscriptions are date-independent
   const handleSubscribeCompanies = useCallback(async (symbols: string[]) => {
-    // ✅ STRICT CHECK: Prevent subscription on past dates
-    if (!isLatestDate) {
-      toast.error("Real-time subscriptions are only allowed for the latest market date.");
-      return;
-    }
     if (!symbols || symbols.length === 0) return;
+
     setIsSubscribing(true);
     try {
       console.log(`📤 Sending subscription request for ${symbols.length} symbols`);
@@ -374,13 +382,10 @@ const MarketDataPage: React.FC = () => {
     } finally {
       setIsSubscribing(false);
     }
-  }, [isLatestDate]);
+  }, []); // ✅ Removed isLatestDate dependency
 
+  // ✅ CRITICAL FIX: Remove date restriction from Subscribe All
   const handleSubscribeAll = useCallback(() => {
-    if (!isLatestDate) {
-      toast.error("Cannot subscribe to past data.");
-      return;
-    }
     if (isSubscribing) {
       toast.warning("Subscription already in progress");
       return;
@@ -397,13 +402,13 @@ const MarketDataPage: React.FC = () => {
     }
 
     const targetList = filteredCompanies.length > 0 ? filteredCompanies : companies;
-    
+
     const symbols = targetList.map((c: any) =>
       validateAndFormatSymbol(c.company_code, c.exchange, c.marker)
     ).filter(Boolean);
 
     handleSubscribeCompanies(symbols);
-  }, [companies, validateAndFormatSymbol, handleSubscribeCompanies, isSubscribing, isLatestDate]);
+  }, [companies, validateAndFormatSymbol, handleSubscribeCompanies, isSubscribing, filteredCompanies]); // ✅ Removed isLatestDate
 
   // ============ EVENT HANDLERS ============
   const handleConnect = useCallback(() => {
@@ -996,7 +1001,7 @@ const MarketDataPage: React.FC = () => {
 
                 <div className="p-3 border border-opacity-30 rounded-md h-24 flex items-center justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 justify-between mr-4">
                       <WatchlistSelector
                         onCompanySelect={handleCompanyChange}
                         onDateChange={handleDateChange}
@@ -1005,35 +1010,34 @@ const MarketDataPage: React.FC = () => {
                         showMarkerFilter={true}
                       />
 
-                      <div className="flex items-center gap-2 ml-4 border-l pl-4 h-12">
-                        <div title={!isLatestDate ? "Real-time subscription is only available for the latest market date" : ""}>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleSubscribeAll}
-                            disabled={isSubscribing || !companies.length || !isLatestDate} // <--- Add !isLatestDate
-                            className="h-9"
-                          >
-                            {isSubscribing ? (
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
-                            ) : (
-                              <ListChecks className="mr-2 h-4 w-4 text-green-500" />
-                            )}
-                            Subscribe All
-                          </Button>
-                        </div>
+                      <div className="flex items-center justify-end gap-2 ml-4 border-l pl-4 h-12">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSubscribeAll}
+                          disabled={isSubscribing || !companies.length} // ✅ Removed !isLatestDate
+                          className="h-9"
+                        >
+                          {isSubscribing ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
+                          ) : (
+                            <ListChecks className="mr-2 h-4 w-4 text-green-500" />
+                          )}
+                          Subscribe All
+                        </Button>
 
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => setIsSubscriptionModalOpen(true)}
-                          disabled={isSubscribing} // Kept enabled for viewing, but action will be blocked
+                          disabled={isSubscribing}
                           className="h-9 w-9"
-                          title={!isLatestDate ? "View Subscriptions (Read Only)" : "Manage Subscriptions"}
+                          title="Manage Subscriptions"
                         >
                           <Settings2 className="h-4 w-4" />
                         </Button>
                       </div>
+
                     </div>
                     {isLoadingHistorical && (
                       <div className="mt-2 flex items-center gap-2 text-xs text-blue-400">
@@ -1048,30 +1052,114 @@ const MarketDataPage: React.FC = () => {
                     )}
                   </div>
                   <div className="flex justify-end text-sm">
-                    <div className="p-3 bg-zinc-800 rounded w-auto">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <Wifi className="h-4 w-4 text-green-500" />
-                        <span className="text-green-400 font-medium">Subscribed Companies ({activeSymbols.length})</span>
-                      </div>
-                      <div className="max-h-20 overflow-y-auto">
-                        {activeSymbols.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {activeSymbols.slice(0, 5).map(symbol => (
-                              <span key={symbol} className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded">
-                                {symbol.split(':')[1]?.split('-')[0] || symbol}
-                              </span>
-                            ))}
-                            {activeSymbols.length > 5 && (
-                              <span className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded">
-                                +{activeSymbols.length - 5} more
-                              </span>
+                    {/* ✅ ENHANCED: Hover Card for Subscribed Companies */}
+                    <HoverCard openDelay={200} closeDelay={100}>
+                      <HoverCardTrigger asChild>
+                        <div className="p-3 bg-zinc-800 rounded w-auto cursor-pointer hover:bg-zinc-700 transition-colors">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <Wifi className="h-4 w-4 text-green-500" />
+                            <span className="text-green-400 font-medium">
+                              Subscribed Companies ({activeSymbols.length})
+                            </span>
+                          </div>
+                          <div className="max-h-20 overflow-y-auto">
+                            {activeSymbols.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {activeSymbols.slice(0, 5).map(symbol => (
+                                  <span
+                                    key={symbol}
+                                    className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded"
+                                  >
+                                    {symbol.split(':')[1]?.split('-')[0] || symbol}
+                                  </span>
+                                ))}
+                                {activeSymbols.length > 5 && (
+                                  <span className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded animate-pulse">
+                                    +{activeSymbols.length - 5} more
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-zinc-500 text-xs">No active symbols</span>
                             )}
                           </div>
-                        ) : (
-                          <span className="text-zinc-500 text-xs">No active symbols</span>
-                        )}
-                      </div>
-                    </div>
+                        </div>
+                      </HoverCardTrigger>
+
+                      <HoverCardContent
+                        className="w-96 p-0 bg-zinc-900 border-zinc-700"
+                        side="left"
+                        align="start"
+                      >
+                        {/* ✅ Full List of Subscribed Companies */}
+                        <div className="p-4">
+                          <div className="flex items-center justify-between mb-3 pb-2 border-b border-zinc-800">
+                            <div className="flex items-center gap-2">
+                              <Wifi className="h-4 w-4 text-green-500" />
+                              <h3 className="font-semibold text-green-400">
+                                All Subscribed Companies
+                              </h3>
+                            </div>
+                            <span className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded">
+                              {activeSymbols.length} Active
+                            </span>
+                          </div>
+
+                          <ScrollArea className="h-[400px] pr-4">
+                            <div className="grid grid-cols-2 gap-2">
+                              {activeSymbols.length > 0 ? (
+                                activeSymbols.map((symbol, index) => {
+                                  const companyCode = symbol.split(':')[1]?.split('-')[0] || symbol;
+                                  const exchange = symbol.split(':')[0] || '';
+
+                                  return (
+                                    <div
+                                      key={symbol}
+                                      className="flex items-center gap-2 p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors group"
+                                    >
+                                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-green-900/30 flex items-center justify-center">
+                                        <span className="text-xs font-bold text-green-400">
+                                          {index + 1}
+                                        </span>
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium text-white truncate">
+                                          {companyCode}
+                                        </div>
+                                        <div className="text-xs text-zinc-500">
+                                          {exchange}
+                                        </div>
+                                      </div>
+                                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <div className="col-span-2 text-center py-8 text-zinc-500">
+                                  <Wifi className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                                  <p className="text-sm">No active subscriptions</p>
+                                </div>
+                              )}
+                            </div>
+                          </ScrollArea>
+
+                          {activeSymbols.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-zinc-800">
+                              <div className="flex items-center justify-between text-xs text-zinc-500">
+                                <span>Last updated: {new Date().toLocaleTimeString()}</span>
+                                <button
+                                  onClick={() => setIsSubscriptionModalOpen(true)}
+                                  className="text-blue-400 hover:text-blue-300 transition-colors"
+                                >
+                                  Manage →
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+
                   </div>
                 </div>
 
@@ -1485,10 +1573,12 @@ const MarketDataPage: React.FC = () => {
           <SubscriptionManagerModal
             isOpen={isSubscriptionModalOpen}
             onClose={() => setIsSubscriptionModalOpen(false)}
-            availableCompanies={companies} // Pass ALL companies (Modal handles filtering)
-            filteredCompanies={filteredCompanies} // <--- Pass filtered list
+            availableCompanies={companies}
+            filteredCompanies={filteredCompanies}
             currentSubscriptions={Array.from(isSubscribedRef.current)}
             onConfirm={handleSubscribeCompanies}
+            currentDate={effectiveDate}  // ✅ Pass current date
+            isLatestDate={isLatestDate}  // ✅ Pass latest date flag
           />
         </div>
       </SidebarInset>

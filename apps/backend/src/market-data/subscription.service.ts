@@ -14,10 +14,16 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
         symbols: string[];
         resolve: (value: any) => void;
         reject: (reason: any) => void;
-    }> = [];  // ✅ Add request queue
+    }> = [];
+
+    // ✅ NEW: Track active subscriptions
+    private activeSubscriptions: Set<string> = new Set();
+    private lastSyncTime: number = 0;
+    private readonly SYNC_INTERVAL = 30000; // Sync every 30 seconds
 
     onModuleInit() {
         this.connectToPythonService();
+        this.startPeriodicSync();
     }
 
     onModuleDestroy() {
@@ -41,8 +47,8 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
                 reconnectionDelay: 1000,
                 reconnectionDelayMax: 5000,
                 timeout: 20000,
-                transports: ['websocket', 'polling'], // ✅ Fallback to polling if WebSocket fails
-                forceNew: false,  // ✅ Reuse existing connection
+                transports: ['websocket', 'polling'],
+                forceNew: false,
             });
 
             this.socket.on('connect', () => {
@@ -50,7 +56,8 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
                 this.reconnectAttempts = 0;
                 this.isConnecting = false;
 
-                // ✅ Process queued requests
+                // Re-sync subscriptions after reconnect
+                this.syncSubscriptionsWithPython();
                 this.processPendingRequests();
             });
 
@@ -64,7 +71,6 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
                 this.logger.error(`Connection error (${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS}): ${err.message}`);
                 this.isConnecting = false;
 
-                // ✅ Reject pending requests after max attempts
                 if (this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
                     this.rejectPendingRequests(new Error('Max reconnection attempts reached'));
                 }
@@ -78,6 +84,36 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
             this.logger.error(`Failed to initialize socket: ${error.message}`);
             this.isConnecting = false;
             this.rejectPendingRequests(error);
+        }
+    }
+
+    // ✅ NEW: Periodic sync with Python service
+    private startPeriodicSync() {
+        setInterval(() => {
+            if (this.socket && this.socket.connected) {
+                this.syncSubscriptionsWithPython();
+            }
+        }, this.SYNC_INTERVAL);
+    }
+
+    // ✅ NEW: Sync subscriptions with Python service
+    private async syncSubscriptionsWithPython() {
+        const now = Date.now();
+        if (now - this.lastSyncTime < 5000) {
+            return; // Prevent sync spam
+        }
+
+        this.lastSyncTime = now;
+
+        try {
+            this.socket.emit('get_active_subscriptions', {}, (response: any) => {
+                if (response && response.success && Array.isArray(response.symbols)) {
+                    this.activeSubscriptions = new Set(response.symbols);
+                    this.logger.log(`✅ Synced ${this.activeSubscriptions.size} active subscriptions`);
+                }
+            });
+        } catch (error) {
+            this.logger.error(`Failed to sync subscriptions: ${error.message}`);
         }
     }
 
@@ -105,13 +141,11 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
 
     async subscribeToSymbols(symbols: string[]): Promise<any> {
         return new Promise((resolve, reject) => {
-            // ✅ Input validation
             if (!symbols || symbols.length === 0) {
                 reject(new Error('Symbols array is empty'));
                 return;
             }
 
-            // ✅ Check socket initialization
             if (!this.socket) {
                 this.logger.error('Socket not initialized, attempting to connect...');
                 this.pendingRequests.push({ symbols, resolve, reject });
@@ -119,7 +153,6 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
                 return;
             }
 
-            // ✅ Handle disconnected state with queuing
             if (!this.socket.connected) {
                 this.logger.warn('Socket not connected, queuing request...');
                 this.pendingRequests.push({ symbols, resolve, reject });
@@ -130,7 +163,6 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
                 return;
             }
 
-            // ✅ Socket is connected, proceed immediately
             this.performSubscription(symbols, resolve, reject);
         });
     }
@@ -148,7 +180,6 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
         }, 60000);
 
         try {
-            // ✅ Emit with acknowledgement callback
             this.socket.emit(
                 'subscribe_companies',
                 { symbols },
@@ -164,6 +195,8 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
                     this.logger.log(`📨 Response: ${JSON.stringify(response).substring(0, 200)}`);
 
                     if (response.success) {
+                        // Update local tracking
+                        symbols.forEach(symbol => this.activeSubscriptions.add(symbol));
                         this.logger.log(`✅ Subscribed to ${response.count || symbols.length} symbols`);
                         resolve(response);
                     } else {
@@ -177,5 +210,39 @@ export class SubscriptionService implements OnModuleInit, OnModuleDestroy {
             this.logger.error(`❌ Error emitting: ${error.message}`);
             reject(error);
         }
+    }
+
+    // ✅ NEW: Get current subscriptions
+    async getCurrentSubscriptions(): Promise<string[]> {
+        return new Promise((resolve, reject) => {
+            if (!this.socket || !this.socket.connected) {
+                // Return cached subscriptions if socket is down
+                this.logger.warn('Socket not connected, returning cached subscriptions');
+                resolve(Array.from(this.activeSubscriptions));
+                return;
+            }
+
+            const timeout = setTimeout(() => {
+                this.logger.warn('⏱️ Get subscriptions timed out, returning cached');
+                resolve(Array.from(this.activeSubscriptions));
+            }, 5000);
+
+            try {
+                this.socket.emit('get_active_subscriptions', {}, (response: any) => {
+                    clearTimeout(timeout);
+
+                    if (response && response.success && Array.isArray(response.symbols)) {
+                        this.activeSubscriptions = new Set(response.symbols);
+                        resolve(response.symbols);
+                    } else {
+                        resolve(Array.from(this.activeSubscriptions));
+                    }
+                });
+            } catch (error) {
+                clearTimeout(timeout);
+                this.logger.error(`Error getting subscriptions: ${error.message}`);
+                resolve(Array.from(this.activeSubscriptions));
+            }
+        });
     }
 }

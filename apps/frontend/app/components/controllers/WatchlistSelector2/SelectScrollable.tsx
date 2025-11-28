@@ -26,11 +26,11 @@ interface SelectScrollableProps {
   onCompanySelect: (companyCode: string | null) => void;
 }
 
-export function SelectScrollable({ 
-  companies, 
-  loading, 
-  exists, 
-  onCompanySelect 
+export function SelectScrollable({
+  companies,
+  loading,
+  exists,
+  onCompanySelect
 }: SelectScrollableProps) {
   const [open, setOpen] = React.useState(false)
   const [value, setValue] = React.useState("")
@@ -53,7 +53,7 @@ export function SelectScrollable({
   // This prevents unwanted resets when filters are applied
   React.useEffect(() => {
     if (!mounted) return
-    
+
     // Only reset if companies is now empty or the selected company is no longer in the list
     if (companies.length === 0) {
       console.log(`[SelectScrollable] Companies list is empty, resetting selection`);
@@ -165,7 +165,7 @@ export function SelectScrollable({
         <Button
           variant="outline"
           onClick={handleButtonClick}
-          className="w-full justify-between h-20" 
+          className="w-full justify-between h-20"
         >
           {selectedCompany ? (
             <div className="flex items-center gap-2 min-w-0">
@@ -182,7 +182,7 @@ export function SelectScrollable({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
         {open && (
-          <div 
+          <div
             className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-[500px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
@@ -259,9 +259,9 @@ export function SelectScrollable({
           </div>
         )}
       </div>
-      <div className="min-h-[96px] flex items-center"> 
+      <div className="min-h-[96px] flex items-center">
         {selectedCompany && (
-          <div className="p-3 bg-muted/50 rounded-md h-20 border border-border w-[250px] overflow-hidden"> 
+          <div className="p-3  top-0 left-0 bg-muted/50 rounded-md h-20 border border-border w-[250px] overflow-hidden">
             <div className="h-full flex flex-col justify-center ">
               <div className="flex items-center justify-between mb-1">
                 <h4 className="font-medium text-sm truncate flex-1 mr-2">{selectedCompany.company_code}</h4>

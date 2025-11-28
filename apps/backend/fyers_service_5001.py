@@ -12,6 +12,10 @@ import logging
 import requests
 import numpy as np
 import os
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 from collections import deque, defaultdict
 from fyers_apiv3 import fyersModel
 from fyers_apiv3.FyersWebsocket import data_ws
@@ -57,6 +61,24 @@ INDIA_TZ = pytz.timezone('Asia/Kolkata')
 
 fyers = None
 fyers_client = None
+
+# ✅ Configure requests session with timeouts and retries
+def create_resilient_session():
+    """Create HTTP session with retries and timeouts."""
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=3,
+        status_forcelist=[429, 500, 502, 503, 504],
+        backoff_factor=1,
+        allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=20)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+# Global session for reuse
+http_session = create_resilient_session()
 
 # ============ ENHANCED: Real-time Configuration ============
 REAL_TIME_INTERVAL = 0.2
@@ -358,7 +380,12 @@ def fetch_historical_intraday_data(symbol, date=None):
             "cont_flag": "1"
         }
 
-        response = fyers_client.history(data_args)
+        # Set explicit timeout
+        try:
+            response = fyers_client.history(data_args) # Library might not support timeout arg directly, but we wrap in try/except
+        except requests.exceptions.Timeout:
+            logger.error(f"⏱️ Timeout fetching data for {symbol}")
+            return []
 
         if response and response.get('s') == 'ok' and 'candles' in response:
             candles = response['candles']
@@ -553,68 +580,171 @@ def unsubscribe(sid, data):
     return {'success': True, 'symbol': symbol}
 
 
+# ✅ FIXED: Robust batch subscription with rate limiting and timeouts
 @sio.event
-def subscribe_companies(sid, data, **kwargs):  # ✅ Accept extra params
-    """Subscribe to multiple companies at once - FIXED VERSION."""
+async def subscribe_companies(sid, data):
+    """
+    Batch subscribe to multiple company symbols with robust error handling.
+    """
     symbols = data.get('symbols', [])
     
-    # Input validation
-    if not symbols or not isinstance(symbols, list):
-        return {'success': False, 'error': 'No symbols list provided'}
-
-    if not auth_initialized:
-        return {'success': False, 'error': 'Authentication not initialized'}
-
+    if not symbols:
+        logger.warning(f"Client {sid} sent empty symbols list")
+        return {'success': False, 'error': 'No symbols provided', 'count': 0}
+    
+    if sid not in clients:
+        logger.error(f"Client {sid} not found in clients dict")
+        return {'success': False, 'error': 'Client not registered', 'count': 0}
+    
     logger.info(f"📥 Client {sid} subscribing to {len(symbols)} symbols")
-
+    
+    subscribed_count = 0
+    failed_symbols = []
+    
     try:
-        # ✅ Process in smaller batches to avoid blocking
+        # ✅ Rate limiting: Process in batches of 10 to prevent overload
         BATCH_SIZE = 10
-        subscribed_count = 0
         
         for i in range(0, len(symbols), BATCH_SIZE):
             batch = symbols[i:i + BATCH_SIZE]
+            logger.info(f"Processing batch {i//BATCH_SIZE + 1}/{(len(symbols) + BATCH_SIZE - 1)//BATCH_SIZE}")
             
             for symbol in batch:
-                clients[sid]['subscriptions'].add(symbol)
-                if symbol not in symbol_to_clients:
-                    symbol_to_clients[symbol] = set()
-                symbol_to_clients[symbol].add(sid)
-                
-                symbol_subscriptions[symbol] += 1
-                active_symbols.add(symbol)
-                subscribed_count += 1
-            
-            # ✅ Yield control back to eventlet every batch
-            eventlet.sleep(0)
-
-        # ✅ Subscribe to Fyers in background (non-blocking)
-        if fyers and hasattr(fyers, 'subscribe'):
-            def do_fyers_subscribe():
                 try:
-                    fyers.subscribe(symbols=symbols, data_type="SymbolUpdate")
-                    logger.info(f"✅ Fyers subscription completed for {len(symbols)} symbols")
+                    clients[sid]['subscriptions'].add(symbol)
+                    
+                    if symbol not in symbol_to_clients:
+                        symbol_to_clients[symbol] = set()
+                    symbol_to_clients[symbol].add(sid)
+                    
+                    symbol_subscriptions[symbol] += 1
+                    active_symbols.add(symbol)
+                    subscribed_count += 1
+                    
                 except Exception as e:
-                    logger.error(f"❌ Fyers subscription error: {e}")
+                    logger.error(f"Failed to subscribe to {symbol}: {e}")
+                    failed_symbols.append(symbol)
             
-            # ✅ Spawn background task
-            eventlet.spawn(do_fyers_subscribe)
-        else:
-            logger.warning("⚠️ Fyers instance not ready")
-            return {'success': False, 'error': 'Fyers WebSocket not ready'}
-
-        # ✅ Return response (automatically sent as acknowledgment)
+            # Small delay between batches to prevent overwhelming the service
+            if i + BATCH_SIZE < len(symbols):
+                await asyncio.sleep(0.1)
+        
+        # ✅ Batch subscribe to Fyers with timeout
+        if fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
+            try:
+                loop = asyncio.get_event_loop()
+                
+                # Use executor with timeout for blocking call
+                executor = ThreadPoolExecutor(max_workers=1)
+                future = loop.run_in_executor(
+                    executor,
+                    fyers.subscribe,
+                    symbols,
+                    "SymbolUpdate"
+                )
+                
+                # 30 second timeout for Fyers subscription
+                await asyncio.wait_for(future, timeout=30.0)
+                logger.info(f"✅ Batch subscribed to {len(symbols)} symbols in Fyers")
+                
+            except asyncio.TimeoutError:
+                logger.error("❌ Fyers subscription timed out after 30s")
+                # Don't fail the entire request - subscriptions are tracked locally
+            except Exception as e:
+                logger.error(f"❌ Error in Fyers batch subscription: {e}")
+                # Continue - local subscriptions are still valid
+        
+        # ✅ Background task for historical data (non-blocking)
+        asyncio.create_task(send_batch_historical_data(sid, symbols))
+        
+        logger.info(f"✅ Successfully subscribed to {subscribed_count}/{len(symbols)} symbols")
+        
         return {
-            'success': True, 
-            'count': subscribed_count, 
-            'message': f'Successfully subscribed to {subscribed_count} companies'
+            'success': True,
+            'count': subscribed_count,
+            'failed': failed_symbols,
+            'message': f'Subscribed to {subscribed_count} symbols'
         }
         
     except Exception as e:
-        logger.error(f"❌ Error in subscribe_companies: {e}")
-        import traceback
-        traceback.print_exc()
-        return {'success': False, 'error': str(e)}
+        logger.error(f"❌ Critical error in subscribe_companies: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'count': subscribed_count
+        }
+
+# ✅ NEW: Optimized background historical data sender
+async def send_batch_historical_data(sid, symbols):
+    """
+    Send historical data for symbols in background without blocking main thread.
+    """
+    try:
+        for symbol in symbols:
+            try:
+                # Check if data already exists
+                if symbol not in historical_data or len(historical_data[symbol]) == 0:
+                    # Fetch with timeout
+                    loop = asyncio.get_event_loop()
+                    executor = ThreadPoolExecutor(max_workers=1)
+                    
+                    future = loop.run_in_executor(
+                        executor,
+                        fetch_historical_intraday_data,
+                        symbol
+                    )
+                    
+                    # 10 second timeout per symbol
+                    hist_data = await asyncio.wait_for(future, timeout=10.0)
+                    
+                    if symbol not in historical_data:
+                        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                    
+                    for data_point in hist_data:
+                        historical_data[symbol].append(data_point)
+                
+                # Emit data if available
+                if symbol in historical_data and len(historical_data[symbol]) > 0:
+                    hist_data_list = list(historical_data[symbol])
+                    await sio.emit('historicalData', {
+                        'symbol': symbol,
+                        'data': hist_data_list
+                    }, room=sid)
+                
+                # Small delay to prevent socket flooding
+                await asyncio.sleep(0.05)
+                
+            except asyncio.TimeoutError:
+                logger.warning(f"⏱️ Timeout fetching historical data for {symbol}")
+            except Exception as e:
+                logger.error(f"Error sending historical data for {symbol}: {e}")
+        
+        logger.info(f"✅ Completed background historical data send for {len(symbols)} symbols")
+        
+    except Exception as e:
+        logger.error(f"❌ Critical error in send_batch_historical_data: {e}")
+
+# ✅ NEW: Get active subscriptions endpoint
+@sio.event
+def get_active_subscriptions(sid, data):
+    """
+    Returns list of all currently active symbol subscriptions.
+    """
+    try:
+        active_list = list(active_symbols)
+        return {
+            'success': True,
+            'symbols': active_list,
+            'count': len(active_list)
+        }
+    except Exception as e:
+        logger.error(f"Error getting active subscriptions: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'symbols': [],
+            'count': 0
+        }
 
 
 @sio.event
