@@ -25,7 +25,8 @@ export const onReconnect = (callback: () => void): (() => void) => {
  */
 export const getSocket = (): Socket => {
   if (!socket) {
-    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
+    // ✅ STRICTLY ENFORCE PORT 5001 for Fyers Service
+    const SOCKET_URL = 'http://localhost:5001';
     console.log(`🔌 Connecting to WebSocket server at ${SOCKET_URL}`);
     
     socket = io(SOCKET_URL, {
