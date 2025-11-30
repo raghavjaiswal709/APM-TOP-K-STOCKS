@@ -6,6 +6,9 @@ import { ChevronRight, TrendingUp, BarChart3, LineChart, CandlestickChart, Arrow
 import { gttService, type GttPrediction } from '@/app/services/gttService';
 import { toast } from 'sonner';
 import { Zap } from 'lucide-react';
+import { useClusterPattern } from '@/hooks/useClusterPattern';
+import ClusterChart from './ClusterChart';
+
 
 // Add Plotly import for restyle operations
 declare const Plotly: any;
@@ -298,8 +301,23 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
   // �🔀 Separator Modal State
   const [isSeparatorModalOpen, setIsSeparatorModalOpen] = useState(false);
+  const [separateViewMode, setSeparateViewMode] = useState<'live-prediction' | 'live-cluster' | 'prediction-cluster'>('live-prediction');
+
 
   const [mainMode, setMainMode] = useState<'none' | 'bidAsk' | 'buySell'>('none');
+  // ✅ NEW: Cluster Pattern Hook
+  const {
+    clusterInfo,
+    patternData: clusterPatternData,
+    loading: clusterLoading,
+    error: clusterError,
+  } = useClusterPattern({
+    symbol: symbol,
+    exchange: 'NSE',
+    method: 'spectral',
+    enabled: isSeparatorModalOpen && (separateViewMode === 'live-cluster' || separateViewMode === 'prediction-cluster'),
+  });
+
   const [secondaryView, setSecondaryView] = useState<'line' | 'spread' | 'std'>('line');
   const [showIndicators, setShowIndicators] = useState({
     sma20: false,
@@ -3569,121 +3587,208 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               </button>
             </div>
 
+            {/* ✅ MODE SELECTOR DROPDOWN */}
+            <div className="px-4 py-3 bg-gray-800 border-b border-gray-700">
+              <select
+                value={separateViewMode}
+                onChange={(e) => setSeparateViewMode(e.target.value as any)}
+                className="w-full px-4 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="live-prediction">Mode A: Live Market ↔ Prediction</option>
+                <option value="live-cluster">Mode B: Live Market ↔ Cluster Pattern</option>
+                <option value="prediction-cluster">Mode C: Prediction ↔ Cluster Pattern</option>
+              </select>
+            </div>
+
             {/* Modal Content - Side by Side Charts */}
-            <div className="grid grid-cols-2 gap-4 p-4 h-[calc(100%-4rem)] overflow-auto">
-              {/* Left Side - Actual Live Chart */}
+            <div className="grid grid-cols-2 gap-4 p-4 h-[calc(100%-8rem)] overflow-auto">
+              {/* LEFT PANEL */}
               <div className="flex flex-col bg-gray-800/50 rounded-lg border border-gray-700 p-4">
                 <div className="mb-2">
                   <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
                     <span className="inline-block w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
-                    <span>Actual Live Data</span>
+                    <span>
+                      {separateViewMode === 'live-prediction' || separateViewMode === 'live-cluster'
+                        ? '📈 Live Market'
+                        : '🔮 Predictions'}
+                    </span>
                   </h3>
-                  <p className="text-sm text-gray-400">Real-time market data from {symbol}</p>
+                  <p className="text-sm text-gray-400">
+                    {separateViewMode === 'live-prediction' || separateViewMode === 'live-cluster'
+                      ? `Real-time market data from ${symbol}`
+                      : 'AI-generated price predictions'}
+                  </p>
                 </div>
-
-                <div className="flex-1 min-h-0">
-                  {/* Render ONLY actual data - no predictions */}
-                  {chartType === 'line' ? (
-                    <Plot
-                      data={createActualDataOnly()}
-                      layout={createLayout()}
-                      config={{
-                        responsive: true,
-                        displayModeBar: true,
-                        displaylogo: false,
-                        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-                        scrollZoom: true,
-                        doubleClick: 'reset',
-                        toImageButtonOptions: {
-                          format: 'png',
-                          filename: `${symbol}_actual_${new Date().toISOString().split('T')[0]}`,
-                          height: 1080,
-                          width: 1920,
-                          scale: 2
-                        }
-                      }}
-                      useResizeHandler={true}
-                      style={{ width: '100%', height: '100%' }}
-                    />
+                <div className="flex-1">
+                  {separateViewMode === 'prediction-cluster' ? (
+                    /* SHOW PREDICTIONS ON LEFT */
+                    predictions && predictions.count > 0 ? (
+                      <Plot
+                        data={createPredictionDataOnly()}
+                        layout={{
+                          autosize: true,
+                          height: 700,
+                          margin: { l: 50, r: 50, t: 40, b: 40 },
+                          title: {
+                            text: `${symbol} Predictions`,
+                            font: { size: 16, color: '#e4e4e7' },
+                          },
+                          xaxis: {
+                            title: 'Time',
+                            type: 'date',
+                            gridcolor: '#27272a',
+                            linecolor: '#27272a',
+                            tickfont: { color: '#e4e4e7' },
+                            titlefont: { color: '#e4e4e7' },
+                          },
+                          yaxis: {
+                            title: 'Price (₹)',
+                            gridcolor: '#27272a',
+                            linecolor: '#27272a',
+                            tickfont: { color: '#e4e4e7' },
+                            titlefont: { color: '#e4e4e7' },
+                          },
+                          plot_bgcolor: 'rgba(0,0,0,0)',
+                          paper_bgcolor: 'rgba(0,0,0,0)',
+                          font: { family: 'Arial, sans-serif', color: '#e4e4e7' },
+                        }}
+                        config={{
+                          responsive: true,
+                          displayModeBar: true,
+                          displaylogo: false,
+                        }}
+                        style={{ width: '100%', height: '100%' }}
+                      />
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-gray-400">
+                        <div className="text-center">
+                          <div className="text-4xl mb-3">🔮</div>
+                          <p>No predictions available</p>
+                        </div>
+                      </div>
+                    )
                   ) : (
+                    /* SHOW LIVE MARKET ON LEFT */
                     <Plot
                       data={createActualDataOnly()}
-                      layout={createLayout()}
+                      layout={{
+                        autosize: true,
+                        height: 700,
+                        margin: { l: 50, r: 50, t: 40, b: 40 },
+                        title: {
+                          text: `${symbol} ${chartType === 'line' ? 'LTP' : 'OHLC'}`,
+                          font: { size: 16, color: '#e4e4e7' },
+                        },
+                        xaxis: {
+                          title: 'Time',
+                          type: 'date',
+                          gridcolor: '#27272a',
+                          linecolor: '#27272a',
+                          tickfont: { color: '#e4e4e7' },
+                          titlefont: { color: '#e4e4e7' },
+                        },
+                        yaxis: {
+                          title: 'Price (₹)',
+                          gridcolor: '#27272a',
+                          linecolor: '#27272a',
+                          tickfont: { color: '#e4e4e7' },
+                          titlefont: { color: '#e4e4e7' },
+                        },
+                        plot_bgcolor: 'rgba(0,0,0,0)',
+                        paper_bgcolor: 'rgba(0,0,0,0)',
+                        font: { family: 'Arial, sans-serif', color: '#e4e4e7' },
+                      }}
                       config={{
                         responsive: true,
                         displayModeBar: true,
                         displaylogo: false,
-                        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-                        scrollZoom: true,
-                        doubleClick: 'reset',
-                        toImageButtonOptions: {
-                          format: 'png',
-                          filename: `${symbol}_actual_${new Date().toISOString().split('T')[0]}`,
-                          height: 1080,
-                          width: 1920,
-                          scale: 2
-                        }
                       }}
-                      useResizeHandler={true}
                       style={{ width: '100%', height: '100%' }}
                     />
                   )}
                 </div>
               </div>
 
-              {/* Right Side - Predicted Chart */}
+              {/* RIGHT PANEL */}
               <div className="flex flex-col bg-gray-800/50 rounded-lg border border-gray-700 p-4">
                 <div className="mb-2">
                   <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
                     <span className="inline-block w-3 h-3 bg-purple-500 rounded-full animate-pulse"></span>
-                    <span>Predicted Data</span>
+                    <span>
+                      {separateViewMode === 'live-prediction'
+                        ? '🔮 Predictions'
+                        : '📊 Cluster Pattern'}
+                    </span>
                   </h3>
                   <p className="text-sm text-gray-400">
-                    {showPredictions && predictions && predictions.count > 0
-                      ? `${predictions.count} predictions for ${predictions.company}`
-                      : 'No predictions available'}
+                    {separateViewMode === 'live-prediction'
+                      ? 'AI-generated price predictions'
+                      : 'Historical pattern analysis'}
                   </p>
                 </div>
-
-                <div className="flex-1 min-h-0">
-                  {showPredictions && predictions && predictions.count > 0 ? (
-                    <Plot
-                      data={createPredictionDataOnly()}
-                      layout={createLayout()}
-                      config={{
-                        responsive: true,
-                        displayModeBar: true,
-                        displaylogo: false,
-                        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-                        scrollZoom: true,
-                        doubleClick: 'reset',
-                        toImageButtonOptions: {
-                          format: 'png',
-                          filename: `${symbol}_predictions_${new Date().toISOString().split('T')[0]}`,
-                          height: 1080,
-                          width: 1920,
-                          scale: 2
-                        }
-                      }}
-                      useResizeHandler={true}
-                      style={{ width: '100%', height: '100%' }}
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-center">
-                        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full mb-4">
-                          <svg className="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
+                <div className="flex-1">
+                  {separateViewMode === 'live-prediction' ? (
+                    /* SHOW PREDICTIONS ON RIGHT */
+                    predictions && predictions.count > 0 ? (
+                      <Plot
+                        data={createPredictionDataOnly()}
+                        layout={{
+                          autosize: true,
+                          height: 700,
+                          margin: { l: 50, r: 50, t: 40, b: 40 },
+                          title: {
+                            text: `${symbol} Predictions`,
+                            font: { size: 16, color: '#e4e4e7' },
+                          },
+                          xaxis: {
+                            title: 'Time',
+                            type: 'date',
+                            gridcolor: '#27272a',
+                            linecolor: '#27272a',
+                            tickfont: { color: '#e4e4e7' },
+                            titlefont: { color: '#e4e4e7' },
+                          },
+                          yaxis: {
+                            title: 'Price (₹)',
+                            gridcolor: '#27272a',
+                            linecolor: '#27272a',
+                            tickfont: { color: '#e4e4e7' },
+                            titlefont: { color: '#e4e4e7' },
+                          },
+                          plot_bgcolor: 'rgba(0,0,0,0)',
+                          paper_bgcolor: 'rgba(0,0,0,0)',
+                          font: { family: 'Arial, sans-serif', color: '#e4e4e7' },
+                        }}
+                        config={{
+                          responsive: true,
+                          displayModeBar: true,
+                          displaylogo: false,
+                        }}
+                        style={{ width: '100%', height: '100%' }}
+                      />
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-gray-400">
+                        <div className="text-center">
+                          <div className="text-4xl mb-3">🔮</div>
+                          <p>No predictions available</p>
                         </div>
-                        <p className="text-gray-400 text-lg mb-2">No Predictions Available</p>
-                        <p className="text-gray-500 text-sm">Enable predictions or wait for data to load</p>
                       </div>
-                    </div>
+                    )
+                  ) : (
+                    /* SHOW CLUSTER PATTERN ON RIGHT */
+                    <ClusterChart
+                      symbol={symbol}
+                      clusterInfo={clusterInfo}
+                      patternData={clusterPatternData}
+                      loading={clusterLoading}
+                      error={clusterError}
+                      height={700}
+                    />
                   )}
                 </div>
               </div>
             </div>
+
           </div>
         </div>
       )}

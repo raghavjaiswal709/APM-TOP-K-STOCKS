@@ -11,6 +11,17 @@ const nextConfig = {
         source: '/api/sentiment/:path*',
         destination: 'http://100.93.172.21:5717/api/premarket/predictions/:path*',
       },
+      // ✅ NEW: Proxy for Desirability Service (Port 8508)
+      {
+        source: '/api/proxy/desirability/:path*',
+        destination: 'http://100.93.172.21:8508/desirability/:path*',
+      },
+      // ✅ NEW: Proxy for Intraday Service (Port 8505)
+      {
+        source: '/api/proxy/intraday/:path*',
+        destination: 'http://100.93.172.21:8505/intraday/:path*',
+      },
+
       {
         source: '/api/:path*',
         destination: 'http://localhost:5000/api/:path*', // Adjust to your NestJS port
