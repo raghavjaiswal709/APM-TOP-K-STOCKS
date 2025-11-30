@@ -1016,11 +1016,11 @@ const MarketDataPage: React.FC = () => {
                     <button
                       onClick={() => setShowPredictions(!showPredictions)}
                       className={`px-3 py-1 rounded text-sm font-medium transition-colors ${showPredictions
-                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        ? 'bg-[#dbeafe] text-blue-600 hover:bg-[#cddcfe]'
                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                         }`}
                     >
-                      {showPredictions ? '🔮 Predictions ON' : '🔮 Predictions OFF'}
+                      {showPredictions ? 'Predictions ON' : 'Predictions OFF'}
                     </button>
                   </div>
                 </div>

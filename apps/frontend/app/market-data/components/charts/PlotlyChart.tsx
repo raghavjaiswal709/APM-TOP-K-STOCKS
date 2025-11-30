@@ -3570,58 +3570,69 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
       {/* 🔀 SEPARATOR MODAL - Side-by-Side View */}
       {isSeparatorModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-          <div className="relative w-[98vw] h-[95vh] bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg shadow-2xl border border-gray-700 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-[98vw] h-[95vh] bg-zinc-950 rounded-xl shadow-xl border border-zinc-800 overflow-hidden flex flex-col">
+
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-900 to-indigo-900 border-b border-purple-700">
-              <h2 className="text-xl font-bold text-white flex items-center space-x-2">
-                <Maximize2 className="h-5 w-5" />
-                <span>Separate View - Actual vs Predicted Comparison</span>
-              </h2>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-zinc-800 rounded-lg">
+                  <Maximize2 className="h-4 w-4 text-zinc-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-zinc-100">
+                    Comparative Analysis
+                  </h2>
+                  <p className="text-xs text-zinc-400">
+                    Side-by-side view of market data
+                  </p>
+                </div>
+              </div>
               <button
                 onClick={() => setIsSeparatorModalOpen(false)}
-                className="p-2 rounded-full hover:bg-white/10 transition-colors"
-                title="Close Separate View"
+                className="p-2 rounded-lg hover:bg-zinc-800 transition-colors"
+                title="Close"
               >
-                <X className="h-6 w-6 text-white" />
+                <X className="h-4 w-4 text-zinc-400" />
               </button>
             </div>
 
-            {/* ✅ MODE SELECTOR DROPDOWN */}
-            <div className="px-4 py-3 bg-gray-800 border-b border-gray-700">
+            {/* Mode Selector */}
+            <div className="px-6 py-3 bg-zinc-900 border-b border-zinc-800">
               <select
                 value={separateViewMode}
                 onChange={(e) => setSeparateViewMode(e.target.value as any)}
-                className="w-full px-4 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full px-3 py-2 text-sm bg-zinc-950 text-zinc-100 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:border-transparent"
               >
-                <option value="live-prediction">Mode A: Live Market ↔ Prediction</option>
-                <option value="live-cluster">Mode B: Live Market ↔ Cluster Pattern</option>
-                <option value="prediction-cluster">Mode C: Prediction ↔ Cluster Pattern</option>
+                <option value="live-prediction">Live Market ↔ Prediction</option>
+                <option value="live-cluster">Live Market ↔ Cluster Pattern</option>
+                <option value="prediction-cluster">Prediction ↔ Cluster Pattern</option>
               </select>
             </div>
 
             {/* Modal Content - Side by Side Charts */}
-            <div className="grid grid-cols-2 gap-4 p-4 h-[calc(100%-8rem)] overflow-auto">
+            <div className="grid grid-cols-2 gap-4 p-4 flex-1 overflow-auto bg-zinc-950">
+
               {/* LEFT PANEL */}
-              <div className="flex flex-col bg-gray-800/50 rounded-lg border border-gray-700 p-4">
-                <div className="mb-2">
-                  <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
-                    <span className="inline-block w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
-                    <span>
+              <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
+                <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="h-2 w-2 bg-emerald-500 rounded-full"></div>
+                    <h3 className="text-sm font-medium text-zinc-100">
                       {separateViewMode === 'live-prediction' || separateViewMode === 'live-cluster'
-                        ? '📈 Live Market'
-                        : '🔮 Predictions'}
-                    </span>
-                  </h3>
-                  <p className="text-sm text-gray-400">
+                        ? 'Live Market'
+                        : 'Predictions'}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-zinc-400">
                     {separateViewMode === 'live-prediction' || separateViewMode === 'live-cluster'
-                      ? `Real-time market data from ${symbol}`
-                      : 'AI-generated price predictions'}
+                      ? `Real-time data for ${symbol}`
+                      : 'AI-generated forecasts'}
                   </p>
                 </div>
-                <div className="flex-1">
+
+                <div className="flex-1 p-4">
                   {separateViewMode === 'prediction-cluster' ? (
-                    /* SHOW PREDICTIONS ON LEFT */
                     predictions && predictions.count > 0 ? (
                       <Plot
                         data={createPredictionDataOnly()}
@@ -3631,26 +3642,26 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                           margin: { l: 50, r: 50, t: 40, b: 40 },
                           title: {
                             text: `${symbol} Predictions`,
-                            font: { size: 16, color: '#e4e4e7' },
+                            font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
                           },
                           xaxis: {
                             title: 'Time',
                             type: 'date',
                             gridcolor: '#27272a',
-                            linecolor: '#27272a',
-                            tickfont: { color: '#e4e4e7' },
-                            titlefont: { color: '#e4e4e7' },
+                            linecolor: '#3f3f46',
+                            tickfont: { color: '#a1a1aa', size: 11 },
+                            titlefont: { color: '#d4d4d8', size: 12 },
                           },
                           yaxis: {
                             title: 'Price (₹)',
                             gridcolor: '#27272a',
-                            linecolor: '#27272a',
-                            tickfont: { color: '#e4e4e7' },
-                            titlefont: { color: '#e4e4e7' },
+                            linecolor: '#3f3f46',
+                            tickfont: { color: '#a1a1aa', size: 11 },
+                            titlefont: { color: '#d4d4d8', size: 12 },
                           },
-                          plot_bgcolor: 'rgba(0,0,0,0)',
-                          paper_bgcolor: 'rgba(0,0,0,0)',
-                          font: { family: 'Arial, sans-serif', color: '#e4e4e7' },
+                          plot_bgcolor: '#18181b',
+                          paper_bgcolor: '#18181b',
+                          font: { family: 'Inter, system-ui, sans-serif', color: '#e4e4e7' },
                         }}
                         config={{
                           responsive: true,
@@ -3660,15 +3671,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                         style={{ width: '100%', height: '100%' }}
                       />
                     ) : (
-                      <div className="h-full flex items-center justify-center text-gray-400">
+                      <div className="h-full flex items-center justify-center">
                         <div className="text-center">
-                          <div className="text-4xl mb-3">🔮</div>
-                          <p>No predictions available</p>
+                          <div className="text-3xl mb-2 text-zinc-700">📊</div>
+                          <p className="text-sm text-zinc-400">No predictions available</p>
                         </div>
                       </div>
                     )
                   ) : (
-                    /* SHOW LIVE MARKET ON LEFT */
                     <Plot
                       data={createActualDataOnly()}
                       layout={{
@@ -3677,26 +3687,26 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                         margin: { l: 50, r: 50, t: 40, b: 40 },
                         title: {
                           text: `${symbol} ${chartType === 'line' ? 'LTP' : 'OHLC'}`,
-                          font: { size: 16, color: '#e4e4e7' },
+                          font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
                         },
                         xaxis: {
                           title: 'Time',
                           type: 'date',
                           gridcolor: '#27272a',
-                          linecolor: '#27272a',
-                          tickfont: { color: '#e4e4e7' },
-                          titlefont: { color: '#e4e4e7' },
+                          linecolor: '#3f3f46',
+                          tickfont: { color: '#a1a1aa', size: 11 },
+                          titlefont: { color: '#d4d4d8', size: 12 },
                         },
                         yaxis: {
                           title: 'Price (₹)',
                           gridcolor: '#27272a',
-                          linecolor: '#27272a',
-                          tickfont: { color: '#e4e4e7' },
-                          titlefont: { color: '#e4e4e7' },
+                          linecolor: '#3f3f46',
+                          tickfont: { color: '#a1a1aa', size: 11 },
+                          titlefont: { color: '#d4d4d8', size: 12 },
                         },
-                        plot_bgcolor: 'rgba(0,0,0,0)',
-                        paper_bgcolor: 'rgba(0,0,0,0)',
-                        font: { family: 'Arial, sans-serif', color: '#e4e4e7' },
+                        plot_bgcolor: '#18181b',
+                        paper_bgcolor: '#18181b',
+                        font: { family: 'Inter, system-ui, sans-serif', color: '#e4e4e7' },
                       }}
                       config={{
                         responsive: true,
@@ -3710,25 +3720,25 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               </div>
 
               {/* RIGHT PANEL */}
-              <div className="flex flex-col bg-gray-800/50 rounded-lg border border-gray-700 p-4">
-                <div className="mb-2">
-                  <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
-                    <span className="inline-block w-3 h-3 bg-purple-500 rounded-full animate-pulse"></span>
-                    <span>
+              <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
+                <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="h-2 w-2 bg-violet-500 rounded-full"></div>
+                    <h3 className="text-sm font-medium text-zinc-100">
                       {separateViewMode === 'live-prediction'
-                        ? '🔮 Predictions'
-                        : '📊 Cluster Pattern'}
-                    </span>
-                  </h3>
-                  <p className="text-sm text-gray-400">
+                        ? 'Predictions'
+                        : 'Cluster Pattern'}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-zinc-400">
                     {separateViewMode === 'live-prediction'
-                      ? 'AI-generated price predictions'
+                      ? 'AI-generated forecasts'
                       : 'Historical pattern analysis'}
                   </p>
                 </div>
-                <div className="flex-1">
+
+                <div className="flex-1 p-4">
                   {separateViewMode === 'live-prediction' ? (
-                    /* SHOW PREDICTIONS ON RIGHT */
                     predictions && predictions.count > 0 ? (
                       <Plot
                         data={createPredictionDataOnly()}
@@ -3738,26 +3748,26 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                           margin: { l: 50, r: 50, t: 40, b: 40 },
                           title: {
                             text: `${symbol} Predictions`,
-                            font: { size: 16, color: '#e4e4e7' },
+                            font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
                           },
                           xaxis: {
                             title: 'Time',
                             type: 'date',
                             gridcolor: '#27272a',
-                            linecolor: '#27272a',
-                            tickfont: { color: '#e4e4e7' },
-                            titlefont: { color: '#e4e4e7' },
+                            linecolor: '#3f3f46',
+                            tickfont: { color: '#a1a1aa', size: 11 },
+                            titlefont: { color: '#d4d4d8', size: 12 },
                           },
                           yaxis: {
                             title: 'Price (₹)',
                             gridcolor: '#27272a',
-                            linecolor: '#27272a',
-                            tickfont: { color: '#e4e4e7' },
-                            titlefont: { color: '#e4e4e7' },
+                            linecolor: '#3f3f46',
+                            tickfont: { color: '#a1a1aa', size: 11 },
+                            titlefont: { color: '#d4d4d8', size: 12 },
                           },
-                          plot_bgcolor: 'rgba(0,0,0,0)',
-                          paper_bgcolor: 'rgba(0,0,0,0)',
-                          font: { family: 'Arial, sans-serif', color: '#e4e4e7' },
+                          plot_bgcolor: '#18181b',
+                          paper_bgcolor: '#18181b',
+                          font: { family: 'Inter, system-ui, sans-serif', color: '#e4e4e7' },
                         }}
                         config={{
                           responsive: true,
@@ -3767,15 +3777,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                         style={{ width: '100%', height: '100%' }}
                       />
                     ) : (
-                      <div className="h-full flex items-center justify-center text-gray-400">
+                      <div className="h-full flex items-center justify-center">
                         <div className="text-center">
-                          <div className="text-4xl mb-3">🔮</div>
-                          <p>No predictions available</p>
+                          <div className="text-3xl mb-2 text-zinc-700">📊</div>
+                          <p className="text-sm text-zinc-400">No predictions available</p>
                         </div>
                       </div>
                     )
                   ) : (
-                    /* SHOW CLUSTER PATTERN ON RIGHT */
                     <ClusterChart
                       symbol={symbol}
                       clusterInfo={clusterInfo}
@@ -3792,6 +3801,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           </div>
         </div>
       )}
+
 
       {/* Status Display */}
       <div className="mt-2 flex items-center space-x-4 text-sm">

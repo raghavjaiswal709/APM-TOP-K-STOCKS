@@ -2,31 +2,37 @@
 const nextConfig = {
   transpilePackages: ['lightweight-charts'],
 
-  // Disable error overlay temporarily
   reactStrictMode: true,
 
   async rewrites() {
     return [
+      // ✅ CRITICAL: Time Machine MUST come BEFORE generic /api/:path*
+      {
+        source: '/api/time-machine/:path*',
+        destination: 'http://100.93.172.21:6969/:path*',
+      },
+
+      // Specific API rewrites (these should also be before the catch-all)
       {
         source: '/api/sentiment/:path*',
         destination: 'http://100.93.172.21:5717/api/premarket/predictions/:path*',
       },
-      // ✅ NEW: Proxy for Desirability Service (Port 8508)
       {
         source: '/api/proxy/desirability/:path*',
         destination: 'http://100.93.172.21:8508/desirability/:path*',
       },
-      // ✅ NEW: Proxy for Intraday Service (Port 8505)
       {
         source: '/api/proxy/intraday/:path*',
         destination: 'http://100.93.172.21:8505/intraday/:path*',
       },
 
+      // ⚠️ CATCH-ALL MUST BE LAST (matches everything else)
       {
         source: '/api/:path*',
-        destination: 'http://localhost:5000/api/:path*', // Adjust to your NestJS port
+        destination: 'http://localhost:5000/api/:path*',
       },
-      // Proxy for on-prem graph server to avoid CORS issues
+
+      // Static asset proxies
       {
         source: '/watchlist-graphs/:path*',
         destination: 'http://100.93.172.21:6969/Watchlist_assets/:path*',
@@ -34,7 +40,6 @@ const nextConfig = {
     ];
   },
 
-  // Configure external image domains
   images: {
     remotePatterns: [
       {
@@ -43,19 +48,24 @@ const nextConfig = {
         port: '6969',
         pathname: '/Watchlist_assets/**',
       },
+      {
+        protocol: 'http',
+        hostname: '100.93.172.21',
+        port: '6969',
+        pathname: '/Sthiti/**',
+      },
+      {
+        protocol: 'http',
+        hostname: '100.93.172.21',
+        port: '6969',
+        pathname: '/Live/**',
+      },
     ],
-    unoptimized: true, // Disable image optimization for external images
+    unoptimized: true,
   },
 
-  // For Next.js 13+ - disable error overlay
-  experimental: {
-    // errorOverlay: false, // This property might not exist in newer Next.js versions, commenting out to be safe or check docs. 
-    // Actually, user had it before, but let's keep it simple.
-  },
-
-  // Additional option to reduce noise
   compiler: {
-    removeConsole: false, // Set to true if you want to remove console.logs in production
+    removeConsole: false,
   },
 };
 

@@ -43,7 +43,7 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
             mode: 'lines' as const,
             name: 'Cluster Pattern',
             line: {
-                color: '#8B5CF6',
+                color: '#8b5cf6',
                 width: 3,
             },
             hovertemplate: '<b>Time:</b> %{x}<br><b>Change:</b> %{y:.2f}%<extra></extra>',
@@ -80,26 +80,32 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
         () => ({
             title: {
                 text: `<b>Cluster Pattern Analysis</b><br><sub>${symbol} | Cluster ID: ${clusterInfo?.clusterId || 'N/A'} | Based on ${clusterInfo?.nDays || 0} Days</sub>`,
-                font: { size: 18, color: '#FFFFFF' },
+                font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
             },
             xaxis: {
                 title: 'Time (IST)',
-                color: '#9CA3AF',
-                gridcolor: '#374151',
+                color: '#a1a1aa',
+                gridcolor: '#27272a',
+                linecolor: '#3f3f46',
                 tickangle: -45,
                 nticks: 15,
+                tickfont: { color: '#a1a1aa', size: 11 },
+                titlefont: { color: '#d4d4d8', size: 12 },
             },
             yaxis: {
                 title: 'Normalized Change (%)',
-                color: '#9CA3AF',
-                gridcolor: '#374151',
+                color: '#a1a1aa',
+                gridcolor: '#27272a',
+                linecolor: '#3f3f46',
                 zeroline: true,
-                zerolinecolor: '#6B7280',
+                zerolinecolor: '#52525b',
                 zerolinewidth: 2,
+                tickfont: { color: '#a1a1aa', size: 11 },
+                titlefont: { color: '#d4d4d8', size: 12 },
             },
-            plot_bgcolor: 'rgba(0,0,0,0)',
-            paper_bgcolor: 'rgba(0,0,0,0)',
-            font: { color: '#E5E7EB' },
+            plot_bgcolor: '#18181b',
+            paper_bgcolor: '#18181b',
+            font: { color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
             height: height,
             margin: { l: 60, r: 40, t: 100, b: 80 },
             hovermode: 'x unified' as const,
@@ -107,9 +113,10 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
             legend: {
                 x: 0.01,
                 y: 0.99,
-                bgcolor: 'rgba(31, 41, 55, 0.8)',
-                bordercolor: '#4B5563',
+                bgcolor: 'rgba(39, 39, 42, 0.8)',
+                bordercolor: '#52525b',
                 borderwidth: 1,
+                font: { color: '#e4e4e7' },
             },
         }),
         [symbol, clusterInfo, height]
@@ -129,8 +136,8 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
         return (
             <div className="w-full h-full flex items-center justify-center">
                 <div className="text-center space-y-3">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto"></div>
-                    <p className="text-gray-400">Loading cluster pattern...</p>
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-500 mx-auto"></div>
+                    <p className="text-sm text-zinc-400">Loading cluster pattern...</p>
                 </div>
             </div>
         );
@@ -140,9 +147,9 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
         return (
             <div className="w-full h-full flex items-center justify-center">
                 <div className="text-center space-y-3 max-w-md">
-                    <div className="text-red-500 text-4xl">⚠️</div>
-                    <p className="text-red-400 font-medium">{error}</p>
-                    <p className="text-gray-500 text-sm">
+                    <div className="text-red-500 text-3xl">⚠️</div>
+                    <p className="text-sm text-red-400 font-medium">{error}</p>
+                    <p className="text-xs text-zinc-500">
                         Make sure the microservices on ports 8508 and 8505 are running.
                     </p>
                 </div>
@@ -154,8 +161,8 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
         return (
             <div className="w-full h-full flex items-center justify-center">
                 <div className="text-center space-y-3">
-                    <div className="text-gray-600 text-4xl">📊</div>
-                    <p className="text-gray-400">No cluster pattern data available</p>
+                    <div className="text-zinc-700 text-3xl">📊</div>
+                    <p className="text-sm text-zinc-400">No cluster pattern data available</p>
                 </div>
             </div>
         );
@@ -164,39 +171,47 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
     return (
         <div className="w-full h-full rounded-lg overflow-hidden">
             {clusterInfo && (
-                <div className="grid grid-cols-4 gap-3 p-4 bg-gray-800 border-b border-gray-700">
-                    <div className="flex items-center gap-2 bg-purple-900/20 p-3 rounded-lg border border-purple-500/30">
-                        <TrendingUp className="h-5 w-5 text-purple-400" />
+                <div className="grid grid-cols-4 gap-3 p-4 bg-zinc-900 border-b border-zinc-800">
+                    <div className="flex items-center gap-2 bg-zinc-900 p-3 rounded-lg border border-zinc-800">
+                        <div className="p-2 bg-violet-500/10 rounded-lg">
+                            <TrendingUp className="h-4 w-4 text-violet-400" />
+                        </div>
                         <div>
-                            <p className="text-xs text-gray-400">Desirability</p>
-                            <p className="text-lg font-bold text-purple-300">
+                            <p className="text-xs text-zinc-400">Desirability</p>
+                            <p className="text-base font-semibold text-zinc-100">
                                 {(clusterInfo.desirabilityScore * 100).toFixed(1)}%
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 bg-blue-900/20 p-3 rounded-lg border border-blue-500/30">
-                        <Target className="h-5 w-5 text-blue-400" />
+                    <div className="flex items-center gap-2 bg-zinc-900 p-3 rounded-lg border border-zinc-800">
+                        <div className="p-2 bg-blue-500/10 rounded-lg">
+                            <Target className="h-4 w-4 text-blue-400" />
+                        </div>
                         <div>
-                            <p className="text-xs text-gray-400">Reoccurrence</p>
-                            <p className="text-lg font-bold text-blue-300">
+                            <p className="text-xs text-zinc-400">Reoccurrence</p>
+                            <p className="text-base font-semibold text-zinc-100">
                                 {(clusterInfo.reoccurrenceProbability * 100).toFixed(1)}%
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 bg-green-900/20 p-3 rounded-lg border border-green-500/30">
-                        <BarChart3 className="h-5 w-5 text-green-400" />
+                    <div className="flex items-center gap-2 bg-zinc-900 p-3 rounded-lg border border-zinc-800">
+                        <div className="p-2 bg-emerald-500/10 rounded-lg">
+                            <BarChart3 className="h-4 w-4 text-emerald-400" />
+                        </div>
                         <div>
-                            <p className="text-xs text-gray-400">Strength</p>
-                            <p className="text-lg font-bold text-green-300">
+                            <p className="text-xs text-zinc-400">Strength</p>
+                            <p className="text-base font-semibold text-zinc-100">
                                 {(clusterInfo.strengthScore * 100).toFixed(1)}%
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 bg-amber-900/20 p-3 rounded-lg border border-amber-500/30">
-                        <Calendar className="h-5 w-5 text-amber-400" />
+                    <div className="flex items-center gap-2 bg-zinc-900 p-3 rounded-lg border border-zinc-800">
+                        <div className="p-2 bg-amber-500/10 rounded-lg">
+                            <Calendar className="h-4 w-4 text-amber-400" />
+                        </div>
                         <div>
-                            <p className="text-xs text-gray-400">Sample Size</p>
-                            <p className="text-lg font-bold text-amber-300">{clusterInfo.nDays} Days</p>
+                            <p className="text-xs text-zinc-400">Sample Size</p>
+                            <p className="text-base font-semibold text-zinc-100">{clusterInfo.nDays} Days</p>
                         </div>
                     </div>
                 </div>
