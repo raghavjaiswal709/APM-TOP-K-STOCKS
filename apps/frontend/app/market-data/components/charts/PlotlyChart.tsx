@@ -13,6 +13,34 @@ import ClusterChart from './ClusterChart';
 // Add Plotly import for restyle operations
 declare const Plotly: any;
 
+// ============ TYPE DEFINITIONS ============
+interface MarketData {
+  symbol: string;
+  ltp: number;
+  change?: number;
+  changePercent?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
+  bid?: number;
+  ask?: number;
+  timestamp: number;
+  sma_20?: number;
+  ema_9?: number;
+  rsi_14?: number;
+}
+
+interface OHLCData {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 // ============ CONFIGURATION CONSTANTS ============
 // Time Range & Buffer Constants
 const FUTURE_BUFFER_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
@@ -100,17 +128,32 @@ interface ChartUpdate {
   changePercent: number;
 }
 
-// ✨ NEW: Prediction data interface
+// ✨ NEW: Prediction data interface (legacy - for regular predictions)
 interface PredictionData {
   timestamp: string;
   close: number;
   predictedat: string;
 }
 
+// ✨ GTT Prediction interface matching backend response
+interface GttPredictionData {
+  timestamp: string;
+  input_close: number;
+  H1_pred: number;
+  H2_pred: number;
+  H3_pred: number;
+  H4_pred: number;
+  H5_pred: number;
+  prediction_time: string;
+}
+
 interface CompanyPredictions {
-  company: string;
-  predictions: Record<string, PredictionData>;
-  count: number;
+  symbol?: string;  // GTT uses symbol
+  company?: string; // Legacy uses company
+  latest?: GttPredictionData;  // GTT latest prediction
+  predictions: GttPredictionData[] | Record<string, PredictionData>;  // Support both formats
+  count?: number;
+  total_predictions?: number;  // GTT uses total_predictions
   starttime?: string;
   endtime?: string;
 }
@@ -170,6 +213,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const [gttPredictions, setGttPredictions] = useState<GttPrediction[]>([]);
   const [isLoadingGtt, setIsLoadingGtt] = useState(false);
   const [gttError, setGttError] = useState<string | null>(null);
+  const [showGttHistory, setShowGttHistory] = useState(true); // GTT history toggle
+  const [gttMenuOpen, setGttMenuOpen] = useState(false); // Dropdown menu state
   const lastSymbolRef = useRef<string>('');
 
   const handleGttToggle = useCallback(async () => {
@@ -1689,127 +1734,209 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         });
 
         // ============ GTT PREDICTION RENDERING ============
-        if (isGttEnabled && gttExternalData && gttExternalData.count > 0) {
-          const gttEntries = Object.entries(gttExternalData.predictions);
+        if (isGttEnabled && gttExternalData && gttExternalData.predictions && Array.isArray(gttExternalData.predictions)) {
+          const allPredictions = gttExternalData.predictions;
 
-          if (gttEntries.length > 0) {
-            console.log('🎯 [PlotlyChart] Rendering GTT predictions:', {
-              totalPredictions: gttEntries.length,
-              company: gttExternalData.company
+          if (allPredictions.length > 0) {
+            console.log('🎯 [PlotlyChart-Line] Rendering GTT predictions:', {
+              totalPredictions: allPredictions.length,
+              symbol: gttExternalData.symbol
             });
 
-            // Sort predictions by timestamp
-            const sortedGtt = gttEntries.sort((a, b) => {
-              const timeA = new Date(a[1].timestamp || a[0]).getTime();
-              const timeB = new Date(b[1].timestamp || b[0]).getTime();
-              return timeA - timeB;
-            });
+            // Define horizon colors and time offsets
+            const horizonConfig = [
+              { horizon: 'H1', color: '#10b981', offset: 15, label: '+15min' },  // Green
+              { horizon: 'H2', color: '#3b82f6', offset: 30, label: '+30min' },  // Blue
+              { horizon: 'H3', color: '#f59e0b', offset: 45, label: '+45min' },  // Orange
+              { horizon: 'H4', color: '#ef4444', offset: 60, label: '+60min' },  // Red
+              { horizon: 'H5', color: '#8b5cf6', offset: 75, label: '+75min' },  // Purple
+            ];
 
-            const gttTimes = sortedGtt.map(([key, pred]) =>
-              new Date(pred.timestamp || key)
-            );
-            const gttValues = sortedGtt.map(([, pred]) => Number(pred.close));
+            const latestPrediction = gttExternalData.latest || allPredictions[allPredictions.length - 1];
+            const latestPredTime = new Date(latestPrediction.prediction_time).getTime();
 
-            // Filter valid values
-            const validIndices = gttValues
-              .map((val, idx) => (!isNaN(val) && val > 0 ? idx : -1))
-              .filter(idx => idx !== -1);
+            // Collect all latest predictions for connected line
+            const latestConnectedX: Date[] = [];
+            const latestConnectedY: number[] = [];
+            const latestConnectedColors: string[] = [];
+            const latestConnectedLabels: string[] = [];
 
-            if (validIndices.length > 0) {
-              const validTimes = validIndices.map(idx => gttTimes[idx]);
-              const validValues = validIndices.map(idx => gttValues[idx]);
+            // Add anchor point first
+            const anchorTime = new Date(latestPrediction.prediction_time);
+            latestConnectedX.push(anchorTime);
+            latestConnectedY.push(latestPrediction.input_close);
+            latestConnectedColors.push('#22d3ee');
+            latestConnectedLabels.push('Anchor');
 
-              // ✅ CONNECTOR LINE: Bridge from last historical point to first GTT prediction
-              if (timeValues.length > 0 && validTimes.length > 0) {
-                const lastHistoricalTime = timeValues[timeValues.length - 1];
-                const lastHistoricalPrice = priceValues[priceValues.length - 1];
-                const firstPredTime = validTimes[0];
-                const firstPredPrice = validValues[0];
-
-                plotData.push({
-                  x: [lastHistoricalTime, firstPredTime],
-                  y: [lastHistoricalPrice, firstPredPrice],
-                  type: 'scatter',
-                  mode: 'lines',
-                  name: 'GTT Bridge',
-                  line: {
-                    color: 'rgba(168, 85, 247, 0.5)',
-                    width: 2,
-                    dash: 'dot'
-                  },
-                  showlegend: false,
-                  hoverinfo: 'skip'
-                } as any);
+            // Add all horizon predictions in order
+            horizonConfig.forEach(({ horizon, color, offset, label }) => {
+              const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
+              const targetTime = new Date(latestPredTime + offset * 60 * 1000);
+              const value = latestPrediction[predKey];
+              
+              if (value && !isNaN(value)) {
+                latestConnectedX.push(targetTime);
+                latestConnectedY.push(value);
+                latestConnectedColors.push(color);
+                latestConnectedLabels.push(horizon);
               }
+            });
 
-              // ✅ MAIN GTT PREDICTION LINE
+            // Render CONNECTED latest prediction line
+            if (latestConnectedX.length > 0) {
               plotData.push({
-                x: validTimes,
-                y: validValues,
+                x: latestConnectedX,
+                y: latestConnectedY,
                 type: 'scatter',
                 mode: 'lines+markers',
-                name: `⚡ GTT Predictions (${validValues.length}pts)`,
+                name: '⚡ GTT Latest Prediction',
                 line: {
                   color: '#A855F7',
                   width: 3,
-                  dash: 'dash'
+                  dash: 'solid'
                 },
                 marker: {
-                  size: 8,
-                  color: '#A855F7',
+                  size: 10,
+                  color: latestConnectedColors,
                   symbol: 'diamond',
                   line: {
-                    color: '#7C3AED',
+                    color: '#ffffff',
                     width: 2
                   }
                 },
-                connectgaps: true,
-                hovertemplate: '<b>⚡ GTT Prediction</b><br>' +
-                  'Time: %{x|%H:%M:%S}<br>' +
-                  'Predicted Price: ₹%{y:.2f}<br>' +
-                  '<extra></extra>',
-                showlegend: true,
-                visible: true
+                text: latestConnectedLabels,
+                hovertemplate: '<b>⚡ %{text} (LATEST)</b><br>' +
+                              'Time: %{x|%H:%M:%S}<br>' +
+                              'Price: ₹%{y:.2f}<br>' +
+                              '<extra></extra>',
+                showlegend: true
               } as any);
-
-              // ✅ PREDICTION MARKERS WITH LABELS
-              validTimes.forEach((time, idx) => {
-                if (idx === 0) return; // Skip anchor point
-
-                const horizonLabel = `H${idx}`;
-                plotData.push({
-                  x: [time],
-                  y: [validValues[idx]],
-                  type: 'scatter',
-                  mode: 'markers+text',
-                  name: horizonLabel,
-                  text: [horizonLabel],
-                  textposition: 'top center',
-                  textfont: {
-                    size: 10,
-                    color: '#A855F7',
-                    family: 'Arial, sans-serif'
-                  },
-                  marker: {
-                    size: 10,
-                    color: '#A855F7',
-                    symbol: 'diamond',
-                    line: {
-                      color: '#ffffff',
-                      width: 2
-                    }
-                  },
-                  showlegend: false,
-                  hoverinfo: 'skip'
-                } as any);
-              });
-
-              console.log(`✅ [PlotlyChart] GTT predictions rendered:`, {
-                points: validValues.length,
-                timeRange: `${validTimes[0].toLocaleTimeString()} → ${validTimes[validTimes.length - 1].toLocaleTimeString()}`,
-                priceRange: `₹${Math.min(...validValues).toFixed(2)} → ₹${Math.max(...validValues).toFixed(2)}`
-              });
             }
+
+            // Render historical predictions only if enabled
+            if (showGttHistory) {
+              horizonConfig.forEach(({ horizon, color, offset, label }) => {
+                const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
+                
+                const historicalX: Date[] = [];
+                const historicalY: number[] = [];
+
+                allPredictions.forEach((pred) => {
+                  const predTime = new Date(pred.prediction_time).getTime();
+                  if (predTime === latestPredTime) return; // Skip latest
+                  
+                  const targetTime = new Date(predTime + offset * 60 * 1000);
+                  const value = pred[predKey];
+
+                  if (value && !isNaN(value)) {
+                    historicalX.push(targetTime);
+                    historicalY.push(value);
+                  }
+                });
+
+                // Render historical predictions (dimmed)
+                if (historicalX.length > 0) {
+                  plotData.push({
+                    x: historicalX,
+                    y: historicalY,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: `${horizon} ${label} (history)`,
+                    line: {
+                      color: color,
+                      width: 1.5,
+                      dash: 'dot'
+                    },
+                    marker: {
+                      size: 4,
+                      color: color,
+                      symbol: 'diamond',
+                      opacity: 0.4
+                    },
+                    opacity: 0.4,
+                    hovertemplate: `<b>${horizon} (History)</b><br>` +
+                                  'Target Time: %{x|%H:%M:%S}<br>' +
+                                  'Price: ₹%{y:.2f}<br>' +
+                                  '<extra></extra>',
+                    showlegend: false
+                  } as any);
+                }
+              });
+
+              // Historical anchors (dimmed)
+              const historicalAnchorsX: Date[] = [];
+              const historicalAnchorsY: number[] = [];
+
+              allPredictions.forEach((pred) => {
+                const predTime = new Date(pred.prediction_time).getTime();
+                if (predTime === latestPredTime) return;
+
+                const value = pred.input_close;
+                if (value && !isNaN(value)) {
+                  historicalAnchorsX.push(new Date(pred.prediction_time));
+                  historicalAnchorsY.push(value);
+                }
+              });
+
+              if (historicalAnchorsX.length > 0) {
+                plotData.push({
+                  x: historicalAnchorsX,
+                  y: historicalAnchorsY,
+                  type: 'scatter',
+                  mode: 'markers',
+                  name: 'Anchors (history)',
+                  marker: {
+                    size: 6,
+                    color: '#22d3ee',
+                    symbol: 'circle',
+                    opacity: 0.3
+                  },
+                  hovertemplate: '<b>Anchor (History)</b><br>' +
+                                'Time: %{x|%H:%M:%S}<br>' +
+                                'Input Price: ₹%{y:.2f}<br>' +
+                                '<extra></extra>',
+                  showlegend: false
+                } as any);
+              }
+            }
+
+            // Render latest prediction markers with labels
+            latestConnectedX.forEach((time, idx) => {
+              if (idx === 0) return; // Skip anchor
+              
+              plotData.push({
+                x: [time],
+                y: [latestConnectedY[idx]],
+                type: 'scatter',
+                mode: 'markers+text',
+                name: latestConnectedLabels[idx],
+                text: [latestConnectedLabels[idx]],
+                textposition: 'top center',
+                textfont: {
+                  size: 10,
+                  color: latestConnectedColors[idx],
+                  family: 'Arial, sans-serif',
+                  weight: 'bold'
+                },
+                marker: {
+                  size: 12,
+                  color: latestConnectedColors[idx],
+                  symbol: 'diamond',
+                  line: {
+                    color: '#ffffff',
+                    width: 2
+                  }
+                },
+                showlegend: false,
+                hoverinfo: 'skip'
+              } as any);
+            });
+
+            console.log(`✅ [PlotlyChart-Line] GTT predictions rendered:`, {
+              totalPredictions: allPredictions.length,
+              horizons: 5,
+              latestTime: new Date(latestPredTime).toLocaleTimeString()
+            });
           }
         }
 
@@ -2205,6 +2332,353 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               '<extra></extra>',
             showlegend: true
           });
+        }
+      }
+
+      // ============ GTT PREDICTION RENDERING FOR CANDLESTICK ============
+      if (isGttEnabled && gttExternalData && gttExternalData.predictions && Array.isArray(gttExternalData.predictions)) {
+        const allPredictions = gttExternalData.predictions;
+        
+        console.log('🎯 [PlotlyChart-Candle] Rendering GTT predictions:', {
+          totalPredictions: allPredictions.length,
+          symbol: gttExternalData.symbol,
+          showHistory: showGttHistory
+        });
+
+        if (allPredictions.length > 0) {
+          const horizonConfig = [
+            { horizon: 'H1', color: '#10b981', offset: 15, label: '+15min' },
+            { horizon: 'H2', color: '#3b82f6', offset: 30, label: '+30min' },
+            { horizon: 'H3', color: '#f59e0b', offset: 45, label: '+45min' },
+            { horizon: 'H4', color: '#ef4444', offset: 60, label: '+60min' },
+            { horizon: 'H5', color: '#8b5cf6', offset: 75, label: '+75min' },
+          ];
+
+          const latestPrediction = gttExternalData.latest || allPredictions[allPredictions.length - 1];
+          const latestPredTime = new Date(latestPrediction.prediction_time).getTime();
+
+          // Collect all latest predictions for CONNECTED line
+          const latestConnectedX: Date[] = [];
+          const latestConnectedY: number[] = [];
+          const latestConnectedColors: string[] = [];
+          const latestConnectedLabels: string[] = [];
+
+          // Add anchor point first
+          const anchorTime = new Date(latestPrediction.prediction_time);
+          latestConnectedX.push(anchorTime);
+          latestConnectedY.push(latestPrediction.input_close);
+          latestConnectedColors.push('#22d3ee');
+          latestConnectedLabels.push('Anchor');
+
+          // Add all horizon predictions in order
+          horizonConfig.forEach(({ horizon, color, offset }) => {
+            const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
+            const targetTime = new Date(latestPredTime + offset * 60 * 1000);
+            const value = latestPrediction[predKey];
+            
+            if (value && !isNaN(value)) {
+              latestConnectedX.push(targetTime);
+              latestConnectedY.push(value);
+              latestConnectedColors.push(color);
+              latestConnectedLabels.push(horizon);
+            }
+          });
+
+          // Render CONNECTED latest prediction line
+          if (latestConnectedX.length > 0) {
+            plotData.push({
+              x: latestConnectedX,
+              y: latestConnectedY,
+              type: 'scatter',
+              mode: 'lines+markers',
+              name: '⚡ GTT Latest Prediction',
+              line: {
+                color: '#A855F7',
+                width: 3,
+                dash: 'solid'
+              },
+              marker: {
+                size: 10,
+                color: latestConnectedColors,
+                symbol: 'diamond',
+                line: {
+                  color: '#ffffff',
+                  width: 2
+                }
+              },
+              text: latestConnectedLabels,
+              hovertemplate: '<b>⚡ %{text} (LATEST)</b><br>' +
+                            'Time: %{x|%H:%M:%S}<br>' +
+                            'Price: ₹%{y:.2f}<br>' +
+                            '<extra></extra>',
+              showlegend: true
+            } as any);
+          }
+
+          // Render historical predictions ONLY if enabled
+          if (showGttHistory) {
+            horizonConfig.forEach(({ horizon, color, offset, label }) => {
+              const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
+              
+              const historicalX: Date[] = [];
+              const historicalY: number[] = [];
+
+              allPredictions.forEach((pred) => {
+                const predTime = new Date(pred.prediction_time).getTime();
+                if (predTime === latestPredTime) return; // Skip latest
+                
+                const targetTime = new Date(predTime + offset * 60 * 1000);
+                const value = pred[predKey];
+
+                if (value && !isNaN(value)) {
+                  historicalX.push(targetTime);
+                  historicalY.push(value);
+                }
+              });
+
+              if (historicalX.length > 0) {
+                plotData.push({
+                  x: historicalX,
+                  y: historicalY,
+                  type: 'scatter',
+                  mode: 'lines+markers',
+                  name: `${horizon} ${label} (history)`,
+                  line: {
+                    color: color,
+                    width: 1.5,
+                    dash: 'dot'
+                  },
+                  marker: {
+                    size: 4,
+                    color: color,
+                    symbol: 'diamond',
+                    opacity: 0.4
+                  },
+                  opacity: 0.4,
+                  hovertemplate: `<b>${horizon} (History)</b><br>` +
+                                'Target Time: %{x|%H:%M:%S}<br>' +
+                                'Price: ₹%{y:.2f}<br>' +
+                                '<extra></extra>',
+                  showlegend: false
+                } as any);
+              }
+            });
+
+            // Historical anchors
+            const historicalAnchorsX: Date[] = [];
+            const historicalAnchorsY: number[] = [];
+
+            allPredictions.forEach((pred) => {
+              const predTime = new Date(pred.prediction_time).getTime();
+              if (predTime === latestPredTime) return;
+
+              const value = pred.input_close;
+              if (value && !isNaN(value)) {
+                historicalAnchorsX.push(new Date(pred.prediction_time));
+                historicalAnchorsY.push(value);
+              }
+            });
+
+            if (historicalAnchorsX.length > 0) {
+              plotData.push({
+                x: historicalAnchorsX,
+                y: historicalAnchorsY,
+                type: 'scatter',
+                mode: 'markers',
+                name: 'Anchors (history)',
+                marker: {
+                  size: 6,
+                  color: '#22d3ee',
+                  symbol: 'circle',
+                  opacity: 0.3
+                },
+                hovertemplate: '<b>Anchor (History)</b><br>' +
+                              'Time: %{x|%H:%M:%S}<br>' +
+                              'Input Price: ₹%{y:.2f}<br>' +
+                              '<extra></extra>',
+                showlegend: false
+              } as any);
+            }
+          }
+
+          // Render latest prediction markers with labels
+          latestConnectedX.forEach((time, idx) => {
+            if (idx === 0) return; // Skip anchor
+            
+            plotData.push({
+              x: [time],
+              y: [latestConnectedY[idx]],
+              type: 'scatter',
+              mode: 'markers+text',
+              name: latestConnectedLabels[idx],
+              text: [latestConnectedLabels[idx]],
+              textposition: 'top center',
+              textfont: {
+                size: 10,
+                color: latestConnectedColors[idx],
+                family: 'Arial, sans-serif',
+                weight: 'bold'
+              },
+              marker: {
+                size: 12,
+                color: latestConnectedColors[idx],
+                symbol: 'diamond',
+                line: {
+                  color: '#ffffff',
+                  width: 2
+                }
+              },
+              showlegend: false,
+              hoverinfo: 'skip'
+            } as any);
+          });
+
+          // Add anchor points (input_close) - dimmed historical, highlighted latest
+          const historicalAnchorsX: Date[] = [];
+          const historicalAnchorsY: number[] = [];
+          const latestAnchorX: Date[] = [];
+          const latestAnchorY: number[] = [];
+
+          allPredictions.forEach((pred) => {
+            const predTime = new Date(pred.prediction_time);
+            const value = pred.input_close;
+            const isLatest = predTime.getTime() === latestPredTime;
+
+            if (value && !isNaN(value)) {
+              if (isLatest) {
+                latestAnchorX.push(predTime);
+                latestAnchorY.push(value);
+              } else {
+                historicalAnchorsX.push(predTime);
+                historicalAnchorsY.push(value);
+              }
+            }
+          });
+
+          // Historical anchors
+          if (historicalAnchorsX.length > 0) {
+            plotData.push({
+              x: historicalAnchorsX,
+              y: historicalAnchorsY,
+              type: 'scatter',
+              mode: 'markers',
+              name: 'Anchor Points (Historical)',
+              marker: {
+                size: 6,
+                color: '#22d3ee',
+                symbol: 'circle',
+                opacity: 0.3
+              },
+              hovertemplate: '<b>Anchor (Historical)</b><br>' +
+                            'Time: %{x|%H:%M:%S}<br>' +
+                            'Input Price: ₹%{y:.2f}<br>' +
+                            '<extra></extra>',
+              showlegend: false
+            } as any);
+          }
+
+          // Latest anchor
+          if (latestAnchorX.length > 0) {
+            plotData.push({
+              x: latestAnchorX,
+              y: latestAnchorY,
+              type: 'scatter',
+              mode: 'markers',
+              name: '⚡ Anchor (Latest)',
+              marker: {
+                size: 12,
+                color: '#22d3ee',
+                symbol: 'circle',
+                line: {
+                  color: '#ffffff',
+                  width: 2
+                },
+                opacity: 1
+              },
+              hovertemplate: '<b>⚡ Anchor Point (LATEST)</b><br>' +
+                            'Time: %{x|%H:%M:%S}<br>' +
+                            'Input Price: ₹%{y:.2f}<br>' +
+                            '<extra></extra>',
+              showlegend: true
+            } as any);
+          }
+
+          console.log(`✅ [PlotlyChart-Candle] GTT predictions rendered:`, {
+            totalPredictions: allPredictions.length,
+            horizons: 5,
+            latestTime: new Date(latestPredTime).toLocaleTimeString()
+          });
+        }
+      }
+
+      // ✨ ADD REGULAR PREDICTIONS FOR CANDLESTICK (if GTT not enabled)
+      if (!isGttEnabled && showPredictions && predictions && predictions.count > 0) {
+        const predictionEntries = Object.entries(predictions.predictions);
+        if (predictionEntries.length > 0) {
+          const sortedPredictions = predictionEntries.sort((a, b) => {
+            const timeA = new Date(a[1].timestamp || a[0]).getTime();
+            const timeB = new Date(b[1].timestamp || b[0]).getTime();
+            return timeA - timeB;
+          });
+
+          const predictionTimes = sortedPredictions.map(([key, pred]) =>
+            new Date(pred.timestamp || key)
+          );
+          const predictionValues = sortedPredictions.map(([, pred]) => Number(pred.close));
+
+          // Bridge from last candle to first prediction
+          if (x.length > 0 && predictionTimes.length > 0) {
+            const lastCandleTime = x[x.length - 1];
+            const lastCandlePrice = close[close.length - 1];
+            const firstPredTime = predictionTimes[0];
+            const firstPredPrice = predictionValues[0];
+
+            plotData.push({
+              x: [lastCandleTime, firstPredTime],
+              y: [lastCandlePrice, firstPredPrice],
+              type: 'scatter',
+              mode: 'lines',
+              name: 'Prediction Bridge',
+              line: {
+                color: 'rgba(255, 152, 0, 0.5)',
+                width: 2,
+                dash: 'dot'
+              },
+              showlegend: false,
+              hoverinfo: 'skip'
+            });
+          }
+
+          plotData.push({
+            x: predictionTimes,
+            y: predictionValues,
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: 'Prediction',
+            line: {
+              color: '#FF9800',
+              width: 3,
+              dash: 'dash'
+            },
+            marker: {
+              size: 8,
+              color: '#FF9800',
+              symbol: 'diamond',
+              line: {
+                color: '#E65100',
+                width: 2
+              }
+            },
+            connectgaps: true,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+              'Time: %{x|%H:%M:%S}<br>' +
+              'Predicted Price: ₹%{y:.2f}<br>' +
+              '<extra></extra>',
+            showlegend: true,
+            visible: true
+          });
+
+          console.log('✅ [Candle] Prediction trace added, total points:', predictionTimes.length);
         }
       }
     }
@@ -3221,21 +3695,72 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         <div className="flex space-x-4">
           {/* 🔀 Separator Button - Opens Modal with Split View */}
           <div className="flex space-x-1 bg-gradient-to-r from-purple-900 to-indigo-900 p-1 rounded-md border border-purple-600">
-            {/* ✨ NEW: GTT Toggle Button */}
-            <button
-              onClick={() => onGttToggle?.(!isGttEnabled)}
-              disabled={!symbol || gttLoading}
-              className={`px-3 py-1.5 rounded transition-all flex items-center gap-2 ${isGttEnabled
-                ? 'bg-purple-600 text-white hover:bg-purple-700'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                } ${(!symbol || gttLoading) ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={isGttEnabled ? 'Disable GTT Predictions' : 'Enable GTT Predictions'}
+            {/* ✨ GTT Toggle Button with Dropdown */}
+            <div 
+              className="relative"
+              onMouseEnter={() => setGttMenuOpen(true)}
+              onMouseLeave={() => setGttMenuOpen(false)}
             >
-              <Zap className={`h-4 w-4 ${isGttEnabled ? 'animate-pulse' : ''}`} />
-              <span className="text-xs font-medium">
-                {gttLoading ? 'Loading...' : (isGttEnabled ? 'GTT ON' : 'GTT OFF')}
-              </span>
-            </button>
+              <button
+                onClick={() => onGttToggle?.(!isGttEnabled)}
+                disabled={!symbol || gttLoading}
+                className={`px-3 py-1.5 rounded transition-all flex items-center gap-2 ${isGttEnabled
+                  ? 'bg-purple-600 text-white hover:bg-purple-700'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  } ${(!symbol || gttLoading) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title={isGttEnabled ? 'Disable GTT Predictions' : 'Enable GTT Predictions'}
+              >
+                <Zap className={`h-4 w-4 ${isGttEnabled ? 'animate-pulse' : ''}`} />
+                <span className="text-xs font-medium">
+                  {gttLoading ? 'Loading...' : (isGttEnabled ? 'GTT ON' : 'GTT OFF')}
+                </span>
+              </button>
+
+              {/* Dropdown Menu */}
+              {gttMenuOpen && isGttEnabled && (
+                <div className="absolute top-full left-0 mt-1 w-48 bg-zinc-900 border border-purple-600 rounded-md shadow-xl z-50 overflow-hidden">
+                  <div className="p-2 border-b border-zinc-700">
+                    <div className="text-xs font-bold text-purple-400 flex items-center gap-2">
+                      <Zap className="h-3 w-3" />
+                      GTT Options
+                    </div>
+                  </div>
+                  
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowGttHistory(!showGttHistory);
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-purple-900/50 transition-colors flex items-center justify-between"
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-xs font-medium text-white">
+                        Show History
+                      </span>
+                      <span className="text-[10px] text-zinc-400">
+                        {showGttHistory ? 'All 25 predictions visible' : 'Only latest prediction'}
+                      </span>
+                    </div>
+                    <div className={`w-10 h-5 rounded-full transition-colors ${showGttHistory ? 'bg-purple-600' : 'bg-gray-600'} relative`}>
+                      <div className={`absolute top-0.5 ${showGttHistory ? 'right-0.5' : 'left-0.5'} w-4 h-4 bg-white rounded-full transition-all shadow-md`}></div>
+                    </div>
+                  </button>
+
+                  <div className="p-2 border-t border-zinc-700 bg-zinc-800/50">
+                    <div className="text-[10px] text-zinc-500 space-y-1">
+                      <div className="flex justify-between">
+                        <span>Latest:</span>
+                        <span className="text-purple-400 font-medium">Bold & Bright</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>History:</span>
+                        <span className="text-zinc-400 font-medium">Dimmed {showGttHistory ? '(24 preds)' : '(Hidden)'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="w-px h-4 bg-purple-700 my-auto mx-1"></div>
 

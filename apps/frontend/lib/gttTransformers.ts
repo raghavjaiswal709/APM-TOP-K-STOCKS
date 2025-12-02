@@ -31,10 +31,23 @@ export interface PredictionData {
     predictedat: string;
 }
 
+export interface GttPredictionItem {
+    H1_pred: number;
+    H2_pred: number;
+    H3_pred: number;
+    H4_pred: number;
+    H5_pred: number;
+    input_close: number;
+    prediction_time: string;
+    timestamp: string;
+}
+
 export interface CompanyPredictions {
-    company: string;
-    predictions: Record<string, PredictionData>;
-    count: number;
+    symbol?: string;
+    company?: string;
+    predictions: GttPredictionItem[] | Record<string, PredictionData>;  // Support both formats
+    count?: number;
+    total_predictions?: number;
     starttime?: string;
     endtime?: string;
     latest?: {
@@ -50,82 +63,32 @@ export interface CompanyPredictions {
 }
 
 /**
- * ✅ FIXED: Complete transformation logic for GTT predictions
- * Converts raw GTT API response to chart-compatible format
+ * ✅ FIXED: Pass through GTT predictions in native array format
+ * NO TRANSFORMATION - Chart expects array format with H1-H5 structure
  */
 export function transformGttToChartPredictions(
     gttResponse: GttApiResponse | null
-): CompanyPredictions | null {
-    if (!gttResponse || !gttResponse.latest) {
+): any | null {
+    if (!gttResponse || !gttResponse.predictions || gttResponse.predictions.length === 0) {
         console.warn('⚠️ [transformGttToChartPredictions] No GTT data available');
         return null;
     }
 
-    const latest = gttResponse.latest;
-    const predictions: Record<string, PredictionData> = {};
-
-    // Parse base timestamp (anchor point)
-    const baseTime = new Date(latest.timestamp);
-    const predictionTime = latest.prediction_time;
-
-    console.log('🔄 [transformGttToChartPredictions] Processing:', {
+    console.log('🔄 [transformGttToChartPredictions] Passing through native format:', {
         symbol: gttResponse.symbol,
-        baseTime: baseTime.toISOString(),
-        predictionTime,
-        latest
+        totalPredictions: gttResponse.total_predictions,
+        predictionsArrayLength: gttResponse.predictions.length,
+        latestPredictionTime: gttResponse.latest.prediction_time
     });
 
-    // Add current price as anchor (H0)
-    predictions[baseTime.toISOString()] = {
-        timestamp: baseTime.toISOString(),
-        close: latest.input_close,
-        predictedat: predictionTime
-    };
-
-    // ✅ FIXED: Complete horizon predictions (H1 through H5)
-    const horizons = [
-        { key: 'H1', value: latest.H1_pred, offsetMinutes: 15 },
-        { key: 'H2', value: latest.H2_pred, offsetMinutes: 30 },
-        { key: 'H3', value: latest.H3_pred, offsetMinutes: 45 },
-        { key: 'H4', value: latest.H4_pred, offsetMinutes: 60 },
-        { key: 'H5', value: latest.H5_pred, offsetMinutes: 75 },
-    ];
-
-    horizons.forEach(horizon => {
-        const futureTime = new Date(baseTime.getTime() + horizon.offsetMinutes * 60 * 1000);
-        predictions[futureTime.toISOString()] = {
-            timestamp: futureTime.toISOString(),
-            close: horizon.value,
-            predictedat: predictionTime
-        };
-    });
-
-    const timestamps = Object.keys(predictions).sort();
-    const startTime = timestamps[0];
-    const endTime = timestamps[timestamps.length - 1];
-
-    console.log('✅ [transformGttToChartPredictions] Transformed:', {
-        symbol: gttResponse.symbol,
-        predictionCount: Object.keys(predictions).length,
-        timeRange: `${startTime} → ${endTime}`
-    });
-
+    // ✅ CRITICAL: Return data in NATIVE format (array) for PlotlyChart
+    // PlotlyChart expects: { symbol, latest, predictions: Array, total_predictions }
     return {
-        company: gttResponse.symbol,
-        predictions,
-        count: Object.keys(predictions).length,
-        starttime: startTime,
-        endtime: endTime,
-        latest: {
-            timestamp: latest.timestamp,
-            input_close: latest.input_close,
-            prediction_time: latest.prediction_time,
-            H1_pred: latest.H1_pred,
-            H2_pred: latest.H2_pred,
-            H3_pred: latest.H3_pred,
-            H4_pred: latest.H4_pred,
-            H5_pred: latest.H5_pred,
-        }
+        symbol: gttResponse.symbol,
+        latest: gttResponse.latest,
+        predictions: gttResponse.predictions,  // ✅ Keep as ARRAY
+        total_predictions: gttResponse.total_predictions,
+        count: gttResponse.total_predictions
     };
 }
 

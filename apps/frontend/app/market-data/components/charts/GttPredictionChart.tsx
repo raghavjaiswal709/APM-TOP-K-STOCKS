@@ -110,81 +110,163 @@ const GttPredictionChart: React.FC<GttPredictionChartProps> = ({
     }
   }, [historicalData, chartUpdates, data, ohlcData, chartType]);
 
-  // 2. Prepare Prediction Trace
-  const predictionTrace = useMemo(() => {
-    if (!predictions || !predictions.latest) return null;
+  // 2. Prepare ALL Prediction Traces (showing complete history)
+  const predictionTraces = useMemo(() => {
+    if (!predictions || !predictions.predictions || predictions.predictions.length === 0) {
+      console.log('❌ No predictions available');
+      return [];
+    }
 
-    const latest = predictions.latest;
-    const predTime = new Date(latest.prediction_time).getTime(); // Anchor time
-
-    // Construct points: Anchor -> H1 -> H2 -> H3 -> H4 -> H5
-    // Timestamps: Anchor, Anchor+15m, +30m, +45m, +60m, +75m
-    const timestamps = [
-      new Date(predTime),
-      new Date(predTime + 15 * 60 * 1000),
-      new Date(predTime + 30 * 60 * 1000),
-      new Date(predTime + 45 * 60 * 1000),
-      new Date(predTime + 60 * 60 * 1000),
-      new Date(predTime + 75 * 60 * 1000),
-    ];
-
-    const values = [
-      latest.input_close,
-      latest.H1_pred,
-      latest.H2_pred,
-      latest.H3_pred,
-      latest.H4_pred,
-      latest.H5_pred,
-    ];
-
-    return {
-      x: timestamps,
-      y: values,
-      type: 'scatter',
-      mode: 'lines+markers',
-      name: 'GTT Prediction',
-      line: {
-        color: '#A855F7', // Neon Purple
-        width: 2,
-        dash: 'dash'
-      },
-      marker: {
-        size: 6,
-        color: '#A855F7'
-      },
-      hoverinfo: 'x+y+name'
+    const traces: any[] = [];
+    const horizonColors = {
+      H1: '#10b981', // Green - 15min
+      H2: '#3b82f6', // Blue - 30min
+      H3: '#f59e0b', // Orange - 45min
+      H4: '#ef4444', // Red - 60min
+      H5: '#8b5cf6', // Purple - 75min
     };
+
+    // Create separate traces for each horizon to show progression over time
+    const horizons = ['H1', 'H2', 'H3', 'H4', 'H5'];
+    const timeOffsets = [15, 30, 45, 60, 75]; // minutes ahead for each horizon
+
+    horizons.forEach((horizon, horizonIndex) => {
+      const predKey = `${horizon}_pred` as keyof typeof predictions.predictions[0];
+      const timeOffset = timeOffsets[horizonIndex] * 60 * 1000; // convert to ms
+
+      const xValues: Date[] = [];
+      const yValues: number[] = [];
+
+      predictions.predictions.forEach((pred) => {
+        const predTime = new Date(pred.prediction_time).getTime();
+        const targetTime = new Date(predTime + timeOffset); // When this prediction is for
+        const value = pred[predKey] as number;
+
+        if (value && !isNaN(value)) {
+          xValues.push(targetTime);
+          yValues.push(value);
+        }
+      });
+
+      if (xValues.length > 0) {
+        traces.push({
+          x: xValues,
+          y: yValues,
+          type: 'scatter',
+          mode: 'lines+markers',
+          name: `${horizon} (+${timeOffsets[horizonIndex]}min)`,
+          line: {
+            color: horizonColors[horizon as keyof typeof horizonColors],
+            width: 2,
+            dash: 'dot'
+          },
+          marker: {
+            size: 5,
+            color: horizonColors[horizon as keyof typeof horizonColors],
+            symbol: 'diamond'
+          },
+          hovertemplate: `<b>${horizon} Prediction</b><br>` +
+                        'Target Time: %{x|%H:%M:%S}<br>' +
+                        'Predicted Price: ₹%{y:.2f}<br>' +
+                        '<extra></extra>',
+        });
+      }
+    });
+
+    // Add input_close (anchor points) as a separate trace
+    const anchorX: Date[] = [];
+    const anchorY: number[] = [];
+
+    predictions.predictions.forEach((pred) => {
+      const predTime = new Date(pred.prediction_time);
+      const value = pred.input_close;
+
+      if (value && !isNaN(value)) {
+        anchorX.push(predTime);
+        anchorY.push(value);
+      }
+    });
+
+    if (anchorX.length > 0) {
+      traces.push({
+        x: anchorX,
+        y: anchorY,
+        type: 'scatter',
+        mode: 'markers',
+        name: 'Prediction Anchor (Input)',
+        marker: {
+          size: 8,
+          color: '#22d3ee', // Cyan for anchor points
+          symbol: 'circle',
+          line: {
+            color: '#fff',
+            width: 2
+          }
+        },
+        hovertemplate: '<b>Anchor Point</b><br>' +
+                      'Time: %{x|%H:%M:%S}<br>' +
+                      'Price: ₹%{y:.2f}<br>' +
+                      '<extra></extra>',
+      });
+    }
+
+    console.log(`✅ Created ${traces.length} GTT prediction traces:`, {
+      total_predictions: predictions.predictions.length,
+      horizons: horizons,
+      trace_counts: traces.map(t => ({ name: t.name, points: t.x?.length || 0 }))
+    });
+
+    return traces;
   }, [predictions]);
 
   // ============ LAYOUT ============
   const layout = useMemo(() => {
     const baseLayout = {
+      title: {
+        text: `${symbol} - GTT Predictions (All Horizons)`,
+        font: { size: 16, color: '#e4e4e7' }
+      },
       dragmode: 'pan',
       showlegend: true,
+      legend: {
+        orientation: 'h',
+        yanchor: 'bottom',
+        y: 1.02,
+        xanchor: 'right',
+        x: 1,
+        bgcolor: 'rgba(0,0,0,0.5)',
+        bordercolor: '#555',
+        borderwidth: 1,
+        font: { size: 10, color: '#e4e4e7' }
+      },
       xaxis: {
+        title: 'Time',
         autorange: true,
         rangeslider: { visible: false },
         type: 'date',
-        gridcolor: '#333',
-        zerolinecolor: '#333',
-        // Extend range logic could go here if not using autorange, 
-        // but adding data points usually forces plotly to extend.
+        gridcolor: '#27272a',
+        zerolinecolor: '#27272a',
+        tickfont: { color: '#a1a1aa', size: 10 },
+        tickformat: '%H:%M',
       },
       yaxis: {
+        title: 'Price (₹)',
         autorange: true,
-        gridcolor: '#333',
-        zerolinecolor: '#333',
+        gridcolor: '#27272a',
+        zerolinecolor: '#27272a',
+        tickfont: { color: '#a1a1aa', size: 10 },
         fixedrange: false // Allow vertical zoom
       },
-      paper_bgcolor: 'rgba(0,0,0,0)',
-      plot_bgcolor: 'rgba(0,0,0,0)',
-      font: { color: '#ccc' },
-      margin: { l: 50, r: 50, t: 30, b: 30 },
-      height: 600,
+      paper_bgcolor: '#18181b',
+      plot_bgcolor: '#18181b',
+      font: { color: '#e4e4e7' },
+      margin: { l: 60, r: 20, t: 60, b: 40 },
+      height: 650,
+      hovermode: 'closest',
     };
 
     return baseLayout;
-  }, []);
+  }, [symbol]);
 
   // ============ RENDER ============
   return (
@@ -199,13 +281,15 @@ const GttPredictionChart: React.FC<GttPredictionChartProps> = ({
           ref={chartRef}
           data={[
             mainChartData,
-            predictionTrace
+            ...predictionTraces
           ].filter(Boolean) as any}
           layout={layout as any}
           useResizeHandler={true}
           style={{ width: '100%', height: '100%' }}
           config={{
-            displayModeBar: false,
+            displayModeBar: true,
+            displaylogo: false,
+            modeBarButtonsToRemove: ['select2d', 'lasso2d'],
             scrollZoom: true,
             responsive: true
           }}
