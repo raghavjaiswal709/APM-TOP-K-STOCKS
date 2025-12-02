@@ -14,7 +14,7 @@ interface CompanyMasterData {
 export class CompanyMasterService implements OnModuleInit {
   private readonly logger = new Logger(CompanyMasterService.name);
   private companyMasterMap = new Map<string, CompanyMasterData>();
-  private readonly csvPath = path.join(__dirname, '../../data/company_master.csv');
+  private readonly csvPath = path.join(__dirname, '../../data/company_validated.csv');
 
   async onModuleInit() {
     await this.loadCompanyMaster();

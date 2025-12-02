@@ -8,3 +8,4 @@ numpy
 python-dotenv
 flask
 flask-socketio
+ratelimit
