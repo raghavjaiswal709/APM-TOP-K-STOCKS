@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, AlertTriangle, XCircle, Info } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle, XCircle, Info, RefreshCw } from 'lucide-react';
 import {
     Tooltip,
     TooltipContent,
@@ -89,56 +89,162 @@ function getScoreConfig(score: number | null): ScoreConfig {
     };
 }
 
+function getReoccurrenceConfig(probability: number | null): ScoreConfig {
+    if (probability === null) {
+        return {
+            color: 'text-zinc-400',
+            bgColor: 'bg-zinc-500/10',
+            borderColor: 'border-zinc-500/40',
+            textColor: 'text-zinc-400',
+            label: 'N/A',
+            description: 'Data unavailable',
+            Icon: XCircle,
+        };
+    }
+
+    if (probability >= 0.70) {
+        return {
+            color: 'text-blue-400',
+            bgColor: 'bg-blue-500/10',
+            borderColor: 'border-blue-500/40',
+            textColor: 'text-blue-300',
+            label: 'High Probability',
+            description: 'Pattern repeats frequently',
+            Icon: RefreshCw,
+        };
+    }
+
+    if (probability >= 0.50) {
+        return {
+            color: 'text-cyan-400',
+            bgColor: 'bg-cyan-500/10',
+            borderColor: 'border-cyan-500/40',
+            textColor: 'text-cyan-300',
+            label: 'Moderate Probability',
+            description: 'Pattern repeats occasionally',
+            Icon: RefreshCw,
+        };
+    }
+
+    if (probability >= 0.30) {
+        return {
+            color: 'text-indigo-400',
+            bgColor: 'bg-indigo-500/10',
+            borderColor: 'border-indigo-500/40',
+            textColor: 'text-indigo-300',
+            label: 'Low Probability',
+            description: 'Pattern repeats infrequently',
+            Icon: AlertTriangle,
+        };
+    }
+
+    return {
+        color: 'text-purple-400',
+        bgColor: 'bg-purple-500/10',
+        borderColor: 'border-purple-500/40',
+        textColor: 'text-purple-300',
+        label: 'Very Low Probability',
+        description: 'Pattern rarely repeats',
+        Icon: TrendingDown,
+    };
+}
+
 export function DesirabilityPanel({ score, classification, loading, onFetch, data }: DesirabilityPanelProps) {
-    const config = getScoreConfig(score);
+    const desirabilityConfig = getScoreConfig(score);
+    const reoccurrenceProbability = data?.top_pattern?.reoccurrence_probability ?? null;
+    const reoccurrenceConfig = getReoccurrenceConfig(reoccurrenceProbability);
 
     return (
         <Card className="bg-zinc-800 border-zinc-700 h-full flex flex-col">
-            <CardHeader className="pb-2 px-4 pt-3 flex flex-row items-center justify-between space-y-0">
+            <CardHeader className="pb-3 px-4 pt-4 flex flex-row items-center justify-between space-y-0">
+                <h3 className="text-sm font-semibold text-zinc-300 tracking-wide uppercase">Pattern Metrics</h3>
             </CardHeader>
-            <CardContent className="space-y-2 flex-1">
+            <CardContent className="space-y-4 flex-1 px-4 pb-4">
                 {loading ? (
-                    <div className="">
-                        <div className="h-12 bg-zinc-700/50 rounded animate-pulse" />
-                        <div className="h-6 bg-zinc-700/50 rounded animate-pulse" />
-                        <div className="h-14 bg-zinc-700/50 rounded animate-pulse" />
+                    <div className="space-y-3">
+                        <div className="h-24 bg-zinc-700/50 rounded-lg animate-pulse" />
+                        <div className="h-24 bg-zinc-700/50 rounded-lg animate-pulse" />
+                        <div className="h-16 bg-zinc-700/50 rounded-lg animate-pulse" />
                     </div>
                 ) : (
                     <>
-                        {/* Score Display - Compact */}
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 justify-between w-full">
-                                <div className='flex items-center gap-2'>
-                                    <div className={`text-3xl font-bold ${config.color}`}>
-                                        {score !== null ? `${Math.round(score * 100)}%` : 'N/A'}
-                                    </div>
-
-                                    <div
-                                        className={`px-2 py-1 rounded text-xs font-medium border ${config.bgColor} ${config.textColor} ${config.borderColor}`}
-                                    >
-                                        {config.label}
-                                    </div>
+                        {/* Split Grid: Desirability (Left) | Reoccurrence (Right) */}
+                        <div className="grid grid-cols-2 gap-3">
+                            {/* LEFT: Desirability */}
+                            <div className={`p-3 rounded-lg border-2 ${desirabilityConfig.bgColor} ${desirabilityConfig.borderColor} space-y-2`}>
+                                <div className="flex items-center justify-between">
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <div className="flex items-center gap-1 cursor-help">
+                                                    <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Desirability</span>
+                                                    <Info className="w-3 h-3 text-zinc-500" />
+                                                </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                <p className="text-xs">Measures how favorable the pattern is for trading</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                    <desirabilityConfig.Icon className={`w-4 h-4 ${desirabilityConfig.color}`} />
                                 </div>
-                                {/* <button
-                                    onClick={onFetch}
-                                    disabled={loading}
-                                    className="px-2 py-1 text-xs bg-[#dbeafe] hover:bg-[#c0e0ff] text-zinc-800 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                <div className={`text-2xl font-bold ${desirabilityConfig.color}`}>
+                                    {score !== null ? `${Math.round(score * 100)}%` : 'N/A'}
+                                </div>
+                                <div
+                                    className={`px-2 py-1 rounded text-xs font-medium border ${desirabilityConfig.bgColor} ${desirabilityConfig.textColor} ${desirabilityConfig.borderColor}`}
                                 >
-                                    {loading ? 'Analyzing...' : 'Fetch'}
-                                </button> */}
+                                    {desirabilityConfig.label}
+                                </div>
+                            </div>
+
+                            {/* RIGHT: Reoccurrence */}
+                            <div className={`p-3 rounded-lg border-2 ${reoccurrenceConfig.bgColor} ${reoccurrenceConfig.borderColor} space-y-2`}>
+                                <div className="flex items-center justify-between">
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <div className="flex items-center gap-1 cursor-help">
+                                                    <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Reoccurrence</span>
+                                                    <Info className="w-3 h-3 text-zinc-500" />
+                                                </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                <p className="text-xs">Probability that this pattern will repeat in the future</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                    <reoccurrenceConfig.Icon className={`w-4 h-4 ${reoccurrenceConfig.color}`} />
+                                </div>
+                                <div className={`text-2xl font-bold ${reoccurrenceConfig.color}`}>
+                                    {reoccurrenceProbability !== null ? `${(reoccurrenceProbability * 100).toFixed(1)}%` : 'N/A'}
+                                </div>
+                                <div
+                                    className={`px-2 py-1 rounded text-xs font-medium border ${reoccurrenceConfig.bgColor} ${reoccurrenceConfig.textColor} ${reoccurrenceConfig.borderColor}`}
+                                >
+                                    {reoccurrenceConfig.label}
+                                </div>
                             </div>
                         </div>
 
-                        {/* Description - Compact */}
-                        <div className={`p-2 rounded border ${config.bgColor} ${config.borderColor}`}>
-                            <p className="text-xs text-zinc-300 leading-snug">
-                                {config.description}
-                            </p>
+                        {/* Description Cards */}
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className={`p-2 rounded-md border ${desirabilityConfig.bgColor} ${desirabilityConfig.borderColor}`}>
+                                <p className="text-xs text-zinc-300 leading-snug">
+                                    {desirabilityConfig.description}
+                                </p>
+                            </div>
+                            <div className={`p-2 rounded-md border ${reoccurrenceConfig.bgColor} ${reoccurrenceConfig.borderColor}`}>
+                                <p className="text-xs text-zinc-300 leading-snug">
+                                    {reoccurrenceConfig.description}
+                                </p>
+                            </div>
                         </div>
 
                         {/* Detailed Metrics Grid */}
                         {data?.details && (
-                            <div className="pt-2 border-t border-zinc-700">
+                            <div className="pt-3 border-t border-zinc-700">
+                                <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Technical Details</h4>
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                                     <MetricRow label="Trend Strength" value={data.details.trend_strength} tooltip="Overall strength of the trend (0-1)" />
                                     <MetricRow label="Recovery" value={data.details.recovery_time_minutes} suffix="m" tooltip="Time to recover from dips" />

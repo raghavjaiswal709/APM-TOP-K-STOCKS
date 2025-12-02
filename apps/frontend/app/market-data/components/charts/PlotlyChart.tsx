@@ -4096,7 +4096,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       {/* 🔀 SEPARATOR MODAL - Side-by-Side View */}
       {isSeparatorModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="relative w-[98vw] h-[95vh] bg-zinc-950 rounded-xl shadow-xl border border-zinc-800 overflow-hidden flex flex-col">
+          <div className="relative w-[98vw] h-screen max-h-screen bg-zinc-950 rounded-xl shadow-xl border border-zinc-800 overflow-hidden flex flex-col">
 
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900">
@@ -4136,10 +4136,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             </div>
 
             {/* Modal Content - Side by Side Charts */}
-            <div className="grid grid-cols-2 gap-4 p-4 flex-1 overflow-auto bg-zinc-950">
+            <div className="grid grid-cols-2 gap-4 p-4 flex-1 min-h-0 bg-zinc-950">
 
               {/* LEFT PANEL */}
-              <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
+              <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden min-h-0">
                 <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="h-2 w-2 bg-emerald-500 rounded-full"></div>
@@ -4156,14 +4156,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                   </p>
                 </div>
 
-                <div className="flex-1 p-4">
+                <div className="flex-1 min-h-0 p-4">
                   {separateViewMode === 'prediction-cluster' ? (
                     predictions && predictions.count > 0 ? (
                       <Plot
                         data={createPredictionDataOnly()}
                         layout={{
                           autosize: true,
-                          height: 700,
+                          height: undefined,
                           margin: { l: 50, r: 50, t: 40, b: 40 },
                           title: {
                             text: `${symbol} Predictions`,
@@ -4208,7 +4208,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                       data={createActualDataOnly()}
                       layout={{
                         autosize: true,
-                        height: 700,
+                        height: undefined,
                         margin: { l: 50, r: 50, t: 40, b: 40 },
                         title: {
                           text: `${symbol} ${chartType === 'line' ? 'LTP' : 'OHLC'}`,
@@ -4245,7 +4245,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               </div>
 
               {/* RIGHT PANEL */}
-              <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
+              <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden min-h-0">
                 <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="h-2 w-2 bg-violet-500 rounded-full"></div>
@@ -4262,14 +4262,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                   </p>
                 </div>
 
-                <div className="flex-1 p-4">
+                <div className="flex-1 min-h-0 p-4">
                   {separateViewMode === 'live-prediction' ? (
                     predictions && predictions.count > 0 ? (
                       <Plot
                         data={createPredictionDataOnly()}
                         layout={{
                           autosize: true,
-                          height: 700,
+                          height: undefined,
                           margin: { l: 50, r: 50, t: 40, b: 40 },
                           title: {
                             text: `${symbol} Predictions`,
@@ -4316,7 +4316,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                       patternData={clusterPatternData}
                       loading={clusterLoading}
                       error={clusterError}
-                      height={700}
+                      height={undefined}
+                      syncedTimeRange={getTimeRange()}
+                      syncedSelectedTimeframe={selectedTimeframe}
+                      updateTrigger={`${symbol}-${selectedTimeframe}-${predictionRevision}`}
                     />
                   )}
                 </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
-interface DesirabilityData {
+export interface DesirabilityData {
     symbol: string;
     exchange: string;
     method: string;
@@ -8,6 +8,7 @@ interface DesirabilityData {
         cluster_id: number;
         strength_score: number;
         desirability_score: number;
+        reoccurrence_probability?: number; // NEW: Reoccurrence probability from API
         classification: string;
         directional_bias: number;
         recovery_quality: number;

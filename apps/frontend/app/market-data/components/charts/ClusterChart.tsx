@@ -12,6 +12,9 @@ interface ClusterChartProps {
     loading: boolean;
     error: string | null;
     height?: number;
+    syncedTimeRange?: [Date, Date] | undefined;
+    syncedSelectedTimeframe?: string;
+    updateTrigger?: string;
 }
 
 export const ClusterChart: React.FC<ClusterChartProps> = ({
@@ -20,8 +23,23 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
     patternData,
     loading,
     error,
-    height = 600,
+    height,
+    syncedTimeRange,
+    syncedSelectedTimeframe,
+    updateTrigger,
 }) => {
+    // ✅ Time synchronization effect - responds to Live Market timeline changes
+    React.useEffect(() => {
+        if (updateTrigger && syncedSelectedTimeframe) {
+            console.log(`🔄 [ClusterChart Sync] Update triggered:`, {
+                symbol,
+                timeframe: syncedSelectedTimeframe,
+                trigger: updateTrigger,
+                timeRange: syncedTimeRange
+            });
+        }
+    }, [updateTrigger, syncedSelectedTimeframe, syncedTimeRange, symbol]);
+
     const chartData = useMemo(() => {
         if (!patternData || patternData.length === 0) return [];
 
@@ -79,7 +97,7 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
     const layout = useMemo(
         () => ({
             title: {
-                text: `<b>Cluster Pattern Analysis</b><br><sub>${symbol} | Cluster ID: ${clusterInfo?.clusterId || 'N/A'} | Based on ${clusterInfo?.nDays || 0} Days</sub>`,
+                text: `<b>Cluster Pattern Analysis</b><br><sub>${symbol} | Cluster ID: ${clusterInfo?.clusterId || 'N/A'} | Based on ${clusterInfo?.nDays || 0} Days${syncedSelectedTimeframe ? ` | Synced: ${syncedSelectedTimeframe}` : ''}</sub>`,
                 font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
             },
             xaxis: {
@@ -119,7 +137,7 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
                 font: { color: '#e4e4e7' },
             },
         }),
-        [symbol, clusterInfo, height]
+        [symbol, clusterInfo, height, syncedSelectedTimeframe]
     );
 
     const config = useMemo(
@@ -169,9 +187,21 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
     }
 
     return (
-        <div className="w-full h-full rounded-lg overflow-hidden">
+        <div className="w-full h-full flex flex-col rounded-lg overflow-hidden">
+            {/* ✅ CHART FIRST - Takes available space with flex-1 */}
+            <div className="flex-1 min-h-0 p-4 w-full">
+                <Plot
+                    data={chartData as any}
+                    layout={{ ...layout, autosize: true, width: undefined, height: height }}
+                    config={config}
+                    useResizeHandler={true}
+                    style={{ width: '100%', height: '100%' }}
+                />
+            </div>
+
+            {/* ✅ METRICS BELOW - Fixed height at bottom */}
             {clusterInfo && (
-                <div className="grid grid-cols-4 gap-3 p-4 bg-zinc-900 border-b border-zinc-800">
+                <div className="grid grid-cols-4 gap-3 p-4 bg-zinc-900 border-t border-zinc-800">
                     <div className="flex items-center gap-2 bg-zinc-900 p-3 rounded-lg border border-zinc-800">
                         <div className="p-2 bg-violet-500/10 rounded-lg">
                             <TrendingUp className="h-4 w-4 text-violet-400" />
@@ -216,16 +246,6 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
                     </div>
                 </div>
             )}
-
-            <div className="p-4 w-full" style={{ height: height }}>
-                <Plot
-                    data={chartData as any}
-                    layout={{ ...layout, autosize: true, width: undefined }}
-                    config={config}
-                    useResizeHandler={true}
-                    style={{ width: '100%', height: '100%' }}
-                />
-            </div>
         </div>
     );
 };
