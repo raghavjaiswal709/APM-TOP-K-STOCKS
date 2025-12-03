@@ -15,6 +15,7 @@ interface ClusterChartProps {
     syncedTimeRange?: [Date, Date] | undefined;
     syncedSelectedTimeframe?: string;
     updateTrigger?: string;
+    onXRangeChange?: (range: [Date, Date]) => void; // ✅ NEW: Emit range changes to parent
 }
 
 export const ClusterChart: React.FC<ClusterChartProps> = ({
@@ -27,6 +28,7 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
     syncedTimeRange,
     syncedSelectedTimeframe,
     updateTrigger,
+    onXRangeChange, // ✅ NEW: Callback for range changes
 }) => {
     // ✅ Time synchronization effect - responds to Live Market timeline changes
     React.useEffect(() => {
@@ -43,15 +45,18 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
     const chartData = useMemo(() => {
         if (!patternData || patternData.length === 0) return [];
 
+        // ✅ CRITICAL: Convert to Date objects for synchronization with PlotlyChart
         const timeLabels = patternData.map((point) => {
             const totalMinutes = point.timestamp;
             const hours = Math.floor(totalMinutes / 60) + 9;
             const minutes = (totalMinutes % 60) + 15;
             const adjustedHours = minutes >= 60 ? hours + 1 : hours;
             const adjustedMinutes = minutes >= 60 ? minutes - 60 : minutes;
-            return `${adjustedHours.toString().padStart(2, '0')}:${adjustedMinutes
-                .toString()
-                .padStart(2, '0')}`;
+            
+            // Create Date object for today with the calculated time
+            const today = new Date();
+            today.setHours(adjustedHours, adjustedMinutes, 0, 0);
+            return today;
         });
 
         const priceTrace = {
@@ -64,7 +69,7 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
                 color: '#8b5cf6',
                 width: 3,
             },
-            hovertemplate: '<b>Time:</b> %{x}<br><b>Change:</b> %{y:.2f}%<extra></extra>',
+            hovertemplate: '<b>Time:</b> %{x|%H:%M}<br><b>Change:</b> %{y:.2f}%<extra></extra>',
         };
 
         const upperBand = {
@@ -102,13 +107,22 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
             },
             xaxis: {
                 title: 'Time (IST)',
+                type: 'date', // ✅ CRITICAL: Changed from 'category' to 'date'
                 color: '#a1a1aa',
                 gridcolor: '#27272a',
                 linecolor: '#3f3f46',
                 tickangle: -45,
                 nticks: 15,
+                tickformat: '%H:%M', // ✅ Format as time only
                 tickfont: { color: '#a1a1aa', size: 11 },
                 titlefont: { color: '#d4d4d8', size: 12 },
+                ...(syncedTimeRange ? {
+                    range: syncedTimeRange, // ✅ Apply synchronized range
+                    autorange: false,
+                } : {
+                    autorange: true,
+                }),
+                rangeslider: { visible: false },
             },
             yaxis: {
                 title: 'Normalized Change (%)',
@@ -137,7 +151,7 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
                 font: { color: '#e4e4e7' },
             },
         }),
-        [symbol, clusterInfo, height, syncedSelectedTimeframe]
+        [symbol, clusterInfo, height, syncedSelectedTimeframe, syncedTimeRange] // ✅ Added syncedTimeRange
     );
 
     const config = useMemo(
@@ -149,6 +163,16 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
         }),
         []
     );
+
+    // ✅ NEW: Handle relayout events and emit range changes
+    const handleRelayout = React.useCallback((eventData: any) => {
+        if (onXRangeChange && eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
+            const startDate = new Date(eventData['xaxis.range[0]']);
+            const endDate = new Date(eventData['xaxis.range[1]']);
+            console.log('🔄 [ClusterChart] Emitting range change:', { startDate, endDate });
+            onXRangeChange([startDate, endDate]);
+        }
+    }, [onXRangeChange]);
 
     if (loading) {
         return (
@@ -196,6 +220,7 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
                     config={config}
                     useResizeHandler={true}
                     style={{ width: '100%', height: '100%' }}
+                    onRelayout={handleRelayout} // ✅ NEW: Emit range changes
                 />
             </div>
 

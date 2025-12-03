@@ -319,3 +319,123 @@ export async function fetchSthitiPredictions(
         return null;
     }
 }
+
+// ============ NEW: Full Historical Data Parser ============
+export async function parseFullHistoricalData(
+    symbol: string,
+    isoDate: string
+): Promise<HistoricalLiveData[]> {
+    try {
+        const baseUrl = getBaseUrl();
+        const ldFormat = convertISOToLDFormat(isoDate);
+        const fullUrl = `${baseUrl}/Live/${ldFormat}/${symbol}-NSE.json`;
+
+        console.log('🔍 [parseFullHistoricalData] Fetching ALL data from:', fullUrl);
+
+        const response = await fetch(fullUrl, { cache: 'no-cache' });
+        if (!response.ok) throw new Error('Failed to fetch full historical data');
+
+        const rawText = await response.text();
+        const lines = rawText.trim().split('\n');
+        const dataPoints: HistoricalLiveData[] = [];
+
+        // Parse ALL lines (not just last one)
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+                const obj = JSON.parse(line);
+                if (obj.ltp !== undefined && obj.ltp > 0) {
+                    dataPoints.push({
+                        symbol: obj.symbol || symbol,
+                        ltp: obj.ltp || 0,
+                        open_price: obj.open_price || obj.ltp,
+                        high_price: obj.high_price || obj.ltp,
+                        low_price: obj.low_price || obj.ltp,
+                        prev_close_price: obj.prev_close_price || obj.ltp,
+                        vol_traded_today: obj.vol_traded_today || 0,
+                        bid_price: obj.bid_price || 0,
+                        ask_price: obj.ask_price || 0,
+                        timestamp: obj.timestamp || Date.now() / 1000,
+                    });
+                }
+            } catch (e) {
+                // Skip invalid lines
+                continue;
+            }
+        }
+
+        // Sort by timestamp
+        const sortedData = dataPoints.sort((a, b) => a.timestamp - b.timestamp);
+
+        console.log(`✅ [parseFullHistoricalData] Parsed ${sortedData.length} data points from ${lines.length} lines`);
+        return sortedData;
+    } catch (error) {
+        console.error('❌ [parseFullHistoricalData] Error:', error);
+        return [];
+    }
+}
+
+// ============ NEW: Convert to OHLC Candles ============
+export function convertToOHLC(
+    dataPoints: HistoricalLiveData[],
+    intervalMinutes: number = 5
+): Array<{
+    timestamp: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+}> {
+    if (dataPoints.length === 0) return [];
+
+    const intervalMs = intervalMinutes * 60 * 1000;
+    const candles = new Map<number, {
+        open: number;
+        high: number;
+        low: number;
+        close: number;
+        volume: number;
+        firstTimestamp: number;
+        lastTimestamp: number;
+    }>();
+
+    // Group data points into intervals
+    dataPoints.forEach(point => {
+        const bucketTime = Math.floor(point.timestamp * 1000 / intervalMs) * intervalMs;
+        const existing = candles.get(bucketTime);
+
+        if (!existing) {
+            candles.set(bucketTime, {
+                open: point.ltp,
+                high: point.ltp,
+                low: point.ltp,
+                close: point.ltp,
+                volume: point.vol_traded_today,
+                firstTimestamp: point.timestamp,
+                lastTimestamp: point.timestamp,
+            });
+        } else {
+            existing.high = Math.max(existing.high, point.ltp);
+            existing.low = Math.min(existing.low, point.ltp);
+            existing.close = point.ltp;
+            existing.volume = point.vol_traded_today; // Use latest volume
+            existing.lastTimestamp = point.timestamp;
+        }
+    });
+
+    // Convert to array and sort
+    const result = Array.from(candles.entries())
+        .map(([bucketTime, candle]) => ({
+            timestamp: Math.floor(bucketTime / 1000), // Convert back to seconds
+            open: candle.open,
+            high: candle.high,
+            low: candle.low,
+            close: candle.close,
+            volume: candle.volume,
+        }))
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+    console.log(`✅ [convertToOHLC] Created ${result.length} candles from ${dataPoints.length} points`);
+    return result;
+}

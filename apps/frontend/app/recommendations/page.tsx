@@ -1,7 +1,7 @@
-// apps/frontend/app/recommendation-list/page.tsx
+// apps/frontend/app/recommendations/page.tsx
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { AppSidebar } from "@/app/components/app-sidebar";
 import {
@@ -20,11 +20,13 @@ import {
 } from "@/components/ui/sidebar";
 import { ModeToggle } from "@/app/components/toggleButton";
 import { Card, CardContent } from "@/components/ui/card";
-import { Clock, Database, Calendar, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Database, TrendingUp, TrendingDown } from 'lucide-react';
 import { useTimeMachine } from '@/hooks/useTimeMachine';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { HistoricalDataSelector } from "@/app/components/controllers/HistoricalDataSelector";
+import { parseFullHistoricalData, convertToOHLC } from '@/lib/historicalTimeMachine';
+import { ImageCarousel } from "../market-data/components/ImageCarousel";
 
 // Dynamic imports
 const PlotlyChart = dynamic(() => import('../market-data/components/charts/PlotlyChart'), {
@@ -51,8 +53,27 @@ interface MarketData {
   timestamp: number;
 }
 
+interface OHLCPoint {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface TradingHours {
+  start: string;
+  end: string;
+  current: string;
+  isActive: boolean;
+}
+
 const RecommendationListPage: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
+  const [historicalDataPoints, setHistoricalDataPoints] = useState<MarketData[]>([]);
+  const [ohlcDataPoints, setOHLCDataPoints] = useState<OHLCPoint[]>([]);
+  const [loadingFullData, setLoadingFullData] = useState(false);
 
   const {
     availableDates,
@@ -81,8 +102,60 @@ const RecommendationListPage: React.FC = () => {
     setIsClient(true);
   }, []);
 
-  // Convert price data to MarketData format
+  // ✅ CRITICAL: Fetch full historical data when company/date changes
+  useEffect(() => {
+    if (!selectedDate || !selectedCompany) {
+      setHistoricalDataPoints([]);
+      setOHLCDataPoints([]);
+      return;
+    }
+
+    const loadChartData = async () => {
+      setLoadingFullData(true);
+      try {
+        // Fetch ALL data points from the file
+        const points = await parseFullHistoricalData(selectedCompany, selectedDate);
+        
+        // Convert to MarketData format
+        const formattedPoints: MarketData[] = points.map(point => ({
+          symbol: point.symbol,
+          ltp: point.ltp,
+          open: point.open_price,
+          high: point.high_price,
+          low: point.low_price,
+          close: point.ltp,
+          volume: point.vol_traded_today,
+          bid: point.bid_price,
+          ask: point.ask_price,
+          timestamp: point.timestamp,
+          change: point.ltp - point.prev_close_price,
+          changePercent: ((point.ltp - point.prev_close_price) / point.prev_close_price) * 100,
+        }));
+
+        setHistoricalDataPoints(formattedPoints);
+
+        // Convert to OHLC candles (5-minute intervals)
+        const ohlcCandles = convertToOHLC(points, 5);
+        setOHLCDataPoints(ohlcCandles);
+
+        console.log(`✅ [Time Machine] Loaded ${formattedPoints.length} points, ${ohlcCandles.length} candles`);
+      } catch (error) {
+        console.error('❌ [Time Machine] Error loading chart data:', error);
+        setHistoricalDataPoints([]);
+        setOHLCDataPoints([]);
+      } finally {
+        setLoadingFullData(false);
+      }
+    };
+
+    loadChartData();
+  }, [selectedDate, selectedCompany]);
+
+  // Convert price data to MarketData format (use last point from historical data)
   const currentData = useMemo<MarketData | null>(() => {
+    if (historicalDataPoints.length > 0) {
+      return historicalDataPoints[historicalDataPoints.length - 1];
+    }
     if (!priceData) return null;
 
     return {
@@ -99,7 +172,26 @@ const RecommendationListPage: React.FC = () => {
       ask: priceData.ask_price,
       timestamp: priceData.timestamp,
     };
-  }, [priceData, selectedCompany]);
+  }, [priceData, selectedCompany, historicalDataPoints]);
+
+  // ✅ Create trading hours object for historical data
+  const tradingHours = useMemo<TradingHours>(() => {
+    if (!selectedDate) {
+      return {
+        start: '09:15',
+        end: '15:30',
+        current: new Date().toISOString(),
+        isActive: false,
+      };
+    }
+
+    return {
+      start: '09:15',
+      end: '15:30',
+      current: selectedDate,
+      isActive: false, // Always false for historical data
+    };
+  }, [selectedDate]);
 
   // Format helpers
   const formatPrice = (price?: number) => price?.toFixed(2) || '0.00';
@@ -202,92 +294,25 @@ const RecommendationListPage: React.FC = () => {
         </header>
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          {/* Selection Controls */}
-          <Card className="w-full">
-            <CardContent className="p-4">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-medium flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-blue-500" />
-                    Time Machine Controls
-                  </h3>
-                  <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
-                    Historical Mode
-                  </Badge>
-                </div>
-
-                <div className="flex gap-4 items-center">
-                  {/* Date Picker */}
-                  <div className="flex-1">
-                    <label className="text-sm text-zinc-400 mb-2 block">Select Date</label>
-                    <Select
-                      value={selectedDate || ''}
-                      onValueChange={setSelectedDate}
-                      disabled={loadingDates}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder={loadingDates ? "Loading dates..." : "Select a date"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <ScrollArea className="h-[200px]">
-                          {availableDates.map((date) => (
-                            <SelectItem key={date} value={date}>
-                              <div className="flex items-center gap-2">
-                                <Calendar className="h-4 w-4 text-blue-400" />
-                                {new Date(date).toLocaleDateString('en-IN', {
-                                  weekday: 'short',
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric'
-                                })}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </ScrollArea>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Company Picker */}
-                  <div className="flex-1">
-                    <label className="text-sm text-zinc-400 mb-2 block">Select Company</label>
-                    <Select
-                      value={selectedCompany || ''}
-                      onValueChange={setSelectedCompany}
-                      disabled={loadingCompanies || !selectedDate}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder={loadingCompanies ? "Loading companies..." : "Select a company"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <ScrollArea className="h-[200px]">
-                          {availableCompanies.map((company) => (
-                            <SelectItem key={company} value={company}>
-                              {company}
-                            </SelectItem>
-                          ))}
-                        </ScrollArea>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {selectedDate && (
-                  <div className="text-xs text-zinc-500 flex items-center gap-2">
-                    <Database className="h-3 w-3" />
-                    Viewing historical data from {new Date(selectedDate).toLocaleDateString()} •
-                    {availableCompanies.length} companies available
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          {/* ✅ UNIFIED: Use shared HistoricalDataSelector component */}
+          <HistoricalDataSelector
+            availableDates={availableDates}
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
+            loadingDates={loadingDates}
+            availableCompanies={availableCompanies}
+            selectedCompany={selectedCompany}
+            onCompanyChange={setSelectedCompany}
+            loadingCompanies={loadingCompanies}
+            showBadges={true}
+            compact={false}
+          />
 
           {/* Main Content */}
           <div className="min-h-screen bg-zinc-900 text-zinc-100 rounded-lg">
             <div className="w-full p-4">
               <div className="flex gap-6 mb-6">
-                {/* Chart Area */}
+                {/* ============ MAIN CHART AREA (75%) ============ */}
                 <div className="w-3/4">
                   <div className="bg-zinc-800 rounded-lg shadow-lg h-[800px]">
                     {!selectedCompany ? (
@@ -298,60 +323,28 @@ const RecommendationListPage: React.FC = () => {
                           Choose a date and company from the dropdowns above to view historical market data
                         </p>
                       </div>
-                    ) : loadingPriceData ? (
+                    ) : loadingFullData ? (
                       <div className="h-full flex items-center justify-center">
                         <div className="text-center space-y-2">
                           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
                           <p className="text-zinc-400">Loading historical data for {selectedCompany}...</p>
                         </div>
                       </div>
-                    ) : currentData ? (
-                      <div className="w-full h-full p-4">
-                        <div className="text-center space-y-2 bg-zinc-900 p-6 rounded-lg">
-                          <h3 className="text-2xl font-bold text-white">{selectedCompany}</h3>
-                          <div className="text-4xl font-bold text-white">₹{formatPrice(currentData.ltp)}</div>
-                          <div className={`text-lg ${getChangeClass(currentData.change)}`}>
-                            {formatChange(currentData.change, currentData.changePercent)}
-                          </div>
-                          <div className="grid grid-cols-4 gap-4 mt-4">
-                            <div className="bg-zinc-800 p-3 rounded">
-                              <div className="text-xs text-zinc-400">Open</div>
-                              <div className="text-lg text-white">₹{formatPrice(currentData.open)}</div>
-                            </div>
-                            <div className="bg-zinc-800 p-3 rounded">
-                              <div className="text-xs text-zinc-400">High</div>
-                              <div className="text-lg text-green-400">₹{formatPrice(currentData.high)}</div>
-                            </div>
-                            <div className="bg-zinc-800 p-3 rounded">
-                              <div className="text-xs text-zinc-400">Low</div>
-                              <div className="text-lg text-red-400">₹{formatPrice(currentData.low)}</div>
-                            </div>
-                            <div className="bg-zinc-800 p-3 rounded">
-                              <div className="text-xs text-zinc-400">Volume</div>
-                              <div className="text-lg text-white">{currentData.volume?.toLocaleString()}</div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Chart Images Display */}
-                        {loadingCharts ? (
-                          <div className="mt-6 text-center text-zinc-400">Loading charts...</div>
-                        ) : chartImages.length > 0 ? (
-                          <div className="mt-6 space-y-4">
-                            <h4 className="text-lg font-semibold text-white">Sthiti Analysis Charts</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                              {chartImages.slice(0, 4).map((imageUrl, idx) => (
-                                <div key={idx} className="bg-zinc-900 rounded-lg overflow-hidden">
-                                  <img
-                                    src={imageUrl}
-                                    alt={`Chart ${idx + 1}`}
-                                    className="w-full h-auto"
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
+                    ) : historicalDataPoints.length > 0 ? (
+                      <div className="w-full h-full">
+                        <PlotlyChart
+                          symbol={`NSE:${selectedCompany}-EQ`}
+                          data={currentData}
+                          historicalData={historicalDataPoints}
+                          ohlcData={ohlcDataPoints}
+                          chartUpdates={[]}
+                          tradingHours={tradingHours}
+                          updateFrequency={0}
+                          predictions={null}
+                          showPredictions={false}
+                          isGttEnabled={false}
+                          gttExternalData={null}
+                        />
                       </div>
                     ) : (
                       <div className="h-full flex items-center justify-center">
@@ -363,13 +356,15 @@ const RecommendationListPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Sidebar */}
+                {/* ============ SIDEBAR (25%) ============ */}
                 <div className="w-1/4 bg-zinc-800 p-4 rounded-lg shadow-lg max-h-[800px] overflow-y-auto">
                   {currentData ? (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <h2 className="text-xl font-semibold text-white">{selectedCompany}</h2>
-                        <Badge variant="outline" className="bg-blue-500/10 text-blue-400">Historical</Badge>
+                        <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
+                          Historical
+                        </Badge>
                       </div>
 
                       <div className="text-3xl font-bold text-white">₹{formatPrice(currentData.ltp)}</div>
@@ -389,79 +384,167 @@ const RecommendationListPage: React.FC = () => {
                         );
                       })()}
 
-                      {/* Predictions */}
-                      {loadingPredictions ? (
-                        <div className="text-center text-zinc-400 text-sm">Loading predictions...</div>
-                      ) : predictions ? (
-                        <div className="bg-zinc-900 p-4 rounded-lg border border-zinc-700">
-                          <h3 className="text-sm font-semibold text-white mb-2">AI Prediction</h3>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-zinc-400">Sentiment:</span>
-                              <span className={getSentimentStyle(predictions.sentiment).text}>
-                                {predictions.sentiment}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-zinc-400">Confidence:</span>
-                              <span className="text-white">{(predictions.confidence * 100).toFixed(0)}%</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-zinc-400">Score:</span>
-                              <span className="text-white">{predictions.score.toFixed(2)}</span>
-                            </div>
-                            <div className="mt-2 pt-2 border-t border-zinc-700">
-                              <p className="text-xs text-zinc-400">{predictions.reasoning}</p>
+                      {/* Price Stats Grid */}
+                      <div className="grid grid-cols-2 gap-4 mt-6">
+                        <div className="bg-zinc-700 p-3 rounded">
+                          <div className="text-xs text-zinc-400">Open</div>
+                          <div className="text-lg text-white">₹{formatPrice(currentData.open)}</div>
+                        </div>
+                        <div className="bg-zinc-700 p-3 rounded">
+                          <div className="text-xs text-zinc-400">Close</div>
+                          <div className="text-lg text-white">₹{formatPrice(currentData.close)}</div>
+                        </div>
+                        <div className="bg-zinc-700 p-3 rounded">
+                          <div className="text-xs text-zinc-400">High</div>
+                          <div className="text-lg text-green-400">₹{formatPrice(currentData.high)}</div>
+                        </div>
+                        <div className="bg-zinc-700 p-3 rounded">
+                          <div className="text-xs text-zinc-400">Low</div>
+                          <div className="text-lg text-red-400">₹{formatPrice(currentData.low)}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-6 border-t border-zinc-700 pt-4">
+                        <div className="grid grid-cols-2 gap-y-2">
+                          <div>
+                            <div className="text-xs text-zinc-400">Volume</div>
+                            <div className="text-white">{currentData.volume?.toLocaleString() || '0'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-zinc-400">Updated</div>
+                            <div className="text-blue-400">
+                              {new Date(currentData.timestamp * 1000).toLocaleTimeString()}
                             </div>
                           </div>
                         </div>
+                      </div>
+
+                      {/* ============ STHITI INTELLIGENCE WIDGETS ============ */}
+                      
+                      {/* AI Prediction Widget */}
+                      {loadingPredictions ? (
+                        <div className="text-center text-zinc-400 text-sm mt-4">Loading predictions...</div>
+                      ) : predictions ? (
+                        <Card className="bg-blue-500/5 border-blue-500/20 mt-4">
+                          <CardContent className="p-3">
+                            <h4 className="text-sm font-semibold text-blue-400 mb-2">🤖 AI Prediction</h4>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-zinc-400">Sentiment:</span>
+                                <span className={getSentimentStyle(predictions.sentiment).text}>
+                                  {predictions.sentiment}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-zinc-400">Confidence:</span>
+                                <span className="text-white">{(predictions.confidence * 100).toFixed(0)}%</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-zinc-400">Score:</span>
+                                <span className="text-white">{predictions.score.toFixed(2)}</span>
+                              </div>
+                              <div className="mt-2 pt-2 border-t border-zinc-700">
+                                <p className="text-xs text-zinc-400">{predictions.reasoning}</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
                       ) : null}
 
-                      {/* Headlines */}
+                      {/* Sentiment Clusters */}
+                      {!loadingClusters && (positiveClusters.length > 0 || negativeClusters.length > 0) && (
+                        <div className="space-y-2 mt-4">
+                          <h4 className="text-sm font-semibold text-zinc-400">Market Sentiment</h4>
+                          
+                          {positiveClusters.length > 0 && (
+                            <Card className="bg-green-500/5 border-green-500/20">
+                              <CardContent className="p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <TrendingUp className="h-4 w-4 text-green-400" />
+                                  <span className="text-green-400 font-medium">
+                                    Positive ({positiveClusters.length})
+                                  </span>
+                                </div>
+                                <ScrollArea className="h-[100px]">
+                                  {positiveClusters.map((cluster, i) => (
+                                    <div key={i} className="text-xs text-zinc-300 mb-1">
+                                      • {cluster.representative_phrases[0]}
+                                    </div>
+                                  ))}
+                                </ScrollArea>
+                              </CardContent>
+                            </Card>
+                          )}
+
+                          {negativeClusters.length > 0 && (
+                            <Card className="bg-red-500/5 border-red-500/20">
+                              <CardContent className="p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <TrendingDown className="h-4 w-4 text-red-400" />
+                                  <span className="text-red-400 font-medium">
+                                    Negative ({negativeClusters.length})
+                                  </span>
+                                </div>
+                                <ScrollArea className="h-[100px]">
+                                  {negativeClusters.map((cluster, i) => (
+                                    <div key={i} className="text-xs text-zinc-300 mb-1">
+                                      • {cluster.representative_phrases[0]}
+                                    </div>
+                                  ))}
+                                </ScrollArea>
+                              </CardContent>
+                            </Card>
+                          )}
+
+                          {neutralClusters.length > 0 && (
+                            <Card className="bg-zinc-500/5 border-zinc-500/20">
+                              <CardContent className="p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-zinc-400 font-medium">
+                                    Neutral ({neutralClusters.length})
+                                  </span>
+                                </div>
+                                <ScrollArea className="h-[80px]">
+                                  {neutralClusters.map((cluster, i) => (
+                                    <div key={i} className="text-xs text-zinc-300 mb-1">
+                                      • {cluster.representative_phrases[0]}
+                                    </div>
+                                  ))}
+                                </ScrollArea>
+                              </CardContent>
+                            </Card>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Headlines Widget */}
                       {loadingHeadlines ? (
-                        <div className="text-center text-zinc-400 text-sm">Loading headlines...</div>
+                        <div className="text-center text-zinc-400 text-sm mt-4">Loading headlines...</div>
                       ) : headlines.length > 0 ? (
-                        <div className="bg-zinc-900 p-4 rounded-lg border border-zinc-700">
-                          <h3 className="text-sm font-semibold text-white mb-3">Market Headlines ({headlines.length})</h3>
+                        <div className="mt-4">
+                          <h4 className="text-sm font-semibold text-zinc-400 mb-2">
+                            📰 News Headlines ({headlines.length})
+                          </h4>
                           <ScrollArea className="h-[200px]">
-                            <div className="space-y-3">
-                              {headlines.map((headline, idx) => (
-                                <div key={idx} className="text-xs pb-3 border-b border-zinc-800 last:border-0">
-                                  <p className="text-zinc-300 mb-1">{headline.text}</p>
-                                  <div className="flex items-center gap-2 text-zinc-500">
-                                    <span>{new Date(headline.timestamp).toLocaleTimeString()}</span>
-                                    <span>•</span>
-                                    <span className={getSentimentStyle(headline.gpt4o_sentiment).text}>
-                                      {headline.gpt4o_sentiment}
+                            {headlines.map((h, i) => (
+                              <Card key={i} className="mb-2 bg-zinc-800/50">
+                                <CardContent className="p-2">
+                                  <p className="text-xs text-zinc-300">{h.text}</p>
+                                  <div className="flex justify-between mt-1">
+                                    <span className="text-xs text-zinc-500">{h.source}</span>
+                                    <span className="text-xs text-zinc-500">
+                                      {new Date(h.timestamp).toLocaleTimeString()}
                                     </span>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
+                                  <div className="mt-1">
+                                    <span className={`text-xs ${getSentimentStyle(h.gpt4o_sentiment).text}`}>
+                                      {h.gpt4o_sentiment}
+                                    </span>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            ))}
                           </ScrollArea>
-                        </div>
-                      ) : null}
-
-                      {/* Clusters Summary */}
-                      {loadingClusters ? (
-                        <div className="text-center text-zinc-400 text-sm">Loading sentiment clusters...</div>
-                      ) : (positiveClusters.length > 0 || negativeClusters.length > 0 || neutralClusters.length > 0) ? (
-                        <div className="bg-zinc-900 p-4 rounded-lg border border-zinc-700">
-                          <h3 className="text-sm font-semibold text-white mb-3">Sentiment Clusters</h3>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-green-400">Positive:</span>
-                              <span className="text-white">{positiveClusters.length}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-red-400">Negative:</span>
-                              <span className="text-white">{negativeClusters.length}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-zinc-400">Neutral:</span>
-                              <span className="text-white">{neutralClusters.length}</span>
-                            </div>
-                          </div>
                         </div>
                       ) : null}
                     </div>
@@ -475,6 +558,22 @@ const RecommendationListPage: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              {/* ============ IMAGE CAROUSEL (BOTTOM) ============ */}
+              {selectedCompany && selectedDate && (
+                <div className="mb-8">
+                  <ImageCarousel
+                    companyCode={selectedCompany}
+                    exchange="NSE"
+                    gradientMode={overallSentiment === 'POSITIVE' ? 'profit' : overallSentiment === 'NEGATIVE' ? 'loss' : 'neutral'}
+                    onGradientModeChange={() => {}}
+                    onSentimentLoadingChange={() => {}}
+                    selectedDate={selectedDate}
+                    isHistoricalMode={true}
+                    disabledTabs={['LSTMAE', 'SiPR', 'MSAX']}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

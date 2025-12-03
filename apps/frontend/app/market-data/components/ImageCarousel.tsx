@@ -587,6 +587,8 @@ interface ImageCarouselProps {
   gradientMode: 'profit' | 'loss' | 'neutral';
   onGradientModeChange: (mode: 'profit' | 'loss' | 'neutral') => void;
   onSentimentLoadingChange?: (loading: boolean) => void;
+  isHistoricalMode?: boolean; // NEW - Enable time machine mode
+  disabledTabs?: string[]; // NEW - Tab filter
 }
 
 interface CarouselImage {
@@ -619,11 +621,11 @@ const ChartTabs: React.FC<ChartTabsProps> = ({
   msaxCount
 }) => {
   const tabs = [
-    { key: 'intraday' as const, label: 'Intraday', count: intradayCount, showCount: true },
-    { key: 'interday' as const, label: 'Interday', count: interdayCount, showCount: true },
-    { key: 'LSTMAE' as const, label: 'LSTMAE', count: lstmaeCount, showCount: false },
-    { key: 'SiPR' as const, label: 'SiPR', count: siprCount, showCount: false },
-    { key: 'MSAX' as const, label: 'MSAX', count: msaxCount, showCount: false }
+    { key: 'intraday' as const, label: 'Intraday', count: intradayCount, showCount: true, disabled: false },
+    { key: 'interday' as const, label: 'Interday', count: interdayCount, showCount: true, disabled: false },
+    { key: 'LSTMAE' as const, label: 'LSTMAE', count: lstmaeCount, showCount: false, disabled: false },
+    { key: 'SiPR' as const, label: 'SiPR', count: siprCount, showCount: false, disabled: false },
+    { key: 'MSAX' as const, label: 'MSAX', count: msaxCount, showCount: false, disabled: false }
   ];
 
   return (
@@ -765,7 +767,9 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   selectedDate,
   gradientMode = 'neutral',
   onGradientModeChange,
-  onSentimentLoadingChange
+  onSentimentLoadingChange,
+  isHistoricalMode = false,
+  disabledTabs = []
 }) => {
   // ✅ NEW - activeIndex is now the Master controller (linked to news selection)
   const [activeIndex, setActiveIndex] = useState(0);
@@ -775,6 +779,17 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
   const [imageLoading, setImageLoading] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<'intraday' | 'interday' | 'LSTMAE' | 'SiPR' | 'MSAX' | null>(null);
   const [imagesLoaded, setImagesLoaded] = useState(false);
+
+  // ✅ NEW - Filter available tabs based on historical mode
+  const availableTabs = useMemo(() => {
+    const allTabs = ['intraday' as const, 'interday' as const, 'LSTMAE' as const, 'SiPR' as const, 'MSAX' as const];
+    if (isHistoricalMode) {
+      // In historical mode, only show intraday and interday
+      return allTabs.filter(tab => ['intraday', 'interday'].includes(tab));
+    }
+    // Filter out any explicitly disabled tabs
+    return allTabs.filter(tab => !disabledTabs.includes(tab));
+  }, [isHistoricalMode, disabledTabs]);
 
   // ✅ NEW - Real news data from Pre-Market API (Master data source)
   const [newsData, setNewsData] = useState<NewsItem[]>([]);

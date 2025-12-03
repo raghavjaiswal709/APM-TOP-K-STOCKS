@@ -174,6 +174,15 @@ const MarketDataPage: React.FC = () => {
   const [currentDate, setCurrentDate] = useState<string | null>(null);
   const [filteredCompanies, setFilteredCompanies] = useState<any[]>([]);
 
+  // ✅ NEW: Shared X-Axis state for chart synchronization
+  const [sharedXRange, setSharedXRange] = useState<[Date, Date] | undefined>(undefined);
+
+  // ✅ NEW: Bidirectional X-axis synchronization handler with throttling
+  const handleXRangeChange = useCallback((range: [Date, Date]) => {
+    console.log('🎯 [Parent] Received range change:', range);
+    setSharedXRange(range);
+  }, []);
+
   const {
     companies,
     loading: watchlistLoading,
@@ -1250,6 +1259,8 @@ const MarketDataPage: React.FC = () => {
                           onGttToggle={setIsGttEnabled}
                           gttLoading={gttLoading}
                           gttError={gttError}
+                          forcedXRange={sharedXRange}
+                          onXRangeChange={handleXRangeChange}
                         />
 
                       </div>

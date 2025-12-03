@@ -175,6 +175,8 @@ interface PlotlyChartProps {
   onGttToggle?: (enabled: boolean) => void;
   gttLoading?: boolean;
   gttError?: string | null;
+  forcedXRange?: [Date, Date] | undefined; // ✅ NEW: External X-axis range control
+  onXRangeChange?: (range: [Date, Date]) => void; // ✅ NEW: Emit range changes
 }
 
 
@@ -194,6 +196,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   isGttEnabled = false,
   onGttToggle,
   gttLoading = false,
+  forcedXRange, // ✅ NEW: External range control
+  onXRangeChange, // ✅ NEW: Range change callback
   // gttError = null,
 }) => {
 
@@ -1332,17 +1336,26 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }));
   };
 
-  // ✅ ENHANCED: Capture user interactions and preserve state
-  const handleRelayout = (eventData: any) => {
+  // ✅ ENHANCED: Capture user interactions and preserve state + emit to parent
+  const handleRelayout = useCallback((eventData: any) => {
     // ✅ Track user zoom/pan
     if (eventData['xaxis.range[0]'] || eventData['yaxis.range[0]']) {
       setUserHasInteracted(true);
-      setPreservedRange({
+      const newRange = {
         xaxis: eventData['xaxis.range[0]'] ?
           [eventData['xaxis.range[0]'], eventData['xaxis.range[1]']] : preservedRange.xaxis,
         yaxis: eventData['yaxis.range[0]'] ?
           [eventData['yaxis.range[0]'], eventData['yaxis.range[1]']] : preservedRange.yaxis,
-      });
+      };
+      setPreservedRange(newRange);
+      
+      // ✅ NEW: Emit X-axis range changes to parent for synchronization
+      if (onXRangeChange && eventData['xaxis.range[0]']) {
+        const startDate = new Date(eventData['xaxis.range[0]']);
+        const endDate = new Date(eventData['xaxis.range[1]']);
+        console.log('🔄 [PlotlyChart] Emitting range change:', { startDate, endDate });
+        onXRangeChange([startDate, endDate]);
+      }
     }
 
     // ✅ CRITICAL: Auto-scale y-axis when x-axis range changes
@@ -1443,7 +1456,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         }
       }
     }
-  };
+  }, [onXRangeChange, preservedRange, chartType, historicalData, ohlcData]); // ✅ Added dependencies for useCallback
 
   // ✅ OPTIMIZED: Data is now properly memoized via useMemo in the prepare functions
   const lineChartData = prepareLineChartData;
@@ -3237,9 +3250,12 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       xaxis: {
         title: 'Time',
         type: 'date',
-        // ✅ CRITICAL FIX: Only set range if user hasn't zoomed
-        // This prevents the chart from auto-scrolling when user is exploring data
-        ...(userHasInteracted && preservedRange.xaxis ? {
+        // ✅ CRITICAL FIX: Priority order - forcedXRange > user interaction > default timeRange
+        // This enables X-axis synchronization with ClusterChart
+        ...(forcedXRange ? {
+          range: forcedXRange, // 🔥 Highest priority: External synchronization
+          autorange: false
+        } : userHasInteracted && preservedRange.xaxis ? {
           range: preservedRange.xaxis,
           autorange: false
         } : {
@@ -4317,9 +4333,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                       loading={clusterLoading}
                       error={clusterError}
                       height={undefined}
-                      syncedTimeRange={getTimeRange()}
+                      syncedTimeRange={forcedXRange || getTimeRange()} 
                       syncedSelectedTimeframe={selectedTimeframe}
                       updateTrigger={`${symbol}-${selectedTimeframe}-${predictionRevision}`}
+                      onXRangeChange={onXRangeChange}
                     />
                   )}
                 </div>
