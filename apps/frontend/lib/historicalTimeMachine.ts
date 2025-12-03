@@ -110,7 +110,7 @@ function parseMessyJSON(rawText: string): HistoricalLiveData | null {
 export async function fetchAvailableDates(): Promise<string[]> {
     try {
         const baseUrl = getBaseUrl();
-        const fullUrl = `${baseUrl}/Live/`;
+        const fullUrl = `${baseUrl}/Live`;
 
         console.log('🔍 [fetchAvailableDates] Base URL:', baseUrl);
         console.log('🔍 [fetchAvailableDates] Full URL:', fullUrl);
@@ -118,6 +118,9 @@ export async function fetchAvailableDates(): Promise<string[]> {
         const response = await fetch(fullUrl, {
             method: 'GET',
             cache: 'no-cache',
+            headers: {
+                'Content-Type': 'application/json',
+            },
         });
 
         console.log('📡 [fetchAvailableDates] Response:', response.status, response.url);
@@ -148,11 +151,16 @@ export async function fetchCompaniesForDate(isoDate: string): Promise<string[]> 
     try {
         const baseUrl = getBaseUrl();
         const ldFormat = convertISOToLDFormat(isoDate);
-        const fullUrl = `${baseUrl}/Live/${ldFormat}/`;
+        const fullUrl = `${baseUrl}/Live/${ldFormat}`;
 
         console.log('🔍 [fetchCompaniesForDate] URL:', fullUrl);
 
-        const response = await fetch(fullUrl, { cache: 'no-cache' });
+        const response = await fetch(fullUrl, { 
+            cache: 'no-cache',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
         if (!response.ok) throw new Error('Failed to fetch companies');
 
         const html = await response.text();
@@ -202,9 +210,14 @@ export async function fetchSthitiCharts(
 ): Promise<string[]> {
     try {
         const baseUrl = getBaseUrl();
-        const fullUrl = `${baseUrl}/Sthiti/charts/${symbol}/${isoDate}/`;
+        const fullUrl = `${baseUrl}/Sthiti/charts/${symbol}/${isoDate}`;
 
-        const response = await fetch(fullUrl, { cache: 'no-cache' });
+        const response = await fetch(fullUrl, { 
+            cache: 'no-cache',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
         if (!response.ok) return [];
 
         const html = await response.text();
@@ -227,9 +240,14 @@ export async function fetchSthitiClusters(
 ): Promise<SthitiClusterData[]> {
     try {
         const baseUrl = getBaseUrl();
-        const fullUrl = `${baseUrl}/Sthiti/clusters/${symbol}/${sentiment}/`;
+        const fullUrl = `${baseUrl}/Sthiti/clusters/${symbol}/${sentiment}`;
 
-        const response = await fetch(fullUrl, { cache: 'no-cache' });
+        const response = await fetch(fullUrl, { 
+            cache: 'no-cache',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
         if (!response.ok) return [];
 
         const html = await response.text();

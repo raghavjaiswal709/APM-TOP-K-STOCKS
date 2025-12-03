@@ -6,13 +6,8 @@ const nextConfig = {
 
   async rewrites() {
     return [
-      // ✅ CRITICAL: Time Machine MUST come BEFORE generic /api/:path*
-      {
-        source: '/api/time-machine/:path*',
-        destination: 'http://100.93.172.21:6969/:path*',
-      },
-
-      // Specific API rewrites (these should also be before the catch-all)
+      // Specific API rewrites (these MUST come BEFORE the catch-all)
+      // Note: /api/time-machine/* is NOT listed here - it's handled by Next.js API route
       {
         source: '/api/sentiment/:path*',
         destination: 'http://100.93.172.21:5717/api/premarket/predictions/:path*',
@@ -26,9 +21,10 @@ const nextConfig = {
         destination: 'http://100.93.172.21:8505/intraday/:path*',
       },
 
-      // ⚠️ CATCH-ALL MUST BE LAST (matches everything else)
+      // ⚠️ CATCH-ALL: Proxy remaining /api/* to NestJS backend (port 5000)
+      // This excludes paths already matched above AND Next.js API routes like /api/time-machine
       {
-        source: '/api/:path*',
+        source: '/api/:path((?!time-machine).*)*',
         destination: 'http://localhost:5000/api/:path*',
       },
 

@@ -5,15 +5,23 @@ export const runtime = 'nodejs';
 
 export async function GET(
     request: NextRequest,
-    context: { params: { path: string[] } }
+    { params }: { params: Promise<{ path: string[] }> }
 ) {
     try {
-        const params = await Promise.resolve(context.params);
-        const pathSegments = params.path || [];
-        const path = pathSegments.join('/');
-        const targetUrl = `http://100.93.172.21:6969/${path}`;
+        const resolvedParams = await params;
+        const pathSegments = resolvedParams.path || [];
+        
+        // Filter out empty segments and join
+        const filteredSegments = pathSegments.filter(segment => segment && segment.trim() !== '');
+        const path = filteredSegments.join('/');
+        
+        // Add trailing slash for directory listings
+        const needsTrailingSlash = !path.includes('.') && !path.endsWith('/');
+        const targetUrl = `http://100.93.172.21:6969/${path}${needsTrailingSlash ? '/' : ''}`;
 
         console.log('🔄 [TIME-MACHINE] Incoming:', request.url);
+        console.log('🔄 [TIME-MACHINE] Path segments:', pathSegments);
+        console.log('🔄 [TIME-MACHINE] Filtered segments:', filteredSegments);
         console.log('🔄 [TIME-MACHINE] Proxying to:', targetUrl);
 
         const response = await fetch(targetUrl, {
