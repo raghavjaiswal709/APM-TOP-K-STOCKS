@@ -985,31 +985,46 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const now = new Date(maxTimestamp * 1000);
     const dataStartDate = new Date(minTimestamp * 1000);
     const currentTime = new Date();
+    
+    // ✅ NEW: Detect if we're in historical mode (tradingHours.isActive === false)
+    const isHistoricalMode = tradingHours && tradingHours.isActive === false;
 
     // ✅ CRITICAL: Log data date range for debugging
-    console.log(`📊 [Chart Data Range] ${dataStartDate.toLocaleDateString()} ${dataStartDate.toLocaleTimeString()} → ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`);
+    console.log(`📊 [Chart Data Range] ${dataStartDate.toLocaleDateString()} ${dataStartDate.toLocaleTimeString()} → ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`, {
+      isHistoricalMode,
+      tradingHoursActive: tradingHours?.isActive
+    });
 
     let startTime: Date;
     let endTime: Date;
 
     // ✅ SPECIAL CASE: 1D = Trading Day (9:15 AM to 3:30 PM)
     if (selectedTimeframe === '1D' || selectedTimeframe === '1d') {
-      // ✅ CRITICAL FIX: Always use TODAY's date, not historical data dates
-      const today = new Date();
+      // ✅ CRITICAL FIX: Use data's date for historical mode, TODAY for live mode
+      // For historical, use the latest data point's date to ensure we show the correct day
+      const referenceDate = isHistoricalMode ? now : new Date();
 
-      // Trading start: 9:15 AM TODAY
-      startTime = new Date(today);
+      // Trading start: 9:15 AM on reference date
+      startTime = new Date(referenceDate);
       startTime.setHours(TRADING_DAY_START_HOUR, TRADING_DAY_START_MINUTE, 0, 0);
 
-      // Trading end: 3:30 PM TODAY + 15 min buffer
-      endTime = new Date(today);
-      endTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE + 15, 0, 0);
+      // Trading end: 3:30 PM on reference date
+      // ✅ NO BUFFER for historical mode (data ends at 15:30)
+      // ✅ Small buffer for live mode (to show current time line)
+      endTime = new Date(referenceDate);
+      if (isHistoricalMode) {
+        endTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE, 0, 0);
+      } else {
+        endTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE + 15, 0, 0);
+      }
 
-      console.log('📅 [1D MODE] Trading Day Range (TODAY ONLY):', {
-        today: today.toLocaleDateString(),
+      console.log('📅 [1D MODE] Trading Day Range:', {
+        mode: isHistoricalMode ? 'HISTORICAL' : 'LIVE',
+        referenceDate: referenceDate.toLocaleDateString(),
         startTime: startTime.toLocaleTimeString(),
         endTime: endTime.toLocaleTimeString(),
-        duration: '6h 30min trading day'
+        duration: '6h 15min trading day',
+        bufferApplied: !isHistoricalMode
       });
 
     } else {
@@ -1020,22 +1035,62 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       const duration = TIMEFRAME_DURATIONS[selectedTimeframe as keyof typeof TIMEFRAME_DURATIONS];
 
       if (duration) {
-        // ✅ CRITICAL FIX: For 6H, 12H - use current time, NOT data timestamp
-        // This ensures we ALWAYS show the full duration back from NOW
+        // ✅ CRITICAL FIX: For 6H, 12H - behavior depends on mode
         if (selectedTimeframe === '6H' || selectedTimeframe === '12H') {
-          startTime = new Date(currentTime.getTime() - duration);
-          endTime = new Date(currentTime.getTime() + FUTURE_BUFFER_MS);
+          // For historical mode, use data's latest point as reference
+          // For live mode, use current time
+          const referenceTime = isHistoricalMode ? now : currentTime;
+          
+          startTime = new Date(referenceTime.getTime() - duration);
+          
+          // ✅ CRITICAL: For historical mode, cap end time at market close (15:30)
+          if (isHistoricalMode) {
+            const marketCloseTime = new Date(now);
+            marketCloseTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE, 0, 0);
+            
+            // Don't extend beyond market close time
+            const calculatedEndTime = new Date(referenceTime.getTime() + FUTURE_BUFFER_MS);
+            endTime = calculatedEndTime > marketCloseTime ? marketCloseTime : calculatedEndTime;
+            
+            console.log(`⏰ [${selectedTimeframe} HISTORICAL] End time capped at market close:`, {
+              calculatedEnd: calculatedEndTime.toLocaleTimeString(),
+              marketClose: marketCloseTime.toLocaleTimeString(),
+              finalEnd: endTime.toLocaleTimeString()
+            });
+          } else {
+            // For live mode, allow buffer
+            endTime = new Date(referenceTime.getTime() + FUTURE_BUFFER_MS);
+          }
 
-          console.log(`⏰ [${selectedTimeframe} MODE] Fixed Duration from Current Time:`, {
-            currentTime: currentTime.toLocaleTimeString(),
-            startTime: startTime.toLocaleTimeString(),
-            endTime: endTime.toLocaleTimeString(),
+          console.log(`⏰ [${selectedTimeframe} MODE] Fixed Duration:`, {
+            mode: isHistoricalMode ? 'HISTORICAL' : 'LIVE',
+            referenceTime: referenceTime.toLocaleString(),
+            startTime: startTime.toLocaleString(),
+            endTime: endTime.toLocaleString(),
             hoursBack: duration / (60 * 60 * 1000)
           });
         } else {
           // For shorter timeframes, use latest data point as "now"
           startTime = new Date(now.getTime() - duration);
-          endTime = new Date(now.getTime() + FUTURE_BUFFER_MS);
+          
+          // ✅ CRITICAL: For historical mode, cap end time at market close (15:30)
+          if (isHistoricalMode) {
+            const marketCloseTime = new Date(now);
+            marketCloseTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE, 0, 0);
+            
+            // Don't extend beyond market close time
+            const calculatedEndTime = new Date(now.getTime() + FUTURE_BUFFER_MS);
+            endTime = calculatedEndTime > marketCloseTime ? marketCloseTime : calculatedEndTime;
+            
+            console.log(`⏰ [${selectedTimeframe} HISTORICAL] End time capped at market close:`, {
+              calculatedEnd: calculatedEndTime.toLocaleTimeString(),
+              marketClose: marketCloseTime.toLocaleTimeString(),
+              finalEnd: endTime.toLocaleTimeString()
+            });
+          } else {
+            // For live mode, allow buffer beyond current time
+            endTime = new Date(now.getTime() + FUTURE_BUFFER_MS);
+          }
 
           // ✅ CRITICAL: Ensure start time is not before earliest data
           const earliestDataTime = new Date(minTimestamp * 1000);

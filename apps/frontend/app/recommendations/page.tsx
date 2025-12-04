@@ -1,7 +1,7 @@
 // apps/frontend/app/recommendations/page.tsx
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { AppSidebar } from "@/app/components/app-sidebar";
 import {
@@ -21,12 +21,19 @@ import {
 import { ModeToggle } from "@/app/components/toggleButton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Database, TrendingUp, TrendingDown } from 'lucide-react';
-import { useTimeMachine } from '@/hooks/useTimeMachine';
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { HistoricalDataSelector } from "@/app/components/controllers/HistoricalDataSelector";
+import { TimeMachineSelector } from "@/app/components/controllers/TimeMachineSelector/TimeMachineSelector";
 import { parseFullHistoricalData, convertToOHLC } from '@/lib/historicalTimeMachine';
-import { ImageCarousel } from "../market-data/components/ImageCarousel";
+import { useTimeMachine } from '@/hooks/useTimeMachine';
+import { HistoricalChartCarousel } from "./components/HistoricalChartCarousel";
+import { HistoricalMarketNews } from "./components/HistoricalMarketNews";
+import { 
+  fetchSthitiClusters, 
+  fetchSthitiPrediction,
+  type SthitiCluster,
+  type SthitiPrediction 
+} from '@/lib/historicalSthitiService';
 
 // Dynamic imports
 const PlotlyChart = dynamic(() => import('../market-data/components/charts/PlotlyChart'), {
@@ -74,6 +81,14 @@ const RecommendationListPage: React.FC = () => {
   const [historicalDataPoints, setHistoricalDataPoints] = useState<MarketData[]>([]);
   const [ohlcDataPoints, setOHLCDataPoints] = useState<OHLCPoint[]>([]);
   const [loadingFullData, setLoadingFullData] = useState(false);
+  
+  // Sthiti Intelligence State
+  const [sthitiPositiveClusters, setSthitiPositiveClusters] = useState<SthitiCluster[]>([]);
+  const [sthitiNegativeClusters, setSthitiNegativeClusters] = useState<SthitiCluster[]>([]);
+  const [sthitiNeutralClusters, setSthitiNeutralClusters] = useState<SthitiCluster[]>([]);
+  const [sthitiPrediction, setSthitiPrediction] = useState<SthitiPrediction | null>(null);
+  const [loadingSthitiClusters, setLoadingSthitiClusters] = useState(false);
+  const [loadingSthitiPrediction, setLoadingSthitiPrediction] = useState(false);
 
   const {
     availableDates,
@@ -81,19 +96,9 @@ const RecommendationListPage: React.FC = () => {
     availableCompanies,
     selectedCompany,
     priceData,
-    chartImages,
-    positiveClusters,
-    negativeClusters,
-    neutralClusters,
-    headlines,
-    predictions,
     loadingDates,
     loadingCompanies,
     loadingPriceData,
-    loadingCharts,
-    loadingClusters,
-    loadingHeadlines,
-    loadingPredictions,
     setSelectedDate,
     setSelectedCompany,
   } = useTimeMachine();
@@ -149,6 +154,51 @@ const RecommendationListPage: React.FC = () => {
     };
 
     loadChartData();
+  }, [selectedDate, selectedCompany]);
+
+  // ✅ NEW: Fetch Sthiti Intelligence data when company/date changes
+  useEffect(() => {
+    if (!selectedDate || !selectedCompany) {
+      setSthitiPositiveClusters([]);
+      setSthitiNegativeClusters([]);
+      setSthitiNeutralClusters([]);
+      setSthitiPrediction(null);
+      return;
+    }
+
+    const loadSthitiData = async () => {
+      // Load clusters
+      setLoadingSthitiClusters(true);
+      try {
+        const [positive, negative, neutral] = await Promise.all([
+          fetchSthitiClusters(selectedCompany, 'positive'),
+          fetchSthitiClusters(selectedCompany, 'negative'),
+          fetchSthitiClusters(selectedCompany, 'neutral'),
+        ]);
+        setSthitiPositiveClusters(positive);
+        setSthitiNegativeClusters(negative);
+        setSthitiNeutralClusters(neutral);
+        console.log(`✅ [Sthiti Clusters] Loaded: ${positive.length} positive, ${negative.length} negative, ${neutral.length} neutral`);
+      } catch (error) {
+        console.error('❌ [Sthiti Clusters] Error:', error);
+      } finally {
+        setLoadingSthitiClusters(false);
+      }
+
+      // Load prediction
+      setLoadingSthitiPrediction(true);
+      try {
+        const prediction = await fetchSthitiPrediction(selectedCompany, selectedDate);
+        setSthitiPrediction(prediction);
+        console.log(`✅ [Sthiti Prediction] Loaded:`, prediction);
+      } catch (error) {
+        console.error('❌ [Sthiti Prediction] Error:', error);
+      } finally {
+        setLoadingSthitiPrediction(false);
+      }
+    };
+
+    loadSthitiData();
   }, [selectedDate, selectedCompany]);
 
   // Convert price data to MarketData format (use last point from historical data)
@@ -207,17 +257,17 @@ const RecommendationListPage: React.FC = () => {
 
   // Overall sentiment calculation
   const overallSentiment = useMemo(() => {
-    if (predictions) {
-      return predictions.sentiment || 'NEUTRAL';
+    if (sthitiPrediction) {
+      return sthitiPrediction.sentiment || 'NEUTRAL';
     }
 
-    const positiveCount = positiveClusters.length;
-    const negativeCount = negativeClusters.length;
+    const positiveCount = sthitiPositiveClusters.length;
+    const negativeCount = sthitiNegativeClusters.length;
 
     if (positiveCount > negativeCount) return 'POSITIVE';
     if (negativeCount > positiveCount) return 'NEGATIVE';
     return 'NEUTRAL';
-  }, [predictions, positiveClusters, negativeClusters]);
+  }, [sthitiPrediction, sthitiPositiveClusters, sthitiNegativeClusters]);
 
   const getSentimentStyle = (sentiment: string) => {
     switch (sentiment.toUpperCase()) {
@@ -294,19 +344,21 @@ const RecommendationListPage: React.FC = () => {
         </header>
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          {/* ✅ UNIFIED: Use shared HistoricalDataSelector component */}
-          <HistoricalDataSelector
-            availableDates={availableDates}
-            selectedDate={selectedDate}
-            onDateChange={setSelectedDate}
-            loadingDates={loadingDates}
-            availableCompanies={availableCompanies}
-            selectedCompany={selectedCompany}
-            onCompanyChange={setSelectedCompany}
-            loadingCompanies={loadingCompanies}
-            showBadges={true}
-            compact={false}
-          />
+          {/* ✅ NEW: Beautiful UI using TimeMachineSelector with OLD data from port 6969 */}
+          <Card className="w-full">
+            <CardContent className="p-4">
+              <TimeMachineSelector
+                availableDates={availableDates}
+                selectedDate={selectedDate}
+                onDateChange={setSelectedDate}
+                loadingDates={loadingDates}
+                availableCompanies={availableCompanies}
+                selectedCompany={selectedCompany}
+                onCompanyChange={setSelectedCompany}
+                loadingCompanies={loadingCompanies}
+              />
+            </CardContent>
+          </Card>
 
           {/* Main Content */}
           <div className="min-h-screen bg-zinc-900 text-zinc-100 rounded-lg">
@@ -422,29 +474,29 @@ const RecommendationListPage: React.FC = () => {
                       {/* ============ STHITI INTELLIGENCE WIDGETS ============ */}
                       
                       {/* AI Prediction Widget */}
-                      {loadingPredictions ? (
+                      {loadingSthitiPrediction ? (
                         <div className="text-center text-zinc-400 text-sm mt-4">Loading predictions...</div>
-                      ) : predictions ? (
+                      ) : sthitiPrediction ? (
                         <Card className="bg-blue-500/5 border-blue-500/20 mt-4">
                           <CardContent className="p-3">
                             <h4 className="text-sm font-semibold text-blue-400 mb-2">🤖 AI Prediction</h4>
                             <div className="space-y-2 text-sm">
                               <div className="flex justify-between">
                                 <span className="text-zinc-400">Sentiment:</span>
-                                <span className={getSentimentStyle(predictions.sentiment).text}>
-                                  {predictions.sentiment}
+                                <span className={getSentimentStyle(sthitiPrediction.sentiment).text}>
+                                  {sthitiPrediction.sentiment}
                                 </span>
                               </div>
                               <div className="flex justify-between">
                                 <span className="text-zinc-400">Confidence:</span>
-                                <span className="text-white">{(predictions.confidence * 100).toFixed(0)}%</span>
+                                <span className="text-white">{(sthitiPrediction.confidence * 100).toFixed(0)}%</span>
                               </div>
                               <div className="flex justify-between">
                                 <span className="text-zinc-400">Score:</span>
-                                <span className="text-white">{predictions.score.toFixed(2)}</span>
+                                <span className="text-white">{sthitiPrediction.score.toFixed(2)}</span>
                               </div>
                               <div className="mt-2 pt-2 border-t border-zinc-700">
-                                <p className="text-xs text-zinc-400">{predictions.reasoning}</p>
+                                <p className="text-xs text-zinc-400">{sthitiPrediction.reasoning}</p>
                               </div>
                             </div>
                           </CardContent>
@@ -452,23 +504,23 @@ const RecommendationListPage: React.FC = () => {
                       ) : null}
 
                       {/* Sentiment Clusters */}
-                      {!loadingClusters && (positiveClusters.length > 0 || negativeClusters.length > 0) && (
+                      {!loadingSthitiClusters && (sthitiPositiveClusters.length > 0 || sthitiNegativeClusters.length > 0 || sthitiNeutralClusters.length > 0) && (
                         <div className="space-y-2 mt-4">
                           <h4 className="text-sm font-semibold text-zinc-400">Market Sentiment</h4>
                           
-                          {positiveClusters.length > 0 && (
+                          {sthitiPositiveClusters.length > 0 && (
                             <Card className="bg-green-500/5 border-green-500/20">
                               <CardContent className="p-3">
                                 <div className="flex items-center gap-2 mb-2">
                                   <TrendingUp className="h-4 w-4 text-green-400" />
                                   <span className="text-green-400 font-medium">
-                                    Positive ({positiveClusters.length})
+                                    Positive ({sthitiPositiveClusters.length})
                                   </span>
                                 </div>
                                 <ScrollArea className="h-[100px]">
-                                  {positiveClusters.map((cluster, i) => (
+                                  {sthitiPositiveClusters.map((cluster, i) => (
                                     <div key={i} className="text-xs text-zinc-300 mb-1">
-                                      • {cluster.representative_phrases[0]}
+                                      • {cluster.representative_phrases?.[0] || 'No phrase available'}
                                     </div>
                                   ))}
                                 </ScrollArea>
@@ -476,19 +528,19 @@ const RecommendationListPage: React.FC = () => {
                             </Card>
                           )}
 
-                          {negativeClusters.length > 0 && (
+                          {sthitiNegativeClusters.length > 0 && (
                             <Card className="bg-red-500/5 border-red-500/20">
                               <CardContent className="p-3">
                                 <div className="flex items-center gap-2 mb-2">
                                   <TrendingDown className="h-4 w-4 text-red-400" />
                                   <span className="text-red-400 font-medium">
-                                    Negative ({negativeClusters.length})
+                                    Negative ({sthitiNegativeClusters.length})
                                   </span>
                                 </div>
                                 <ScrollArea className="h-[100px]">
-                                  {negativeClusters.map((cluster, i) => (
+                                  {sthitiNegativeClusters.map((cluster, i) => (
                                     <div key={i} className="text-xs text-zinc-300 mb-1">
-                                      • {cluster.representative_phrases[0]}
+                                      • {cluster.representative_phrases?.[0] || 'No phrase available'}
                                     </div>
                                   ))}
                                 </ScrollArea>
@@ -496,18 +548,18 @@ const RecommendationListPage: React.FC = () => {
                             </Card>
                           )}
 
-                          {neutralClusters.length > 0 && (
+                          {sthitiNeutralClusters.length > 0 && (
                             <Card className="bg-zinc-500/5 border-zinc-500/20">
                               <CardContent className="p-3">
                                 <div className="flex items-center gap-2 mb-2">
                                   <span className="text-zinc-400 font-medium">
-                                    Neutral ({neutralClusters.length})
+                                    Neutral ({sthitiNeutralClusters.length})
                                   </span>
                                 </div>
                                 <ScrollArea className="h-[80px]">
-                                  {neutralClusters.map((cluster, i) => (
+                                  {sthitiNeutralClusters.map((cluster, i) => (
                                     <div key={i} className="text-xs text-zinc-300 mb-1">
-                                      • {cluster.representative_phrases[0]}
+                                      • {cluster.representative_phrases?.[0] || 'No phrase available'}
                                     </div>
                                   ))}
                                 </ScrollArea>
@@ -517,36 +569,13 @@ const RecommendationListPage: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Headlines Widget */}
-                      {loadingHeadlines ? (
-                        <div className="text-center text-zinc-400 text-sm mt-4">Loading headlines...</div>
-                      ) : headlines.length > 0 ? (
-                        <div className="mt-4">
-                          <h4 className="text-sm font-semibold text-zinc-400 mb-2">
-                            📰 News Headlines ({headlines.length})
-                          </h4>
-                          <ScrollArea className="h-[200px]">
-                            {headlines.map((h, i) => (
-                              <Card key={i} className="mb-2 bg-zinc-800/50">
-                                <CardContent className="p-2">
-                                  <p className="text-xs text-zinc-300">{h.text}</p>
-                                  <div className="flex justify-between mt-1">
-                                    <span className="text-xs text-zinc-500">{h.source}</span>
-                                    <span className="text-xs text-zinc-500">
-                                      {new Date(h.timestamp).toLocaleTimeString()}
-                                    </span>
-                                  </div>
-                                  <div className="mt-1">
-                                    <span className={`text-xs ${getSentimentStyle(h.gpt4o_sentiment).text}`}>
-                                      {h.gpt4o_sentiment}
-                                    </span>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            ))}
-                          </ScrollArea>
-                        </div>
-                      ) : null}
+                      {/* Market News Widget */}
+                      <div className="mt-4">
+                        <HistoricalMarketNews
+                          symbol={selectedCompany}
+                          date={selectedDate}
+                        />
+                      </div>
                     </div>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
@@ -559,18 +588,13 @@ const RecommendationListPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* ============ IMAGE CAROUSEL (BOTTOM) ============ */}
+              {/* ============ HISTORICAL CHART CAROUSEL (BOTTOM) ============ */}
               {selectedCompany && selectedDate && (
                 <div className="mb-8">
-                  <ImageCarousel
+                  <HistoricalChartCarousel
                     companyCode={selectedCompany}
-                    exchange="NSE"
-                    gradientMode={overallSentiment === 'POSITIVE' ? 'profit' : overallSentiment === 'NEGATIVE' ? 'loss' : 'neutral'}
-                    onGradientModeChange={() => {}}
-                    onSentimentLoadingChange={() => {}}
                     selectedDate={selectedDate}
-                    isHistoricalMode={true}
-                    disabledTabs={['LSTMAE', 'SiPR', 'MSAX']}
+                    overallSentiment={overallSentiment}
                   />
                 </div>
               )}
