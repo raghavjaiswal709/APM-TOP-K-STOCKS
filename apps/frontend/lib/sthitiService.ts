@@ -1,9 +1,15 @@
 /**
  * Sthiti Data Service
  * Handles fetching chart images and headlines from the Sthiti server
+ * 
+ * Uses Next.js rewrite proxy (/sthiti-data/*) to avoid CORS issues
+ * Direct server URL is only used for image URLs (images work cross-origin)
  */
 
-const STHITI_BASE_URL = 'http://100.93.172.21:6969/Sthiti';
+// Proxy URL for API calls (directory listings, JSON data)
+const STHITI_PROXY_BASE = '/sthiti-data';
+// Direct URL for static assets (images can load cross-origin)
+const STHITI_DIRECT_BASE = 'http://100.93.172.21:6969/Sthiti';
 
 export interface SthitiChartImage {
   url: string;
@@ -29,10 +35,14 @@ export async function fetchSthitiChartImages(
   date: string
 ): Promise<SthitiChartImage[]> {
   try {
-    const directoryUrl = `${STHITI_BASE_URL}/charts/${symbol}/${date}/`;
-    console.log(`[Sthiti] Fetching directory listing: ${directoryUrl}`);
+    // Use proxy for directory listing (avoids CORS)
+    const proxyUrl = `${STHITI_PROXY_BASE}/charts/${symbol}/${date}/`;
+    // Use direct URL for image sources
+    const directUrl = `${STHITI_DIRECT_BASE}/charts/${symbol}/${date}/`;
+    
+    console.log(`[Sthiti] Fetching directory listing: ${proxyUrl}`);
 
-    const response = await fetch(directoryUrl, {
+    const response = await fetch(proxyUrl, {
       method: 'GET',
       headers: {
         'Accept': 'text/html',
@@ -62,8 +72,8 @@ export async function fetchSthitiChartImages(
       else if (filename.includes('interday')) type = 'interday';
       else if (filename.includes('premarket')) type = 'premarket';
       
-      // Construct full URL
-      const fullUrl = `${directoryUrl}${filename}`;
+      // Construct full URL using direct path (images work cross-origin)
+      const fullUrl = `${directUrl}${filename}`;
       
       chartImages.push({
         url: fullUrl,
@@ -98,8 +108,8 @@ export async function fetchSthitiHeadlines(
   date: string
 ): Promise<SthitiHeadline[]> {
   try {
-    // Try YYYY-MM-DD format first
-    let headlinesUrl = `${STHITI_BASE_URL}/headlines/${symbol}/${date}.json`;
+    // Use proxy for JSON fetch (avoids CORS)
+    let headlinesUrl = `${STHITI_PROXY_BASE}/headlines/${symbol}/${date}.json`;
     console.log(`[Sthiti] Fetching headlines: ${headlinesUrl}`);
 
     let response = await fetch(headlinesUrl);
@@ -108,7 +118,7 @@ export async function fetchSthitiHeadlines(
     if (!response.ok) {
       const [year, month, day] = date.split('-');
       const altDate = `${day}-${month}-${year}`;
-      headlinesUrl = `${STHITI_BASE_URL}/headlines/${symbol}/${altDate}.json`;
+      headlinesUrl = `${STHITI_PROXY_BASE}/headlines/${symbol}/${altDate}.json`;
       console.log(`[Sthiti] Retrying with alternate format: ${headlinesUrl}`);
       response = await fetch(headlinesUrl);
     }

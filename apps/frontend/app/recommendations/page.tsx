@@ -489,12 +489,29 @@ const RecommendationListPage: React.FC = () => {
                               </div>
                               <div className="flex justify-between">
                                 <span className="text-zinc-400">Confidence:</span>
-                                <span className="text-white">{(sthitiPrediction.confidence * 100).toFixed(0)}%</span>
+                                <Badge 
+                                  variant="outline" 
+                                  className={`text-xs ${
+                                    sthitiPrediction.confidence === 'HIGH' 
+                                      ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                      : sthitiPrediction.confidence === 'MEDIUM'
+                                      ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                      : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
+                                  }`}
+                                >
+                                  {sthitiPrediction.confidence}
+                                </Badge>
                               </div>
                               <div className="flex justify-between">
                                 <span className="text-zinc-400">Score:</span>
-                                <span className="text-white">{sthitiPrediction.score.toFixed(2)}</span>
+                                <span className="text-white">{sthitiPrediction.score?.toFixed?.(2) ?? sthitiPrediction.score}</span>
                               </div>
+                              {sthitiPrediction.headlines_analyzed !== undefined && (
+                                <div className="flex justify-between">
+                                  <span className="text-zinc-400">Headlines:</span>
+                                  <span className="text-white">{sthitiPrediction.headlines_analyzed}</span>
+                                </div>
+                              )}
                               <div className="mt-2 pt-2 border-t border-zinc-700">
                                 <p className="text-xs text-zinc-400">{sthitiPrediction.reasoning}</p>
                               </div>

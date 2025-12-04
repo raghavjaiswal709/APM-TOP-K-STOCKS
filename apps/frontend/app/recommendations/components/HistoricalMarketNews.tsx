@@ -8,20 +8,29 @@ import { Loader2, Newspaper, Clock, ExternalLink } from 'lucide-react';
 import { fetchSthitiHeadlines, type SthitiHeadline } from '@/lib/historicalSthitiService';
 
 interface HistoricalMarketNewsProps {
-  companyCode: string;
-  selectedDate: string; // YYYY-MM-DD format
+  companyCode?: string;
+  selectedDate?: string; // YYYY-MM-DD format
+  // Alternative prop names for flexibility
+  symbol?: string;
+  date?: string;
 }
 
 export const HistoricalMarketNews: React.FC<HistoricalMarketNewsProps> = ({
   companyCode,
   selectedDate,
+  symbol,
+  date,
 }) => {
+  // Support both prop naming conventions
+  const effectiveCompanyCode = companyCode || symbol || '';
+  const effectiveDate = selectedDate || date || '';
+  
   const [headlines, setHeadlines] = useState<SthitiHeadline[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!companyCode || !selectedDate) {
+    if (!effectiveCompanyCode || !effectiveDate) {
       setHeadlines([]);
       return;
     }
@@ -31,7 +40,7 @@ export const HistoricalMarketNews: React.FC<HistoricalMarketNewsProps> = ({
       setError(null);
 
       try {
-        const headlineData = await fetchSthitiHeadlines(companyCode, selectedDate);
+        const headlineData = await fetchSthitiHeadlines(effectiveCompanyCode, effectiveDate);
         setHeadlines(headlineData);
 
         if (headlineData.length === 0) {
@@ -46,7 +55,7 @@ export const HistoricalMarketNews: React.FC<HistoricalMarketNewsProps> = ({
     };
 
     loadHeadlines();
-  }, [companyCode, selectedDate]);
+  }, [effectiveCompanyCode, effectiveDate]);
 
   const getSentimentStyle = (sentiment: string) => {
     switch (sentiment.toUpperCase()) {
@@ -171,7 +180,7 @@ export const HistoricalMarketNews: React.FC<HistoricalMarketNewsProps> = ({
           {headlines.length > 0 && (
             <div className="pt-2 border-t border-zinc-700">
               <p className="text-xs text-zinc-500 text-center">
-                {headlines.length} headline{headlines.length !== 1 ? 's' : ''} from {selectedDate}
+                {headlines.length} headline{headlines.length !== 1 ? 's' : ''} from {effectiveDate}
               </p>
             </div>
           )}

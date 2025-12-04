@@ -2,15 +2,21 @@
  * Historical Sthiti Intelligence Data Service
  * Fetches data from /Sthiti/ directory via server IP
  * Completely isolated from production API calls
+ * 
+ * Uses Next.js rewrite proxy (/sthiti-data/*) to avoid CORS issues
+ * Direct server URL is only used for image URLs (images work cross-origin)
  */
 
-const HISTORICAL_SERVER_BASE = 'http://localhost:6969';
+// Proxy URL for API calls (directory listings, JSON data)
+const STHITI_PROXY_BASE = '/sthiti-data';
+// Direct URL for static assets (images can load cross-origin)
+const STHITI_DIRECT_BASE = 'http://100.93.172.21:6969/Sthiti';
 
 export interface SthitiChartFile {
   filename: string;
   url: string;
   timestamp?: string;
-  type?: string;
+  type?: 'intraday' | 'interday' | 'premarket' | 'other';
 }
 
 export interface SthitiClusterPhrase {
@@ -24,6 +30,7 @@ export interface SthitiCluster {
 }
 
 export interface SthitiHeadline {
+  id?: string;
   text: string;
   timestamp: string;
   source: string;
@@ -32,51 +39,87 @@ export interface SthitiHeadline {
 
 export interface SthitiPrediction {
   sentiment: string;
-  confidence: number;
+  confidence: string;
   reasoning: string;
   score: number;
+  stock_ticker?: string;
+  headlines_analyzed?: number;
+}
+
+/**
+ * Parse HTML directory listing to extract file names
+ * The server returns HTML like: <a href="filename.png">filename.png</a>
+ */
+function parseDirectoryListing(html: string): string[] {
+  const hrefPattern = /href="([^"]+)"/gi;
+  const matches = Array.from(html.matchAll(hrefPattern));
+  return matches
+    .map((match) => match[1])
+    .filter((href) => !href.startsWith('?') && !href.startsWith('/') && href !== '../');
 }
 
 /**
  * Fetch available chart images for a symbol and date
  * Route: GET /Sthiti/charts/[SYMBOL]/[YYYY-MM-DD]/
+ * Note: Server returns HTML directory listing, not JSON
  */
 export async function fetchSthitiCharts(
   symbol: string,
   date: string // Expected format: YYYY-MM-DD
 ): Promise<SthitiChartFile[]> {
   try {
-    const url = `${HISTORICAL_SERVER_BASE}/Sthiti/charts/${symbol}/${date}/`;
-    console.log(`[Sthiti Charts] Fetching from: ${url}`);
+    // Use proxy for directory listing (avoids CORS)
+    const proxyUrl = `${STHITI_PROXY_BASE}/charts/${symbol}/${date}/`;
+    // Use direct URL for image sources (images work cross-origin)
+    const directUrl = `${STHITI_DIRECT_BASE}/charts/${symbol}/${date}/`;
+    
+    console.log(`[Sthiti Charts] Fetching from: ${proxyUrl}`);
 
-    const response = await fetch(url);
+    const response = await fetch(proxyUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'text/html',
+      },
+    });
     
     if (!response.ok) {
       console.warn(`[Sthiti Charts] No data found for ${symbol} on ${date}`);
       return [];
     }
 
-    const data = await response.json();
+    const html = await response.text();
     
-    // Expecting array of filenames or objects
-    if (Array.isArray(data)) {
-      return data.map((item: string | { filename?: string; name?: string; url?: string; timestamp?: string; type?: string }): SthitiChartFile => {
-        if (typeof item === 'string') {
-          return {
-            filename: item,
-            url: `${HISTORICAL_SERVER_BASE}/Sthiti/charts/${symbol}/${date}/${item}`,
-          };
-        }
-        return {
-          filename: item.filename || item.name || 'unknown',
-          url: item.url || `${HISTORICAL_SERVER_BASE}/Sthiti/charts/${symbol}/${date}/${item.filename || item.name}`,
-          timestamp: item.timestamp,
-          type: item.type,
-        };
+    // Parse HTML directory listing to extract PNG filenames
+    const hrefPattern = /href="([^"]*?\.png)"/gi;
+    const matches = Array.from(html.matchAll(hrefPattern));
+    
+    const chartFiles: SthitiChartFile[] = [];
+    
+    for (const match of matches) {
+      const filename = match[1];
+      
+      // Determine chart type from filename
+      let type: SthitiChartFile['type'] = 'other';
+      if (filename.toLowerCase().includes('intraday')) type = 'intraday';
+      else if (filename.toLowerCase().includes('interday')) type = 'interday';
+      else if (filename.toLowerCase().includes('premarket')) type = 'premarket';
+      
+      chartFiles.push({
+        filename,
+        // Use direct URL for images (works cross-origin)
+        url: `${directUrl}${filename}`,
+        type,
       });
+      
+      console.log(`[Sthiti Charts] Found: ${filename} (${type})`);
     }
-
-    return [];
+    
+    // Sort by priority: intraday -> interday -> premarket -> other
+    const typePriority = { intraday: 1, interday: 2, premarket: 3, other: 4 };
+    chartFiles.sort((a, b) => typePriority[a.type || 'other'] - typePriority[b.type || 'other']);
+    
+    console.log(`[Sthiti Charts] ✅ Found ${chartFiles.length} chart images`);
+    return chartFiles;
   } catch (error) {
     console.error('[Sthiti Charts] Error fetching charts:', error);
     return [];
@@ -87,30 +130,64 @@ export async function fetchSthitiCharts(
  * Fetch sentiment clusters for a symbol
  * Route: GET /Sthiti/clusters/[SYMBOL]/[SENTIMENT]/
  * Sentiments: neutral, positive, negative
+ * Note: Server returns HTML directory listing with cluster_*.json files
  */
 export async function fetchSthitiClusters(
   symbol: string,
   sentiment: 'positive' | 'negative' | 'neutral'
 ): Promise<SthitiCluster[]> {
   try {
-    const url = `${HISTORICAL_SERVER_BASE}/Sthiti/clusters/${symbol}/${sentiment}/`;
-    console.log(`[Sthiti Clusters] Fetching ${sentiment} clusters from: ${url}`);
+    // Use proxy for directory listing
+    const proxyDirUrl = `${STHITI_PROXY_BASE}/clusters/${symbol}/${sentiment}/`;
+    console.log(`[Sthiti Clusters] Fetching ${sentiment} clusters from: ${proxyDirUrl}`);
 
-    const response = await fetch(url);
+    // First, fetch the directory listing
+    const dirResponse = await fetch(proxyDirUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'text/html',
+      },
+    });
     
-    if (!response.ok) {
-      console.warn(`[Sthiti Clusters] No ${sentiment} clusters found for ${symbol}`);
+    if (!dirResponse.ok) {
+      console.warn(`[Sthiti Clusters] No ${sentiment} clusters directory found for ${symbol}`);
       return [];
     }
 
-    const data = await response.json();
+    const html = await dirResponse.text();
     
-    // Data should be array of cluster objects
-    if (Array.isArray(data)) {
-      return data;
+    // Parse HTML to find cluster JSON files
+    const hrefPattern = /href="(cluster_[^"]*\.json)"/gi;
+    const matches = Array.from(html.matchAll(hrefPattern));
+    
+    if (matches.length === 0) {
+      console.warn(`[Sthiti Clusters] No cluster files found for ${symbol}/${sentiment}`);
+      return [];
     }
-
-    return [];
+    
+    console.log(`[Sthiti Clusters] Found ${matches.length} cluster files`);
+    
+    // Fetch each cluster JSON file via proxy
+    const clusters: SthitiCluster[] = [];
+    
+    for (const match of matches) {
+      const filename = match[1];
+      const clusterUrl = `${proxyDirUrl}${filename}`;
+      
+      try {
+        const clusterResponse = await fetch(clusterUrl);
+        if (clusterResponse.ok) {
+          const clusterData = await clusterResponse.json();
+          clusters.push(clusterData);
+          console.log(`[Sthiti Clusters] Loaded: ${filename}`);
+        }
+      } catch (err) {
+        console.warn(`[Sthiti Clusters] Failed to load ${filename}:`, err);
+      }
+    }
+    
+    console.log(`[Sthiti Clusters] ✅ Loaded ${clusters.length} ${sentiment} clusters`);
+    return clusters;
   } catch (error) {
     console.error(`[Sthiti Clusters] Error fetching ${sentiment} clusters:`, error);
     return [];
@@ -126,7 +203,8 @@ export async function fetchSthitiHeadlines(
   date: string // Expected format: YYYY-MM-DD
 ): Promise<SthitiHeadline[]> {
   try {
-    const url = `${HISTORICAL_SERVER_BASE}/Sthiti/headlines/${symbol}/${date}.json`;
+    // Use proxy to fetch JSON (avoids CORS)
+    const url = `${STHITI_PROXY_BASE}/headlines/${symbol}/${date}.json`;
     console.log(`[Sthiti Headlines] Fetching from: ${url}`);
 
     const response = await fetch(url);
@@ -160,7 +238,8 @@ export async function fetchSthitiPrediction(
   date: string // Expected format: YYYY-MM-DD
 ): Promise<SthitiPrediction | null> {
   try {
-    const url = `${HISTORICAL_SERVER_BASE}/Sthiti/predictions/${date}.json`;
+    // Use proxy to fetch JSON (avoids CORS)
+    const url = `${STHITI_PROXY_BASE}/predictions/${date}.json`;
     console.log(`[Sthiti Predictions] Fetching from: ${url}`);
 
     const response = await fetch(url);

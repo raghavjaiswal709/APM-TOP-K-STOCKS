@@ -50,7 +50,11 @@ export default function WatchlistPage() {
     error,
     exists,
     availableExchanges,
+    availableMarkers,
     selectedDate,
+    setSelectedDate,
+    availableDates,
+    totalCompanies,
   } = useWatchlist();
 
 
@@ -183,6 +187,17 @@ export default function WatchlistPage() {
                 <WatchlistSelector
                   onCompanySelect={handleCompanySelect}
                   showDateSelector={true}
+                  // Pass external state to sync with page's useWatchlist hook
+                  externalSelectedDate={selectedDate}
+                  externalSetSelectedDate={setSelectedDate}
+                  externalAvailableDates={availableDates}
+                  externalCompanies={companies}
+                  externalLoading={loading}
+                  externalError={error}
+                  externalExists={exists}
+                  externalAvailableExchanges={availableExchanges}
+                  externalAvailableMarkers={availableMarkers}
+                  externalTotalCompanies={totalCompanies}
                 />
                 
                 {error && (

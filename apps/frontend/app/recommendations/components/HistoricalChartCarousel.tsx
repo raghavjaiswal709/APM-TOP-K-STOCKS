@@ -172,19 +172,49 @@ export const HistoricalChartCarousel: React.FC<HistoricalChartCarouselProps> = (
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {activeCharts.map((chart, index) => (
-                      <div key={index} className="relative aspect-video bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800">
+                      <div key={index} className="relative aspect-video bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 group">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={chart.url}
                           alt={chart.filename}
                           className="w-full h-full object-contain"
+                          loading="lazy"
                           onError={(e) => {
                             const target = e.target as HTMLImageElement;
                             target.style.display = 'none';
+                            // Show error indicator
+                            const parent = target.parentElement;
+                            if (parent && !parent.querySelector('.error-placeholder')) {
+                              const errorDiv = document.createElement('div');
+                              errorDiv.className = 'error-placeholder flex items-center justify-center h-full text-zinc-500';
+                              errorDiv.innerHTML = '<span class="text-sm">Image failed to load</span>';
+                              parent.appendChild(errorDiv);
+                            }
                           }}
+                          onLoad={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.opacity = '1';
+                          }}
+                          style={{ opacity: 0, transition: 'opacity 0.3s ease-in-out' }}
                         />
+                        {/* Chart type badge */}
+                        <div className="absolute top-2 right-2">
+                          <Badge 
+                            variant="outline" 
+                            className={`text-xs ${
+                              chart.type === 'intraday' 
+                                ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' 
+                                : chart.type === 'interday'
+                                ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
+                            }`}
+                          >
+                            {chart.type?.toUpperCase() || 'CHART'}
+                          </Badge>
+                        </div>
+                        {/* Filename badge at bottom */}
                         <div className="absolute bottom-2 left-2 right-2">
-                          <Badge variant="secondary" className="text-xs truncate max-w-full">
+                          <Badge variant="secondary" className="text-xs truncate max-w-full bg-black/60 backdrop-blur-sm">
                             {chart.filename}
                           </Badge>
                         </div>

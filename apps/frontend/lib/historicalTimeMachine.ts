@@ -204,27 +204,39 @@ export async function fetchLivePriceData(
     }
 }
 
+// Sthiti data proxy and direct URLs
+const STHITI_PROXY = '/sthiti-data';
+const STHITI_DIRECT = 'http://100.93.172.21:6969/Sthiti';
+
 export async function fetchSthitiCharts(
     symbol: string,
     isoDate: string
 ): Promise<string[]> {
     try {
-        const baseUrl = getBaseUrl();
-        const fullUrl = `${baseUrl}/Sthiti/charts/${symbol}/${isoDate}`;
+        // Use proxy for directory listing (avoids CORS)
+        const proxyUrl = `${STHITI_PROXY}/charts/${symbol}/${isoDate}/`;
+        // Use direct URL for image sources (images work cross-origin)
+        const directUrl = `${STHITI_DIRECT}/charts/${symbol}/${isoDate}/`;
 
-        const response = await fetch(fullUrl, { 
+        console.log(`[fetchSthitiCharts] Fetching from: ${proxyUrl}`);
+
+        const response = await fetch(proxyUrl, { 
             cache: 'no-cache',
             headers: {
-                'Content-Type': 'application/json',
+                'Accept': 'text/html',
             },
         });
-        if (!response.ok) return [];
+        if (!response.ok) {
+            console.warn(`[fetchSthitiCharts] No data found for ${symbol} on ${isoDate}`);
+            return [];
+        }
 
         const html = await response.text();
         const items = parseDirectoryListing(html);
+        // Use direct URL for images (cross-origin works for images)
         const charts = items
             .filter(item => item.endsWith('.png'))
-            .map(item => `${baseUrl}/Sthiti/charts/${symbol}/${isoDate}/${item}`);
+            .map(item => `${directUrl}${item}`);
 
         console.log(`✅ [fetchSthitiCharts] Found ${charts.length} charts`);
         return charts;
@@ -239,16 +251,20 @@ export async function fetchSthitiClusters(
     sentiment: 'positive' | 'negative' | 'neutral'
 ): Promise<SthitiClusterData[]> {
     try {
-        const baseUrl = getBaseUrl();
-        const fullUrl = `${baseUrl}/Sthiti/clusters/${symbol}/${sentiment}`;
+        // Use proxy for directory listing
+        const proxyUrl = `${STHITI_PROXY}/clusters/${symbol}/${sentiment}/`;
+        console.log(`[fetchSthitiClusters] Fetching ${sentiment} clusters from: ${proxyUrl}`);
 
-        const response = await fetch(fullUrl, { 
+        const response = await fetch(proxyUrl, { 
             cache: 'no-cache',
             headers: {
-                'Content-Type': 'application/json',
+                'Accept': 'text/html',
             },
         });
-        if (!response.ok) return [];
+        if (!response.ok) {
+            console.warn(`[fetchSthitiClusters] No ${sentiment} clusters found for ${symbol}`);
+            return [];
+        }
 
         const html = await response.text();
         const items = parseDirectoryListing(html);
@@ -256,7 +272,8 @@ export async function fetchSthitiClusters(
 
         for (const item of items.filter(i => i.endsWith('.json'))) {
             try {
-                const clusterUrl = `${baseUrl}/Sthiti/clusters/${symbol}/${sentiment}/${item}`;
+                // Use proxy for JSON fetches
+                const clusterUrl = `${proxyUrl}${item}`;
                 const clusterResponse = await fetch(clusterUrl, { cache: 'no-cache' });
                 const clusterData = await clusterResponse.json();
                 clusters.push({
@@ -282,11 +299,15 @@ export async function fetchSthitiHeadlines(
     isoDate: string
 ): Promise<SthitiHeadline[]> {
     try {
-        const baseUrl = getBaseUrl();
-        const fullUrl = `${baseUrl}/Sthiti/headlines/${symbol}/${isoDate}.json`;
+        // Use proxy for JSON fetch
+        const fullUrl = `${STHITI_PROXY}/headlines/${symbol}/${isoDate}.json`;
+        console.log(`[fetchSthitiHeadlines] Fetching from: ${fullUrl}`);
 
         const response = await fetch(fullUrl, { cache: 'no-cache' });
-        if (!response.ok) return [];
+        if (!response.ok) {
+            console.warn(`[fetchSthitiHeadlines] No headlines found for ${symbol} on ${isoDate}`);
+            return [];
+        }
 
         const headlines = await response.json();
         if (!Array.isArray(headlines)) return [];
@@ -303,11 +324,15 @@ export async function fetchSthitiPredictions(
     isoDate: string
 ): Promise<Record<string, SthitiPrediction> | null> {
     try {
-        const baseUrl = getBaseUrl();
-        const fullUrl = `${baseUrl}/Sthiti/predictions/${isoDate}.json`;
+        // Use proxy for JSON fetch
+        const fullUrl = `${STHITI_PROXY}/predictions/${isoDate}.json`;
+        console.log(`[fetchSthitiPredictions] Fetching from: ${fullUrl}`);
 
         const response = await fetch(fullUrl, { cache: 'no-cache' });
-        if (!response.ok) return null;
+        if (!response.ok) {
+            console.warn(`[fetchSthitiPredictions] No predictions found for ${isoDate}`);
+            return null;
+        }
 
         const data = await response.json();
         if (!data.predictions) return null;

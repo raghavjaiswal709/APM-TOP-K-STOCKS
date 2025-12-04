@@ -16,6 +16,17 @@ interface WatchlistSelectorProps {
   showExchangeFilter?: boolean;
   showMarkerFilter?: boolean;
   showDateSelector?: boolean;
+  // NEW: Allow parent to control date state for synchronized updates
+  externalSelectedDate?: string | null;
+  externalSetSelectedDate?: (date: string) => void;
+  externalAvailableDates?: string[];
+  externalCompanies?: Array<{ company_code: string; name: string; exchange: string; marker?: string; refined?: boolean }>;
+  externalLoading?: boolean;
+  externalError?: string | null;
+  externalExists?: boolean;
+  externalAvailableExchanges?: string[];
+  externalAvailableMarkers?: string[];
+  externalTotalCompanies?: number;
 }
 
 export const WatchlistSelector = React.memo(({ 
@@ -23,7 +34,18 @@ export const WatchlistSelector = React.memo(({
   onDateChange,
   showExchangeFilter = true,
   showMarkerFilter = true,
-  showDateSelector = true
+  showDateSelector = true,
+  // External state props (when parent controls state)
+  externalSelectedDate,
+  externalSetSelectedDate,
+  externalAvailableDates,
+  externalCompanies,
+  externalLoading,
+  externalError,
+  externalExists,
+  externalAvailableExchanges,
+  externalAvailableMarkers,
+  externalTotalCompanies,
 }: WatchlistSelectorProps) => {
   
   const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
@@ -35,31 +57,36 @@ export const WatchlistSelector = React.memo(({
     showAllCompanies: false
   });
 
-  const {
-    selectedDate,
-    setSelectedDate,
-    availableDates,
-    companies,
-    loading,
-    error,
-    exists,
-    availableExchanges,
-    availableMarkers,
-    totalCompanies,
-    showAllCompanies,
-    setShowAllCompanies,
-    setRefinedFilter
-  } = useWatchlist();
+  // Use internal hook only when external state is not provided
+  const internalHook = useWatchlist();
+  
+  // Determine whether to use external or internal state
+  const isExternallyControlled = externalSelectedDate !== undefined || externalSetSelectedDate !== undefined;
+  
+  // Use external values when provided, otherwise fall back to internal hook
+  const selectedDate = isExternallyControlled ? externalSelectedDate : internalHook.selectedDate;
+  const setSelectedDate = isExternallyControlled && externalSetSelectedDate ? externalSetSelectedDate : internalHook.setSelectedDate;
+  const availableDates = externalAvailableDates ?? internalHook.availableDates;
+  const companies = externalCompanies ?? internalHook.companies;
+  const loading = externalLoading ?? internalHook.loading;
+  const error = externalError ?? internalHook.error;
+  const exists = externalExists ?? internalHook.exists;
+  const availableExchanges = externalAvailableExchanges ?? internalHook.availableExchanges;
+  const availableMarkers = externalAvailableMarkers ?? internalHook.availableMarkers;
+  const totalCompanies = externalTotalCompanies ?? internalHook.totalCompanies;
+  const showAllCompanies = internalHook.showAllCompanies;
+  const setShowAllCompanies = internalHook.setShowAllCompanies;
+  const setRefinedFilter = internalHook.setRefinedFilter;
 
   const handleDateSelect = React.useCallback((date: Date | undefined) => {
     if (date) {
       const dateStr = format(date, 'yyyy-MM-dd');
-      console.log(`[WatchlistSelector] Date selected: ${dateStr}`);
+      console.log(`[WatchlistSelector] Date selected: ${dateStr}, isExternallyControlled: ${isExternallyControlled}`);
       setSelectedDate(dateStr);
       setIsDatePickerOpen(false);
       if (onDateChange) onDateChange(dateStr);
     }
-  }, [setSelectedDate, onDateChange]);
+  }, [setSelectedDate, onDateChange, isExternallyControlled]);
 
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
     if (!companyCode) {

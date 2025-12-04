@@ -33,6 +33,12 @@ const nextConfig = {
         source: '/watchlist-graphs/:path*',
         destination: 'http://100.93.172.21:6969/Watchlist_assets/:path*',
       },
+      
+      // ✅ NEW: Sthiti data proxy for historical charts, headlines, clusters, predictions
+      {
+        source: '/sthiti-data/:path*',
+        destination: 'http://100.93.172.21:6969/Sthiti/:path*',
+      },
     ];
   },
 
