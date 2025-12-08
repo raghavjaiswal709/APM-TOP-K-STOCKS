@@ -59,9 +59,11 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
             return today;
         });
 
+        // ✅ FIX: Changed to line chart (removed area fill) and fixed percentage calculation
+        // normClose is already a normalized value representing percentage change from open
         const priceTrace = {
             x: timeLabels,
-            y: patternData.map((p) => p.normClose * 100),
+            y: patternData.map((p) => p.normClose),
             type: 'scatter' as const,
             mode: 'lines' as const,
             name: 'Cluster Pattern',
@@ -72,31 +74,7 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
             hovertemplate: '<b>Time:</b> %{x|%H:%M}<br><b>Change:</b> %{y:.2f}%<extra></extra>',
         };
 
-        const upperBand = {
-            x: timeLabels,
-            y: patternData.map((p) => (p.normClose + 0.005) * 100),
-            type: 'scatter' as const,
-            mode: 'lines' as const,
-            name: 'Upper Band',
-            line: { color: 'rgba(139, 92, 246, 0.2)', width: 0 },
-            showlegend: false,
-            hoverinfo: 'skip' as const,
-        };
-
-        const lowerBand = {
-            x: timeLabels,
-            y: patternData.map((p) => (p.normClose - 0.005) * 100),
-            type: 'scatter' as const,
-            mode: 'lines' as const,
-            name: 'Lower Band',
-            fill: 'tonexty' as const,
-            fillcolor: 'rgba(139, 92, 246, 0.1)',
-            line: { color: 'rgba(139, 92, 246, 0.2)', width: 0 },
-            showlegend: false,
-            hoverinfo: 'skip' as const,
-        };
-
-        return [lowerBand, upperBand, priceTrace];
+        return [priceTrace];
     }, [patternData]);
 
     const layout = useMemo(

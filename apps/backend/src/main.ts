@@ -17,7 +17,7 @@ async function bootstrap() {
       credentials: true,
     });
     
-    await app.listen(process.env.PORTs || 5002);
+    await app.listen(process.env.PORT|| 5002);
     console.log('✅ Server started on port', process.env.PORT || 5002);
     console.log('✅ Routes available at:');
     console.log('   - http://localhost:5002/api/lstmae/health');
