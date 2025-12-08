@@ -23,7 +23,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Database, TrendingUp, TrendingDown } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { TimeMachineSelector } from "@/app/components/controllers/TimeMachineSelector/TimeMachineSelector";
+import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelector2/WatchlistSelector";
 import { parseFullHistoricalData, convertToOHLC } from '@/lib/historicalTimeMachine';
 import { useTimeMachine } from '@/hooks/useTimeMachine';
 import { HistoricalChartCarousel } from "./components/HistoricalChartCarousel";
@@ -106,6 +106,18 @@ const RecommendationListPage: React.FC = () => {
   React.useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // ✅ BRIDGE: Handle company selection from WatchlistSelector and update Time Machine state
+  const handleCompanySelect = React.useCallback((companyCode: string | null) => {
+    console.log(`🔗 [Bridge] WatchlistSelector selected company: ${companyCode}`);
+    setSelectedCompany(companyCode);
+  }, [setSelectedCompany]);
+
+  // ✅ BRIDGE: Handle date change from WatchlistSelector and update Time Machine state
+  const handleDateChange = React.useCallback((dateStr: string) => {
+    console.log(`🔗 [Bridge] WatchlistSelector selected date: ${dateStr}`);
+    setSelectedDate(dateStr);
+  }, [setSelectedDate]);
 
   // ✅ CRITICAL: Fetch full historical data when company/date changes
   useEffect(() => {
@@ -344,18 +356,16 @@ const RecommendationListPage: React.FC = () => {
         </header>
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          {/* ✅ NEW: Beautiful UI using TimeMachineSelector with OLD data from port 6969 */}
+          {/* ✅ REFACTORED: WatchlistSelector2 UI with Time Machine (Port 6969) backend */}
           <Card className="w-full">
             <CardContent className="p-4">
-              <TimeMachineSelector
-                availableDates={availableDates}
-                selectedDate={selectedDate}
-                onDateChange={setSelectedDate}
-                loadingDates={loadingDates}
-                availableCompanies={availableCompanies}
-                selectedCompany={selectedCompany}
-                onCompanyChange={setSelectedCompany}
-                loadingCompanies={loadingCompanies}
+              <WatchlistSelector
+                onCompanySelect={handleCompanySelect}
+                onDateChange={handleDateChange}
+                showExchangeFilter={false}
+                showMarkerFilter={false}
+                showSentimentFilter={false}
+                showDateSelector={true}
               />
             </CardContent>
           </Card>
