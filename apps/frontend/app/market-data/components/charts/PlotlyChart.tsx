@@ -835,7 +835,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
 
     // ✅ CRITICAL: Include ALL predictions within the time range
-    const predictionsToUse = isGttMode ? gttPredictions : (showPredictions ? predictions : null);
+    const predictionsToUse = showPredictions ? predictions : null;
     if (predictionsToUse && predictionsToUse.count > 0) {
       const predictionEntries = Object.entries(predictionsToUse.predictions);
       const predictionPrices = predictionEntries
@@ -853,20 +853,39 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       }
     }
 
-    // ✅ NEW: Include GTT External Data in Y-Axis Range Calculation
-    if (gttExternalData && gttExternalData.count > 0) {
+   
+    const gttDataSource = gttExternalData?.predictions || (isGttMode && gttPredictions.length > 0 ? gttPredictions : null);
+    
+    if (gttDataSource && Array.isArray(gttDataSource) && gttDataSource.length > 0) {
+      gttDataSource.forEach((pred: any) => {
+        const predTime = new Date(pred.prediction_time || pred.timestamp).getTime() / 1000;
+        
+        
+        if (pred.input_close && !isNaN(pred.input_close)) {
+          allPrices.push(Number(pred.input_close));
+        }
+        
+        
+        const horizons = ['H1_pred', 'H2_pred', 'H3_pred', 'H4_pred', 'H5_pred'];
+        horizons.forEach(h => {
+          if (pred[h] && !isNaN(pred[h])) {
+            allPrices.push(Number(pred[h]));
+          }
+        });
+      });
+    } else if (gttExternalData && typeof gttExternalData.predictions === 'object' && !Array.isArray(gttExternalData.predictions)) {
       const gttEntries = Object.entries(gttExternalData.predictions);
-      const gttPrices = gttEntries
+      const gttPricesLegacy = gttEntries
         .map(([key, pred]) => {
-          const predTime = new Date(pred.timestamp || key).getTime() / 1000;
+          const predTime = new Date((pred as any).timestamp || key).getTime() / 1000;
           if (predTime >= startTime && predTime <= endTime) {
-            return Number(pred.close);
+            return Number((pred as any).close);
           }
           return null;
         })
         .filter(p => p !== null && p !== undefined) as number[];
-      if (gttPrices.length > 0) {
-        allPrices.push(...gttPrices);
+      if (gttPricesLegacy.length > 0) {
+        allPrices.push(...gttPricesLegacy);
       }
     }
 
@@ -1107,9 +1126,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
 
     // ✅ STEP 3: Extend end time if predictions go beyond the buffer
-    const predictionsToUse = isGttMode ? gttPredictions : (showPredictions ? predictions : null);
-    if (predictionsToUse && predictionsToUse.count > 0) {
-      const predictionEntries = Object.entries(predictionsToUse.predictions);
+    // ✅ FIX: Handle both regular predictions AND GTT predictions from either source
+    const regularPredictions = showPredictions ? predictions : null;
+    if (regularPredictions && regularPredictions.count > 0) {
+      const predictionEntries = Object.entries(regularPredictions.predictions);
       if (predictionEntries.length > 0) {
         const predictionTimes = predictionEntries.map(([key, pred]) =>
           new Date(pred.timestamp || key).getTime()
@@ -1119,6 +1139,26 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         // Only extend if predictions go beyond our current end time
         if (maxPredTime > endTime.getTime()) {
           endTime = new Date(maxPredTime + PREDICTION_EXTENSION_MS);
+        }
+      }
+    }
+
+    // ✅ FIX: Extend end time for GTT predictions (from either gttExternalData or local gttPredictions)
+    const gttDataForRange = gttExternalData?.predictions || (isGttMode && gttPredictions.length > 0 ? gttPredictions : null);
+    if ((isGttEnabled || isGttMode) && gttDataForRange && Array.isArray(gttDataForRange) && gttDataForRange.length > 0) {
+      // Get the latest prediction and calculate max horizon time (H5 = +75 minutes)
+      const latestPred = gttDataForRange[gttDataForRange.length - 1];
+      if (latestPred && latestPred.prediction_time) {
+        const latestPredTime = new Date(latestPred.prediction_time).getTime();
+        const maxGttTime = latestPredTime + 75 * 60 * 1000; // H5 = +75 minutes
+        
+        if (maxGttTime > endTime.getTime()) {
+          endTime = new Date(maxGttTime + PREDICTION_EXTENSION_MS);
+          console.log('📈 [getTimeRange] Extended end time for GTT predictions:', {
+            latestPredTime: new Date(latestPredTime).toLocaleTimeString(),
+            maxGttTime: new Date(maxGttTime).toLocaleTimeString(),
+            newEndTime: endTime.toLocaleTimeString()
+          });
         }
       }
     }
@@ -1393,7 +1433,24 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
   // ✅ ENHANCED: Capture user interactions and preserve state + emit to parent
   const handleRelayout = useCallback((eventData: any) => {
-    // ✅ Track user zoom/pan
+    // ✅ FIX: Detect reset/autosize events (double-click to reset)
+    // When user double-clicks to reset, Plotly fires autorange: true
+    const isResetEvent = 
+      eventData['xaxis.autorange'] === true ||
+      eventData['yaxis.autorange'] === true ||
+      eventData['autosize'] === true ||
+      (eventData['xaxis.range'] === undefined && eventData['yaxis.range'] === undefined &&
+       !eventData['xaxis.range[0]'] && !eventData['yaxis.range[0]']);
+
+    if (isResetEvent) {
+      console.log('🔄 [handleRelayout] Reset event detected, clearing user interaction state');
+      setUserHasInteracted(false);
+      setPreservedRange({});
+      setPreservedAxisRanges({});
+      return; // Exit early - let the chart recalculate ranges naturally
+    }
+
+    // ✅ Track user zoom/pan (only for actual zoom/pan events, not resets)
     if (eventData['xaxis.range[0]'] || eventData['yaxis.range[0]']) {
       setUserHasInteracted(true);
       const newRange = {
@@ -1802,26 +1859,35 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         });
 
         // ============ GTT PREDICTION RENDERING ============
-        if (isGttEnabled && gttExternalData && gttExternalData.predictions && Array.isArray(gttExternalData.predictions)) {
-          const allPredictions = gttExternalData.predictions;
+        // ✅ FIX: Use EITHER gttExternalData (prop) OR local gttPredictions state
+        // This ensures the chart renders immediately after the local fetch in handleGttToggle
+        const gttDataToRender = (gttExternalData?.predictions && Array.isArray(gttExternalData.predictions) && gttExternalData.predictions.length > 0)
+          ? gttExternalData.predictions
+          : (isGttMode && gttPredictions && gttPredictions.length > 0 ? gttPredictions : null);
+        
+        const shouldRenderGtt = (isGttEnabled || isGttMode) && gttDataToRender && gttDataToRender.length > 0;
+        
+        if (shouldRenderGtt) {
+          const allPredictions = gttDataToRender;
 
-          if (allPredictions.length > 0) {
-            console.log('🎯 [PlotlyChart-Line] Rendering GTT predictions:', {
-              totalPredictions: allPredictions.length,
-              symbol: gttExternalData.symbol
-            });
+          console.log('🎯 [PlotlyChart-Line] Rendering GTT predictions:', {
+            totalPredictions: allPredictions.length,
+            source: gttExternalData?.predictions ? 'gttExternalData (prop)' : 'gttPredictions (local state)',
+            symbol: gttExternalData?.symbol || symbol
+          });
 
-            // Define horizon colors and time offsets
-            const horizonConfig = [
-              { horizon: 'H1', color: '#10b981', offset: 15, label: '+15min' },  // Green
-              { horizon: 'H2', color: '#3b82f6', offset: 30, label: '+30min' },  // Blue
-              { horizon: 'H3', color: '#f59e0b', offset: 45, label: '+45min' },  // Orange
-              { horizon: 'H4', color: '#ef4444', offset: 60, label: '+60min' },  // Red
-              { horizon: 'H5', color: '#8b5cf6', offset: 75, label: '+75min' },  // Purple
-            ];
+          // Define horizon colors and time offsets
+          const horizonConfig = [
+            { horizon: 'H1', color: '#10b981', offset: 15, label: '+15min' },  // Green
+            { horizon: 'H2', color: '#3b82f6', offset: 30, label: '+30min' },  // Blue
+            { horizon: 'H3', color: '#f59e0b', offset: 45, label: '+45min' },  // Orange
+            { horizon: 'H4', color: '#ef4444', offset: 60, label: '+60min' },  // Red
+            { horizon: 'H5', color: '#8b5cf6', offset: 75, label: '+75min' },  // Purple
+          ];
 
-            const latestPrediction = gttExternalData.latest || allPredictions[allPredictions.length - 1];
-            const latestPredTime = new Date(latestPrediction.prediction_time).getTime();
+          // ✅ FIX: Get latest prediction from either source
+          const latestPrediction = gttExternalData?.latest || allPredictions[allPredictions.length - 1];
+          const latestPredTime = new Date(latestPrediction.prediction_time).getTime();
 
             // Collect all latest predictions for connected line
             const latestConnectedX: Date[] = [];
@@ -2005,7 +2071,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               horizons: 5,
               latestTime: new Date(latestPredTime).toLocaleTimeString()
             });
-          }
         }
 
 
@@ -2404,26 +2469,34 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       }
 
       // ============ GTT PREDICTION RENDERING FOR CANDLESTICK ============
-      if (isGttEnabled && gttExternalData && gttExternalData.predictions && Array.isArray(gttExternalData.predictions)) {
-        const allPredictions = gttExternalData.predictions;
+      // ✅ FIX: Use EITHER gttExternalData (prop) OR local gttPredictions state
+      const gttCandleDataToRender = (gttExternalData?.predictions && Array.isArray(gttExternalData.predictions) && gttExternalData.predictions.length > 0)
+        ? gttExternalData.predictions
+        : (isGttMode && gttPredictions && gttPredictions.length > 0 ? gttPredictions : null);
+      
+      const shouldRenderGttCandle = (isGttEnabled || isGttMode) && gttCandleDataToRender && gttCandleDataToRender.length > 0;
+      
+      if (shouldRenderGttCandle) {
+        const allPredictions = gttCandleDataToRender;
         
         console.log('🎯 [PlotlyChart-Candle] Rendering GTT predictions:', {
           totalPredictions: allPredictions.length,
-          symbol: gttExternalData.symbol,
+          source: gttExternalData?.predictions ? 'gttExternalData (prop)' : 'gttPredictions (local state)',
+          symbol: gttExternalData?.symbol || symbol,
           showHistory: showGttHistory
         });
 
-        if (allPredictions.length > 0) {
-          const horizonConfig = [
-            { horizon: 'H1', color: '#10b981', offset: 15, label: '+15min' },
-            { horizon: 'H2', color: '#3b82f6', offset: 30, label: '+30min' },
-            { horizon: 'H3', color: '#f59e0b', offset: 45, label: '+45min' },
-            { horizon: 'H4', color: '#ef4444', offset: 60, label: '+60min' },
-            { horizon: 'H5', color: '#8b5cf6', offset: 75, label: '+75min' },
-          ];
+        const horizonConfig = [
+          { horizon: 'H1', color: '#10b981', offset: 15, label: '+15min' },
+          { horizon: 'H2', color: '#3b82f6', offset: 30, label: '+30min' },
+          { horizon: 'H3', color: '#f59e0b', offset: 45, label: '+45min' },
+          { horizon: 'H4', color: '#ef4444', offset: 60, label: '+60min' },
+          { horizon: 'H5', color: '#8b5cf6', offset: 75, label: '+75min' },
+        ];
 
-          const latestPrediction = gttExternalData.latest || allPredictions[allPredictions.length - 1];
-          const latestPredTime = new Date(latestPrediction.prediction_time).getTime();
+        // ✅ FIX: Get latest prediction from either source
+        const latestPrediction = gttExternalData?.latest || allPredictions[allPredictions.length - 1];
+        const latestPredTime = new Date(latestPrediction.prediction_time).getTime();
 
           // Collect all latest predictions for CONNECTED line
           const latestConnectedX: Date[] = [];
@@ -2676,11 +2749,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             horizons: 5,
             latestTime: new Date(latestPredTime).toLocaleTimeString()
           });
-        }
       }
 
       // ✨ ADD REGULAR PREDICTIONS FOR CANDLESTICK (if GTT not enabled)
-      if (!isGttEnabled && showPredictions && predictions && predictions.count > 0) {
+      if (!isGttEnabled && !isGttMode && showPredictions && predictions && predictions.count > 0) {
         const predictionEntries = Object.entries(predictions.predictions);
         if (predictionEntries.length > 0) {
           const sortedPredictions = predictionEntries.sort((a, b) => {
