@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-const GTT_BACKEND_URL = process.env.NEXT_PUBLIC_GTT_API_URL || 'http://localhost:5000';
+const GTT_BACKEND_URL = process.env.NEXT_PUBLIC_GTT_API_URL || 'http://localhost:5002';
 
 /**
  * ✅ GTT PREDICTIONS PROXY ROUTE

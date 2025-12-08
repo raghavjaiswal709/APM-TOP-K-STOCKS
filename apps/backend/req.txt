@@ -1,0 +1,12 @@
+python-socketio[client]
+python-socketio[asyncio]
+eventlet
+uvicorn
+requests
+numpy
+pandas
+python-dotenv
+pytz
+fyers-apiv3
+websockets
+urllib3

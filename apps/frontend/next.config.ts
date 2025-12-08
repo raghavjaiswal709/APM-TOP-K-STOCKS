@@ -25,7 +25,7 @@ const nextConfig = {
       // This excludes paths already matched above AND Next.js API routes like /api/time-machine
       {
         source: '/api/:path((?!time-machine).*)*',
-        destination: 'http://localhost:5000/api/:path*',
+        destination: 'http://localhost:5002/api/:path*',
       },
 
       // Static asset proxies

@@ -26,7 +26,7 @@ export interface GttStockHistoryResponse {
 
 class GttService {
     private readonly BASE_URL = '/api/gtt-predictions';
-    private readonly BACKEND_URL = process.env.NEXT_PUBLIC_GTT_API_URL || 'http://localhost:5000';
+    private readonly BACKEND_URL = process.env.NEXT_PUBLIC_GTT_API_URL || 'http://localhost:5002';
 
     /**
      * ✅ MAIN METHOD: Fetch predictions for a specific stock symbol from GTT Live Trading System
