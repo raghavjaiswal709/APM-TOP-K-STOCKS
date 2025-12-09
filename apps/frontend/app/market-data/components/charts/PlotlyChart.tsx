@@ -86,6 +86,36 @@ const FONT_SIZE_AXIS = 12;
 const LINE_WIDTH = 2;
 const CANDLESTICK_WIDTH = 0.8;
 
+// ============ PREDICTION DATE FILTER HELPERS ============
+/**
+ * Check if a given date is today (same day, month, and year)
+ */
+const isToday = (date: Date): boolean => {
+  const today = new Date();
+  return (
+    date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear()
+  );
+};
+
+/**
+ * Filter prediction entries to only include today's predictions
+ * Returns entries where the timestamp falls within today's date
+ */
+const filterTodayPredictions = <T extends { timestamp?: string; close?: number }>(
+  predictionEntries: [string, T][]
+): [string, T][] => {
+  return predictionEntries.filter(([key, pred]) => {
+    const predDate = new Date(pred.timestamp || key);
+    const isTodayPred = isToday(predDate);
+    if (!isTodayPred) {
+      console.log(`⚠️ [FILTER] Excluding old prediction from ${predDate.toLocaleDateString()}`);
+    }
+    return isTodayPred;
+  });
+};
+
 // ============ END CONSTANTS ============
 
 interface DataPoint {
@@ -288,10 +318,31 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return `pred-${count}-${firstKey}-${lastKey}`;
   }, [predictions]);
 
+  // ✅ CRITICAL: Track if there are today's predictions available
+  const todayPredictionInfo = useMemo(() => {
+    if (!predictions || !predictions.predictions) {
+      return { hasTodayPredictions: false, count: 0, totalCount: 0 };
+    }
+    const allEntries = Object.entries(predictions.predictions);
+    const todayEntries = filterTodayPredictions(allEntries);
+    return {
+      hasTodayPredictions: todayEntries.length > 0,
+      count: todayEntries.length,
+      totalCount: allEntries.length
+    };
+  }, [predictions]);
+
   // ✅ Log prediction key changes
   useEffect(() => {
     console.log(`🔮 [CHART] predictionKey changed to ${predictionKey}`);
   }, [predictionKey]);
+
+  // ✅ Log today's prediction info
+  useEffect(() => {
+    if (showPredictions) {
+      console.log(`📅 [TODAY PREDICTIONS] hasTodayPredictions=${todayPredictionInfo.hasTodayPredictions}, today=${todayPredictionInfo.count}, total=${todayPredictionInfo.totalCount}`);
+    }
+  }, [todayPredictionInfo, showPredictions]);
 
   // � Track prediction revision changes
   useEffect(() => {
@@ -834,11 +885,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       }
     }
 
-    // ✅ CRITICAL: Include ALL predictions within the time range
+    // ✅ CRITICAL: Include ONLY TODAY's predictions within the time range
     const predictionsToUse = showPredictions ? predictions : null;
     if (predictionsToUse && predictionsToUse.count > 0) {
-      const predictionEntries = Object.entries(predictionsToUse.predictions);
-      const predictionPrices = predictionEntries
+      const allPredictionEntries = Object.entries(predictionsToUse.predictions);
+      // ✅ Filter to only today's predictions first
+      const todayPredictions = filterTodayPredictions(allPredictionEntries);
+      
+      const predictionPrices = todayPredictions
         .map(([key, pred]) => {
           const predTime = new Date(pred.timestamp || key).getTime() / 1000;
           if (predTime >= startTime && predTime <= endTime) {
@@ -1125,13 +1179,16 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       }
     }
 
-    // ✅ STEP 3: Extend end time if predictions go beyond the buffer
+    // ✅ STEP 3: Extend end time if TODAY's predictions go beyond the buffer
     // ✅ FIX: Handle both regular predictions AND GTT predictions from either source
     const regularPredictions = showPredictions ? predictions : null;
     if (regularPredictions && regularPredictions.count > 0) {
-      const predictionEntries = Object.entries(regularPredictions.predictions);
-      if (predictionEntries.length > 0) {
-        const predictionTimes = predictionEntries.map(([key, pred]) =>
+      const allPredictionEntries = Object.entries(regularPredictions.predictions);
+      // ✅ CRITICAL: Filter to only today's predictions - never show yesterday's data
+      const todayPredictions = filterTodayPredictions(allPredictionEntries);
+      
+      if (todayPredictions.length > 0) {
+        const predictionTimes = todayPredictions.map(([key, pred]) =>
           new Date(pred.timestamp || key).getTime()
         );
         const maxPredTime = Math.max(...predictionTimes);
@@ -1735,7 +1792,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return [...plotData, ...gttTraces];
   };
 
-  // 🔮 CREATE PREDICTION DATA ONLY (for separator modal right side)
+  // 🔮 CREATE PREDICTION DATA ONLY (for separator modal right side) - ONLY TODAY'S
   const createPredictionDataOnly = () => {
     const plotData: any[] = [];
 
@@ -1744,9 +1801,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       return plotData;
     }
 
-    const predictionEntries = Object.entries(predictions.predictions);
+    const allPredictionEntries = Object.entries(predictions.predictions);
+    // ✅ CRITICAL: Filter to only today's predictions - never show yesterday's data
+    const predictionEntries = filterTodayPredictions(allPredictionEntries);
+    
+    console.log('🔮 [Predictions-Only View] Filtering:', {
+      totalEntries: allPredictionEntries.length,
+      todayEntries: predictionEntries.length,
+      filteredOut: allPredictionEntries.length - predictionEntries.length
+    });
+    
     if (predictionEntries.length === 0) {
-      console.log('Predictions object is empty');
+      console.log('⚠️ No prediction found for today - all predictions were from previous days');
       return plotData;
     }
 
@@ -2074,13 +2140,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         }
 
 
-        // ✨ NEW: Add prediction line if available
+        // ✨ NEW: Add prediction line if available (ONLY TODAY'S PREDICTIONS)
         if (showPredictions && predictions && predictions.count > 0) {
-          const predictionEntries = Object.entries(predictions.predictions);
+          const allPredictionEntries = Object.entries(predictions.predictions);
+          // ✅ CRITICAL: Filter to only today's predictions - never show yesterday's data
+          const predictionEntries = filterTodayPredictions(allPredictionEntries);
+          
           console.log('🔮 Adding prediction line to chart:', {
             showPredictions,
             predictionsCount: predictions.count,
-            entriesLength: predictionEntries.length,
+            totalEntries: allPredictionEntries.length,
+            todayEntries: predictionEntries.length,
+            filteredOut: allPredictionEntries.length - predictionEntries.length,
             firstEntry: predictionEntries[0],
             lastEntry: predictionEntries[predictionEntries.length - 1]
           });
@@ -2140,12 +2211,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             });
 
             console.log('✅ Prediction trace added to plotData, total traces:', plotData.length);
+          } else {
+            // ✅ Today's predictions are empty - all predictions were from previous days
+            console.log('⚠️ No prediction found for today - all predictions were from previous days');
           }
         } else {
           console.log('⚠️ Predictions not added:', {
             showPredictions,
             hasPredictions: !!predictions,
-            count: predictions?.count || 0
+            count: predictions?.count || 0,
+            reason: !showPredictions ? 'showPredictions is false' : 
+                   !predictions ? 'predictions is null' : 
+                   predictions.count === 0 ? 'no predictions available' : 'unknown'
           });
         }
 
@@ -2751,9 +2828,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           });
       }
 
-      // ✨ ADD REGULAR PREDICTIONS FOR CANDLESTICK (if GTT not enabled)
+      // ✨ ADD REGULAR PREDICTIONS FOR CANDLESTICK (if GTT not enabled) - ONLY TODAY'S
       if (!isGttEnabled && !isGttMode && showPredictions && predictions && predictions.count > 0) {
-        const predictionEntries = Object.entries(predictions.predictions);
+        const allPredictionEntries = Object.entries(predictions.predictions);
+        // ✅ CRITICAL: Filter to only today's predictions - never show yesterday's data
+        const predictionEntries = filterTodayPredictions(allPredictionEntries);
+        
+        console.log('🔮 [Candle] Processing predictions:', {
+          totalEntries: allPredictionEntries.length,
+          todayEntries: predictionEntries.length,
+          filteredOut: allPredictionEntries.length - predictionEntries.length
+        });
+        
         if (predictionEntries.length > 0) {
           const sortedPredictions = predictionEntries.sort((a, b) => {
             const timeA = new Date(a[1].timestamp || a[0]).getTime();
@@ -2819,6 +2905,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           });
 
           console.log('✅ [Candle] Prediction trace added, total points:', predictionTimes.length);
+        } else {
+          // ✅ Today's predictions are empty - all predictions were from previous days
+          console.log('⚠️ [Candle] No prediction found for today - all predictions were from previous days');
         }
       }
     }
@@ -4301,7 +4390,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
                 <div className="flex-1 min-h-0 p-4">
                   {separateViewMode === 'prediction-cluster' ? (
-                    predictions && predictions.count > 0 ? (
+                    predictions && predictions.count > 0 && todayPredictionInfo.hasTodayPredictions ? (
                       <Plot
                         data={createPredictionDataOnly()}
                         layout={{
@@ -4342,7 +4431,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                       <div className="h-full flex items-center justify-center">
                         <div className="text-center">
                           <div className="text-3xl mb-2 text-zinc-700">📊</div>
-                          <p className="text-sm text-zinc-400">No predictions available</p>
+                          <p className="text-sm text-zinc-400">
+                            {predictions && predictions.count > 0 && !todayPredictionInfo.hasTodayPredictions
+                              ? 'No prediction found for today'
+                              : 'No predictions available'}
+                          </p>
                         </div>
                       </div>
                     )
@@ -4407,7 +4500,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
                 <div className="flex-1 min-h-0 p-4">
                   {separateViewMode === 'live-prediction' ? (
-                    predictions && predictions.count > 0 ? (
+                    predictions && predictions.count > 0 && todayPredictionInfo.hasTodayPredictions ? (
                       <Plot
                         data={createPredictionDataOnly()}
                         layout={{
@@ -4448,7 +4541,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                       <div className="h-full flex items-center justify-center">
                         <div className="text-center">
                           <div className="text-3xl mb-2 text-zinc-700">📊</div>
-                          <p className="text-sm text-zinc-400">No predictions available</p>
+                          <p className="text-sm text-zinc-400">
+                            {predictions && predictions.count > 0 && !todayPredictionInfo.hasTodayPredictions
+                              ? 'No prediction found for today'
+                              : 'No predictions available'}
+                          </p>
                         </div>
                       </div>
                     )
