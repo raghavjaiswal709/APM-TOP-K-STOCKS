@@ -16,6 +16,7 @@ import {
   AlertCircle,
   Star,
   Newspaper,
+  ShieldCheck,
 } from "lucide-react"
 import { NavMain } from "../components/nav-main"
 import { NavProjects } from "..//components/nav-projects"
@@ -133,6 +134,17 @@ const data = {
         {
           title: "Economic Events",
           url: "#",
+        },
+      ],
+    },
+    {
+      title: "Admin",
+      url: "/admin",
+      icon: ShieldCheck,
+      items: [
+        {
+          title: "Validate",
+          url: "/admin/validate",
         },
       ],
     },
