@@ -658,6 +658,19 @@ def fetch_historical_intraday_data(symbol, date=None):
 def onmessage(message):
     """Handle incoming Fyers WebSocket messages."""
     try:
+        # ✅ Handle subscription errors from Fyers (code -300 for invalid symbols)
+        if isinstance(message, dict) and (message.get('code') == -300 or 'invalid_symbols' in message):
+            logger.error(f"🚫 Fyers subscription error: {message}")
+            error_data = {
+                'code': message.get('code', -300),
+                'message': message.get('message', 'Invalid symbol subscription failed'),
+                'type': message.get('type', 'sub'),
+                'invalid_symbols': message.get('invalid_symbols', [])
+            }
+            sio.emit('subscriptionError', error_data)
+            sio.emit('fyersError', error_data)
+            return
+        
         # Skip system messages
         if isinstance(message, dict) and message.get('type') == 'sub':
             logger.info(f"📡 Subscription confirmation: {message}")
@@ -759,7 +772,30 @@ def onopen():
 def onerror(error):
     """Handle Fyers WebSocket errors."""
     logger.error(f"❌ Fyers WebSocket Error: {error}")
-    sio.emit('fyersError', {'message': str(error)})
+    
+    # Parse error for subscription failures
+    error_str = str(error)
+    error_data = {'message': error_str}
+    
+    # Check if this is a subscription error with invalid symbols
+    if 'invalid_symbols' in error_str or '-300' in error_str or 'STOPPED' in error_str:
+        try:
+            import re
+            # Extract invalid symbols from error message
+            invalid_match = re.search(r"invalid_symbols['\"]?\s*:\s*\[([^\]]+)\]", error_str)
+            if invalid_match:
+                invalid_str = invalid_match.group(1)
+                invalid_symbols = [s.strip().strip("'\"") for s in invalid_str.split(',')]
+                error_data['invalid_symbols'] = invalid_symbols
+                error_data['code'] = -300
+                error_data['type'] = 'sub'
+                logger.error(f"🚫 Parsed subscription error - Invalid symbols: {invalid_symbols}")
+        except Exception as parse_error:
+            logger.error(f"Error parsing subscription error: {parse_error}")
+    
+    sio.emit('error', error_data)
+    sio.emit('subscriptionError', error_data)
+    sio.emit('fyersError', error_data)
 
 
 def onclose(message):

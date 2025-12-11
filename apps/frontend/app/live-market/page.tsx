@@ -306,8 +306,8 @@ const LiveMarketPage: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Error Display */}
-                  {error && (
+                  {/* Error Display - Only show non-subscription errors */}
+                  {error && !error.includes('invalid_symbols') && !error.includes('-300') && !error.includes('STOPPED') && (
                     <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-2 rounded-md text-sm">
                       ❌ {error}
                     </div>

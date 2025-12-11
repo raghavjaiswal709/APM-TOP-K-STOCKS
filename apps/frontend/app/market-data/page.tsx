@@ -21,6 +21,12 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { Separator } from "@/components/ui/separator";
 import {
@@ -33,7 +39,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelector2/WatchlistSelector";
 import { ImageCarousel } from "./components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
-import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
 import { isMarketOpen } from "@/lib/marketHours";
 import { fetchHistoricalData, detectDataGaps } from "@/lib/historicalDataFetcher";
@@ -170,6 +176,14 @@ const MarketDataPage: React.FC = () => {
   // Subscription Management State
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
+  // ✅ NEW: Subscription error state for failed symbols
+  const [subscriptionErrors, setSubscriptionErrors] = useState<{
+    code: number;
+    message: string;
+    invalidSymbols: string[];
+    timestamp: number;
+  } | null>(null);
+  const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
   // Lifted state for date synchronization
   const [currentDate, setCurrentDate] = useState<string | null>(null);
   const [filteredCompanies, setFilteredCompanies] = useState<any[]>([]);
@@ -498,7 +512,112 @@ const MarketDataPage: React.FC = () => {
 
   const handleError = useCallback((error: any) => {
     console.error('❌ Socket error:', error);
-    setSocketStatus(`Error: ${error.message || 'Unknown'}`);
+    
+    // ✅ Check if this is a subscription error - don't pollute socketStatus with long error messages
+    const isSubscriptionError = error && (
+      error.code === -300 || 
+      error.type === 'sub' || 
+      error.invalid_symbols ||
+      (typeof error.message === 'string' && (
+        error.message.includes('invalid_symbols') ||
+        error.message.includes('-300') ||
+        error.message.includes('STOPPED')
+      ))
+    );
+    
+    if (isSubscriptionError) {
+      // Don't set socketStatus for subscription errors - they're handled separately
+      console.error('🚫 Subscription error detected:', error);
+      
+      // Parse invalid_symbols from message if it's a string
+      let invalidSymbols = error.invalid_symbols || [];
+      if (invalidSymbols.length === 0 && typeof error.message === 'string') {
+        const match = error.message.match(/invalid_symbols['":\s]*\[([^\]]+)\]/);
+        if (match) {
+          invalidSymbols = match[1]
+            .split(',')
+            .map((s: string) => s.trim().replace(/['"]/g, ''))
+            .filter((s: string) => s.length > 0);
+        }
+      }
+      
+      setSubscriptionErrors({
+        code: error.code || -300,
+        message: error.message || 'Invalid symbol subscription failed',
+        invalidSymbols: invalidSymbols,
+        timestamp: Date.now()
+      });
+      
+      setFailedSymbols(prev => {
+        const combined = [...new Set([...prev, ...invalidSymbols])];
+        return combined;
+      });
+    } else {
+      // Only set socketStatus for non-subscription errors
+      setSocketStatus('Error');
+    }
+  }, []);
+
+  // ✅ NEW: Dedicated handler for Fyers subscription errors
+  const handleSubscriptionError = useCallback((error: any) => {
+    console.error('🚫 Fyers subscription error:', error);
+    
+    // Parse the error - handle both direct object and string formats
+    let errorData = error;
+    let errorMessage = '';
+    
+    if (typeof error === 'string') {
+      errorMessage = error;
+      try {
+        // Try to parse if it's JSON
+        errorData = JSON.parse(error);
+      } catch {
+        errorData = { message: error };
+      }
+    } else if (error && typeof error === 'object') {
+      errorMessage = error.message || JSON.stringify(error);
+    }
+    
+    // Extract invalid_symbols from various formats
+    let invalidSymbols: string[] = [];
+    
+    // Try to get from direct property
+    if (Array.isArray(errorData.invalid_symbols)) {
+      invalidSymbols = errorData.invalid_symbols;
+    } else if (Array.isArray(errorData.invalidSymbols)) {
+      invalidSymbols = errorData.invalidSymbols;
+    }
+    
+    // If still empty, try to parse from message string
+    if (invalidSymbols.length === 0 && errorMessage) {
+      const match = errorMessage.match(/invalid_symbols['":\s]*\[([^\]]+)\]/);
+      if (match) {
+        invalidSymbols = match[1]
+          .split(',')
+          .map((s: string) => s.trim().replace(/['"]/g, ''))
+          .filter((s: string) => s.length > 0);
+      }
+    }
+    
+    console.log('🔍 Parsed invalid symbols:', invalidSymbols);
+    
+    setSubscriptionErrors({
+      code: errorData.code || -300,
+      message: errorData.message || errorMessage || 'Symbol subscription failed',
+      invalidSymbols: invalidSymbols,
+      timestamp: Date.now()
+    });
+    
+    setFailedSymbols(prev => {
+      const combined = [...new Set([...prev, ...invalidSymbols])];
+      return combined;
+    });
+  }, []);
+
+  // ✅ NEW: Clear subscription errors
+  const clearSubscriptionErrors = useCallback(() => {
+    setSubscriptionErrors(null);
+    setFailedSymbols([]);
   }, []);
 
   const handleMarketDataUpdate = useCallback((data: MarketData) => {
@@ -737,6 +856,8 @@ const MarketDataPage: React.FC = () => {
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('error', handleError);
+    socket.on('subscriptionError', handleSubscriptionError); // ✅ NEW: Listen for subscription errors
+    socket.on('fyersError', handleSubscriptionError); // ✅ Also listen for Fyers-specific errors
     socket.on('marketDataUpdate', handleMarketDataUpdate);
     socket.on('chartUpdate', handleChartUpdate);
     socket.on('historicalData', handleHistoricalData);
@@ -761,6 +882,8 @@ const MarketDataPage: React.FC = () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('error', handleError);
+      socket.off('subscriptionError', handleSubscriptionError); // ✅ NEW: Cleanup subscription error listener
+      socket.off('fyersError', handleSubscriptionError); // ✅ Cleanup Fyers error listener
       socket.off('marketDataUpdate', handleMarketDataUpdate);
       socket.off('chartUpdate', handleChartUpdate);
       socket.off('historicalData', handleHistoricalData);
@@ -768,7 +891,7 @@ const MarketDataPage: React.FC = () => {
       socket.off('heartbeat', handleHeartbeat);
       unsubscribeReconnect();
     };
-  }, [isClient, selectedSymbol, handleConnect, handleDisconnect, handleError, handleMarketDataUpdate, handleChartUpdate, handleHistoricalData, handleOhlcData, handleHeartbeat]);
+  }, [isClient, selectedSymbol, handleConnect, handleDisconnect, handleError, handleSubscriptionError, handleMarketDataUpdate, handleChartUpdate, handleHistoricalData, handleOhlcData, handleHeartbeat]);
 
   // ============ CRITICAL: Fetch historical data when symbol changes ============
   useEffect(() => {
@@ -1036,19 +1159,25 @@ const MarketDataPage: React.FC = () => {
                   <h3 className="text-lg font-medium">Live Market</h3>
                   <div className="flex items-center space-x-4">
                     <div className="flex items-center space-x-2">
-                      <span className={`inline-block w-2 h-2 rounded-full ${socketStatus.includes('Connected')
+                      <span className={`inline-block w-2 h-2 rounded-full ${socketStatus === 'Connected'
                         ? 'bg-green-500 animate-pulse'
                         : isReconnecting
                           ? 'bg-yellow-500 animate-pulse'
-                          : 'bg-red-500'
+                          : socketStatus === 'Error' || subscriptionErrors
+                            ? 'bg-orange-500'
+                            : 'bg-red-500'
                         }`}></span>
-                      <span className={`text-sm ${socketStatus.includes('Connected')
+                      <span className={`text-sm ${socketStatus === 'Connected'
                         ? 'text-green-600 dark:text-green-400'
                         : isReconnecting
                           ? 'text-yellow-600 dark:text-yellow-400'
                           : 'text-red-600 dark:text-red-400'
                         }`}>
-                        {socketStatus}
+                        {/* Only show simple status, not full error message */}
+                        {socketStatus === 'Connected' ? 'Connected' : 
+                         socketStatus === 'Error' ? 'Connected' : 
+                         isReconnecting ? 'Reconnecting...' : 
+                         socketStatus.startsWith('Disconnected') ? 'Disconnected' : socketStatus}
                         {isReconnecting && ' 🔄'}
                       </span>
                     </div>
@@ -1125,7 +1254,41 @@ const MarketDataPage: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  <div className="flex justify-end text-sm">
+                  <div className="flex items-center justify-end gap-3 text-sm">
+                    {/* ✅ NEW: Subscription Error Indicator with Tooltip */}
+                    {(subscriptionErrors || failedSymbols.length > 0) && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="p-2 bg-red-950/50 rounded cursor-default">
+                              <AlertCircle className="h-5 w-5 text-red-500" />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent 
+                            side="bottom" 
+                            className="max-w-sm bg-zinc-900 border-red-800 text-white p-3"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-red-400 font-medium">
+                                <AlertCircle className="h-4 w-4" />
+                                <span>Subscription Error</span>
+                              </div>
+                              {subscriptionErrors && (
+                                <p className="text-xs text-zinc-400">
+                                  Code: {subscriptionErrors.code} - {subscriptionErrors.message}
+                                </p>
+                              )}
+                              {failedSymbols.length > 0 && (
+                                <div className="text-xs text-zinc-300">
+                                  <span className="text-red-400">{failedSymbols.length}</span> symbol(s) failed to subscribe
+                                </div>
+                              )}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+
                     {/* ✅ ENHANCED: Hover Card for Subscribed Companies */}
                     <HoverCard openDelay={200} closeDelay={100}>
                       <HoverCardTrigger asChild>
@@ -1161,75 +1324,155 @@ const MarketDataPage: React.FC = () => {
                       </HoverCardTrigger>
 
                       <HoverCardContent
-                        className="w-96 p-0 bg-zinc-900 border-zinc-700"
+                        className="w-[500px] p-0 bg-zinc-900 border-zinc-700"
                         side="left"
                         align="start"
                       >
-                        {/* ✅ Full List of Subscribed Companies */}
-                        <div className="p-4">
-                          <div className="flex items-center justify-between mb-3 pb-2 border-b border-zinc-800">
-                            <div className="flex items-center gap-2">
-                              <Wifi className="h-4 w-4 text-green-500" />
-                              <h3 className="font-semibold text-green-400">
-                                All Subscribed Companies
-                              </h3>
+                        {/* ✅ Split view: Subscribed (Green) | Failed (Red) */}
+                        <div className="flex">
+                          {/* Left Panel: Subscribed Companies (Green) */}
+                          <div className="flex-1 p-4 border-r border-zinc-700">
+                            <div className="flex items-center justify-between mb-3 pb-2 border-b border-zinc-800">
+                              <div className="flex items-center gap-2">
+                                <Wifi className="h-4 w-4 text-green-500" />
+                                <h3 className="font-semibold text-green-400 text-sm">
+                                  Subscribed
+                                </h3>
+                              </div>
+                              <span className="text-xs bg-green-900/50 text-green-300 px-2 py-0.5 rounded">
+                                {activeSymbols.length}
+                              </span>
                             </div>
-                            <span className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded">
-                              {activeSymbols.length} Active
-                            </span>
+
+                            <ScrollArea className="h-[350px] pr-2">
+                              <div className="space-y-1.5">
+                                {activeSymbols.length > 0 ? (
+                                  activeSymbols.map((symbol, index) => {
+                                    const companyCode = symbol.split(':')[1]?.split('-')[0] || symbol;
+                                    const exchange = symbol.split(':')[0] || '';
+
+                                    return (
+                                      <div
+                                        key={symbol}
+                                        className="flex items-center gap-2 p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors group"
+                                      >
+                                        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-900/30 flex items-center justify-center">
+                                          <span className="text-[10px] font-bold text-green-400">
+                                            {index + 1}
+                                          </span>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-xs font-medium text-white truncate">
+                                            {companyCode}
+                                          </div>
+                                          <div className="text-[10px] text-zinc-500">
+                                            {exchange}
+                                          </div>
+                                        </div>
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="text-center py-8 text-zinc-500">
+                                    <Wifi className="h-6 w-6 mx-auto mb-2 opacity-30" />
+                                    <p className="text-xs">No active subscriptions</p>
+                                  </div>
+                                )}
+                              </div>
+                            </ScrollArea>
                           </div>
 
-                          <ScrollArea className="h-[400px] pr-4">
-                            <div className="grid grid-cols-2 gap-2">
-                              {activeSymbols.length > 0 ? (
-                                activeSymbols.map((symbol, index) => {
-                                  const companyCode = symbol.split(':')[1]?.split('-')[0] || symbol;
-                                  const exchange = symbol.split(':')[0] || '';
-
-                                  return (
-                                    <div
-                                      key={symbol}
-                                      className="flex items-center gap-2 p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors group"
-                                    >
-                                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-green-900/30 flex items-center justify-center">
-                                        <span className="text-xs font-bold text-green-400">
-                                          {index + 1}
-                                        </span>
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-medium text-white truncate">
-                                          {companyCode}
-                                        </div>
-                                        <div className="text-xs text-zinc-500">
-                                          {exchange}
-                                        </div>
-                                      </div>
-                                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                                    </div>
-                                  );
-                                })
-                              ) : (
-                                <div className="col-span-2 text-center py-8 text-zinc-500">
-                                  <Wifi className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                                  <p className="text-sm">No active subscriptions</p>
-                                </div>
-                              )}
-                            </div>
-                          </ScrollArea>
-
-                          {activeSymbols.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-zinc-800">
-                              <div className="flex items-center justify-between text-xs text-zinc-500">
-                                <span>Last updated: {new Date().toLocaleTimeString()}</span>
-                                <button
-                                  onClick={() => setIsSubscriptionModalOpen(true)}
-                                  className="text-blue-400 hover:text-blue-300 transition-colors"
-                                >
-                                  Manage →
-                                </button>
+                          {/* Right Panel: Failed Subscriptions (Red) */}
+                          <div className="flex-1 p-4">
+                            <div className="flex items-center justify-between mb-3 pb-2 border-b border-zinc-800">
+                              <div className="flex items-center gap-2">
+                                <WifiOff className="h-4 w-4 text-red-500" />
+                                <h3 className="font-semibold text-red-400 text-sm">
+                                  Failed
+                                </h3>
                               </div>
+                              <span className="text-xs bg-red-900/50 text-red-300 px-2 py-0.5 rounded">
+                                {failedSymbols.length}
+                              </span>
                             </div>
-                          )}
+
+                            <ScrollArea className="h-[350px] pr-2">
+                              <div className="space-y-1.5">
+                                {failedSymbols.length > 0 ? (
+                                  failedSymbols.map((symbol, index) => {
+                                    // Parse the symbol - could be "NSE:COMPANY-STOPPED" format
+                                    const cleanSymbol = symbol.replace('-STOPPED', '').replace(/'/g, '');
+                                    const parts = cleanSymbol.split(':');
+                                    const exchange = parts[0] || '';
+                                    const companyCode = parts[1]?.split('-')[0] || cleanSymbol;
+
+                                    return (
+                                      <div
+                                        key={symbol}
+                                        className="flex items-center gap-2 p-2 rounded-lg bg-red-950/30 hover:bg-red-950/50 transition-colors group"
+                                      >
+                                        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-red-900/30 flex items-center justify-center">
+                                          <span className="text-[10px] font-bold text-red-400">
+                                            {index + 1}
+                                          </span>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-xs font-medium text-red-200 truncate">
+                                            {companyCode}
+                                          </div>
+                                          <div className="text-[10px] text-red-400/70">
+                                            {exchange} • Stopped/Invalid
+                                          </div>
+                                        </div>
+                                        <AlertCircle className="w-3 h-3 text-red-500" />
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="text-center py-8 text-zinc-500">
+                                    <div className="w-6 h-6 mx-auto mb-2 rounded-full bg-green-900/20 flex items-center justify-center">
+                                      <Wifi className="h-3 w-3 text-green-500" />
+                                    </div>
+                                    <p className="text-xs text-green-400">All symbols OK</p>
+                                  </div>
+                                )}
+                              </div>
+                            </ScrollArea>
+
+                            {/* Error Details */}
+                            {subscriptionErrors && (
+                              <div className="mt-2 pt-2 border-t border-zinc-800">
+                                <div className="text-[10px] text-wrap text-red-400/80 space-y-0.5">
+                                  <div>Error Code: {subscriptionErrors.code}</div>
+                                  <div className="truncate text-wrap">{subscriptionErrors.message}</div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-4 py-2 border-t border-zinc-800 bg-zinc-950/50">
+                          <div className="flex items-center justify-between text-xs text-zinc-500">
+                            <span>Last updated: {new Date().toLocaleTimeString()}</span>
+                            <div className="flex items-center gap-3">
+                              {failedSymbols.length > 0 && (
+                                <button
+                                  onClick={clearSubscriptionErrors}
+                                  className="text-red-400 hover:text-red-300 transition-colors"
+                                >
+                                  Clear Errors
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setIsSubscriptionModalOpen(true)}
+                                className="text-blue-400 hover:text-blue-300 transition-colors"
+                              >
+                                Manage →
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </HoverCardContent>
                     </HoverCard>

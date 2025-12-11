@@ -232,11 +232,37 @@ export const useLiveMarket = () => {
     });
     socket.on('fyersError', (data) => {
       console.log('🔗 Fyers error:', data);
-      setError(`Fyers error: ${data.message}`);
+      // ✅ Don't display raw subscription errors in the error state
+      // Check if it's a subscription error (code -300 or contains invalid_symbols)
+      const isSubscriptionError = data && (
+        data.code === -300 || 
+        data.type === 'sub' || 
+        data.invalid_symbols ||
+        (typeof data.message === 'string' && (
+          data.message.includes('invalid_symbols') ||
+          data.message.includes('-300') ||
+          data.message.includes('STOPPED')
+        ))
+      );
+      
+      if (!isSubscriptionError) {
+        setError(`Fyers error: ${typeof data.message === 'string' ? data.message.substring(0, 50) : 'Connection issue'}`);
+      }
+      // Subscription errors are handled separately by subscriptionError event
     });
     socket.on('error', (data: { message: string }) => {
       console.error('❌ Server error:', data);
-      setError(data.message);
+      // ✅ Don't display raw subscription errors in the error state
+      const message = data.message || '';
+      const isSubscriptionError = 
+        message.includes('invalid_symbols') ||
+        message.includes('-300') ||
+        message.includes('STOPPED') ||
+        message.includes('Please provide a valid symbol');
+      
+      if (!isSubscriptionError) {
+        setError(message.length > 100 ? message.substring(0, 100) + '...' : message);
+      }
       setLoading(false);
     });
     return socket;
