@@ -1157,8 +1157,84 @@ const MarketDataPage: React.FC = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-medium">Live Market</h3>
+                  
                   <div className="flex items-center space-x-4">
+                    {isLoadingHistorical && (
+                      <div className="mt-2 flex items-center gap-2 text-xs text-blue-400">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-400"></div>
+                        <span>Loading historical data...</span>
+                      </div>
+                    )}
+                    {historicalDataStatus && !isLoadingHistorical && (
+                      <div className="mt-2 text-xs text-green-400">
+                        ✅ {historicalDataStatus}
+                      </div>
+                    )}
+                    <div>
+                      
+                      {/* ✅ NEW: Subscription Error Indicator with Tooltip */}
+                    {(subscriptionErrors || failedSymbols.length > 0) && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="p-2 bg-red-950/50 rounded cursor-default">
+                              <AlertCircle className="h-5 w-5 text-red-500" />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent 
+                            side="bottom" 
+                            className="max-w-sm bg-zinc-900 border-red-800 text-white p-3"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-red-400 font-medium">
+                                <AlertCircle className="h-4 w-4" />
+                                <span>Subscription Error</span>
+                              </div>
+                              {subscriptionErrors && (
+                                <p className="text-xs text-zinc-400">
+                                  Code: {subscriptionErrors.code} - {subscriptionErrors.message}
+                                </p>
+                              )}
+                              {failedSymbols.length > 0 && (
+                                <div className="text-xs text-zinc-300">
+                                  <span className="text-red-400">{failedSymbols.length}</span> symbol(s) failed to subscribe
+                                </div>
+                              )}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    </div>
                     <div className="flex items-center space-x-2">
+                      <div className="flex items-center justify-end gap-2 ml-4 border-l pl-4 h-12">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSubscribeAll}
+                          disabled={isSubscribing || !companies.length} // ✅ Removed !isLatestDate
+                          className="h-9"
+                        >
+                          {isSubscribing ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
+                          ) : (
+                            <ListChecks className="mr-2 h-4 w-4 text-green-500" />
+                          )}
+                          Subscribe All
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setIsSubscriptionModalOpen(true)}
+                          disabled={isSubscribing}
+                          className="h-9 w-9"
+                          title="Manage Subscriptions"
+                        >
+                          <Settings2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+
                       <span className={`inline-block w-2 h-2 rounded-full ${socketStatus === 'Connected'
                         ? 'bg-green-500 animate-pulse'
                         : isReconnecting
@@ -1213,81 +1289,12 @@ const MarketDataPage: React.FC = () => {
                         showMarkerFilter={true}
                       />
 
-                      <div className="flex items-center justify-end gap-2 ml-4 border-l pl-4 h-12">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleSubscribeAll}
-                          disabled={isSubscribing || !companies.length} // ✅ Removed !isLatestDate
-                          className="h-9"
-                        >
-                          {isSubscribing ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
-                          ) : (
-                            <ListChecks className="mr-2 h-4 w-4 text-green-500" />
-                          )}
-                          Subscribe All
-                        </Button>
-
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setIsSubscriptionModalOpen(true)}
-                          disabled={isSubscribing}
-                          className="h-9 w-9"
-                          title="Manage Subscriptions"
-                        >
-                          <Settings2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-
+                      
                     </div>
-                    {isLoadingHistorical && (
-                      <div className="mt-2 flex items-center gap-2 text-xs text-blue-400">
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-400"></div>
-                        <span>Loading historical data...</span>
-                      </div>
-                    )}
-                    {historicalDataStatus && !isLoadingHistorical && (
-                      <div className="mt-2 text-xs text-green-400">
-                        ✅ {historicalDataStatus}
-                      </div>
-                    )}
+                    
                   </div>
                   <div className="flex items-center justify-end gap-3 text-sm">
-                    {/* ✅ NEW: Subscription Error Indicator with Tooltip */}
-                    {(subscriptionErrors || failedSymbols.length > 0) && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="p-2 bg-red-950/50 rounded cursor-default">
-                              <AlertCircle className="h-5 w-5 text-red-500" />
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent 
-                            side="bottom" 
-                            className="max-w-sm bg-zinc-900 border-red-800 text-white p-3"
-                          >
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2 text-red-400 font-medium">
-                                <AlertCircle className="h-4 w-4" />
-                                <span>Subscription Error</span>
-                              </div>
-                              {subscriptionErrors && (
-                                <p className="text-xs text-zinc-400">
-                                  Code: {subscriptionErrors.code} - {subscriptionErrors.message}
-                                </p>
-                              )}
-                              {failedSymbols.length > 0 && (
-                                <div className="text-xs text-zinc-300">
-                                  <span className="text-red-400">{failedSymbols.length}</span> symbol(s) failed to subscribe
-                                </div>
-                              )}
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
+                    
 
                     {/* ✅ ENHANCED: Hover Card for Subscribed Companies */}
                     <HoverCard openDelay={200} closeDelay={100}>
@@ -1392,7 +1399,7 @@ const MarketDataPage: React.FC = () => {
                                   Failed
                                 </h3>
                               </div>
-                              <span className="text-xs bg-red-900/50 text-red-300 px-2 py-0.5 rounded">
+                              <span className="text-xs  text-red-300 px-2 py-0.5 rounded">
                                 {failedSymbols.length}
                               </span>
                             </div>
