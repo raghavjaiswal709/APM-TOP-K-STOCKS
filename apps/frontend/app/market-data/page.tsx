@@ -559,10 +559,32 @@ const MarketDataPage: React.FC = () => {
 
     const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
 
-    setHistoricalData(prev => ({
-      ...prev,
-      [data.symbol]: sortedData
-    }));
+    // ✅ CRITICAL FIX: MERGE socket historical data with existing data instead of REPLACING
+    // This preserves the earlier historical data fetched from external API
+    setHistoricalData(prev => {
+      const existingData = prev[data.symbol] || [];
+      const dataMap = new Map<number, MarketData>();
+
+      // Add existing data first (preserves external API data)
+      existingData.forEach(point => {
+        dataMap.set(point.timestamp, point);
+      });
+
+      // Add new socket data (updates/adds new points)
+      sortedData.forEach(point => {
+        dataMap.set(point.timestamp, point);
+      });
+
+      const mergedData = Array.from(dataMap.values())
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      console.log(`📈 [handleHistoricalData] Merged: ${existingData.length} existing + ${sortedData.length} new = ${mergedData.length} total points`);
+
+      return {
+        ...prev,
+        [data.symbol]: mergedData
+      };
+    });
 
     if (sortedData.length > 0) {
       setMarketData(prev => ({
@@ -579,10 +601,27 @@ const MarketDataPage: React.FC = () => {
         changePercent: item.changePercent || 0
       }));
 
-      setChartUpdates(prev => ({
-        ...prev,
-        [data.symbol]: chartData
-      }));
+      // ✅ CRITICAL FIX: Also MERGE chartUpdates instead of replacing
+      setChartUpdates(prev => {
+        const existingUpdates = prev[data.symbol] || [];
+        const updateMap = new Map<number, typeof chartData[0]>();
+
+        existingUpdates.forEach(update => {
+          updateMap.set(update.timestamp, update);
+        });
+
+        chartData.forEach(update => {
+          updateMap.set(update.timestamp, update);
+        });
+
+        const mergedUpdates = Array.from(updateMap.values())
+          .sort((a, b) => a.timestamp - b.timestamp);
+
+        return {
+          ...prev,
+          [data.symbol]: mergedUpdates
+        };
+      });
     }
   }, []);
 

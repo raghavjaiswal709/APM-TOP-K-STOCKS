@@ -514,33 +514,53 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
   // ============ ENHANCED: prepareLineChartData with chartUpdates integration ============
   const prepareLineChartData = useMemo(() => {
-    // ✅ DATA MERGE: Combine historical (pre-filtered by API) + live updates + current point
+    // ✅ DATA MERGE: Combine OHLC (most reliable) + historical + live updates + current point
     const dataMap = new Map<number, DataPoint>();
-
-    // ✅ CRITICAL FIX: NO FILTERING - API already returns TODAY's data only (9:15 AM onwards)
-    // The old logic incorrectly calculated tradingStartTimestamp using local browser time,
-    // causing valid intraday data to be filtered out.
 
     // 🔍 DEBUG: Log input data
     console.log(`🔍 [prepareLineChartData] Input:`, {
+      ohlcCount: ohlcData?.length || 0,
       historicalCount: historicalData.length,
       chartUpdatesCount: chartUpdates?.length || 0,
       hasCurrentData: !!data,
+      firstOhlc: ohlcData?.[0],
+      lastOhlc: ohlcData?.[ohlcData.length - 1],
       firstHistorical: historicalData[0],
       lastHistorical: historicalData[historicalData.length - 1]
     });
 
-    // ✅ Add ALL historical data (API guarantees TODAY only, no filtering needed)
+    // ✅ CRITICAL FIX: First, add ALL OHLC data (this is the most reliable source with full day data)
+    // Convert OHLC candles to LTP points using the close price
+    if (ohlcData && ohlcData.length > 0) {
+      ohlcData.forEach(candle => {
+        if (candle.close > 0 && !isNaN(candle.close) && candle.timestamp > 0) {
+          // Use OHLC close price as LTP for the line chart
+          const dataPoint: DataPoint = {
+            symbol: symbol,
+            ltp: candle.close,
+            timestamp: candle.timestamp,
+            open: candle.open,
+            high: candle.high,
+            low: candle.low,
+            close: candle.close,
+            volume: candle.volume
+          };
+          dataMap.set(candle.timestamp, dataPoint);
+        }
+      });
+      console.log(`📊 [prepareLineChartData] Added ${ohlcData.length} OHLC points as base data`);
+    }
+
+    // ✅ Add historical data (may override OHLC for same timestamps, that's OK)
     historicalData.forEach(point => {
       if (point.ltp > 0 && !isNaN(point.ltp) && point.timestamp > 0) {
-        if (!dataMap.has(point.timestamp)) {
-          dataMap.set(point.timestamp, point);
-        }
+        // Historical data has actual LTP, use it (more accurate than OHLC close)
+        dataMap.set(point.timestamp, point);
       }
     });
 
     // ✨ ENHANCED: Merge chart updates for ultra-smooth line
-    // Only add updates if timestamp is NEW (don't overwrite historical data)
+    // Only add updates if timestamp is NEW (don't overwrite existing data)
     if (chartUpdates && chartUpdates.length > 0) {
       chartUpdates.forEach(update => {
         if (!dataMap.has(update.timestamp)) {
@@ -613,7 +633,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       sellPrices,
       buySellSpreads
     };
-  }, [historicalData, chartUpdates, data]); // ✅ CRITICAL: Only recalculate when data actually changes
+  }, [ohlcData, historicalData, chartUpdates, data, symbol]); // ✅ CRITICAL: Include ohlcData for Line chart fallback
 
   const calculateStandardDeviation = (values: number[], usePopulation = false) => {
     if (values.length === 0) return 0;
@@ -1047,9 +1067,20 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
 
   const getTimeRange = (): [Date, Date] | undefined => {
-    // ✅ Use data as-is (already filtered by API to TODAY only)
-    const dataToUse = chartType === 'line' ? historicalData : ohlcData;
-    if (!dataToUse || dataToUse.length === 0) return undefined;
+    // ✅ CRITICAL FIX: Always use ohlcData for time range calculation since it has the most complete data
+    // This ensures both Line and Candlestick charts show the same time range
+    // Fall back to lineChartData.allData if ohlcData is empty (for Line chart with historical data)
+    let dataToUse: { timestamp: number }[] = [];
+    
+    if (ohlcData && ohlcData.length > 0) {
+      dataToUse = ohlcData;
+    } else if (chartType === 'line' && lineChartData.allData && lineChartData.allData.length > 0) {
+      dataToUse = lineChartData.allData;
+    } else if (historicalData && historicalData.length > 0) {
+      dataToUse = historicalData;
+    }
+    
+    if (dataToUse.length === 0) return undefined;
 
     // ✅ STEP 1: Find "now" (latest data timestamp or current time)
     const timestamps = dataToUse.map(d => d.timestamp);
@@ -1065,7 +1096,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     // ✅ CRITICAL: Log data date range for debugging
     console.log(`📊 [Chart Data Range] ${dataStartDate.toLocaleDateString()} ${dataStartDate.toLocaleTimeString()} → ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`, {
       isHistoricalMode,
-      tradingHoursActive: tradingHours?.isActive
+      tradingHoursActive: tradingHours?.isActive,
+      dataSource: ohlcData?.length > 0 ? 'ohlcData' : 'historicalData/lineChartData'
     });
 
     let startTime: Date;
@@ -1874,36 +1906,25 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     console.log(`🎨 [createPlotData] Called with:`, {
       chartType,
       historicalDataLength: historicalData?.length || 0,
+      lineChartDataLength: lineChartData?.x?.length || 0,
       hasData: !!data,
       symbol
     });
 
     if (chartType === 'line') {
-      if (historicalData && historicalData.length > 0) {
-        // ✅ Validate data (no filtering needed - API already returned TODAY only)
-        const validData = historicalData.filter(point =>
-          point.ltp !== null &&
-          point.ltp !== undefined &&
-          point.ltp > 0 &&
-          !isNaN(point.ltp) &&
-          point.timestamp !== null &&
-          point.timestamp !== undefined
-        );
+      // ✅ CRITICAL FIX: Use lineChartData (which merges historicalData + chartUpdates + data)
+      // instead of historicalData directly to ensure the Line chart has the same
+      // data synchronization as the Candlestick chart
+      const { x: timeValues, y: priceValues, allData } = lineChartData;
 
-        console.log(`✅ [createPlotData] Valid data:`, {
-          total: historicalData.length,
-          valid: validData.length,
-          invalid: historicalData.length - validData.length
+      if (timeValues && timeValues.length > 0) {
+        console.log(`✅ [createPlotData] Using lineChartData:`, {
+          totalPoints: timeValues.length,
+          firstTime: timeValues[0]?.toLocaleTimeString(),
+          lastTime: timeValues[timeValues.length - 1]?.toLocaleTimeString(),
+          firstPrice: priceValues[0],
+          lastPrice: priceValues[priceValues.length - 1]
         });
-
-        if (validData.length === 0) {
-          console.error(`❌ [createPlotData] All data invalid! Sample point:`, historicalData[0]);
-          return plotData;
-        }
-
-        const sortedData = [...validData].sort((a, b) => a.timestamp - b.timestamp);
-        const timeValues = sortedData.map(point => new Date(point.timestamp * 1000));
-        const priceValues = sortedData.map(point => Number(point.ltp));
 
         plotData.push({
           x: timeValues,
@@ -2226,9 +2247,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           });
         }
 
-        const volumeValues = sortedData.map(point => point.volume || 0);
+        const volumeValues = allData.map(point => point.volume || 0);
         const volumeColors = [];
-        for (let i = 0; i < sortedData.length; i++) {
+        for (let i = 0; i < allData.length; i++) {
           if (i === 0) {
             volumeColors.push(colors.upColor);
           } else {
