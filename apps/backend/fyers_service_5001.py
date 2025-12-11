@@ -432,6 +432,16 @@ def fetch_historical_intraday_data(symbol, date=None):
                 if not ohlc_data[symbol] or ohlc_data[symbol][-1]['timestamp'] != minute_timestamp:
                     ohlc_data[symbol].append(ohlc_candle)
 
+            # ============ PRO FIX: Also populate historical_data directly ============
+            # This ensures Line chart has full day data from the start
+            # Using regular list (NOT deque) to keep ALL trading day data without sliding window loss
+            if result and symbol not in historical_data:
+                historical_data[symbol] = []  # No maxlen - keep ALL data for the trading day
+                logger.info(f"📊 Pre-populating historical_data for {symbol} with {len(result)} points")
+                for point in result:
+                    historical_data[symbol].append(point)
+                logger.info(f"✅ historical_data for {symbol} now has {len(historical_data[symbol])} points from market open")
+
             if result:
                 prev_close = result[0]['open']
                 for point in result:
@@ -507,18 +517,14 @@ def subscribe(sid, data):
     symbol_subscriptions[symbol] += 1
     active_symbols.add(symbol)
 
-    # ============ ENHANCED: Check if we already have cached data ============
-    if symbol not in historical_data or not historical_data[symbol]:
-        logger.info(f"Fetching fresh historical data for {symbol}")
-        hist_data = fetch_historical_intraday_data(symbol)
-
-        if symbol not in historical_data:
-            historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
-
-        for data_point in hist_data:
-            historical_data[symbol].append(data_point)
+    # ============ PRO FIX: Fetch and populate full day data if not cached ============
+    if symbol not in historical_data or len(historical_data.get(symbol, [])) == 0:
+        logger.info(f"🚀 Fetching fresh historical data for {symbol} (no cached data)")
+        # fetch_historical_intraday_data now automatically populates both ohlc_data AND historical_data
+        fetch_historical_intraday_data(symbol)
+        logger.info(f"✅ After fetch: historical_data has {len(historical_data.get(symbol, []))} points, ohlc_data has {len(ohlc_data.get(symbol, []))} candles")
     else:
-        logger.info(f"Using cached historical data for {symbol} ({len(historical_data[symbol])} points)")
+        logger.info(f"📦 Using cached historical data for {symbol} ({len(historical_data[symbol])} points)")
 
     # Subscribe to real-time updates if not already subscribed
     if fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
@@ -698,7 +704,7 @@ async def send_batch_historical_data(sid, symbols):
                     hist_data = await asyncio.wait_for(future, timeout=10.0)
                     
                     if symbol not in historical_data:
-                        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                        historical_data[symbol] = []  # No maxlen - keep ALL data for the trading day
                     
                     for data_point in hist_data:
                         historical_data[symbol].append(data_point)
@@ -831,9 +837,40 @@ def get_daily_data(sid, data):
 
 
 def store_historical_data(symbol, data_point):
-    """Enhanced to store data for ALL active symbols"""
-    if symbol not in historical_data:
-        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+    """Enhanced to store data for ALL active symbols with automatic backfill.
+    
+    NOTE: Using regular list (NOT deque with maxlen) to preserve ALL trading day data.
+    The old deque(maxlen=50000) caused data loss - with high-frequency ticks (100-500/min),
+    morning data would be pushed out by afternoon, causing Line chart to start late.
+    """
+    is_new_symbol = symbol not in historical_data
+    
+    if is_new_symbol:
+        historical_data[symbol] = []  # No maxlen - keep ALL data for the trading day
+        
+        # ============ PRO FIX: Backfill historical LTP data from existing OHLC ============
+        # When we first see a symbol, backfill the historical_data list using
+        # the close prices from ohlc_data (which was already populated by fetch_historical_intraday_data)
+        if symbol in ohlc_data and len(ohlc_data[symbol]) > 0:
+            logger.info(f"🔄 Backfilling historical_data for {symbol} with {len(ohlc_data[symbol])} OHLC candles")
+            
+            # Convert each OHLC candle's close price to an LTP data point
+            for candle in ohlc_data[symbol]:
+                backfill_point = {
+                    'symbol': symbol,
+                    'ltp': candle['close'],
+                    'timestamp': candle['timestamp'],
+                    'volume': candle.get('volume', 0),
+                    'open': candle.get('open', candle['close']),
+                    'high': candle.get('high', candle['close']),
+                    'low': candle.get('low', candle['close']),
+                    'close': candle['close'],
+                    'change': 0,
+                    'changePercent': 0
+                }
+                historical_data[symbol].append(backfill_point)
+            
+            logger.info(f"✅ Backfilled {len(historical_data[symbol])} LTP points for {symbol} (from market open)")
 
     if 'timestamp' not in data_point:
         data_point['timestamp'] = int(time.time())
