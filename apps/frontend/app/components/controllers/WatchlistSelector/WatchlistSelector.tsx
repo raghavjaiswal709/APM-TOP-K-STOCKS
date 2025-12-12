@@ -27,6 +27,9 @@ interface WatchlistSelectorProps {
   externalAvailableExchanges?: string[];
   externalAvailableMarkers?: string[];
   externalTotalCompanies?: number;
+  // NEW: Allow parent to control refined filter for synchronized API calls
+  externalSetRefinedFilter?: (refined: boolean | null) => void;
+  externalSetShowAllCompanies?: (showAll: boolean) => void;
 }
 
 export const WatchlistSelector = React.memo(({ 
@@ -46,6 +49,8 @@ export const WatchlistSelector = React.memo(({
   externalAvailableExchanges,
   externalAvailableMarkers,
   externalTotalCompanies,
+  externalSetRefinedFilter,
+  externalSetShowAllCompanies,
 }: WatchlistSelectorProps) => {
   
   const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
@@ -75,8 +80,9 @@ export const WatchlistSelector = React.memo(({
   const availableMarkers = externalAvailableMarkers ?? internalHook.availableMarkers;
   const totalCompanies = externalTotalCompanies ?? internalHook.totalCompanies;
   const showAllCompanies = internalHook.showAllCompanies;
-  const setShowAllCompanies = internalHook.setShowAllCompanies;
-  const setRefinedFilter = internalHook.setRefinedFilter;
+  // Use external setters when provided, otherwise fall back to internal hook
+  const setShowAllCompanies = externalSetShowAllCompanies ?? internalHook.setShowAllCompanies;
+  const setRefinedFilter = externalSetRefinedFilter ?? internalHook.setRefinedFilter;
 
   const handleDateSelect = React.useCallback((date: Date | undefined) => {
     if (date) {
@@ -122,6 +128,15 @@ export const WatchlistSelector = React.memo(({
     // Apply marker filter
     if (activeFilters.markers.length > 0) {
       filtered = filtered.filter(c => c.marker && activeFilters.markers.includes(c.marker));
+    }
+    
+    // Apply refined filter (client-side filtering for immediate feedback)
+    if (activeFilters.refined !== null) {
+      filtered = filtered.filter(c => {
+        // Handle both boolean and undefined/null values
+        const isRefined = c.refined === true;
+        return activeFilters.refined ? isRefined : !isRefined;
+      });
     }
     
     return filtered;
