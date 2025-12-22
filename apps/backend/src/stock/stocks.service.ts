@@ -113,7 +113,7 @@ export class StockService {
     return new Promise((resolve, reject) => {
       const scriptPath = path.resolve(__dirname, '../../data/data_fetch.py');
 
-      let command = `python ${scriptPath} --company_code=${params.companyCode} --interval=${params.interval}`;
+      let command = `python3 ${scriptPath} --company_code=${params.companyCode} --interval=${params.interval}`;
 
       if (params.exchange) {
         command += ` --exchange=${params.exchange}`;

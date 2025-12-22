@@ -72,37 +72,93 @@ export class SiprService {
   }
 
   /**
-   * Calculate most frequent days from time range
-   * This is derived data, not from API
+   * Calculate actual occurrence days from segment timestamps
+   * Analyzes real segment data to determine which days of the week a pattern actually occurs
    */
-  private calculateMostFrequentDays(timeFoundRange: string | null, mostProminentRange: string | null): string[] {
-    // Since API doesn't provide day-of-week data, we'll return a placeholder
-    // In production, you'd analyze actual occurrence data
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  private calculateActualOccurrenceDays(segments: any[], patternId: number): string {
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayCounts: { [key: string]: number } = {};
     
-    if (!timeFoundRange && !mostProminentRange) {
-      return ['Data unavailable'];
+    // Filter segments for this specific pattern
+    const patternSegments = segments.filter((seg: any) => seg.pattern_id === patternId);
+    
+    if (patternSegments.length === 0) {
+      return 'No occurrence data';
     }
     
-    // For now, return all trading days as this requires actual occurrence analysis
-    return days;
+    // Count occurrences by day of week
+    patternSegments.forEach((segment: any) => {
+      try {
+        // Parse the start_time to get the day of week
+        const startTime = new Date(segment.start_time);
+        if (!isNaN(startTime.getTime())) {
+          const dayName = dayNames[startTime.getDay()];
+          dayCounts[dayName] = (dayCounts[dayName] || 0) + 1;
+        }
+      } catch (error) {
+        // Skip invalid timestamps
+      }
+    });
+    
+    if (Object.keys(dayCounts).length === 0) {
+      return 'No valid timestamps';
+    }
+    
+    // Sort days by occurrence count (descending) and then by day order
+    const tradingDayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    const sortedDays = Object.entries(dayCounts)
+      .filter(([day]) => tradingDayOrder.includes(day)) // Only include trading days
+      .sort((a, b) => {
+        // First sort by count (descending)
+        if (b[1] !== a[1]) return b[1] - a[1];
+        // Then by day order
+        return tradingDayOrder.indexOf(a[0]) - tradingDayOrder.indexOf(b[0]);
+      });
+    
+    if (sortedDays.length === 0) {
+      return 'No trading day occurrences';
+    }
+    
+    // Return top 3 most frequent days with counts
+    const topDays = sortedDays.slice(0, 3);
+    return topDays.map(([day, count]) => `${day} (${count})`).join(', ');
   }
 
   /**
-   * Enrich pattern data with calculated fields
+   * Enrich pattern data with calculated fields including actual occurrence days
+   * IMPORTANT: Only calculate if API didn't provide valid most_frequent_days
    */
-  private enrichPatternData(pattern: any): any {
+  private enrichPatternData(pattern: any, segments: any[] = []): any {
+    // Debug: log what we received from API
+    this.logger.log(`🔍 Pattern ${pattern.pattern_id} - API most_frequent_days: ${JSON.stringify(pattern.most_frequent_days)} (type: ${typeof pattern.most_frequent_days})`);
+    
+    // Check if API already provided valid most_frequent_days data
+    // Must be a non-empty string that's not placeholder data
+    const hasValidApiDays = pattern.most_frequent_days && 
+      typeof pattern.most_frequent_days === 'string' && 
+      pattern.most_frequent_days.trim() !== '' &&
+      pattern.most_frequent_days !== 'N/A' &&
+      // Check it's not the placeholder "all trading days" format
+      !pattern.most_frequent_days.includes('Monday, Tuesday, Wednesday, Thursday, Friday');
+    
+    this.logger.log(`🔍 Pattern ${pattern.pattern_id} - hasValidApiDays: ${hasValidApiDays}`);
+    
+    // Only calculate from segments if API didn't provide valid data
+    const mostFrequentDays = hasValidApiDays 
+      ? pattern.most_frequent_days 
+      : this.calculateActualOccurrenceDays(segments, pattern.pattern_id);
+    
+    this.logger.log(`🔍 Pattern ${pattern.pattern_id} - Final most_frequent_days: ${mostFrequentDays}`);
+    
     return {
       ...pattern,
-      most_frequent_days: this.calculateMostFrequentDays(
-        pattern.time_found_range,
-        pattern.most_prominent_range
-      ),
+      most_frequent_days: mostFrequentDays,
     };
   }
 
   /**
    * Get Top 3 Patterns - GET /api/v1/patterns/top3/{company_code}
+   * Now enhanced with actual occurrence day calculation from segmentation data
    */
   async getTop3Patterns(
     companyCode: string,
@@ -114,30 +170,44 @@ export class SiprService {
       this.logger.log(`📊 Fetching Top 3 patterns for ${companyCode} (${months} months)...`);
       this.logger.log(`   Full URL: ${url}?months=${months}`);
       
-      const response: AxiosResponse = await firstValueFrom(
-        this.httpService.get(url, {
-          params: { months },
-          timeout: this.TIMEOUT,
-        }).pipe(
-          catchError((error: AxiosError) => {
-            this.logger.error(`❌ HTTP Error Details:`);
-            this.logger.error(`   Status: ${error.response?.status}`);
-            this.logger.error(`   URL: ${error.config?.url}`);
-            this.logger.error(`   Message: ${error.message}`);
-            if (error.response?.data) {
-              this.logger.error(`   Response: ${JSON.stringify(error.response.data)}`);
-            }
-            throw error;
-          })
-        )
-      );
+      // Fetch both top patterns and segmentation data in parallel for efficiency
+      const [patternsResponse, segmentationData] = await Promise.all([
+        firstValueFrom(
+          this.httpService.get(url, {
+            params: { months },
+            timeout: this.TIMEOUT,
+          }).pipe(
+            catchError((error: AxiosError) => {
+              this.logger.error(`❌ HTTP Error Details:`);
+              this.logger.error(`   Status: ${error.response?.status}`);
+              this.logger.error(`   URL: ${error.config?.url}`);
+              this.logger.error(`   Message: ${error.message}`);
+              if (error.response?.data) {
+                this.logger.error(`   Response: ${JSON.stringify(error.response.data)}`);
+              }
+              throw error;
+            })
+          )
+        ),
+        // Fetch segmentation data to get actual timestamps for day calculation
+        this.getTimeSeriesSegmentationInternal(companyCode, months).catch((err) => {
+          this.logger.warn(`⚠️ Could not fetch segmentation data for day calculation: ${err.message}`);
+          return { segments: [] };
+        })
+      ]);
       
       this.logger.log(`✅ Top 3 patterns fetched for ${companyCode}`);
       
-      // Enrich data with calculated fields
+      // Extract segments array from segmentation response
+      const segments = segmentationData?.segments || [];
+      this.logger.log(`   Found ${segments.length} segments for day-of-week calculation`);
+      
+      // Enrich data with calculated fields using actual segment timestamps
       const enrichedData = {
-        ...response.data,
-        top_patterns: response.data.top_patterns.map((p: any) => this.enrichPatternData(p)),
+        ...patternsResponse.data,
+        top_patterns: patternsResponse.data.top_patterns.map((p: any) => 
+          this.enrichPatternData(p, segments)
+        ),
       };
       
       return enrichedData;
@@ -198,6 +268,31 @@ export class SiprService {
         `Pattern visualization not found for ${companyCode}. ${error.message}`,
         error.response?.status || HttpStatus.NOT_FOUND
       );
+    }
+  }
+
+  /**
+   * Internal method to fetch segmentation data for day calculation
+   * Does not throw - returns empty segments on error to avoid breaking getTop3Patterns
+   */
+  private async getTimeSeriesSegmentationInternal(
+    companyCode: string,
+    months: number = 3
+  ): Promise<{ segments: any[] }> {
+    try {
+      const url = `${this.SIPR_API_URL}/api/v1/visualization/segmentation/${companyCode}`;
+      
+      const response: AxiosResponse = await firstValueFrom(
+        this.httpService.get(url, {
+          params: { months, format: 'json' },
+          timeout: this.TIMEOUT,
+        })
+      );
+      
+      return response.data;
+    } catch (error: any) {
+      // Return empty segments - don't let this break the main flow
+      return { segments: [] };
     }
   }
 

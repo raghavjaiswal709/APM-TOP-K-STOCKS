@@ -1,0 +1,34 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Python Fyers Service (Port 5010) - Eventlet
+# Uses pre-built wheels to avoid gcc compilation
+# ═══════════════════════════════════════════════════════════════════════════
+FROM python:3.10-slim-bookworm
+
+WORKDIR /app
+
+# Copy requirements first (better caching)
+COPY apps/backend/requirements.txt ./
+
+# Install Python dependencies using pre-built wheels (no gcc needed)
+RUN pip install --no-cache-dir \
+    python-socketio==5.11.0 \
+    python-engineio==4.9.0 \
+    eventlet==0.33.3 \
+    fyers-apiv3 \
+    pandas \
+    numpy \
+    python-dotenv \
+    requests \
+    pytz \
+    ratelimit \
+    flask \
+    flask-socketio
+
+# Copy the Python script and data directory
+COPY apps/backend/fyers_service_5010.py ./
+COPY apps/backend/data ./data
+
+EXPOSE 5010
+
+# Run the service
+CMD ["python", "-u", "fyers_service_5010.py"]

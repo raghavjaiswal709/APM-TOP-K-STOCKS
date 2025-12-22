@@ -1,40 +1,41 @@
-import eventlet
-eventlet.monkey_patch()
-
 import socketio
 import json
 import sys
 import time
 import datetime
 import pytz
-import threading
 import logging
-import requests
+import asyncio
 import numpy as np
 import os
-from collections import deque
+from collections import deque, defaultdict
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from fyers_apiv3 import fyersModel
 from fyers_apiv3.FyersWebsocket import data_ws
 import pandas as pd
+import uvicorn
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import requests
 
 # Enhanced logging configuration
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
-logger = logging.getLogger("LiveMarketServer")
+logger = logging.getLogger("LiveMarketServer5010")
 
-# Socket.IO setup with enhanced CORS
-sio = socketio.Server(
-    cors_allowed_origins='*', 
-    async_mode='eventlet',
-    logger=True,
-    engineio_logger=True
+# ✅ Async Socket.IO setup (replaces eventlet)
+sio = socketio.AsyncServer(
+    async_mode='asgi',
+    cors_allowed_origins='*',
+    logger=False,
+    engineio_logger=False,
+    ping_timeout=60,
+    ping_interval=25
 )
-app = socketio.WSGIApp(sio)
+app = socketio.ASGIApp(sio)
 
 from dotenv import load_dotenv
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
@@ -44,6 +45,31 @@ redirect_uri = os.getenv("FYERS_REDIRECT_URI")
 access_token = os.getenv("FYERS_ACCESS_TOKEN")
 grant_type = "authorization_code"
 
+# ✅ HTTP Session with connection pooling and retries
+def create_resilient_session():
+    """Create HTTP session with automatic retries, timeouts, and connection pooling."""
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=3,
+        status_forcelist=[429, 500, 502, 503, 504],
+        backoff_factor=1,
+        allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+    )
+    adapter = HTTPAdapter(
+        max_retries=retry_strategy,
+        pool_connections=10,
+        pool_maxsize=20,
+        pool_block=False
+    )
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+http_session = create_resilient_session()
+
+# ✅ Thread pool for blocking operations
+executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="FyersWorker")
+
 # Global variables
 clients = {}
 symbol_to_clients = {}
@@ -52,6 +78,8 @@ running = True
 historical_data = {}
 ohlc_data = {}
 real_time_data = {}
+chart_updates = {}
+pending_data = {}
 MAX_HISTORY_POINTS = 10000
 MAX_COMPANIES = 6
 INDIA_TZ = pytz.timezone('Asia/Kolkata')
@@ -60,6 +88,16 @@ fyers_client = None
 available_symbols = []
 last_tick = {}
 auth_initialized = False
+symbol_subscriptions = defaultdict(int)
+cached_indicators = {}
+last_emit_time = defaultdict(float)
+last_cleanup_time = time.time()
+DATA_RETENTION_HOURS = 24
+data_cleanup_interval = 3600
+MAX_CHART_UPDATES = 5000
+
+REAL_TIME_INTERVAL = 0.2
+CHART_UPDATE_INTERVAL = 0.1
 
 MONITORED_FIELDS = [
     'ltp', 'vol_traded_today', 'last_traded_time', 'bid_size', 'ask_size',
@@ -310,7 +348,7 @@ def auth_watcher():
 
 
 @sio.event
-def connect(sid, environ):
+async def connect(sid, environ):
     """Handle client connection."""
     logger.info(f"Client connected: {sid}")
     clients[sid] = {
@@ -320,7 +358,7 @@ def connect(sid, environ):
     }
     
     # Send available symbols to client (may be empty initially)
-    sio.emit('availableSymbols', {
+    await sio.emit('availableSymbols', {
         'symbols': available_symbols,
         'maxCompanies': MAX_COMPANIES,
         'tradingHours': {
@@ -333,7 +371,7 @@ def connect(sid, environ):
 
 
 @sio.event
-def disconnect(sid):
+async def disconnect(sid):
     """Handle client disconnection."""
     logger.info(f"Client disconnected: {sid}")
     if sid in clients:
@@ -345,31 +383,32 @@ def disconnect(sid):
                 # If no more clients for this symbol, unsubscribe from Fyers
                 if not symbol_to_clients[symbol]:
                     active_subscriptions.discard(symbol)
+                    symbol_subscriptions[symbol] = max(0, symbol_subscriptions[symbol] - 1)
                     logger.info(f"Removed {symbol} from active subscriptions")
         
         del clients[sid]
     
     # Update Fyers subscription if needed
-    update_fyers_subscription()
+    await update_fyers_subscription()
 
 
 @sio.event
-def subscribe_companies(sid, data):
-    """FIXED: Subscribe to selected companies with enhanced validation."""
+async def subscribe_companies(sid, data):
+    """Subscribe to selected companies with enhanced validation and multi-view support."""
     try:
         logger.info(f"📡 Received subscription request from {sid}: {data}")
         
-        # FIXED: Extract companyCodes from data
+        # Extract companyCodes from data
         company_codes = data.get('companyCodes', [])
         logger.info(f"📡 Raw company codes: {company_codes}")
         
-        # FIXED: Validate data structure
+        # Validate data structure
         if not isinstance(company_codes, list):
             logger.error(f"❌ Invalid data type for companyCodes: {type(company_codes)}")
-            sio.emit('error', {'message': 'companyCodes must be an array'}, room=sid)
+            await sio.emit('error', {'message': 'companyCodes must be an array'}, room=sid)
             return
         
-        # FIXED: Simplified validation - accept any non-empty string
+        # Simplified validation - accept any non-empty string
         valid_company_codes = []
         for code in company_codes:
             if isinstance(code, str) and code.strip():
@@ -379,27 +418,28 @@ def subscribe_companies(sid, data):
         
         logger.info(f"✅ Valid company codes after filtering: {valid_company_codes}")
         
-        # FIXED: Check limits
+        # Check limits
         if len(valid_company_codes) > MAX_COMPANIES:
             logger.error(f"❌ Too many companies requested: {len(valid_company_codes)}")
-            sio.emit('error', {'message': f'Maximum {MAX_COMPANIES} companies allowed'}, room=sid)
+            await sio.emit('error', {'message': f'Maximum {MAX_COMPANIES} companies allowed'}, room=sid)
             return
         
         if len(valid_company_codes) == 0:
             logger.error(f"❌ No valid company codes provided")
-            sio.emit('error', {'message': 'At least 1 valid company code must be provided'}, room=sid)
+            await sio.emit('error', {'message': 'At least 1 valid company code must be provided'}, room=sid)
             return
         
-        # FIXED: Clear existing subscriptions for this client
+        # Clear existing subscriptions for this client
         if sid in clients:
             for symbol in clients[sid]['subscriptions']:
                 if symbol in symbol_to_clients:
                     symbol_to_clients[symbol].discard(sid)
                     if not symbol_to_clients[symbol]:
                         active_subscriptions.discard(symbol)
+                        symbol_subscriptions[symbol] = max(0, symbol_subscriptions[symbol] - 1)
             clients[sid]['subscriptions'].clear()
         
-        # FIXED: Process valid company codes and create symbols
+        # Process valid company codes and create symbols
         requested_symbols = []
         for company_code in valid_company_codes:
             logger.info(f"📡 Processing company code: {company_code}")
@@ -421,7 +461,7 @@ def subscribe_companies(sid, data):
         
         logger.info(f"📡 Final requested symbols: {requested_symbols}")
         
-        # FIXED: Update client subscriptions
+        # Update client subscriptions
         if sid not in clients:
             clients[sid] = {
                 'subscriptions': set(),
@@ -440,51 +480,17 @@ def subscribe_companies(sid, data):
             
             # Add to active subscriptions
             active_subscriptions.add(symbol)
+            symbol_subscriptions[symbol] += 1
             logger.info(f"✅ Added {symbol} to active subscriptions")
         
-        # FIXED: Update Fyers subscription
-        update_fyers_subscription()
+        # Update Fyers subscription
+        await update_fyers_subscription()
         
-        # FIXED: Send historical data for each symbol
-        def fetch_all_data():
-            for symbol in requested_symbols:
-                try:
-                    # Check if we already have historical data
-                    if symbol in historical_data and historical_data[symbol]:
-                        sio.emit('historicalData', {
-                            'symbol': symbol,
-                            'data': list(historical_data[symbol])
-                        }, room=sid)
-                    else:
-                        # Fetch historical data on demand
-                        logger.info(f"📊 Fetching historical data for {symbol}")
-                        hist_data = fetch_historical_intraday_data(symbol)
-                        if hist_data:
-                            if symbol not in historical_data:
-                                historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
-                            
-                            for data_point in hist_data:
-                                historical_data[symbol].append(data_point)
-                            
-                            sio.emit('historicalData', {
-                                'symbol': symbol,
-                                'data': hist_data
-                            }, room=sid)
-                        else:
-                            sio.emit('historicalData', {
-                                'symbol': symbol,
-                                'data': []
-                            }, room=sid)
-                    
-                    time.sleep(0.2)  # Small delay between requests
-                except Exception as e:
-                    logger.error(f"Error fetching data for {symbol}: {e}")
+        # Send historical data for each symbol in background
+        asyncio.create_task(send_batch_historical_data(sid, requested_symbols))
         
-        # Start background fetching
-        threading.Thread(target=fetch_all_data, daemon=True).start()
-        
-        # FIXED: Send subscription confirmation
-        sio.emit('subscriptionConfirm', {
+        # Send subscription confirmation
+        await sio.emit('subscriptionConfirm', {
             'success': True,
             'symbols': requested_symbols,
             'count': len(requested_symbols)
@@ -496,11 +502,11 @@ def subscribe_companies(sid, data):
         logger.error(f"❌ Error in subscribe_companies: {e}")
         import traceback
         traceback.print_exc()
-        sio.emit('error', {'message': f'Subscription failed: {str(e)}'}, room=sid)
+        await sio.emit('error', {'message': f'Subscription failed: {str(e)}'}, room=sid)
 
 
 @sio.event
-def unsubscribe_all(sid, data):
+async def unsubscribe_all(sid, data):
     """Unsubscribe from all companies."""
     try:
         logger.info(f"📡 Unsubscribing all for client {sid}")
@@ -511,12 +517,13 @@ def unsubscribe_all(sid, data):
                     symbol_to_clients[symbol].discard(sid)
                     if not symbol_to_clients[symbol]:
                         active_subscriptions.discard(symbol)
+                        symbol_subscriptions[symbol] = max(0, symbol_subscriptions[symbol] - 1)
             
             clients[sid]['subscriptions'].clear()
         
-        update_fyers_subscription()
+        await update_fyers_subscription()
         
-        sio.emit('subscriptionConfirm', {
+        await sio.emit('subscriptionConfirm', {
             'success': True,
             'symbols': [],
             'count': 0
@@ -526,15 +533,15 @@ def unsubscribe_all(sid, data):
         
     except Exception as e:
         logger.error(f"❌ Error in unsubscribe_all: {e}")
-        sio.emit('error', {'message': f'Unsubscription failed: {str(e)}'}, room=sid)
+        await sio.emit('error', {'message': f'Unsubscription failed: {str(e)}'}, room=sid)
 
 
 @sio.event
-def get_market_status(sid, data):
+async def get_market_status(sid, data):
     """Get current market status."""
     try:
         start_time, end_time = get_trading_hours()
-        sio.emit('marketStatus', {
+        await sio.emit('marketStatus', {
             'trading_active': is_trading_hours(),
             'trading_start': start_time.isoformat(),
             'trading_end': end_time.isoformat(),
@@ -546,10 +553,10 @@ def get_market_status(sid, data):
         }, room=sid)
     except Exception as e:
         logger.error(f"❌ Error in get_market_status: {e}")
-        sio.emit('error', {'message': f'Failed to get market status: {str(e)}'}, room=sid)
+        await sio.emit('error', {'message': f'Failed to get market status: {str(e)}'}, room=sid)
 
 
-def update_fyers_subscription():
+async def update_fyers_subscription():
     """Update Fyers WebSocket subscription based on active subscriptions."""
     if not fyers:
         logger.warning("Fyers not initialized, cannot update subscription")
@@ -559,7 +566,8 @@ def update_fyers_subscription():
         current_symbols = list(active_subscriptions)
         if current_symbols:
             logger.info(f"🔄 Updating Fyers subscription with {len(current_symbols)} symbols")
-            fyers.subscribe(symbols=current_symbols, data_type="SymbolUpdate")
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(executor, fyers.subscribe, current_symbols, "SymbolUpdate")
             logger.info(f"✅ Updated Fyers subscription: {current_symbols}")
         else:
             logger.info("📡 No active subscriptions, keeping minimal connection")
@@ -568,7 +576,7 @@ def update_fyers_subscription():
 
 
 def fetch_historical_intraday_data(symbol, date=None):
-    """Fetch historical intraday data for a symbol on demand."""
+    """Fetch historical intraday data for a symbol on demand (blocking function)."""
     if not date:
         date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
     
@@ -655,6 +663,54 @@ def fetch_historical_intraday_data(symbol, date=None):
         return []
 
 
+async def send_batch_historical_data(sid, symbols):
+    """Send historical data for symbols in background without blocking main thread."""
+    try:
+        for symbol in symbols:
+            try:
+                # Check if data already exists
+                if symbol not in historical_data or len(historical_data[symbol]) == 0:
+                    # Fetch with timeout
+                    loop = asyncio.get_event_loop()
+                    
+                    future = loop.run_in_executor(
+                        executor,
+                        fetch_historical_intraday_data,
+                        symbol,
+                        None
+                    )
+                    
+                    # 10 second timeout per symbol
+                    hist_data = await asyncio.wait_for(future, timeout=10.0)
+                    
+                    if symbol not in historical_data:
+                        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                    
+                    for data_point in hist_data:
+                        historical_data[symbol].append(data_point)
+                
+                # Emit data if available
+                if symbol in historical_data and len(historical_data[symbol]) > 0:
+                    hist_data_list = list(historical_data[symbol])
+                    await sio.emit('historicalData', {
+                        'symbol': symbol,
+                        'data': hist_data_list
+                    }, room=sid)
+                
+                # Small delay to prevent socket flooding
+                await asyncio.sleep(0.05)
+                
+            except asyncio.TimeoutError:
+                logger.warning(f"⏱️ Timeout fetching historical data for {symbol}")
+            except Exception as e:
+                logger.error(f"Error sending historical data for {symbol}: {e}")
+        
+        logger.info(f"✅ Completed background historical data send for {len(symbols)} symbols")
+        
+    except Exception as e:
+        logger.error(f"❌ Critical error in send_batch_historical_data: {e}")
+
+
 def onmessage(message):
     """Handle incoming Fyers WebSocket messages."""
     try:
@@ -667,8 +723,8 @@ def onmessage(message):
                 'type': message.get('type', 'sub'),
                 'invalid_symbols': message.get('invalid_symbols', [])
             }
-            sio.emit('subscriptionError', error_data)
-            sio.emit('fyersError', error_data)
+            sio.emit_to_all('subscriptionError', error_data)
+            sio.emit_to_all('fyersError', error_data)
             return
         
         # Skip system messages
@@ -690,7 +746,7 @@ def onmessage(message):
             
             current_time = message.get('last_traded_time') or int(time.time())
             
-            # FIXED: Prepare enhanced market data
+            # ✅ Prepare enhanced market data
             simplified_data = {
                 'symbol': symbol,
                 'ltp': float(message.get('ltp', 0)),
@@ -708,6 +764,7 @@ def onmessage(message):
             
             # Store real-time data
             real_time_data[symbol] = simplified_data
+            pending_data[symbol] = simplified_data
             
             # Store historical data
             if symbol not in historical_data:
@@ -715,16 +772,29 @@ def onmessage(message):
             
             historical_data[symbol].append(simplified_data)
             
+            # Store OHLC data
+            if symbol not in ohlc_data:
+                ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+            
+            minute_timestamp = (current_time // 60) * 60
+            if not ohlc_data[symbol] or ohlc_data[symbol][-1]['timestamp'] != minute_timestamp:
+                ohlc_data[symbol].append({
+                    'timestamp': minute_timestamp,
+                    'open': simplified_data['ltp'],
+                    'high': simplified_data['ltp'],
+                    'low': simplified_data['ltp'],
+                    'close': simplified_data['ltp'],
+                    'volume': simplified_data['volume']
+                })
+            else:
+                current_candle = ohlc_data[symbol][-1]
+                current_candle['high'] = max(current_candle['high'], simplified_data['ltp'])
+                current_candle['low'] = min(current_candle['low'], simplified_data['ltp'])
+                current_candle['close'] = simplified_data['ltp']
+                current_candle['volume'] = simplified_data['volume']
+            
             # Save to file if needed
             save_to_file(symbol, simplified_data)
-            
-            # FIXED: Emit to subscribed clients only
-            if symbol in symbol_to_clients:
-                for sid in symbol_to_clients[symbol]:
-                    try:
-                        sio.emit('marketData', simplified_data, room=sid)
-                    except Exception as e:
-                        logger.error(f"❌ Error sending data to client {sid}: {e}")
             
             logger.debug(f"📈 Processed market data for {symbol}: LTP={simplified_data['ltp']}")
             
@@ -804,7 +874,7 @@ def onclose(message):
     sio.emit('fyersDisconnected', {'message': str(message)})
 
 
-def heartbeat_task():
+async def heartbeat_task():
     """Send periodic heartbeat to clients."""
     global running
     while running:
@@ -817,21 +887,138 @@ def heartbeat_task():
                 'server_status': 'healthy',
                 'auth_status': auth_initialized
             }
-            sio.emit('heartbeat', heartbeat_data)
-            time.sleep(30)  # Send heartbeat every 30 seconds
+            await sio.emit('heartbeat', heartbeat_data)
+            await asyncio.sleep(30)  # Send heartbeat every 30 seconds
         except Exception as e:
             logger.error(f"❌ Error in heartbeat: {e}")
-            time.sleep(30)
+            await asyncio.sleep(30)
 
 
-def main_process():
-    """Main process to authenticate and start WebSocket connection."""
+async def emit_real_time_data():
+    """Emit real-time data to subscribed clients for multi-view support (5010 specific)."""
+    global running, last_cleanup_time
+    while running:
+        try:
+            current_time = time.time()
+            cutoff_time = current_time - (DATA_RETENTION_HOURS * 3600)
+            
+            # Periodic cleanup of old data
+            if current_time - last_cleanup_time >= data_cleanup_interval:
+                await cleanup_old_data()
+                last_cleanup_time = current_time
+            
+            # Emit pending data to subscribed clients
+            for symbol in list(pending_data.keys()):
+                if symbol in pending_data and symbol in symbol_to_clients:
+                    data = pending_data[symbol].copy()
+                    
+                    if current_time - last_emit_time[symbol] >= REAL_TIME_INTERVAL:
+                        for sid in list(symbol_to_clients[symbol]):
+                            try:
+                                await sio.emit('marketData', data, room=sid)
+                                
+                                # Also emit chart update
+                                chart_update = {
+                                    'symbol': symbol,
+                                    'price': data['ltp'],
+                                    'timestamp': data['timestamp'],
+                                    'volume': data.get('volume', 0),
+                                    'change': data.get('change', 0),
+                                    'changePercent': data.get('changePercent', 0)
+                                }
+                                await sio.emit('chartUpdate', chart_update, room=sid)
+                                
+                            except Exception as e:
+                                logger.error(f"❌ Error sending data to client {sid}: {e}")
+                        
+                        last_emit_time[symbol] = current_time
+            
+            await asyncio.sleep(CHART_UPDATE_INTERVAL)
+            
+        except Exception as e:
+            logger.error(f"❌ Error in emit_real_time_data: {e}")
+            await asyncio.sleep(0.1)
+
+
+async def cleanup_old_data():
+    """Remove data older than DATA_RETENTION_HOURS (multi-view specific)."""
+    try:
+        current_time = time.time()
+        cutoff_time = current_time - (DATA_RETENTION_HOURS * 3600)
+        
+        logger.info("Starting data cleanup for 5010 multi-view...")
+        cleaned_count = 0
+        
+        for symbol in list(historical_data.keys()):
+            if symbol in historical_data:
+                recent_data = deque(maxlen=MAX_HISTORY_POINTS)
+                for point in historical_data[symbol]:
+                    if point.get('timestamp', 0) > cutoff_time:
+                        recent_data.append(point)
+                
+                if len(recent_data) > 0:
+                    historical_data[symbol] = recent_data
+                elif symbol_subscriptions[symbol] == 0:
+                    del historical_data[symbol]
+                    cleaned_count += 1
+            
+            if symbol in ohlc_data:
+                recent_ohlc = deque(maxlen=MAX_HISTORY_POINTS)
+                for candle in ohlc_data[symbol]:
+                    if candle.get('timestamp', 0) > cutoff_time:
+                        recent_ohlc.append(candle)
+                
+                if len(recent_ohlc) > 0:
+                    ohlc_data[symbol] = recent_ohlc
+                elif symbol_subscriptions[symbol] == 0 and symbol in ohlc_data:
+                    del ohlc_data[symbol]
+        
+        logger.info(f"Data cleanup completed. Cleaned {cleaned_count} old symbols.")
+    except Exception as e:
+        logger.error(f"❌ Error in cleanup_old_data: {e}")
+
+
+async def auth_watcher():
+    """Watch auth file for updates and reinitialize when needed."""
+    global running, auth_initialized, fyers
+    auth_file_path = os.path.join('data', 'fyers_data_auth.json')
+    last_modified = 0
+    
+    while running:
+        try:
+            if os.path.exists(auth_file_path):
+                current_modified = os.path.getmtime(auth_file_path)
+                if current_modified > last_modified or not auth_initialized:
+                    if not auth_initialized or current_modified > last_modified:
+                        logger.info("🔄 Auth file updated, reinitializing...")
+                        if initialize_fyers() and fyers:
+                            try:
+                                # Start WebSocket in asyncio executor
+                                loop = asyncio.get_event_loop()
+                                loop.run_in_executor(executor, fyers.connect)
+                                logger.info("✅ WebSocket connection started")
+                                
+                                # Resubscribe to all active symbols
+                                if active_subscriptions and hasattr(fyers, 'subscribe'):
+                                    symbols_list = list(active_subscriptions)
+                                    await loop.run_in_executor(executor, fyers.subscribe, symbols_list, "SymbolUpdate")
+                                    logger.info(f"✅ Resubscribed to {len(symbols_list)} symbols")
+                            except Exception as e:
+                                logger.error(f"❌ WebSocket start error: {e}")
+                    last_modified = current_modified
+            await asyncio.sleep(5)
+        except Exception as e:
+            logger.error(f"❌ Auth watcher error: {e}")
+            await asyncio.sleep(10)
+
+
+async def main_async():
+    """Main async process to start background tasks and server."""
     global fyers, fyers_client, running
     
-    # Load available symbols (optional, may result in empty list)
+    # Load available symbols (optional)
     load_available_symbols()
     
-    # No preloading of historical data - completely on-demand
     logger.info("🚀 Backend initialized in dynamic mode - no preloading")
     
     try:
@@ -843,41 +1030,64 @@ def main_process():
             logger.info("✅ Initial authentication successful")
             
             if fyers:
-                ws_thread = threading.Thread(target=lambda: fyers.connect(), daemon=True)
-                ws_thread.start()
+                loop = asyncio.get_event_loop()
+                loop.run_in_executor(executor, fyers.connect)
                 logger.info("✅ WebSocket connection started")
         else:
             logger.info("⚠️ Initial authentication failed, will retry when auth file updates")
         
-        # Start auth watcher
-        auth_thread = threading.Thread(target=auth_watcher, daemon=True)
-        auth_thread.start()
-        
-        # Start heartbeat task
-        heartbeat_thread = threading.Thread(target=heartbeat_task, daemon=True)
-        heartbeat_thread.start()
-        
-        # Start server
-        logger.info("🚀 Starting Live Market Server on port 5010...")
-        logger.info("🔑 Using auto authentication with JWT token handling")
-        logger.info("📡 Features: Dynamic symbol loading, on-demand data fetching")
-        eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 5010)), app)
+        # Start background tasks
+        await asyncio.gather(
+            auth_watcher(),
+            heartbeat_task(),
+            emit_real_time_data(),
+            return_exceptions=True
+        )
         
     except Exception as e:
-        logger.error(f"❌ Error in main process: {e}")
+        logger.error(f"❌ Error in main_async: {e}")
         import traceback
         traceback.print_exc()
 
 
 def main():
+    """Main entry point - start uvicorn server."""
     global running
+    
+    logger.info("🚀 Starting Live Market Server 5010 (Multi-View) on port 5010...")
+    logger.info("🔑 Using async socket.io with JWT token handling")
+    logger.info("📡 Features: Multi-symbol, Multi-client, On-demand data fetching")
+    
+    # Configure uvicorn
+    config = uvicorn.Config(
+        app=app,
+        host="0.0.0.0",
+        port=5010,
+        log_level="info",
+        access_log=False
+    )
+    
+    server = uvicorn.Server(config)
+    
     try:
-        eventlet.spawn(main_process)
-        while running:
-            time.sleep(1)
+        # Create event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Schedule background tasks
+        loop.create_task(main_async())
+        
+        # Run server
+        loop.run_until_complete(server.serve())
+        
     except KeyboardInterrupt:
         logger.info("🛑 Shutting down...")
         running = False
+    except Exception as e:
+        logger.error(f"❌ Fatal error: {e}")
+        running = False
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":

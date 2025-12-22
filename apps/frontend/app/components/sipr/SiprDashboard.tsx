@@ -89,33 +89,114 @@ const PatternCard: React.FC<{
         </div>
       </CardHeader>
       <CardContent>
-        {/* ✅ NEW: Most Frequent Days - ALWAYS VISIBLE (not in expanded) */}
+        {/* ✅ Most Frequent Days - Shows ACTUAL occurrence days with counts */}
         {pattern.most_frequent_days && (
           <div className="mb-4 p-3 bg-blue-500/10 rounded-lg border border-blue-500/30">
             <h4 className="text-sm font-semibold text-blue-300 flex items-center gap-2 mb-2">
               <CalendarDays className="h-4 w-4" />
-              Most Frequent Days
+              Most Frequent Occurrence Days
             </h4>
             <div className="flex flex-wrap gap-2">
               {(() => {
-                const formatDaysDisplay = (days: string | undefined) => {
-                  if (!days) return "N/A";
-                  // Detect if it covers the full work week
-                  if ((days.includes("Monday") && days.includes("Friday") && days.includes("Wednesday")) ||
-                    days === "Monday, Tuesday, Wednesday, Thursday, Friday") {
-                    return "All Trading Days";
+                const daysRaw = pattern.most_frequent_days;
+                
+                // Handle null/undefined
+                if (!daysRaw) {
+                  return (
+                    <Badge
+                      variant="outline"
+                      className="bg-gray-600/30 border-gray-500/50 text-gray-300 font-medium"
+                    >
+                      N/A
+                    </Badge>
+                  );
+                }
+                
+                // Normalize to string - handle both string and array types
+                const days: string = Array.isArray(daysRaw) 
+                  ? daysRaw.join(', ') 
+                  : (typeof daysRaw === 'string' ? daysRaw : String(daysRaw));
+                
+                // Handle error states
+                if (days === 'No occurrence data' || days === 'No valid timestamps' || days === 'No trading day occurrences') {
+                  return (
+                    <Badge
+                      variant="outline"
+                      className="bg-gray-600/30 border-gray-500/50 text-gray-300 font-medium"
+                    >
+                      {days}
+                    </Badge>
+                  );
+                }
+                
+                // Check if this is placeholder "all trading days" data (without percentages)
+                const allTradingDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+                const hasAllDays = allTradingDays.every(day => days.includes(day));
+                const hasPercentOrCount = days.includes('%') || /\(\d+\)/.test(days);
+                
+                // If it has all 5 days WITHOUT any stats, it's placeholder data
+                if (hasAllDays && !hasPercentOrCount) {
+                  return (
+                    <Badge
+                      variant="outline"
+                      className="bg-gray-600/30 border-gray-500/50 text-gray-300 font-medium"
+                    >
+                      Calculating...
+                    </Badge>
+                  );
+                }
+                
+                // Parse format: "Friday (24.3%), Monday (21.6%)" or "Monday (45), Tuesday (32)"
+                // Split by comma and create individual badges for each day
+                const dayEntries = days.split(',').map(entry => entry.trim()).filter(Boolean);
+                
+                if (dayEntries.length === 0) {
+                  return (
+                    <Badge
+                      variant="outline"
+                      className="bg-gray-600/30 border-gray-500/50 text-gray-300 font-medium"
+                    >
+                      N/A
+                    </Badge>
+                  );
+                }
+                
+                return dayEntries.map((entry, idx) => {
+                  // Extract day name and value (supports both "Monday (24.3%)" and "Monday (45)")
+                  const match = entry.match(/^(\w+)\s*\(([^)]+)\)$/);
+                  if (match) {
+                    const [, dayName, value] = match;
+                    // Color coding based on rank
+                    const colorClass = idx === 0 
+                      ? 'bg-green-600/30 border-green-500/50 text-green-100'
+                      : idx === 1 
+                      ? 'bg-yellow-600/30 border-yellow-500/50 text-yellow-100'
+                      : 'bg-orange-600/30 border-orange-500/50 text-orange-100';
+                    
+                    // Format display: show percentage as-is, or add "occurrences" for counts
+                    const displayValue = value.includes('%') ? value : `${value} occurrences`;
+                    
+                    return (
+                      <Badge
+                        key={`${dayName}-${idx}`}
+                        variant="outline"
+                        className={`${colorClass} font-medium`}
+                      >
+                        {dayName}: {displayValue}
+                      </Badge>
+                    );
                   }
-                  return days;
-                };
-
-                return (
-                  <Badge
-                    variant="outline"
-                    className="bg-blue-600/30 border-blue-500/50 text-blue-100 font-medium"
-                  >
-                    {formatDaysDisplay(pattern.most_frequent_days)}
-                  </Badge>
-                );
+                  // Fallback for unexpected format (e.g., just day names without counts)
+                  return (
+                    <Badge
+                      key={`${entry}-${idx}`}
+                      variant="outline"
+                      className="bg-blue-600/30 border-blue-500/50 text-blue-100 font-medium"
+                    >
+                      {entry}
+                    </Badge>
+                  );
+                });
               })()}
             </div>
           </div>
@@ -295,7 +376,7 @@ export const SiprDashboard: React.FC<SiprDashboardProps> = ({
   console.log('SiprDashboard - loading state:', loading);
 
   return (
-    <div className={`space-y-6 ${className}`}>
+    <div className={`space-y-6 bg-black p-4 rounded-lg ${className}`}>
       {/* Header */}
       <Card className="border-purple-500/30 bg-gradient-to-r from-purple-950/30 to-blue-950/30">
         <CardHeader>

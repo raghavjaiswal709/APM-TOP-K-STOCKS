@@ -401,7 +401,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
   // �🔀 Separator Modal State
   const [isSeparatorModalOpen, setIsSeparatorModalOpen] = useState(false);
-  const [separateViewMode, setSeparateViewMode] = useState<'live-prediction' | 'live-cluster' | 'prediction-cluster'>('live-prediction');
+  const [separateViewMode, setSeparateViewMode] = useState<'live-prediction' | 'live-cluster' | 'prediction-cluster' | 'combined'>('live-prediction');
 
 
   const [mainMode, setMainMode] = useState<'none' | 'bidAsk' | 'buySell'>('none');
@@ -415,7 +415,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     symbol: symbol,
     exchange: 'NSE',
     method: 'spectral',
-    enabled: isSeparatorModalOpen && (separateViewMode === 'live-cluster' || separateViewMode === 'prediction-cluster'),
+    enabled: isSeparatorModalOpen && (separateViewMode === 'live-cluster' || separateViewMode === 'prediction-cluster' || separateViewMode === 'combined'),
   });
 
   const [secondaryView, setSecondaryView] = useState<'line' | 'spread' | 'std'>('line');
@@ -1899,6 +1899,193 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return plotData;
   };
 
+  // CREATE COMBINED VIEW - All overlays in one full-width chart
+  // PRIORITY: Cluster Pattern FIRST, then Live Market, then Predictions
+  const createCombinedViewData = () => {
+    const plotData: any[] = [];
+    const colors = getColorTheme();
+
+    console.log('[Combined View] Creating combined chart data:', {
+      chartType,
+      hasLineData: !!(lineChartData?.x?.length),
+      hasCandleData: !!(candlestickData?.x?.length),
+      hasPredictions: !!(predictions && predictions.count > 0),
+      hasClusterData: !!(clusterPatternData && clusterPatternData.length > 0),
+      clusterDataPoints: clusterPatternData?.length || 0,
+    });
+
+    // Helper: Convert cluster minutes_from_open to today's Date
+    const convertClusterTime = (totalMinutes: number): Date => {
+      const hours = Math.floor(totalMinutes / 60) + 9;
+      const minutes = (totalMinutes % 60) + 15;
+      const adjustedHours = minutes >= 60 ? hours + 1 : hours;
+      const adjustedMinutes = minutes >= 60 ? minutes - 60 : minutes;
+      
+      const today = new Date();
+      today.setHours(adjustedHours, adjustedMinutes, 0, 0);
+      return today;
+    };
+
+    // ========================================================
+    // 1. CLUSTER PATTERN - PRIORITY (Full Day 9:15 to 3:30)
+    // Uses Secondary Y-axis (y2) for normalized percentage change
+    // ========================================================
+    if (clusterPatternData && Array.isArray(clusterPatternData) && clusterPatternData.length > 0) {
+      const clusterX: Date[] = [];
+      const clusterY: number[] = []; // Normalized close (percentage change)
+
+      console.log('[Combined View] Processing Cluster Pattern FIRST (Priority)...');
+
+      clusterPatternData.forEach((point: any, idx: number) => {
+        if (point && typeof point.timestamp === 'number') {
+          const time = convertClusterTime(point.timestamp);
+          clusterX.push(time);
+          // Use normClose for cluster (normalized percentage change from open)
+          clusterY.push(point.normClose ?? point.priceClose ?? 0);
+
+          if (idx < 2 || idx === clusterPatternData.length - 1) {
+            console.log(`  Cluster Point ${idx}: ${point.timestamp} min → ${time.toLocaleTimeString()} = ${(point.normClose ?? 0).toFixed(4)}`);
+          }
+        }
+      });
+
+      if (clusterX.length > 0) {
+        console.log('[Combined View] ADDING CLUSTER PATTERN:', {
+          points: clusterX.length,
+          timeRange: `${clusterX[0].toLocaleTimeString()} - ${clusterX[clusterX.length - 1].toLocaleTimeString()}`,
+          valueRange: `${Math.min(...clusterY).toFixed(4)} to ${Math.max(...clusterY).toFixed(4)}`,
+        });
+
+        // Cluster Pattern on SECONDARY Y-AXIS (y2) - RIGHT SIDE
+        plotData.push({
+          x: clusterX,
+          y: clusterY,
+          type: 'scatter',
+          mode: 'lines',
+          name: 'Cluster Pattern (%)',
+          line: {
+            color: '#8b5cf6', // Purple
+            width: 3,
+            shape: 'spline',
+          },
+          hovertemplate: '<b>Cluster Pattern</b><br>' +
+            'Time: %{x|%H:%M}<br>' +
+            'Change: %{y:.2f}%<br>' +
+            '<extra></extra>',
+          showlegend: true,
+          yaxis: 'y2', // SECONDARY Y-AXIS
+        });
+      }
+    } else {
+      console.warn('[Combined View] No cluster pattern data - will still show Live Market and Predictions');
+    }
+
+    // ========================================================
+    // 2. LIVE MARKET DATA - PRIMARY Y-AXIS (y)
+    // ========================================================
+    if (chartType === 'line') {
+      const { x: timeValues, y: priceValues } = lineChartData;
+      if (timeValues && timeValues.length > 0) {
+        console.log('[Combined View] Adding Live Market:', timeValues.length, 'points');
+        plotData.push({
+          x: timeValues,
+          y: priceValues,
+          type: 'scatter',
+          mode: 'lines',
+          name: 'Live Market (₹)',
+          line: {
+            color: '#10B981', // Green
+            width: 2.5,
+            shape: 'linear'
+          },
+          connectgaps: false,
+          hovertemplate: '<b>Live Market</b><br>' +
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Price: ₹%{y:.2f}<br>' +
+            '<extra></extra>',
+          showlegend: true,
+          yaxis: 'y', // PRIMARY Y-AXIS (LEFT)
+        });
+      }
+    } else {
+      // Candlestick for live market
+      const { x, open, high, low, close } = candlestickData;
+      if (x.length > 0) {
+        console.log('[Combined View] Adding Candlestick:', x.length, 'candles');
+        plotData.push({
+          x,
+          open,
+          high,
+          low,
+          close,
+          type: 'candlestick',
+          name: 'Live Market (OHLC)',
+          increasing: { line: { color: colors.upColor } },
+          decreasing: { line: { color: colors.downColor } },
+          showlegend: true,
+          yaxis: 'y', // PRIMARY Y-AXIS (LEFT)
+        });
+      }
+    }
+
+    // ========================================================
+    // 3. AI PREDICTIONS - PRIMARY Y-AXIS (y)
+    // ========================================================
+    if (predictions && predictions.count > 0 && todayPredictionInfo.hasTodayPredictions) {
+      const allPredictionEntries = Object.entries(predictions.predictions);
+      const predictionEntries = filterTodayPredictions(allPredictionEntries);
+      
+      if (predictionEntries.length > 0) {
+        const sortedPredictions = predictionEntries.sort((a, b) => {
+          const timeA = new Date(a[1].timestamp || a[0]).getTime();
+          const timeB = new Date(b[1].timestamp || b[0]).getTime();
+          return timeA - timeB;
+        });
+
+        const predictionTimes = sortedPredictions.map(([key, pred]) =>
+          new Date(pred.timestamp || key)
+        );
+        const predictionValues = sortedPredictions.map(([, pred]) => Number(pred.close));
+
+        console.log('[Combined View] Adding Predictions:', predictionTimes.length, 'points');
+        plotData.push({
+          x: predictionTimes,
+          y: predictionValues,
+          type: 'scatter',
+          mode: 'lines+markers',
+          name: 'AI Predictions (₹)',
+          line: {
+            color: '#F59E0B', // Orange/Amber (different from purple cluster)
+            width: 2.5,
+            shape: 'spline',
+            dash: 'dot'
+          },
+          marker: {
+            size: 7,
+            color: '#F59E0B',
+            symbol: 'diamond',
+            line: {
+              color: '#ffffff',
+              width: 1.5
+            }
+          },
+          connectgaps: true,
+          hovertemplate: '<b>AI Prediction</b><br>' +
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Predicted: ₹%{y:.2f}<br>' +
+            '<extra></extra>',
+          showlegend: true,
+          yaxis: 'y', // PRIMARY Y-AXIS (LEFT)
+        });
+      }
+    }
+
+    console.log('[Combined View] Total traces created:', plotData.length, 
+      plotData.map(t => t.name).join(', '));
+    
+    return plotData;
+  };
+
   const createPlotData = () => {
     const colors = getColorTheme();
     let plotData: any[] = [];
@@ -1981,13 +2168,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             const latestConnectedY: number[] = [];
             const latestConnectedColors: string[] = [];
             const latestConnectedLabels: string[] = [];
-
-            // Add anchor point first
-            const anchorTime = new Date(latestPrediction.prediction_time);
-            latestConnectedX.push(anchorTime);
-            latestConnectedY.push(latestPrediction.input_close);
-            latestConnectedColors.push('#22d3ee');
-            latestConnectedLabels.push('Anchor');
 
             // Add all horizon predictions in order
             horizonConfig.forEach(({ horizon, color, offset, label }) => {
@@ -2083,42 +2263,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                   } as any);
                 }
               });
-
-              // Historical anchors (dimmed)
-              const historicalAnchorsX: Date[] = [];
-              const historicalAnchorsY: number[] = [];
-
-              allPredictions.forEach((pred) => {
-                const predTime = new Date(pred.prediction_time).getTime();
-                if (predTime === latestPredTime) return;
-
-                const value = pred.input_close;
-                if (value && !isNaN(value)) {
-                  historicalAnchorsX.push(new Date(pred.prediction_time));
-                  historicalAnchorsY.push(value);
-                }
-              });
-
-              if (historicalAnchorsX.length > 0) {
-                plotData.push({
-                  x: historicalAnchorsX,
-                  y: historicalAnchorsY,
-                  type: 'scatter',
-                  mode: 'markers',
-                  name: 'Anchors (history)',
-                  marker: {
-                    size: 6,
-                    color: '#22d3ee',
-                    symbol: 'circle',
-                    opacity: 0.3
-                  },
-                  hovertemplate: '<b>Anchor (History)</b><br>' +
-                                'Time: %{x|%H:%M:%S}<br>' +
-                                'Input Price: ₹%{y:.2f}<br>' +
-                                '<extra></extra>',
-                  showlegend: false
-                } as any);
-              }
             }
 
             // Render latest prediction markers with labels
@@ -2772,76 +2916,6 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             } as any);
           });
 
-          // Add anchor points (input_close) - dimmed historical, highlighted latest
-          const historicalAnchorsX: Date[] = [];
-          const historicalAnchorsY: number[] = [];
-          const latestAnchorX: Date[] = [];
-          const latestAnchorY: number[] = [];
-
-          allPredictions.forEach((pred) => {
-            const predTime = new Date(pred.prediction_time);
-            const value = pred.input_close;
-            const isLatest = predTime.getTime() === latestPredTime;
-
-            if (value && !isNaN(value)) {
-              if (isLatest) {
-                latestAnchorX.push(predTime);
-                latestAnchorY.push(value);
-              } else {
-                historicalAnchorsX.push(predTime);
-                historicalAnchorsY.push(value);
-              }
-            }
-          });
-
-          // Historical anchors
-          if (historicalAnchorsX.length > 0) {
-            plotData.push({
-              x: historicalAnchorsX,
-              y: historicalAnchorsY,
-              type: 'scatter',
-              mode: 'markers',
-              name: 'Anchor Points (Historical)',
-              marker: {
-                size: 6,
-                color: '#22d3ee',
-                symbol: 'circle',
-                opacity: 0.3
-              },
-              hovertemplate: '<b>Anchor (Historical)</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'Input Price: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
-              showlegend: false
-            } as any);
-          }
-
-          // Latest anchor
-          if (latestAnchorX.length > 0) {
-            plotData.push({
-              x: latestAnchorX,
-              y: latestAnchorY,
-              type: 'scatter',
-              mode: 'markers',
-              name: '⚡ Anchor (Latest)',
-              marker: {
-                size: 12,
-                color: '#22d3ee',
-                symbol: 'circle',
-                line: {
-                  color: '#ffffff',
-                  width: 2
-                },
-                opacity: 1
-              },
-              hovertemplate: '<b>⚡ Anchor Point (LATEST)</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'Input Price: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
-              showlegend: true
-            } as any);
-          }
-
           console.log(`✅ [PlotlyChart-Candle] GTT predictions rendered:`, {
             totalPredictions: allPredictions.length,
             horizons: 5,
@@ -2945,23 +3019,25 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           !isNaN(point.ltp)
         ) || [];
         priceData = validData.map(point => Number(point.ltp));
-        timeData = validData.slice(14).map(point => new Date(point.timestamp * 1000));
+        timeData = validData.map(point => new Date(point.timestamp * 1000));
       } else {
         const { close: candleClose, x: candleX } = candlestickData;
         if (Array.isArray(candleClose)) {
           priceData = candleClose.filter(price =>
             price !== null && price !== undefined && !isNaN(price)
           );
-          timeData = Array.isArray(candleX) ? candleX.slice(14) : [];
+          timeData = Array.isArray(candleX) ? candleX : [];
         }
       }
 
       if (priceData.length >= 15) {
         const rsiValues = calculateRSI(priceData, 14);
-        if (rsiValues && rsiValues.length > 0 && timeData.length === rsiValues.length) {
+        const paddedRsiValues = Array(14).fill(null).concat(rsiValues);
+        const alignedRsiValues = paddedRsiValues.slice(0, timeData.length);
+        if (alignedRsiValues && alignedRsiValues.length > 0) {
           plotData.push({
             x: timeData,
-            y: rsiValues,
+            y: alignedRsiValues,
             type: 'scatter',
             mode: 'lines',
             name: 'RSI',
@@ -2971,7 +3047,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             },
             yaxis: 'y2',
             connectgaps: false,
-            hovertemplate: '<b>%{fullData.name}</b><br>' +
+            hovertemplate: '<b>RSI</b><br>' +
               'Time: %{x|%H:%M:%S}<br>' +
               'RSI: %{y:.2f}<br>' +
               '<extra></extra>',
@@ -3571,9 +3647,12 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         title: 'RSI',
         titlefont: { color: colors.text },
         tickfont: { color: colors.text },
-        domain: showIndicators.macd ? [0.25, 0.45] : [0, 0.25],
+        domain: [0.25, 0.45],
         range: [0, 100],
-        showgrid: false,
+        showgrid: true,
+        gridcolor: 'rgba(128, 128, 128, 0.1)',
+        side: 'right',
+        overlaying: 'y'
       };
     }
 
@@ -4382,13 +4461,135 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                 onChange={(e) => setSeparateViewMode(e.target.value as any)}
                 className="w-full px-3 py-2 text-sm bg-zinc-950 text-zinc-100 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:border-transparent"
               >
+                <option value="combined">Combined View</option>
                 <option value="live-prediction">Live Market ↔ Prediction</option>
                 <option value="live-cluster">Live Market ↔ Cluster Pattern</option>
                 <option value="prediction-cluster">Prediction ↔ Cluster Pattern</option>
               </select>
             </div>
 
-            {/* Modal Content - Side by Side Charts */}
+            {/* Modal Content - Conditional Layout */}
+            {separateViewMode === 'combined' ? (
+              /* COMBINED VIEW - Single Full-Width Chart */
+              <div className="flex-1 min-h-0 p-6 bg-zinc-950">
+                <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden flex flex-col">
+                  <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="h-2 w-2 bg-gradient-to-r from-emerald-500 via-violet-500 to-amber-500 rounded-full animate-pulse"></div>
+                          <h3 className="text-sm font-medium text-zinc-100">
+                            Combined Analysis - Live Market, Predictions & Cluster Pattern
+                          </h3>
+                        </div>
+                        <p className="text-xs text-zinc-400">
+                          All data overlays • Market Hours: 9:15 AM - 3:30 PM • Dual Y-Axis (Price ₹ | Cluster %)
+                        </p>
+                      </div>
+                      {/* Data Status Indicators */}
+                      <div className="flex items-center gap-3 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                          <span className="text-zinc-400">Live Market</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                          <span className="text-zinc-400">Predictions</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {clusterLoading ? (
+                            <div className="w-2 h-2 rounded-full bg-violet-500 animate-pulse"></div>
+                          ) : clusterError ? (
+                            <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                          ) : clusterPatternData?.length > 0 ? (
+                            <div className="w-2 h-2 rounded-full bg-violet-500"></div>
+                          ) : (
+                            <div className="w-2 h-2 rounded-full bg-zinc-600"></div>
+                          )}
+                          <span className="text-zinc-400">
+                            Cluster {clusterLoading ? '(Loading...)' : clusterError ? '(Error)' : clusterPatternData?.length > 0 ? `(${clusterPatternData.length} pts)` : '(No data)'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 min-h-0 p-4">
+                    <Plot
+                      data={createCombinedViewData()}
+                      layout={{
+                        autosize: true,
+                        height: undefined,
+                        margin: { l: 70, r: 70, t: 80, b: 60 }, // Increased margins for dual Y-axis
+                        title: {
+                          text: `${symbol} - Complete Market Analysis (All Overlays)`,
+                          font: { size: 16, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif', weight: 600 },
+                        },
+                        xaxis: {
+                          title: 'Time (Market Hours: 9:15 AM - 3:30 PM)',
+                          type: 'date',
+                          gridcolor: '#27272a',
+                          linecolor: '#3f3f46',
+                          tickfont: { color: '#a1a1aa', size: 11 },
+                          titlefont: { color: '#d4d4d8', size: 12 },
+                          tickformat: '%H:%M',
+                          // Fixed range for full market day
+                          range: [
+                            new Date(new Date().setHours(9, 15, 0, 0)),
+                            new Date(new Date().setHours(15, 30, 0, 0))
+                          ],
+                          dtick: 30 * 60 * 1000, // 30-minute ticks
+                        },
+                        yaxis: {
+                          title: 'Price (₹)',
+                          side: 'left',
+                          gridcolor: '#27272a',
+                          linecolor: '#10B981', // Green for live market
+                          tickfont: { color: '#10B981', size: 11 },
+                          titlefont: { color: '#10B981', size: 13 },
+                          autorange: true,
+                        },
+                        yaxis2: {
+                          title: 'Cluster Pattern (%)',
+                          side: 'right',
+                          overlaying: 'y',
+                          gridcolor: 'rgba(139, 92, 246, 0.1)',
+                          linecolor: '#8b5cf6', // Purple for cluster
+                          tickfont: { color: '#8b5cf6', size: 11 },
+                          titlefont: { color: '#8b5cf6', size: 13 },
+                          autorange: true,
+                          showgrid: false,
+                        },
+                        plot_bgcolor: '#18181b',
+                        paper_bgcolor: '#18181b',
+                        font: { family: 'Inter, system-ui, sans-serif', color: '#e4e4e7' },
+                        hovermode: 'x unified',
+                        showlegend: true,
+                        legend: {
+                          orientation: 'h',
+                          yanchor: 'bottom',
+                          y: 1.02,
+                          xanchor: 'center',
+                          x: 0.5,
+                          bgcolor: 'rgba(24, 24, 27, 0.95)',
+                          bordercolor: '#3f3f46',
+                          borderwidth: 1,
+                          font: { size: 12, color: '#e4e4e7' },
+                        },
+                      }}
+                      config={{
+                        responsive: true,
+                        displayModeBar: true,
+                        displaylogo: false,
+                        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                      }}
+                      style={{ width: '100%', height: '100%' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+            /* SIDE-BY-SIDE VIEW - Original dual panel layout */
             <div className="grid grid-cols-2 gap-4 p-4 flex-1 min-h-0 bg-zinc-950">
 
               {/* LEFT PANEL */}
@@ -4587,6 +4788,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                 </div>
               </div>
             </div>
+            )}
+            {/* End of conditional layout */}
 
           </div>
         </div>

@@ -21,11 +21,12 @@ const nextConfig = {
         destination: 'http://100.93.172.21:8505/intraday/:path*',
       },
 
-      // ⚠️ CATCH-ALL: Proxy remaining /api/* to NestJS backend (port 5000)
+      // ⚠️ CATCH-ALL: Proxy remaining /api/* to NestJS backend (port 5002)
       // This excludes paths already matched above AND Next.js API routes like /api/time-machine
+      // Uses BACKEND_URL env var for Docker compatibility (defaults to localhost for local dev)
       {
         source: '/api/:path((?!time-machine).*)*',
-        destination: 'http://localhost:5002/api/:path*',
+        destination: `${process.env.BACKEND_URL || 'http://localhost:5002'}/api/:path*`,
       },
 
       // Static asset proxies
@@ -33,7 +34,7 @@ const nextConfig = {
         source: '/watchlist-graphs/:path*',
         destination: 'http://100.93.172.21:6969/Watchlist_assets/:path*',
       },
-      
+
       // ✅ NEW: Sthiti data proxy for historical charts, headlines, clusters, predictions
       {
         source: '/sthiti-data/:path*',

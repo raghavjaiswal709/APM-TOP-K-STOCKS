@@ -1,0 +1,6 @@
+psycopg2-binary
+pytz
+fyers-apiv3
+ratelimit
+requests
+pandas

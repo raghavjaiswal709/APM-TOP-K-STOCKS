@@ -1,11 +1,23 @@
+# Socket.IO & Web Framework
 python-socketio==5.11.0
 python-engineio==4.9.0
-eventlet==0.33.3
+flask==3.0.0
+flask-socketio==5.3.6
+uvicorn[standard]==0.27.0
+websockets==12.0
+
+# Fyers API
 fyers-apiv3
-requests
-pandas
-numpy
-python-dotenv
-flask
-flask-socketio
-ratelimit
+
+# Data Processing
+pandas>=2.2.0
+numpy>=1.26.3
+
+# Utilities
+python-dotenv==1.0.0
+requests==2.31.0
+pytz==2024.1
+ratelimit==2.2.1
+
+# Database (optional, if connecting to PostgreSQL)
+psycopg2-binary==2.9.9

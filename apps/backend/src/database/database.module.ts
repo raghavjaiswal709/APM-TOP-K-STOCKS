@@ -29,4 +29,4 @@ import { DailyWatchlistMetrics } from '../watchlist/entities/daily-watchlist-met
     }),
   ],
 })
-export class DatabaseModule {}
+export class DatabaseModule { }

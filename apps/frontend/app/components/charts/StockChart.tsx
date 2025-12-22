@@ -1413,16 +1413,16 @@ export function StockChart({
       case 'ma': {
         const period = options.period || 20;
         const maResult = new Array(prices.length);
+        
+        // ✅ FIX: Calculate MA from start (use available data for warmup)
         for (let i = 0; i < prices.length; i++) {
-          if (i < period - 1) {
-            maResult[i] = null;
-          } else {
-            let sum = 0;
-            for (let j = i - period + 1; j <= i; j++) {
-              sum += prices[j];
-            }
-            maResult[i] = sum / period;
+          const startIdx = Math.max(0, i - period + 1);
+          const windowLength = i - startIdx + 1;
+          let sum = 0;
+          for (let j = startIdx; j <= i; j++) {
+            sum += prices[j];
           }
+          maResult[i] = sum / windowLength; // Use actual window size, not period
         }
         result = maResult;
         break;
@@ -1430,14 +1430,20 @@ export function StockChart({
       case 'ema': {
         const period = options.period || 9;
         const k = 2 / (period + 1);
-        const result = new Array(prices.length);
-        result[0] = prices[0];
-        for (let i = 1; i < prices.length; i++) {
-          result[i] = prices[i] * k + result[i-1] * (1-k);
+        const emaResult = new Array(prices.length);
+        
+        // ✅ FIX: Initialize with SMA of first period points, then EMA
+        if (prices.length > 0) {
+          // Start with simple average of first `period` points (or all available if fewer)
+          const warmupLength = Math.min(period, prices.length);
+          emaResult[0] = prices.slice(0, warmupLength).reduce((a, b) => a + b, 0) / warmupLength;
+          
+          // Apply EMA formula from point 1 onwards
+          for (let i = 1; i < prices.length; i++) {
+            emaResult[i] = prices[i] * k + emaResult[i-1] * (1-k);
+          }
         }
-        for (let i = 0; i < period - 1; i++) {
-          result[i] = null;
-        }
+        result = emaResult;
         break;
       }
       case 'bollinger': {
@@ -1446,17 +1452,21 @@ export function StockChart({
         const ma = calculateIndicator('ma', prices, { period }) as number[];
         const upperBand = new Array(prices.length);
         const lowerBand = new Array(prices.length);
+        
+        // ✅ FIX: Calculate bands from start using adaptive window
         for (let i = 0; i < prices.length; i++) {
           if (ma[i] === null) {
             upperBand[i] = null;
             lowerBand[i] = null;
           } else {
+            const startIdx = Math.max(0, i - period + 1);
+            const windowLength = i - startIdx + 1;
             let sumSquares = 0;
-            for (let j = i - period + 1; j <= i; j++) {
+            for (let j = startIdx; j <= i; j++) {
               const diff = prices[j] - ma[i];
               sumSquares += diff * diff;
             }
-            const stdDev = Math.sqrt(sumSquares / period);
+            const stdDev = Math.sqrt(sumSquares / windowLength);
             upperBand[i] = ma[i] + (stdDev * stdDevMultiplier);
             lowerBand[i] = ma[i] - (stdDev * stdDevMultiplier);
           }
@@ -1466,43 +1476,78 @@ export function StockChart({
       }
       case 'rsi': {
         const period = options.period || 14;
-        const gains = new Array(prices.length - 1);
-        const losses = new Array(prices.length - 1);
-        for (let i = 1; i < prices.length; i++) {
-          const change = prices[i] - prices[i-1];
-          gains[i-1] = change > 0 ? change : 0;
-          losses[i-1] = change < 0 ? -change : 0;
-        }
-        const result = new Array(prices.length).fill(null);
-        if (gains.length >= period) {
-          let avgGain = gains.slice(0, period).reduce((sum, gain) => sum + gain, 0) / period;
-          let avgLoss = losses.slice(0, period).reduce((sum, loss) => sum + loss, 0) / period;
-          for (let i = period; i < gains.length; i++) {
-            avgGain = ((avgGain * (period - 1)) + gains[i]) / period;
-            avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period;
-            const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-            result[i + 1] = 100 - (100 / (1 + rs));
+        const rsiResult = new Array(prices.length).fill(null);
+        
+        // ✅ FIX: Calculate RSI from available data (use adaptive warmup)
+        if (prices.length >= 2) {
+          const changes = [];
+          for (let i = 1; i < prices.length; i++) {
+            changes.push(prices[i] - prices[i-1]);
+          }
+          
+          // Calculate RSI starting from minimum period or earliest available
+          const startIdx = Math.min(period, changes.length);
+          
+          for (let i = startIdx; i < prices.length; i++) {
+            const changeIdx = i - 1; // Index in changes array
+            const windowStart = Math.max(0, changeIdx - period + 1);
+            const gains = changes.slice(windowStart, changeIdx + 1)
+              .filter(c => c > 0)
+              .reduce((a, b) => a + b, 0);
+            const losses = changes.slice(windowStart, changeIdx + 1)
+              .filter(c => c < 0)
+              .reduce((a, b) => a + Math.abs(b), 0);
+            
+            const windowLength = (changeIdx - windowStart + 1);
+            const avgGain = gains / windowLength;
+            const avgLoss = losses / windowLength;
+            
+            if (avgLoss === 0) {
+              rsiResult[i] = avgGain === 0 ? 50 : 100;
+            } else {
+              const rs = avgGain / avgLoss;
+              rsiResult[i] = 100 - (100 / (1 + rs));
+            }
           }
         }
+        result = rsiResult;
         break;
       }
       case 'macd': {
         const fastPeriod = options.fastPeriod || 12;
         const slowPeriod = options.slowPeriod || 26;
         const signalPeriod = options.signalPeriod || 9;
+        
+        // ✅ FIX: Use adaptive EMA that works from the start
         const fastEMA = calculateIndicator('ema', prices, { period: fastPeriod }) as number[];
         const slowEMA = calculateIndicator('ema', prices, { period: slowPeriod }) as number[];
+        
         const macdLine = fastEMA.map((fast, i) => {
           if (fast === null || slowEMA[i] === null) return null;
           return fast - slowEMA[i];
         });
+        
+        // ✅ FIX: Filter out nulls and calculate signal line
         const validMacd = macdLine.filter(val => val !== null) as number[];
-        const signalLine = calculateIndicator('ema', validMacd, { period: signalPeriod }) as number[];
-        const paddedSignalLine = Array(macdLine.length - validMacd.length + signalPeriod - 1).fill(null).concat(signalLine);
+        const signalLine = validMacd.length > 0 ? 
+          calculateIndicator('ema', validMacd, { period: signalPeriod }) as number[] : 
+          [];
+        
+        // ✅ FIX: Proper alignment of signal line with MACD line
+        const paddedSignalLine = new Array(macdLine.length).fill(null);
+        let signalIdx = 0;
+        for (let i = 0; i < macdLine.length; i++) {
+          if (macdLine[i] !== null && signalIdx < signalLine.length) {
+            paddedSignalLine[i] = signalLine[signalIdx];
+            signalIdx++;
+          }
+        }
+        
         const histogram = macdLine.map((macd, i) => {
           if (macd === null || paddedSignalLine[i] === null) return null;
           return macd - paddedSignalLine[i];
         });
+        
         result = { macdLine, signalLine: paddedSignalLine, histogram };
         break;
       }

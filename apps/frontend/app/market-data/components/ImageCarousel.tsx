@@ -751,12 +751,17 @@ interface InlineSiprContentProps {
 
 const InlineSiprContent: React.FC<InlineSiprContentProps> = ({ companyCode, exchange, months }) => {
   return (
-    <div className="w-full h-full">
-      <SiprDashboard
-        companyCode={`${companyCode}_${exchange}`}
-        months={months}
-        className="h-full"
-      />
+    <div className="w-full h-full relative">
+      {/* Black background layer - positioned above any green tint from parent */}
+      <div className="absolute inset-0 bg-black/95 z-0" />
+      {/* SIPR content - sits above the black background */}
+      <div className="relative z-10 h-full">
+        <SiprDashboard
+          companyCode={`${companyCode}_${exchange}`}
+          months={months}
+          className="h-full"
+        />
+      </div>
     </div>
   );
 };

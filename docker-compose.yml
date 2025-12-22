@@ -1,65 +1,98 @@
 version: '3.8'
 
 services:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ⚙️ NestJS Backend API (Port 5002)
+  # ═══════════════════════════════════════════════════════════════════════════
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
+    container_name: apm-backend
+    restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5002:5002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - PORT=5002
+      - NODE_ENV=development
     env_file:
       - apps/backend/.env
     volumes:
-      - ./apps/backend:/app
-      - /app/node_modules
-    depends_on:
-      database:
-        condition: service_healthy
-    command: ["npm", "run", "start"]
+      - ./apps/backend/data:/app/data
+    networks:
+      - apm-network
 
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🖥️ Next.js Frontend (Port 3000)
+  # ═══════════════════════════════════════════════════════════════════════════
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+    container_name: apm-frontend
+    restart: unless-stopped
     ports:
       - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5002
+      - BACKEND_URL=http://backend:5002
+    env_file:
+      - apps/frontend/.env
     volumes:
       - ./apps/frontend:/app
       - /app/node_modules
+      - /app/.next
     depends_on:
-      backend:
-        condition: service_started
-    command: ["npm", "run", "dev"]
+      - backend
+    networks:
+      - apm-network
 
-  database:
-    image: postgres:latest
-    restart: always
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: mydb
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d mydb"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  python-services:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🐍 Python Fyers Service A - ASGI/Uvicorn (Port 5001)
+  # ═══════════════════════════════════════════════════════════════════════════
+  fyers-5001:
     build:
       context: .
-      dockerfile: Dockerfile.python
-    stdin_open: true
-    tty: true
-      
+      dockerfile: Dockerfile.python-5001
+    container_name: apm-fyers-5001
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - PYTHONUNBUFFERED=1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - apps/backend/.env
     volumes:
       - ./apps/backend/data:/app/data
-    depends_on:
-      - database
-      - backend
+    networks:
+      - apm-network
 
-volumes:
-  postgres_data:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🐍 Python Fyers Service B - Eventlet (Port 5010)
+  # ═══════════════════════════════════════════════════════════════════════════
+  fyers-5010:
+    build:
+      context: .
+      dockerfile: Dockerfile.python-5010
+    container_name: apm-fyers-5010
+    restart: unless-stopped
+    ports:
+      - "5010:5010"
+    environment:
+      - PYTHONUNBUFFERED=1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - apps/backend/.env
+    volumes:
+      - ./apps/backend/data:/app/data
+    networks:
+      - apm-network
+
+networks:
+  apm-network:
+    driver: bridge
