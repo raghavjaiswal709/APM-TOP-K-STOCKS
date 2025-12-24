@@ -347,20 +347,27 @@ const MarketDataPage: React.FC = () => {
 
   // ============ UTILITY FUNCTIONS ============
   const validateAndFormatSymbol = useCallback((companyCode: string, exchange: string, marker?: string): string => {
-    const cleanSymbol = companyCode.replace(/[^A-Z0-9]/g, '').toUpperCase();
-    if (!cleanSymbol || cleanSymbol.length === 0) return '';
+    // Preserve valid special chars (e.g., '&' in M&MFIN, '-' in BAJAJ-AUTO) while stripping whitespace
+    const normalizedSymbol = companyCode
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '')
+      .replace(/[^A-Z0-9&.\-]/g, '');
+
+    if (!normalizedSymbol) return '';
 
     const finalMarker = marker && marker.trim() ? marker.trim().toUpperCase() : 'EQ';
+    const normalizedExchange = (exchange || 'NSE').trim().toUpperCase();
 
-    console.log(`🔍 [validateAndFormatSymbol] Input: ${companyCode}, Exchange: ${exchange}, Marker: "${marker}"`);
+    console.log(`🔍 [validateAndFormatSymbol] Input: ${companyCode}, Exchange: ${normalizedExchange}, Marker: "${marker}" → ${normalizedSymbol}-${finalMarker}`);
 
-    switch (exchange.toUpperCase()) {
+    switch (normalizedExchange) {
       case 'NSE':
-        return `NSE:${cleanSymbol}-${finalMarker}`;
+        return `NSE:${normalizedSymbol}-${finalMarker}`;
       case 'BSE':
-        return `BSE:${cleanSymbol}-${finalMarker}`;
+        return `BSE:${normalizedSymbol}-${finalMarker}`;
       default:
-        return `${exchange}:${cleanSymbol}-${finalMarker}`;
+        return `${normalizedExchange}:${normalizedSymbol}-${finalMarker}`;
     }
   }, []);
 

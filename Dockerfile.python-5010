@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir \
     python-engineio==4.9.0 \
     eventlet==0.33.3 \
     fyers-apiv3 \
+    uvicorn \
     pandas \
     numpy \
     python-dotenv \

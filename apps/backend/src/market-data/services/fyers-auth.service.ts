@@ -511,14 +511,18 @@ private async testUrlAccessibility(url: string): Promise<void> {
 
   // ===== AUTH PROCESS =====
 
-  async startAuthProcess(): Promise<string> {
+  async startAuthProcess(force = false): Promise<{ authUrl: string | null; message?: string; reuse?: boolean }> {
     try {
       // Check if authentication is required
       const { required, reason } = await this.requiresAuthentication();
       
-      if (!required) {
+      if (!required && !force) {
         this.logger.log(`Skipping authentication: ${reason}`);
-        throw new Error(`Authentication not required: ${reason}`);
+        return {
+          authUrl: null,
+          message: `Authentication not required: ${reason}`,
+          reuse: true,
+        };
       }
 
       const authUrl = await this.generateAuthUrl();
@@ -534,7 +538,11 @@ private async testUrlAccessibility(url: string): Promise<void> {
         }
       }
       
-      return authUrl;
+      return {
+        authUrl,
+        message: force ? 'Re-authentication initiated' : undefined,
+        reuse: false,
+      };
     } catch (error) {
       this.logger.error('Failed to start auth process:', error.message);
       throw error;

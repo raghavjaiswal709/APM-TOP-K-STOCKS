@@ -1,4 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+
+const backendUrl =
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  'http://localhost:5502';
+
 export async function POST(request: NextRequest) {
   try {
     const { code } = await request.json();
@@ -9,7 +16,6 @@ export async function POST(request: NextRequest) {
       );
     }
     console.log('Received auth code:', code);
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
     console.log('Backend URL:', backendUrl);
     const response = await fetch(`${backendUrl}/auth/fyers/token`, {
       method: 'POST',
@@ -27,8 +33,8 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
     console.log('Token generated successfully');
     return NextResponse.json(data);
-  } catch (error) {
-    console.error('Token generation error:', error);
+  } catch (error: any) {
+    console.error(`Token generation error for ${backendUrl}:`, error?.message || error);
     return NextResponse.json(
       { error: error.message || 'Failed to generate token' },
       { status: 500 }

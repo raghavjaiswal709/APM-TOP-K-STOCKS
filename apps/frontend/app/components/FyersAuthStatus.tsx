@@ -31,15 +31,31 @@ export const FyersAuthStatus: React.FC = () => {
   const startAuthFlow = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/auth/fyers/start', { method: 'POST' });
+      setError(null);
+      const response = await fetch('/api/auth/fyers/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ force: !!authStatus?.authenticated }),
+      });
       const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Failed to start authentication');
+        return;
+      }
+
       if (data.auth_url) {
         window.open(data.auth_url, '_blank');
+      } else if (data.message) {
+        setError(data.message);
       }
     } catch (err) {
       setError('Failed to start authentication');
     } finally {
       setLoading(false);
+      fetchAuthStatus();
     }
   };
   useEffect(() => {

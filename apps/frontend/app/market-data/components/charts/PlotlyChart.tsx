@@ -403,6 +403,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const [isSeparatorModalOpen, setIsSeparatorModalOpen] = useState(false);
   const [separateViewMode, setSeparateViewMode] = useState<'live-prediction' | 'live-cluster' | 'prediction-cluster' | 'combined'>('live-prediction');
 
+  // 🎯 Combined View Zoom State
+  const [combinedViewXRange, setCombinedViewXRange] = useState<[Date, Date] | null>(null);
+  const [combinedViewY1Range, setCombinedViewY1Range] = useState<[number, number] | null>(null);
+  const [combinedViewY2Range, setCombinedViewY2Range] = useState<[number, number] | null>(null);
 
   const [mainMode, setMainMode] = useState<'none' | 'bidAsk' | 'buySell'>('none');
   // ✅ NEW: Cluster Pattern Hook
@@ -1898,6 +1902,67 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
     return plotData;
   };
+
+  // 🎯 Helper: Get default market hours range for today
+  const getDefaultMarketHoursRange = (): [Date, Date] => {
+    const today = new Date();
+    const startTime = new Date(today.setHours(9, 15, 0, 0));
+    const endTime = new Date(today.setHours(15, 30, 0, 0));
+    return [startTime, endTime];
+  };
+
+  // 🔄 Reset Combined View to Default (Market Hours)
+  const resetCombinedViewToDefault = useCallback(() => {
+    console.log('[Combined View] Resetting to default market hours (9:15 AM - 3:30 PM)');
+    setCombinedViewXRange(null); // null = use default
+    setCombinedViewY1Range(null);
+    setCombinedViewY2Range(null);
+  }, []);
+
+  // 📊 Handle Combined View Relayout (Zoom/Pan)
+  const handleCombinedViewRelayout = useCallback((eventData: any) => {
+    console.log('[Combined View Relayout]', eventData);
+
+    // Check if user clicked autoscale/reset
+    if (
+      eventData['xaxis.autorange'] === true ||
+      eventData['yaxis.autorange'] === true ||
+      eventData['yaxis2.autorange'] === true ||
+      eventData.autosize === true
+    ) {
+      console.log('[Combined View] Autoscale triggered - resetting to default');
+      resetCombinedViewToDefault();
+      return;
+    }
+
+    // Update zoom ranges if user zoomed/panned
+    if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
+      const newXRange: [Date, Date] = [
+        new Date(eventData['xaxis.range[0]']),
+        new Date(eventData['xaxis.range[1]'])
+      ];
+      console.log('[Combined View] X-axis zoom:', newXRange);
+      setCombinedViewXRange(newXRange);
+    }
+
+    if (eventData['yaxis.range[0]'] && eventData['yaxis.range[1]']) {
+      const newY1Range: [number, number] = [
+        eventData['yaxis.range[0]'],
+        eventData['yaxis.range[1]']
+      ];
+      console.log('[Combined View] Y1-axis (Price) zoom:', newY1Range);
+      setCombinedViewY1Range(newY1Range);
+    }
+
+    if (eventData['yaxis2.range[0]'] && eventData['yaxis2.range[1]']) {
+      const newY2Range: [number, number] = [
+        eventData['yaxis2.range[0]'],
+        eventData['yaxis2.range[1]']
+      ];
+      console.log('[Combined View] Y2-axis (Cluster) zoom:', newY2Range);
+      setCombinedViewY2Range(newY2Range);
+    }
+  }, [resetCombinedViewToDefault]);
 
   // CREATE COMBINED VIEW - All overlays in one full-width chart
   // PRIORITY: Cluster Pattern FIRST, then Live Market, then Predictions
@@ -4475,7 +4540,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                 <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden flex flex-col">
                   <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
                     <div className="flex items-center justify-between">
-                      <div>
+                      <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <div className="h-2 w-2 bg-gradient-to-r from-emerald-500 via-violet-500 to-amber-500 rounded-full animate-pulse"></div>
                           <h3 className="text-sm font-medium text-zinc-100">
@@ -4486,6 +4551,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                           All data overlays • Market Hours: 9:15 AM - 3:30 PM • Dual Y-Axis (Price ₹ | Cluster %)
                         </p>
                       </div>
+                      {/* Autoscale Button */}
+                      <button
+                        onClick={resetCombinedViewToDefault}
+                        className="px-3 py-1.5 text-xs font-medium bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 border border-violet-500/30 rounded-lg transition-all duration-200 flex items-center gap-1.5"
+                        title="Reset to default market hours view (9:15 AM - 3:30 PM)"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Autoscale
+                      </button>
+                      <div className="w-px h-6 bg-zinc-700 mx-3"></div>
                       {/* Data Status Indicators */}
                       <div className="flex items-center gap-3 text-xs">
                         <div className="flex items-center gap-1.5">
@@ -4533,12 +4610,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                           tickfont: { color: '#a1a1aa', size: 11 },
                           titlefont: { color: '#d4d4d8', size: 12 },
                           tickformat: '%H:%M',
-                          // Fixed range for full market day
-                          range: [
-                            new Date(new Date().setHours(9, 15, 0, 0)),
-                            new Date(new Date().setHours(15, 30, 0, 0))
-                          ],
+                          // Dynamic range - defaults to market hours, but allows zooming
+                          range: combinedViewXRange || getDefaultMarketHoursRange(),
                           dtick: 30 * 60 * 1000, // 30-minute ticks
+                          fixedrange: false, // ✅ Allow zooming
                         },
                         yaxis: {
                           title: 'Price (₹)',
@@ -4547,7 +4622,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                           linecolor: '#10B981', // Green for live market
                           tickfont: { color: '#10B981', size: 11 },
                           titlefont: { color: '#10B981', size: 13 },
-                          autorange: true,
+                          autorange: combinedViewY1Range === null, // Auto if not zoomed
+                          range: combinedViewY1Range || undefined,
+                          fixedrange: false, // ✅ Allow zooming
                         },
                         yaxis2: {
                           title: 'Cluster Pattern (%)',
@@ -4557,8 +4634,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                           linecolor: '#8b5cf6', // Purple for cluster
                           tickfont: { color: '#8b5cf6', size: 11 },
                           titlefont: { color: '#8b5cf6', size: 13 },
-                          autorange: true,
+                          autorange: combinedViewY2Range === null, // Auto if not zoomed
+                          range: combinedViewY2Range || undefined,
                           showgrid: false,
+                          fixedrange: false, // ✅ Allow zooming
                         },
                         plot_bgcolor: '#18181b',
                         paper_bgcolor: '#18181b',
@@ -4582,8 +4661,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                         displayModeBar: true,
                         displaylogo: false,
                         modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                        doubleClick: 'reset+autosize', // ✅ Double-click to reset
                       }}
                       style={{ width: '100%', height: '100%' }}
+                      onRelayout={handleCombinedViewRelayout} // ✅ Handle zoom/pan
                     />
                   </div>
                 </div>

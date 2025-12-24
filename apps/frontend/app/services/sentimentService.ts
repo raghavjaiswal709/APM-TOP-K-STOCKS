@@ -23,7 +23,8 @@ export const sentimentService = {
         const cleanTicker = ticker.split(':')[1]?.split('-')[0] || ticker;
 
         try {
-            const response = await axios.get<SentimentResponse>(`${API_BASE_URL}/${cleanTicker}`);
+            // ✅ CRITICAL: Encode ticker for URL safety (handles special chars like '&' in M&MFIN)
+            const response = await axios.get<SentimentResponse>(`${API_BASE_URL}/${encodeURIComponent(cleanTicker)}`);
 
             if (response.data && response.data.sentiment) {
                 return response.data.sentiment.toUpperCase();

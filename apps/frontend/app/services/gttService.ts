@@ -43,7 +43,8 @@ class GttService {
 
             console.log(`[GTT Service] 📡 Fetching predictions for ${companyCode} via proxy`);
 
-            const response = await fetch(`${this.BASE_URL}?symbol=${companyCode}`, {
+            // ✅ CRITICAL: Encode company code for URL safety (handles special chars like '&' in M&MFIN)
+            const response = await fetch(`${this.BASE_URL}?symbol=${encodeURIComponent(companyCode)}`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -92,7 +93,8 @@ class GttService {
     async fetchPredictionsDirect(symbol: string): Promise<GttStockHistoryResponse> {
         try {
             const companyCode = this.extractCompanyCode(symbol);
-            const url = `${this.BACKEND_URL}/gtt/stock/${companyCode}`;
+            // ✅ CRITICAL: Encode company code for URL safety (handles special chars like '&' in M&MFIN)
+            const url = `${this.BACKEND_URL}/gtt/stock/${encodeURIComponent(companyCode)}`;
 
             console.log(`[GTT Service] 📡 Direct fetch from ${url}`);
 

@@ -25,8 +25,8 @@ export interface GttStockResponse {
 @Injectable()
 export class GttPredictionService {
     private readonly logger = new Logger(GttPredictionService.name);
-    // private readonly GTT_ENGINE_URL = 'http://localhost:5113';
-    private readonly GTT_ENGINE_URL = 'http://100.93.172.21:5113';
+    private readonly SERVER_IP = process.env.SERVER_IP || '100.93.172.21';
+    private readonly GTT_ENGINE_URL = process.env.GTT_ENGINE_URL || `http://${this.SERVER_IP}:5113`;
 
     constructor(private readonly httpService: HttpService) { }
 

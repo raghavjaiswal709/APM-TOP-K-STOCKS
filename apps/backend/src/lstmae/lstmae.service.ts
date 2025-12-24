@@ -6,7 +6,8 @@ import { AxiosResponse } from 'axios';
 
 @Injectable()
 export class LstmaeService {
-  private readonly PIPELINE2_API_URL = 'http://100.93.172.21:8506';
+  private readonly SERVER_IP = process.env.SERVER_IP || '100.93.172.21';
+  private readonly PIPELINE2_API_URL = process.env.PIPELINE2_API_URL || `http://${this.SERVER_IP}:8506`;
   private readonly TIMEOUT = 120000; // 2 minutes
 
   constructor(private readonly httpService: HttpService) {

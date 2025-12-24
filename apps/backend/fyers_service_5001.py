@@ -345,6 +345,9 @@ def fetch_historical_intraday_data(symbol, date=None):
     if not date:
         date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
 
+    # ✅ ENHANCED: Log symbol details for debugging special characters (e.g., M&MFIN)
+    logger.info(f"📊 fetch_historical_intraday_data called for symbol: '{symbol}' | Repr: {repr(symbol)}")
+
     try:
         if not fyers_client or not auth_initialized:
             logger.warning(f"Fyers client not initialized for {symbol}")
@@ -380,12 +383,18 @@ def fetch_historical_intraday_data(symbol, date=None):
             "cont_flag": "1"
         }
 
+        # ✅ ENHANCED: Log the API request details
+        logger.info(f"📤 Fyers API request - symbol: '{symbol}' | data_args: {data_args}")
+
         # Set explicit timeout
         try:
             response = fyers_client.history(data_args) # Library might not support timeout arg directly, but we wrap in try/except
         except requests.exceptions.Timeout:
             logger.error(f"⏱️ Timeout fetching data for {symbol}")
             return []
+
+        # ✅ ENHANCED: Log the API response status
+        logger.info(f"📥 Fyers API response for '{symbol}' - status: {response.get('s') if response else 'None'}")
 
         if response and response.get('s') == 'ok' and 'candles' in response:
             candles = response['candles']
@@ -455,12 +464,16 @@ def fetch_historical_intraday_data(symbol, date=None):
 
             return result
         else:
-            logger.error(f"Failed to fetch historical data: {response}")
+            # ✅ ENHANCED: More detailed error logging
+            logger.error(f"❌ Failed to fetch historical data for '{symbol}'")
+            logger.error(f"   Response: {response}")
+            if response:
+                logger.error(f"   Status: {response.get('s')}, Message: {response.get('message', 'No message')}")
 
         return []
 
     except Exception as e:
-        logger.error(f"Error fetching historical data: {e}")
+        logger.error(f"❌ Error fetching historical data for '{symbol}': {e}")
         import traceback
         traceback.print_exc()
         return []
@@ -503,6 +516,9 @@ def subscribe(sid, data):
     if not symbol:
         return {'success': False, 'error': 'No symbol provided'}
     
+    # ✅ ENHANCED: Log symbol details for debugging special characters (e.g., M&MFIN)
+    logger.info(f"📥 Subscribe request - Raw symbol: '{symbol}' | Repr: {repr(symbol)} | Length: {len(symbol)}")
+    
     if not auth_initialized:
         return {'success': False, 'error': 'Authentication not initialized'}
 
@@ -528,11 +544,12 @@ def subscribe(sid, data):
 
     # Subscribe to real-time updates if not already subscribed
     if fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
-        logger.info(f"Subscribing to real-time updates for: {symbol}")
+        logger.info(f"📡 Subscribing to Fyers WebSocket for: '{symbol}' | Repr: {repr(symbol)}")
         try:
             fyers.subscribe(symbols=[symbol], data_type="SymbolUpdate")
+            logger.info(f"✅ Fyers subscription successful for: {symbol}")
         except Exception as e:
-            logger.error(f"Error subscribing to {symbol}: {e}")
+            logger.error(f"❌ Error subscribing to {symbol}: {e}")
 
     # Send all available data to client
     if symbol in historical_data and historical_data[symbol]:

@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const SERVER_IP = process.env.SERVER_IP || '100.93.172.21';
+
 const nextConfig = {
   transpilePackages: ['lightweight-charts'],
 
@@ -10,15 +12,15 @@ const nextConfig = {
       // Note: /api/time-machine/* is NOT listed here - it's handled by Next.js API route
       {
         source: '/api/sentiment/:path*',
-        destination: 'http://100.93.172.21:5717/api/premarket/predictions/:path*',
+        destination: `http://${SERVER_IP}:5717/api/premarket/predictions/:path*`,
       },
       {
         source: '/api/proxy/desirability/:path*',
-        destination: 'http://100.93.172.21:8508/desirability/:path*',
+        destination: `http://${SERVER_IP}:8508/desirability/:path*`,
       },
       {
         source: '/api/proxy/intraday/:path*',
-        destination: 'http://100.93.172.21:8505/intraday/:path*',
+        destination: `http://${SERVER_IP}:8505/intraday/:path*`,
       },
 
       // ⚠️ CATCH-ALL: Proxy remaining /api/* to NestJS backend (port 5002)
@@ -32,13 +34,13 @@ const nextConfig = {
       // Static asset proxies
       {
         source: '/watchlist-graphs/:path*',
-        destination: 'http://100.93.172.21:6969/Watchlist_assets/:path*',
+        destination: `http://${SERVER_IP}:6969/Watchlist_assets/:path*`,
       },
 
       // ✅ NEW: Sthiti data proxy for historical charts, headlines, clusters, predictions
       {
         source: '/sthiti-data/:path*',
-        destination: 'http://100.93.172.21:6969/Sthiti/:path*',
+        destination: `http://${SERVER_IP}:6969/Sthiti/:path*`,
       },
     ];
   },
@@ -47,19 +49,19 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: 'http',
-        hostname: '100.93.172.21',
+        hostname: SERVER_IP,
         port: '6969',
         pathname: '/Watchlist_assets/**',
       },
       {
         protocol: 'http',
-        hostname: '100.93.172.21',
+        hostname: SERVER_IP,
         port: '6969',
         pathname: '/Sthiti/**',
       },
       {
         protocol: 'http',
-        hostname: '100.93.172.21',
+        hostname: SERVER_IP,
         port: '6969',
         pathname: '/Live/**',
       },

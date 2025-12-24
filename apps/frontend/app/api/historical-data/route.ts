@@ -34,9 +34,13 @@ export async function GET(request: NextRequest) {
     const [year, month, day] = date.split('-');
     const formattedDate = `${day}-${month}-${year}`;
 
-    // Fetch from external server (server-side, no CORS)
-    const externalUrl = `http://100.93.172.21:6969/Live/LD_${formattedDate}/${externalSymbol}.json`;
+    // ✅ CRITICAL: Encode the symbol for URL safety (handles special chars like '&' in M&MFIN)
+    const encodedExternalSymbol = encodeURIComponent(externalSymbol);
     
+    // Fetch from external server (server-side, no CORS)
+    const externalUrl = `http://100.93.172.21:6969/Live/LD_${formattedDate}/${encodedExternalSymbol}.json`;
+    
+    console.log(`[API Proxy] Symbol: ${symbol} → External Symbol: ${externalSymbol} → Encoded: ${encodedExternalSymbol}`);
     console.log(`[API Proxy] Fetching: ${externalUrl}`);
 
     const response = await fetch(externalUrl, {

@@ -25,7 +25,9 @@ interface TokenRequest {
 }
 
 interface AuthUrlResponse {
-  auth_url: string;
+  auth_url: string | null;
+  message?: string;
+  reuse?: boolean;
 }
 
 interface TokenValidationResponse {
@@ -117,10 +119,16 @@ export class FyersAuthController {
   }
 
   @Post('start')
-  async startAuthProcess(): Promise<AuthUrlResponse> {
+  async startAuthProcess(@Body() body: { force?: boolean } = {}): Promise<AuthUrlResponse> {
     try {
-      const authUrl = await this.fyersAuthService.startAuthProcess();
-      return { auth_url: authUrl };
+      const force = body?.force ?? false;
+      const result = await this.fyersAuthService.startAuthProcess(force);
+
+      return {
+        auth_url: result.authUrl,
+        message: result.message,
+        reuse: result.reuse,
+      };
     } catch (error) {
       throw new HttpException(
         error.message || 'Failed to start authentication process', 

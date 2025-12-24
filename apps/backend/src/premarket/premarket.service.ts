@@ -7,7 +7,8 @@ import { AxiosResponse } from 'axios';
 @Injectable()
 export class PremarketService {
   private readonly logger = new Logger(PremarketService.name);
-  private readonly PREMARKET_API_URL = process.env.PREMARKET_API_URL || 'http://100.93.172.21:5717';
+  private readonly SERVER_IP = process.env.SERVER_IP || '100.93.172.21';
+  private readonly PREMARKET_API_URL = process.env.PREMARKET_API_URL || `http://${this.SERVER_IP}:5717`;
   private readonly TIMEOUT = 120000; // 2 minutes
 
   constructor(private readonly httpService: HttpService) {

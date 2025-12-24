@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+
+const backendUrl =
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  'http://localhost:5502';
+
 export async function GET(request: NextRequest) {
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
     const response = await fetch(`${backendUrl}/auth/fyers/status`, {
       method: 'GET',
       headers: {
@@ -19,8 +25,8 @@ export async function GET(request: NextRequest) {
     }
     const data = await response.json();
     return NextResponse.json(data);
-  } catch (error) {
-    console.error('Auth status error:', error);
+  } catch (error: any) {
+    console.error(`Auth status error for ${backendUrl}:`, error?.message || error);
     return NextResponse.json({
       authenticated: false,
       token_valid: false,

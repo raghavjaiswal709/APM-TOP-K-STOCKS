@@ -1,0 +1,216 @@
+# Standalone Instance Configuration
+# Each instance is completely independent with its own database, cache, and services
+# No inter-instance communication or dependencies
+# Copy this file to each instance directory and customize .env file
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # FRONTEND (Next.js + React)
+  # ═══════════════════════════════════════════════════════════════════════════
+  frontend:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.frontend
+    container_name: ${INSTANCE_ID}-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT}:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:${BACKEND_PORT}
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:${BACKEND_PORT}
+      - NEXT_PUBLIC_GTT_API_URL=http://backend:5002
+      - BACKEND_URL=http://backend:5002
+      - NODE_ENV=development
+    env_file:
+      - .env
+    volumes:
+      - ../../apps/frontend:/app
+      - frontend-node-modules:/app/node_modules
+      - frontend-next:/app/.next
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.apm.instance=${INSTANCE_ID}"
+      - "com.apm.service=frontend"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # BACKEND API (NestJS)
+  # ═══════════════════════════════════════════════════════════════════════════
+  backend:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.backend
+    container_name: ${INSTANCE_ID}-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT}:5002"
+    environment:
+      - PORT=5002
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379
+      - FYERS_CLIENT_ID=${FYERS_CLIENT_ID}
+      - FYERS_SECRET_ID=${FYERS_SECRET_ID}
+      - FYERS_ACCESS_TOKEN=${FYERS_ACCESS_TOKEN}
+      - FYERS_REDIRECT_URI=${FYERS_REDIRECT_URI}
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/api/predictions/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "com.apm.instance=${INSTANCE_ID}"
+      - "com.apm.service=backend"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # DATABASE (PostgreSQL)
+  # ═══════════════════════════════════════════════════════════════════════════
+  db:
+    image: postgres:15-alpine
+    container_name: ${INSTANCE_ID}-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - TZ=Asia/Kolkata
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../../init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "com.apm.instance=${INSTANCE_ID}"
+      - "com.apm.service=database"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # CACHE (Redis)
+  # ═══════════════════════════════════════════════════════════════════════════
+  redis:
+    image: redis:7-alpine
+    container_name: ${INSTANCE_ID}-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    ports:
+      - "${REDIS_PORT}:6379"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "com.apm.instance=${INSTANCE_ID}"
+      - "com.apm.service=cache"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # FYERS SERVICE 5001 (Python - AsyncIO/Uvicorn)
+  # Live market data feed with WebSocket support
+  # ═══════════════════════════════════════════════════════════════════════════
+  fyers-5001:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.python-5001
+    container_name: ${INSTANCE_ID}-fyers-5001
+    restart: unless-stopped
+    ports:
+      - "${FYERS_5001_PORT}:5001"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - FYERS_CLIENT_ID=${FYERS_CLIENT_ID}
+      - FYERS_SECRET_ID=${FYERS_SECRET_ID}
+      - FYERS_ACCESS_TOKEN=${FYERS_ACCESS_TOKEN}
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    labels:
+      - "com.apm.instance=${INSTANCE_ID}"
+      - "com.apm.service=fyers-5001"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # FYERS SERVICE 5010 (Python - Eventlet)
+  # Multi-view market data aggregation
+  # ═══════════════════════════════════════════════════════════════════════════
+  fyers-5010:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.python-5010
+    container_name: ${INSTANCE_ID}-fyers-5010
+    restart: unless-stopped
+    ports:
+      - "${FYERS_5010_PORT}:5010"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - FYERS_CLIENT_ID=${FYERS_CLIENT_ID}
+      - FYERS_SECRET_ID=${FYERS_SECRET_ID}
+      - FYERS_ACCESS_TOKEN=${FYERS_ACCESS_TOKEN}
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    labels:
+      - "com.apm.instance=${INSTANCE_ID}"
+      - "com.apm.service=fyers-5010"
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  frontend-node-modules:
+    driver: local
+  frontend-next:
+    driver: local
+
+networks:
+  internal:
+    name: ${INSTANCE_ID}-network
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 9000

@@ -16,8 +16,9 @@ import {
 @Injectable()
 export class DesirabilityService {
     private readonly logger = new Logger(DesirabilityService.name);
+    private readonly SERVER_IP = process.env.SERVER_IP || '100.93.172.21';
     private readonly DESIRABILITY_API_URL =
-        process.env.DESIRABILITY_API_URL || 'http://100.93.172.21:8508';
+        process.env.DESIRABILITY_API_URL || `http://${this.SERVER_IP}:8508`;
     private readonly TIMEOUT = 30000; // 30 seconds
 
     constructor(private readonly httpService: HttpService) {

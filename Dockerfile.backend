@@ -11,7 +11,7 @@ COPY apps/backend/package.json ./
 RUN npm install --force && npm install -g @nestjs/cli
 
 # Install Python and dependencies
-RUN apk add --no-cache python3 py3-pip postgresql-libs && \
+RUN apk add --no-cache python3 py3-pip postgresql-libs curl && \
     apk add --no-cache --virtual .build-deps gcc python3-dev musl-dev postgresql-dev
 
 # Copy requirements and install Python packages

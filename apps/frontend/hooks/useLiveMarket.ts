@@ -87,7 +87,10 @@ export const useLiveMarket = () => {
   const reconnectAttempts = useRef<number>(0);
   const maxReconnectAttempts = 5;
   const initializeSocket = useCallback(() => {
-    const SOCKET_URL = process.env.NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL || 'http://localhost:5010';
+    const SOCKET_URL =
+      process.env.NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL ||
+      process.env.NEXT_PUBLIC_FYERS_SERVICE_5010_URL ||
+      'http://localhost:8010';
     console.log(`🔌 Connecting to Live Market WebSocket: ${SOCKET_URL}`);
     setConnectionStatus('Connecting');
     const socket = io(SOCKET_URL, {

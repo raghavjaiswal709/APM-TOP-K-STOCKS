@@ -28,7 +28,11 @@ export const getSocket = (): Socket => {
     // ✅ STRICTLY ENFORCE PORT 5001 for Fyers Service
     // 
     // const SOCKET_URL = `${process.env.NEXT_PUBLIC_FYERS_SOCKET_URL || 'http://100.93.172.21:5001'}`;
-    const SOCKET_URL = `${process.env.NEXT_PUBLIC_FYERS_SOCKET_URL || 'http://localhost:5001'}`;
+    const SOCKET_URL = `${
+      process.env.NEXT_PUBLIC_FYERS_SOCKET_URL ||
+      process.env.NEXT_PUBLIC_FYERS_SERVICE_5001_URL ||
+      'http://localhost:5001'
+    }`;
     console.log(`🔌 Connecting to WebSocket server at ${SOCKET_URL}`);
     
     socket = io(SOCKET_URL, {

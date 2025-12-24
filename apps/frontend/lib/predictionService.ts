@@ -16,7 +16,8 @@ export class PredictionAPIService {
       timeout?: number;
     }
   ): Promise<CompanyPredictions> {
-    const url = new URL(`${BASE_URL}/predictions/${company}`);
+    // ✅ CRITICAL: Encode company name for URL safety (handles special chars like '&' in M&MFIN)
+    const url = new URL(`${BASE_URL}/predictions/${encodeURIComponent(company)}`);
 
     if (options?.starttime) {
       url.searchParams.append('start_time', options.starttime);
@@ -123,7 +124,8 @@ export class PredictionAPIService {
       timeout?: number;
     }
   ): Promise<{ company: string; timestamp: string; prediction: any }> {
-    const url = `${BASE_URL}/predictions/${company}/${encodeURIComponent(timestamp)}`;
+    // ✅ CRITICAL: Encode company name for URL safety (handles special chars like '&' in M&MFIN)
+    const url = `${BASE_URL}/predictions/${encodeURIComponent(company)}/${encodeURIComponent(timestamp)}`;
 
     try {
       const controller = new AbortController();
