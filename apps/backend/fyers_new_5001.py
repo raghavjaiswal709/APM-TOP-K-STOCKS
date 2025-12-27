@@ -19,7 +19,7 @@ from urllib3.util.retry import Retry
 import uvicorn
 
 
-# ============ Logging Configuration ============
+# Logging Configuration
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -28,19 +28,19 @@ logging.basicConfig(
 logger = logging.getLogger("FyersServer")
 
 
-# ============ Socket.IO AsyncServer ============
+# Socket.IO AsyncServer
 sio = socketio.AsyncServer(
     async_mode='asgi',
     cors_allowed_origins='*',
     logger=False,
     engineio_logger=False,
-    ping_timeout=60,  # ✅ Increased timeout
-    ping_interval=25,  # ✅ More frequent pings
+    ping_timeout=60,  # Increased timeout
+    ping_interval=25,  # More frequent pings
 )
 app = socketio.ASGIApp(sio)
 
 
-# ============ Environment Configuration ============
+# Environment Configuration
 from dotenv import load_dotenv
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 client_id = os.getenv("FYERS_CLIENT_ID")
@@ -51,7 +51,7 @@ response_type = "code"
 grant_type = "authorization_code"
 
 
-# ============ Global State ============
+# Global State
 clients: Dict[str, dict] = {}
 symbol_to_clients: Dict[str, Set[str]] = {}
 running = True
@@ -59,7 +59,7 @@ auth_initialized = False
 main_loop = None
 
 
-# ============ Multi-symbol persistent data storage ============
+# Multi-symbol persistent data storage
 historical_data: Dict[str, deque] = {}
 ohlc_data: Dict[str, deque] = {}
 chart_updates: Dict[str, deque] = {}
@@ -79,20 +79,20 @@ fyers = None
 fyers_client = None
 
 
-# ============ Real-time Configuration ============
+# Real-time Configuration
 REAL_TIME_INTERVAL = 0.2
 CHART_UPDATE_INTERVAL = 0.1
 last_emit_time = defaultdict(float)
 pending_data = {}
 
 
-# ============ Persistent data management ============
+# Persistent data management
 cached_indicators = {}
 data_cleanup_interval = 3600
 last_cleanup_time = time.time()
 
 
-# ✅ NEW: HTTP Session with connection pooling and retries
+# HTTP Session with connection pooling and retries
 def create_resilient_session():
     """
     Create HTTP session with automatic retries, timeouts, and connection pooling.
@@ -119,15 +119,15 @@ def create_resilient_session():
     return session
 
 
-# ✅ Global HTTP session for reuse
+# Global HTTP session for reuse
 http_session = create_resilient_session()
 
 
-# ✅ NEW: Thread pool for blocking operations
+# Thread pool for blocking operations
 executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="FyersWorker")
 
 
-# ============ Helper Functions ============
+# Helper Functions
 def extract_jwt_token(full_token):
     """Extract JWT token from full token string."""
     if ':' in full_token:
@@ -329,7 +329,7 @@ def is_trading_hours():
     return start_time <= now <= end_time
 
 
-# ============ Socket.IO Event Handlers ============
+# Socket.IO Event Handlers
 @sio.event
 async def connect(sid, environ):
     logger.info(f"Client connected: {sid}")
@@ -356,7 +356,7 @@ async def disconnect(sid):
         del clients[sid]
 
 
-# ✅ ENHANCED: Fetch historical data with timeout protection
+# Fetch historical data with timeout protection
 def fetch_historical_intraday_data(symbol, date=None):
     """
     Fetch historical data with timeout and error handling.
@@ -400,7 +400,7 @@ def fetch_historical_intraday_data(symbol, date=None):
             "cont_flag": "1"
         }
 
-        # ✅ CRITICAL: Add timeout to prevent hanging
+        # Add timeout to prevent hanging
         response = fyers_client.history(data_args)
 
         if response and response.get('s') == 'ok' and 'candles' in response:
@@ -492,7 +492,7 @@ def fetch_daily_historical_data(symbol, days=30):
             "cont_flag": "1"
         }
         
-        # ✅ Should have timeout but fyers_client doesn't support it directly
+        # Should have timeout but fyers_client doesn't support it directly
         response = fyers_client.history(data_args)
         
         if response and response.get('s') == 'ok' and 'candles' in response:
@@ -525,13 +525,13 @@ async def subscribe(sid, data):
     symbol_subscriptions[symbol] += 1
     active_symbols.add(symbol)
 
-    # ✅ Fetch historical data with timeout in executor
+    # Fetch historical data with timeout in executor
     if symbol not in historical_data or not historical_data[symbol]:
         logger.info(f"Fetching fresh historical data for {symbol}")
         loop = asyncio.get_event_loop()
         
         try:
-            # ✅ Add timeout wrapper
+            # Add timeout wrapper
             hist_data = await asyncio.wait_for(
                 loop.run_in_executor(executor, fetch_historical_intraday_data, symbol, None),
                 timeout=10.0
@@ -585,7 +585,7 @@ async def subscribe(sid, data):
     return {'success': True, 'symbol': symbol, 'cached_points': len(historical_data.get(symbol, []))}
 
 
-# ✅ NEW: Batch subscription endpoint with rate limiting
+# Batch subscription endpoint with rate limiting
 @sio.event
 async def subscribe_companies(sid, data):
     """
@@ -611,7 +611,7 @@ async def subscribe_companies(sid, data):
     failed_symbols = []
     
     try:
-        # ✅ Rate limiting: Process in batches of 10 to prevent overload
+        # Rate limiting: Process in batches of 10
         BATCH_SIZE = 10
         
         for i in range(0, len(symbols), BATCH_SIZE):
@@ -638,7 +638,7 @@ async def subscribe_companies(sid, data):
             if i + BATCH_SIZE < len(symbols):
                 await asyncio.sleep(0.1)
         
-        # ✅ Batch subscribe to Fyers with timeout
+        # Batch subscribe to Fyers with timeout
         if fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
             try:
                 loop = asyncio.get_event_loop()
@@ -662,7 +662,7 @@ async def subscribe_companies(sid, data):
                 logger.error(f"❌ Error in Fyers batch subscription: {e}")
                 # Continue - local subscriptions are still valid
         
-        # ✅ Background task for historical data (non-blocking)
+        # Background task for historical data (non-blocking)
         asyncio.create_task(send_batch_historical_data(sid, symbols))
         
         logger.info(f"✅ Successfully subscribed to {subscribed_count}/{len(symbols)} symbols")
@@ -683,7 +683,7 @@ async def subscribe_companies(sid, data):
         }
 
 
-# ✅ NEW: Optimized background historical data sender
+# Optimized background historical data sender
 async def send_batch_historical_data(sid, symbols):
     """
     Send historical data for symbols in background without blocking main thread.
@@ -734,7 +734,7 @@ async def send_batch_historical_data(sid, symbols):
         logger.error(f"❌ Critical error in send_batch_historical_data: {e}")
 
 
-# ✅ DEPRECATED but kept for backward compatibility
+# DEPRECATED but kept for backward compatibility
 @sio.event
 async def subscribe_multiple(sid, data):
     """
@@ -745,7 +745,7 @@ async def subscribe_multiple(sid, data):
     return await subscribe_companies(sid, data)
 
 
-# ✅ NEW: Get active subscriptions endpoint (CRITICAL for state persistence)
+# Get active subscriptions endpoint (CRITICAL for state persistence)
 @sio.event
 def get_active_subscriptions(sid, data):
     """

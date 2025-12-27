@@ -37,7 +37,7 @@ const nextConfig = {
         destination: `http://${SERVER_IP}:6969/Watchlist_assets/:path*`,
       },
 
-      // ✅ NEW: Sthiti data proxy for historical charts, headlines, clusters, predictions
+      // Sthiti data proxy for historical data
       {
         source: '/sthiti-data/:path*',
         destination: `http://${SERVER_IP}:6969/Sthiti/:path*`,

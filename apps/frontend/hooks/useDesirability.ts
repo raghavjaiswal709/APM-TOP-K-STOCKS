@@ -58,7 +58,7 @@ export function useDesirability(symbol: string): UseDesirabilityReturn {
         console.log(`🔍 [useDesirability] Fetching for symbol: ${symbol} (Clean: ${cleanSymbol})`);
 
         try {
-            // ✅ CRITICAL: Encode symbol for URL safety (handles special chars like '&' in M&MFIN)
+            // Encode symbol for URL safety
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_BACKEND_URL}/desirability/top-pattern/${encodeURIComponent(cleanSymbol)}`,
                 {

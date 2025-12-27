@@ -30,7 +30,7 @@ def main():
                        choices=['true', 'false'],
                        help='Fetch all available data for the company (ignores date range)')
     
-    # Enhanced arguments for the new StockService
+    # Additional arguments
     parser.add_argument('--limit', type=int, default=2500, help='Maximum number of records to return')
     parser.add_argument('--enable_cache', type=str, default='false', 
                        choices=['true', 'false'],

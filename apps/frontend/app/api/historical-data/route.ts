@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-/**
- * API Proxy for Historical Data
- * Bypasses CORS restrictions by fetching from server-side
- */
+// API Proxy for Historical Data - Bypasses CORS
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -34,7 +31,7 @@ export async function GET(request: NextRequest) {
     const [year, month, day] = date.split('-');
     const formattedDate = `${day}-${month}-${year}`;
 
-    // ✅ CRITICAL: Encode the symbol for URL safety (handles special chars like '&' in M&MFIN)
+    // Encode symbol for URL safety
     const encodedExternalSymbol = encodeURIComponent(externalSymbol);
     
     // Fetch from external server (server-side, no CORS)
@@ -67,7 +64,7 @@ export async function GET(request: NextRequest) {
     const text = await response.text();
     const lines = text.trim().split('\n').filter(line => line.trim());
     
-    // ✅ CRITICAL: Calculate TODAY's 9:15 AM in IST (UTC+5:30)
+    // Calculate today's 9:15 AM in IST (UTC+5:30)
     const now = new Date();
     const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
     const todayIST = new Date(now.getTime() + istOffset);
@@ -86,7 +83,7 @@ export async function GET(request: NextRequest) {
         const point = JSON.parse(line);
         const timestamp = point.timestamp || point.last_traded_time;
         
-        // ✅ SERVER-SIDE FILTERING: Only include data from TODAY 9:15 AM onwards
+        // Server-side filtering: Only include data from today 9:15 AM onwards
         if (timestamp >= tradingStartTimestamp) {
           allDataPoints.push({
             symbol: symbol,

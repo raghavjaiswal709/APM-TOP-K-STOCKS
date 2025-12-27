@@ -31,18 +31,18 @@ import {
   Smartphone
 } from 'lucide-react';
 
-// ✅ OPTIMIZATION 1: Load Plot only once at module level
+// Load Plot only once at module level
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
   loading: () => null
 });
 
-// ===================== TIMEZONE CONSTANTS =====================
+// Timezone Constants
 const MARKET_TIMEZONE = 'Asia/Kolkata';
 const DATE_FORMAT = 'yyyy-MM-dd HH:mm:ss';
 const DAY_FORMAT = 'yyyy-MM-dd';
 
-// ✅ OPTIMIZATION 2: Frozen config for performance
+// Frozen config for performance
 const CHART_PERFORMANCE_CONFIG = Object.freeze({
   MAX_VISIBLE_POINTS: 2000,
   CHUNK_SIZE: 1000,
@@ -199,7 +199,7 @@ interface StockChartProps {
   onIntervalChange?: (interval: string) => void;
   onRangeChange?: (startDate: Date, endDate: Date) => Promise<void>;
 }
-// ✅ NON-BLOCKING: Small corner loading indicator (chart remains interactive)
+// Small corner loading indicator (chart remains interactive)
 const LoadingIndicator = ({ show }: { show: boolean }) => {
   if (!show) return null;
 
@@ -222,7 +222,7 @@ const LoadingIndicator = ({ show }: { show: boolean }) => {
     </div>
   );
 };
-// ✅ TIMEZONE-AWARE: Check if a date is during market hours in IST
+// Check if a date is during market hours in IST
 const isMarketHours = (date: Date): boolean => {
   // Get the IST day of week and time
   const istDayOfWeek = formatInTimeZone(date, MARKET_TIMEZONE, 'E'); // 'Mon', 'Tue', etc.
@@ -243,7 +243,7 @@ const isMarketHours = (date: Date): boolean => {
     timeInMinutes <= CHART_PERFORMANCE_CONFIG.MARKET_CLOSE_MINUTES;
 };
 
-// ✅ TIMEZONE-AWARE: Filter data and add IST keys for category axis
+// Filter data and add IST keys for category axis
 interface StockDataPointWithIST extends StockDataPoint {
   ist_key: string;
   ist_date: Date;
@@ -269,7 +269,7 @@ const filterMarketHoursData = (data: StockDataPoint[]): StockDataPointWithIST[] 
     });
 };
 
-// ✅ Helper to parse IST timestamp strings back to Date objects
+// Parse IST timestamp strings back to Date objects
 const parseISTTimestamp = (istTimestamp: string): Date => {
   // Format is 'yyyy-MM-dd HH:mm:ss' in IST timezone
   // Parse it and treat it as IST
@@ -407,7 +407,7 @@ export function StockChart({
   const [isUserInteracting, setIsUserInteracting] = useState(false);
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ✅ CRITICAL: Anchoring refs to prevent view jumping on data load
+  // Anchoring refs to prevent view jumping on data load
   const anchorTimestampRef = useRef<string | null>(null);
   const prevXRangeRef = useRef<[number, number] | null>(null);
   const wasLoadingRef = useRef<boolean>(false);
@@ -479,8 +479,8 @@ export function StockChart({
     };
     return intervalMap[intervalStr] || 60 * 1000;
   }, []);
-  // ✅ OPTIMIZATION 9: Pre-compute timestamps to avoid Date parsing in loop
-  // ✅ REFACTORED: detectDataGaps now uses dataRange state AND detects internal gaps
+  // Pre-compute timestamps to avoid Date parsing in loop
+  // detectDataGaps uses dataRange state and detects internal gaps
   const detectDataGaps = useCallback((visibleRange: [string, string], visibleIndices?: [number, number]) => {
     // Use dataRange state which tracks the true bounds of fetched data
     if (!dataRange.start || !dataRange.end) return null;
@@ -773,8 +773,7 @@ export function StockChart({
       }
     }
   }, [companyId, selectedInterval, activeIndicators, isLoadingMoreData, getIntervalInMs]);
-  // ✅ OPTIMIZATION 4: Async non-blocking chart sync
-  // ✅ REFACTORED: syncChartRanges now works with category indices (numbers, not date strings)
+  // Async non-blocking chart sync (works with category indices)
   const syncChartRanges = useCallback((newXRange: [number, number] | any[], sourceChart: string) => {
     // Store the index-based range for syncing
     setSyncedXRange(newXRange as any);
@@ -794,7 +793,7 @@ export function StockChart({
           // Stagger updates slightly to prevent frame drops
           setTimeout(() => {
             try {
-              // ✅ Pass index-based range directly to category axis
+              // Pass index-based range to category axis
               chart.ref.current?.relayout({ 'xaxis.range': newXRange });
             } catch {
               // Silent fail - non-critical
@@ -982,7 +981,7 @@ export function StockChart({
             dates: [visibleStartDate.toISOString(), visibleEndDate.toISOString()]
           });
 
-          // ✅ CRITICAL: If user panned BEYOND data bounds, detect gaps
+          // If user panned beyond data bounds, detect gaps
           // Check if rawIndices go beyond the actual data
           let visibleRangeStart = visibleStartDate.toISOString();
           let visibleRangeEnd = visibleEndDate.toISOString();
@@ -1003,7 +1002,7 @@ export function StockChart({
             console.log('📍 User panned AFTER data, extended end:', visibleRangeEnd);
           }
 
-          // ✅ PART 1: Pass both extended range AND visible indices to detectDataGaps
+          // Pass extended range and visible indices to detectDataGaps
           const visibleRange: [string, string] = [visibleRangeStart, visibleRangeEnd];
           const visibleIndices: [number, number] = [startIndex, endIndex];
 
@@ -1099,7 +1098,7 @@ export function StockChart({
       setIsUserInteracting(false);
     }, CHART_PERFORMANCE_CONFIG.RELAYOUT_DEBOUNCE + 200);
   }, [isLoadingMoreData, syncChartRanges]);
-  // ✅ OPTIMIZATION 5: Merge and de-dupe data to prevent data loss
+  // Merge and de-dupe data to prevent data loss
   useEffect(() => {
     if (data && data.length > 0) {
       const marketHoursData = filterMarketHoursData(data);
@@ -1107,7 +1106,7 @@ export function StockChart({
       // Batch state update with merge logic to prevent data loss
       requestAnimationFrame(() => {
         setAllData(prevData => {
-          // ✅ CRITICAL FIX: Merge new data with existing data using IST keys
+          // Merge new data with existing using IST keys
           const combined = [...prevData, ...marketHoursData];
           const uniqueMap = new Map<string, StockDataPointWithIST>();
 
@@ -1134,13 +1133,13 @@ export function StockChart({
         }
       });
     }
-  }, [data]); // ✅ Fixed: Removed isUserInteracting to prevent race condition
+  }, [data]); // Removed isUserInteracting to prevent race condition
 
-  // ✅ OPTIMIZATION 6: Clean state on company/interval change to prevent data contamination
+  // Clean state on company/interval change
   useEffect(() => {
     if (companyId) {
       // Clear all data and ranges when company OR interval changes
-      setAllData([]); // ✅ CRITICAL: Clear data to prevent contamination
+      setAllData([]); // Clear data to prevent contamination
       setDataRange({ start: null, end: null });
       lastFetchRangeRef.current = null;
       setIsUserInteracting(false);
@@ -1157,9 +1156,9 @@ export function StockChart({
       setIsLoadingMoreData(false);
       setShowLoadingIndicator(false);
     }
-  }, [companyId, indicators, selectedInterval]); // ✅ CRITICAL FIX: Added selectedInterval to prevent data contamination
+  }, [companyId, indicators, selectedInterval]); // Added selectedInterval
 
-  // ✅ PART 2: CRITICAL - View Anchoring Effect to prevent jumps on data load
+  // View Anchoring Effect to prevent jumps on data load
   useEffect(() => {
     // Check if loading just finished
     if (wasLoadingRef.current && !isLoadingMoreData) {
@@ -1359,10 +1358,9 @@ export function StockChart({
       }
     };
   }, [autoResize, isFullscreen, sidebarVisible, responsiveMode, aspectRatio]);
-  // ✅ OPTIMIZATION 7: Remove redundant filtering - allData is already filtered
-  // const filteredData is removed - allData is already market-hours-filtered in useEffect
+  // allData is already market-hours-filtered in useEffect
 
-  // ✅ OPTIMIZATION 3: Fixed timestamp bug + optimized aggregation
+  // Fixed timestamp bug + optimized aggregation
   const optimizedData = useMemo(() => {
     if (!allData.length) return allData;
     if (allData.length <= CHART_PERFORMANCE_CONFIG.MAX_VISIBLE_POINTS) {
@@ -1375,7 +1373,7 @@ export function StockChart({
       if (chunk.length === 1) {
         result.push(chunk[0]);
       } else {
-        // ✅ FIX: Use FIRST timestamp for correct time progression
+        // Use FIRST timestamp for correct time progression
         const open = chunk[0].open;
         const close = chunk[chunk.length - 1].close;
         let high = chunk[0].high;
@@ -1391,7 +1389,7 @@ export function StockChart({
         }
 
         result.push({
-          interval_start: chunk[0].interval_start, // ✅ FIRST not LAST
+          interval_start: chunk[0].interval_start, // Use FIRST
           open, high, low, close, volume
         });
       }
@@ -1399,7 +1397,7 @@ export function StockChart({
     return result;
   }, [allData]);
 
-  // ✅ OPTIMIZATION 10: Indicator calculation cache to prevent redundant recalculations
+  // Indicator calculation cache
   const indicatorCacheRef = useRef<Map<string, any>>(new Map());
 
   const calculateIndicator = useCallback((type: string, prices: number[], options: Record<string, number> = {}) => {
@@ -1415,7 +1413,7 @@ export function StockChart({
         const period = options.period || 20;
         const maResult = new Array(prices.length);
 
-        // ✅ FIX: Calculate MA from start (use available data for warmup)
+        // Calculate MA from start using available data
         for (let i = 0; i < prices.length; i++) {
           const startIdx = Math.max(0, i - period + 1);
           const windowLength = i - startIdx + 1;
@@ -1433,7 +1431,7 @@ export function StockChart({
         const k = 2 / (period + 1);
         const emaResult = new Array(prices.length);
 
-        // ✅ FIX: Initialize with SMA of first period points, then EMA
+        // Initialize with SMA of first period points, then EMA
         if (prices.length > 0) {
           // Start with simple average of first `period` points (or all available if fewer)
           const warmupLength = Math.min(period, prices.length);
@@ -1454,7 +1452,7 @@ export function StockChart({
         const upperBand = new Array(prices.length);
         const lowerBand = new Array(prices.length);
 
-        // ✅ FIX: Calculate bands from start using adaptive window
+        // Calculate bands from start using adaptive window
         for (let i = 0; i < prices.length; i++) {
           if (ma[i] === null) {
             upperBand[i] = null;
@@ -1479,7 +1477,7 @@ export function StockChart({
         const period = options.period || 14;
         const rsiResult = new Array(prices.length).fill(null);
 
-        // ✅ FIX: Calculate RSI from available data (use adaptive warmup)
+        // Calculate RSI from available data using adaptive warmup
         if (prices.length >= 2) {
           const changes = [];
           for (let i = 1; i < prices.length; i++) {
@@ -1519,7 +1517,7 @@ export function StockChart({
         const slowPeriod = options.slowPeriod || 26;
         const signalPeriod = options.signalPeriod || 9;
 
-        // ✅ FIX: Use adaptive EMA that works from the start
+        // Use adaptive EMA that works from the start
         const fastEMA = calculateIndicator('ema', prices, { period: fastPeriod }) as number[];
         const slowEMA = calculateIndicator('ema', prices, { period: slowPeriod }) as number[];
 
@@ -1528,13 +1526,13 @@ export function StockChart({
           return fast - slowEMA[i];
         });
 
-        // ✅ FIX: Filter out nulls and calculate signal line
+        // Filter out nulls and calculate signal line
         const validMacd = macdLine.filter(val => val !== null) as number[];
         const signalLine = validMacd.length > 0 ?
           calculateIndicator('ema', validMacd, { period: signalPeriod }) as number[] :
           [];
 
-        // ✅ FIX: Proper alignment of signal line with MACD line
+        // Proper alignment of signal line with MACD line
         const paddedSignalLine = new Array(macdLine.length).fill(null);
         let signalIdx = 0;
         for (let i = 0; i < macdLine.length; i++) {

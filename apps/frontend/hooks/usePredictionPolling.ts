@@ -67,7 +67,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
     error,
     lastUpdated,
     dataAge,
-    updateTrigger, // ✅ CRITICAL: Get update trigger
+    updateTrigger, // Get update trigger
   } = usePredictions({ company, enabled });
 
   const [isPolling, setIsPolling] = useState(autoStart && enabled);
@@ -88,7 +88,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
    * Update countdown timer every second
    */
   const startCountdown = useCallback(() => {
-    // ✅ FIX: Clear existing interval and null out ref
+    // Clear existing interval
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
@@ -103,7 +103,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
     countdownIntervalRef.current = setInterval(updateCountdown, 1000);
   }, []);
 
-  // ✅ FIX: Use refs to avoid stale closures and circular dependencies
+  // Use refs to avoid stale closures
   const onUpdateRef = useRef(onUpdate);
   const onErrorRef = useRef(onError);
   const errorRef = useRef(error);
@@ -121,7 +121,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
   const scheduleNextSync = useCallback(() => {
     if (syncTimeoutRef.current) {
       clearTimeout(syncTimeoutRef.current);
-      syncTimeoutRef.current = null; // ✅ FIX: Explicitly null out
+      syncTimeoutRef.current = null; // Explicitly null out
     }
 
     const timeUntilNext = getTimeUntilNextSync();
@@ -151,7 +151,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
 
     console.log(`🔄 [SYNC] Fetching predictions for ${company} at ${now.toLocaleTimeString()} (Poll #${currentPollCount})`);
 
-    // ✅ CRITICAL: Show cached data immediately for stable UI
+    // Show cached data immediately for stable UI
     const cachedData = predictionCache.get(`predictions_${company}`);
     if (cachedData && currentPollCount > 1) {
       // Keep showing cached while fetching fresh (prevents flicker)
@@ -161,7 +161,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
     // Fetch fresh data
     const freshData = await refetch();
     if (freshData) {
-      // ✅ PERFORMANCE FIX: Replace JSON.stringify with metadata comparison
+      // Compare metadata instead of JSON.stringify
       const dataChanged = !cachedData ||
         cachedData.count !== freshData.count ||
         cachedData.starttime !== freshData.starttime ||
@@ -183,7 +183,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
       } else {
         // Data identical BUT still notify (chart might need to update timer, etc.)
         console.log(`ℹ️ [SYNC] Poll #${currentPollCount} - Data unchanged but poll count updated`);
-        onUpdateRef.current?.(freshData); // ✅ CRITICAL: Call onUpdate even if data unchanged
+        onUpdateRef.current?.(freshData); // Call onUpdate even if data unchanged
       }
     } else {
       console.error(`❌ [SYNC] Poll #${currentPollCount} failed:`, errorRef.current);
@@ -214,7 +214,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
     setPollCount(0);
     setElapsedTime(0);
 
-    // ✅ FIX: Clear all existing timers before starting new ones
+    // Clear all existing timers
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
@@ -268,7 +268,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
   }, [enabled, company, refetch, onUpdate, onError, scheduleNextSync, error]);
 
   const stopPolling = useCallback(() => {
-    // ✅ FIX: Clear all timers and null out refs to prevent memory leaks
+    // Clear all timers
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
@@ -296,7 +296,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
   }, []);
 
   const pausePolling = useCallback(() => {
-    // ✅ FIX: Clear all timers and null out refs
+    // Clear all timers
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
@@ -354,7 +354,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
     error,
     lastUpdated,
     dataAge,
-    updateTrigger, // ✅ CRITICAL: Pass through update trigger
+    updateTrigger, // Pass through update trigger
     elapsedTime,
     timeRemaining,
     pollCount,

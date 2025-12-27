@@ -1,10 +1,7 @@
 // Pre-Market API Service
-// Base URL for Pre-Market API - routes through backend to avoid CORS issues
 export const PREMARKET_API_BASE_URL = '/api/premarket';
 
-/**
- * Types for Pre-Market API responses
- */
+// Types
 
 export interface PremarketHeadline {
   id: string;
@@ -75,9 +72,7 @@ export interface PremarketGenerationStatus {
   cached_headlines: number;
 }
 
-/**
- * Pre-Market API Service Class
- */
+// Service Class
 class PremarketService {
   private baseUrl: string;
 
@@ -85,11 +80,7 @@ class PremarketService {
     this.baseUrl = baseUrl;
   }
 
-  /**
-   * Fetch headlines for a specific stock with automatic fallback
-   * 1. Try cached endpoint (fast, in-memory): /api/premarket/headlines/{stock_code}/cached
-   * 2. Fallback to on-disk endpoint (slower): /api/premarket/headlines/{stock_code}
-   */
+  // Fetch headlines with cache fallback
   async fetchHeadlinesCached(stockCode: string): Promise<PremarketHeadlinesResponse> {
     try {
       // First try: cached endpoint (fast)
@@ -157,9 +148,7 @@ class PremarketService {
     }
   }
 
-  /**
-   * Create an empty headlines response for graceful degradation
-   */
+  // Empty headlines fallback
   private createEmptyHeadlinesResponse(stockCode: string): PremarketHeadlinesResponse {
     return {
       stock_ticker: stockCode,
@@ -169,11 +158,7 @@ class PremarketService {
     };
   }
 
-  /**
-   * Fetch prediction for a specific stock with automatic fallback
-   * 1. Try cached endpoint (fast, in-memory): /api/premarket/predictions/{stock_code}
-   * 2. Fallback to on-demand endpoint (slower): /api/premarket/sentiment/{stock_code}
-   */
+  // Fetch prediction with cache fallback
   async fetchPrediction(stockCode: string): Promise<PremarketPrediction> {
     try {
       // First try: cached endpoint (fast)
@@ -241,9 +226,7 @@ class PremarketService {
     }
   }
 
-  /**
-   * Create a neutral prediction for graceful degradation
-   */
+  // Neutral prediction fallback
   private createNeutralPrediction(stockCode: string): PremarketPrediction {
     return {
       stock_ticker: stockCode,
@@ -256,11 +239,7 @@ class PremarketService {
     };
   }
 
-  /**
-   * Fetch all predictions with automatic fallback
-   * 1. Try cached endpoint (fast, in-memory): /api/premarket/predictions
-   * 2. Fallback to batch endpoint (slower): /api/premarket/batch
-   */
+  // Fetch all predictions with fallback
   async fetchAllPredictions(): Promise<PremarketPredictionsResponse> {
     try {
       // First try: cached endpoint (fast)
@@ -312,10 +291,7 @@ class PremarketService {
     }
   }
 
-  /**
-   * List available charts for a stock
-   * GET /api/premarket/charts/{stock_code}?date=YYYY-MM-DD
-   */
+  // List available charts
   async listCharts(stockCode: string, date?: string): Promise<PremarketChartListResponse> {
     try {
       const url = date
@@ -357,18 +333,12 @@ class PremarketService {
     }
   }
 
-  /**
-   * Get chart image URL (direct access to PNG)
-   * GET /api/premarket/charts/{stock_code}/{date}/{filename}
-   */
+  // Get chart image URL
   getChartImageUrl(stockCode: string, date: string, filename: string): string {
     return `${this.baseUrl}/charts/${stockCode}/${date}/${filename}`;
   }
 
-  /**
-   * Check generation status
-   * GET /api/premarket/status
-   */
+  // Check generation status
   async checkStatus(): Promise<PremarketGenerationStatus> {
     try {
       const url = `${this.baseUrl}/status`;
@@ -394,10 +364,7 @@ class PremarketService {
     }
   }
 
-  /**
-   * Trigger prediction generation
-   * POST /api/premarket/generate
-   */
+  // Trigger prediction generation
   async generatePredictions(): Promise<{ message: string; status: PremarketGenerationStatus }> {
     try {
       const url = `${this.baseUrl}/generate`;
@@ -423,10 +390,7 @@ class PremarketService {
     }
   }
 
-  /**
-   * Health check
-   * GET /health
-   */
+  // Health check
   async healthCheck(): Promise<{ status: string; message: string }> {
     try {
       const url = `${this.baseUrl}/health`;

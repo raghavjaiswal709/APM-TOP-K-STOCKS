@@ -35,7 +35,7 @@ export function useGttPredictions({
     const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
     const isMountedRef = useRef<boolean>(true);
 
-    // ============ FETCH PREDICTIONS ============
+    // Fetch predictions
     const fetchPredictions = useCallback(async () => {
         if (!symbol || !enabled) {
             return;
@@ -72,7 +72,7 @@ export function useGttPredictions({
         }
     }, [symbol, enabled]);
 
-    // ============ HEALTH CHECK ============
+    // Health check
     const checkHealth = useCallback(async () => {
         try {
             const healthy = await gttService.healthCheck();
@@ -86,14 +86,14 @@ export function useGttPredictions({
         }
     }, []);
 
-    // ============ CLEAR CACHE ============
+    // Clear cache
     const clearCache = useCallback(() => {
         gttService.clearCache(symbol);
         setPredictions(null);
         setLatestPrediction(null);
     }, [symbol]);
 
-    // ============ EFFECTS ============
+    // Effects
 
     // Initial fetch + health check
     useEffect(() => {

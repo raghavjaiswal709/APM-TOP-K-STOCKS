@@ -18,16 +18,13 @@ from fyers_apiv3.FyersWebsocket import data_ws
 import pandas as pd
 
 # Enhanced logging configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger("LiveMarketServer")
 
-# Socket.IO setup with enhanced CORS
+# Socket.IO setup
 sio = socketio.Server(
     cors_allowed_origins='*', 
     async_mode='eventlet',
@@ -216,42 +213,42 @@ def disconnect(sid):
 
 @sio.event
 def subscribe_companies(sid, data):
-    """FIXED: Subscribe to selected companies with enhanced validation."""
+    """Subscribe to selected companies with enhanced validation."""
     try:
-        logger.info(f"📡 Received subscription request from {sid}: {data}")
+        logger.info(f"Received subscription request from {sid}: {data}")
         
-        # FIXED: Extract companyCodes from data
+        # Extract companyCodes from data
         company_codes = data.get('companyCodes', [])
-        logger.info(f"📡 Raw company codes: {company_codes}")
+        logger.info(f"Raw company codes: {company_codes}")
         
-        # FIXED: Validate data structure
+        # Validate data structure
         if not isinstance(company_codes, list):
-            logger.error(f"❌ Invalid data type for companyCodes: {type(company_codes)}")
+            logger.error(f"Invalid data type for companyCodes: {type(company_codes)}")
             sio.emit('error', {'message': 'companyCodes must be an array'}, room=sid)
             return
         
-        # FIXED: Simplified validation - accept any non-empty string
+        # Simplified validation - accept any non-empty string
         valid_company_codes = []
         for code in company_codes:
             if isinstance(code, str) and code.strip():
                 valid_company_codes.append(code.strip().upper())
             else:
-                logger.warning(f"⚠️ Skipping invalid company code: {code}")
+                logger.warning(f"Skipping invalid company code: {code}")
         
-        logger.info(f"✅ Valid company codes after filtering: {valid_company_codes}")
+        logger.info(f"Valid company codes after filtering: {valid_company_codes}")
         
-        # FIXED: Check limits
+        # Check limits
         if len(valid_company_codes) > MAX_COMPANIES:
-            logger.error(f"❌ Too many companies requested: {len(valid_company_codes)}")
+            logger.error(f"Too many companies requested: {len(valid_company_codes)}")
             sio.emit('error', {'message': f'Maximum {MAX_COMPANIES} companies allowed'}, room=sid)
             return
         
         if len(valid_company_codes) == 0:
-            logger.error(f"❌ No valid company codes provided")
+            logger.error(f"No valid company codes provided")
             sio.emit('error', {'message': 'At least 1 valid company code must be provided'}, room=sid)
             return
         
-        # FIXED: Clear existing subscriptions for this client
+        # Clear existing subscriptions for this client
         if sid in clients:
             for symbol in clients[sid]['subscriptions']:
                 if symbol in symbol_to_clients:
@@ -260,10 +257,10 @@ def subscribe_companies(sid, data):
                         active_subscriptions.discard(symbol)
             clients[sid]['subscriptions'].clear()
         
-        # FIXED: Process valid company codes and create symbols
+        # Process valid company codes and create symbols
         requested_symbols = []
         for company_code in valid_company_codes:
-            logger.info(f"📡 Processing company code: {company_code}")
+            logger.info(f"Processing company code: {company_code}")
             
             # Try to find in existing available symbols
             symbol_data = next(
@@ -273,16 +270,16 @@ def subscribe_companies(sid, data):
             
             if symbol_data:
                 requested_symbols.append(symbol_data['symbol'])
-                logger.info(f"✅ Found existing symbol for {company_code}: {symbol_data['symbol']}")
+                logger.info(f"Found existing symbol for {company_code}: {symbol_data['symbol']}")
             else:
                 # Dynamically create symbol
                 new_symbol_data = add_symbol_to_available(company_code)
                 requested_symbols.append(new_symbol_data['symbol'])
-                logger.info(f"✅ Dynamically created symbol for {company_code}: {new_symbol_data['symbol']}")
+                logger.info(f"Dynamically created symbol for {company_code}: {new_symbol_data['symbol']}")
         
-        logger.info(f"📡 Final requested symbols: {requested_symbols}")
+        logger.info(f"Final requested symbols: {requested_symbols}")
         
-        # FIXED: Update client subscriptions
+        # Update client subscriptions
         if sid not in clients:
             clients[sid] = {
                 'subscriptions': set(),
@@ -513,7 +510,7 @@ def onmessage(message):
             if symbol not in active_subscriptions:
                 return
             
-            # FIXED: Prepare enhanced market data
+            # Prepare market data
             simplified_data = {
                 'symbol': symbol,
                 'ltp': message.get('ltp'),
@@ -538,7 +535,7 @@ def onmessage(message):
             
             historical_data[symbol].append(simplified_data)
             
-            # FIXED: Emit to subscribed clients only
+            # Emit to subscribed clients only
             if symbol in symbol_to_clients:
                 for sid in symbol_to_clients[symbol]:
                     try:

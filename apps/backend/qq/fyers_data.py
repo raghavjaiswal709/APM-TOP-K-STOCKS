@@ -35,7 +35,7 @@ clients = {}
 symbol_to_clients = {}
 running = True
 
-# ============ ENHANCED: Multi-symbol persistent data storage ============
+# Multi-symbol persistent data storage
 historical_data = {}           # All historical data for all symbols
 ohlc_data = {}                # All OHLC data for all symbols
 chart_updates = {}            # Real-time updates for all symbols
@@ -51,13 +51,13 @@ INDIA_TZ = pytz.timezone('Asia/Kolkata')
 fyers = None
 fyers_client = None
 
-# ============ ENHANCED: Real-time Configuration ============
+# Real-time Configuration
 REAL_TIME_INTERVAL = 0.2
 CHART_UPDATE_INTERVAL = 0.1
 last_emit_time = defaultdict(float)
 pending_data = {}
 
-# ============ ENHANCED: Persistent data management ============
+# Persistent data management
 cached_indicators = {}
 data_cleanup_interval = 3600  # Cleanup every hour
 last_cleanup_time = time.time()
@@ -162,7 +162,7 @@ def disconnect(sid):
         del clients[sid]
 
 def fetch_historical_intraday_data(symbol, date=None):
-    """Enhanced to always fetch and store data regardless of current subscriptions"""
+    """Always fetch and store data regardless of active subscriptions"""
     if not date:
         date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
 
@@ -227,7 +227,7 @@ def fetch_historical_intraday_data(symbol, date=None):
 
                     result.append(data_point)
 
-                    # ============ ENHANCED: Always store regardless of active subscriptions ============
+                    # Always store regardless of active subscriptions
                     if symbol not in ohlc_data:
                         ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
 
@@ -286,7 +286,7 @@ def subscribe(sid, data):
     symbol_subscriptions[symbol] += 1
     active_symbols.add(symbol)
 
-    # ============ ENHANCED: Check if we already have cached data ============
+    # Check if we already have cached data
     if symbol not in historical_data or not historical_data[symbol]:
         logger.info(f"Fetching fresh historical data for {symbol}")
         hist_data = fetch_historical_intraday_data(symbol)
@@ -368,7 +368,7 @@ def get_trading_status(sid, data):
     }
 
 def store_historical_data(symbol, data_point):
-    """Enhanced to store data for ALL active symbols"""
+    """Store data for ALL active symbols"""
     if symbol not in historical_data:
         historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
 
@@ -415,7 +415,7 @@ def update_ohlc_data(symbol, data_point):
         current_candle['high'] = max(current_candle['high'], price)
         current_candle['low'] = min(current_candle['low'], price)
         current_candle['close'] = price
-        # ✅ CRITICAL FIX: Accumulate volume instead of replacing it
+        # Accumulate volume instead of replacing it
         current_candle['volume'] += data_point.get('volume', 0)
 
 def calculate_indicators_optimized(symbol, init=False):
@@ -493,9 +493,9 @@ def calculate_indicators_optimized(symbol, init=False):
         'rsi_14': cached_indicators[symbol]['rsi_14']
     }
 
-# ============ ENHANCED: Background data collection for all symbols ============
+# Background data collection for all symbols
 def emit_real_time_data():
-    """Enhanced to emit data for all symbols and manage background collection"""
+    """Emit data for all symbols and manage background collection"""
     global running
     while running:
         try:
@@ -543,7 +543,7 @@ def emit_real_time_data():
             eventlet.sleep(0.1)
 
 def onmessage(message):
-    """Enhanced to handle ALL symbols, not just subscribed ones"""
+    """Handle ALL symbols, not just subscribed ones"""
     if not isinstance(message, dict) or 'symbol' not in message:
         return
 

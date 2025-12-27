@@ -26,7 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("LiveMarketServer5010")
 
-# ✅ Async Socket.IO setup (replaces eventlet)
+# Async Socket.IO setup (replaces eventlet)
 sio = socketio.AsyncServer(
     async_mode='asgi',
     cors_allowed_origins='*',
@@ -45,7 +45,7 @@ redirect_uri = os.getenv("FYERS_REDIRECT_URI")
 access_token = os.getenv("FYERS_ACCESS_TOKEN")
 grant_type = "authorization_code"
 
-# ✅ HTTP Session with connection pooling and retries
+# HTTP Session with connection pooling and retries
 def create_resilient_session():
     """Create HTTP session with automatic retries, timeouts, and connection pooling."""
     session = requests.Session()
@@ -67,7 +67,7 @@ def create_resilient_session():
 
 http_session = create_resilient_session()
 
-# ✅ Thread pool for blocking operations
+# Thread pool for blocking operations
 executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="FyersWorker")
 
 # Global variables
@@ -664,7 +664,7 @@ def fetch_historical_intraday_data(symbol, date=None):
 
 
 async def send_batch_historical_data(sid, symbols):
-    """Send historical data for symbols in background without blocking main thread."""
+    """Emit data for all symbols and manage background collection without blocking main thread."""
     try:
         for symbol in symbols:
             try:
@@ -701,20 +701,20 @@ async def send_batch_historical_data(sid, symbols):
                 await asyncio.sleep(0.05)
                 
             except asyncio.TimeoutError:
-                logger.warning(f"⏱️ Timeout fetching historical data for {symbol}")
+                logger.warning(f"Timeout fetching historical data for {symbol}")
             except Exception as e:
                 logger.error(f"Error sending historical data for {symbol}: {e}")
         
-        logger.info(f"✅ Completed background historical data send for {len(symbols)} symbols")
+        logger.info(f"Background data collection for {len(symbols)} symbols")
         
     except Exception as e:
-        logger.error(f"❌ Critical error in send_batch_historical_data: {e}")
+        logger.error(f"Critical error in send_batch_historical_data: {e}")
 
 
 def onmessage(message):
     """Handle incoming Fyers WebSocket messages."""
     try:
-        # ✅ Handle subscription errors from Fyers (code -300 for invalid symbols)
+        # Handle subscription errors from Fyers (code -300 for invalid symbols)
         if isinstance(message, dict) and (message.get('code') == -300 or 'invalid_symbols' in message):
             logger.error(f"🚫 Fyers subscription error: {message}")
             error_data = {
@@ -746,7 +746,7 @@ def onmessage(message):
             
             current_time = message.get('last_traded_time') or int(time.time())
             
-            # ✅ Prepare enhanced market data
+            # Prepare enhanced market data
             simplified_data = {
                 'symbol': symbol,
                 'ltp': float(message.get('ltp', 0)),
@@ -791,7 +791,7 @@ def onmessage(message):
                 current_candle['high'] = max(current_candle['high'], simplified_data['ltp'])
                 current_candle['low'] = min(current_candle['low'], simplified_data['ltp'])
                 current_candle['close'] = simplified_data['ltp']
-                # ✅ CRITICAL FIX: Accumulate volume instead of replacing it
+                # Accumulate volume instead of replacing it
                 current_candle['volume'] += simplified_data['volume']
             
             # Save to file if needed

@@ -1,7 +1,4 @@
-/**
- * Historical Data Fetcher
- * Fetches missing historical data from external server to ensure complete day view
- */
+// Historical Data Fetcher - Fetches missing data for complete day view
 
 export interface HistoricalDataPoint {
   symbol: string;
@@ -26,10 +23,7 @@ interface FetchResult {
   source: 'external' | 'none';
 }
 
-/**
- * Fetches historical data from external server for a given symbol
- * Uses Next.js API proxy to bypass CORS restrictions
- */
+// Fetch historical data via API proxy (bypasses CORS)
 export async function fetchHistoricalData(
   symbol: string,
   date: string = new Date().toISOString().split('T')[0]
@@ -57,7 +51,7 @@ export async function fetchHistoricalData(
     if (result.success) {
       console.log(`✅ Fetched ${result.data.length} historical data points for ${symbol} via API proxy`);
       
-      // ✅ CRITICAL: Validate actual data date range
+      // Validate data date range
       if (result.data.length > 0) {
         const timestamps = result.data.map(d => d.timestamp);
         const minTimestamp = Math.min(...timestamps);
@@ -92,12 +86,7 @@ export async function fetchHistoricalData(
   }
 }
 
-/**
- * Formats date for external server API
- * Input: 2025-01-08 or Date object
- * Output: 01-08-2025
- * @deprecated - Now handled by API proxy route
- */
+// @deprecated - Now handled by API proxy route
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function formatDateForServer(date: string | Date): string {
   const dateObj = typeof date === 'string' ? new Date(date) : date;
