@@ -1141,7 +1141,7 @@ company_id,NAME OF COMPANY,company_code,Exchange,Marker
 1140,Mangalam Organics Limited,MANORG,NSE,EQ
 1141,Manugraph India Limited,MANUGRAPH,NSE,EQ
 1142,Vedant Fashions Limited,MANYAVAR,NSE,EQ
-1143,C.E. Info Systems Limited,MAPMYINDIA,NSE,EQ
+1143,C.E. Info Systems Limited,MDAKSYINDIA,NSE,EQ
 1144,Maral Overseas Limited,MARALOVER,NSE,EQ
 1145,Marathon Nextgen Realty Limited,MARATHON,NSE,EQ
 1146,Marico Limited,MARICO,NSE,EQ
@@ -2862,7 +2862,7 @@ company_id,NAME OF COMPANY,company_code,Exchange,Marker
 2861,Millennium Online Solutions (India) Ltd,MILLENNIUM,BSE,X
 2862,ICDS Ltd.,ICDSLTD,BSE,T
 2863,Can Fin Homes Ltd.,CANFINHOME,BSE,A
-2864,Munoth Capital Market Ltd,MUNCAPM,BSE,XT
+2864,Munoth Capital Market Ltd,MUNCDAKS,BSE,XT
 2865,IL & FS Investment Managers Ltd.,IVC,BSE,B
 2866,Shriram Finance Limited,SHRIRAMFIN,BSE,A
 2867,Cholamandalam Investment and Finance Company Ltd,CHOLAFIN,BSE,A
@@ -2916,7 +2916,7 @@ company_id,NAME OF COMPANY,company_code,Exchange,Marker
 2915,Omega Interactive Technologies Ltd.,OMEGAIN,BSE,XT
 2916,Sugal & Damani Share Brokers Ltd.,SUGALDAM,BSE,X
 2917,Nettlinx Ltd.,NETTLINX,BSE,X
-2918,Premium Capital Market & Investment,PREMCAPM,BSE,XT
+2918,Premium Capital Market & Investment,PREMCDAKS,BSE,XT
 2919,BGIL Films & Technologies Ltd,BGIL,BSE,XT
 2920,Scan Steels Limited,SCANSTL,BSE,X
 2921,GIC Housing Finance Ltd.,GICHSGFIN,BSE,B
@@ -3544,7 +3544,7 @@ company_id,NAME OF COMPANY,company_code,Exchange,Marker
 3543,Pacific Industries ltd.,PACIFICI,BSE,X
 3544,Chennai Meenakshi Multispeciality Hospital Ltd.,CMMHOSP,BSE,XT
 3545,Universal Office Automation Limited,UNIOFFICE,BSE,X
-3546,APM Industries Ltd.,APMIN,BSE,X
+3546,DAKS Industries Ltd.,DAKSIN,BSE,X
 3547,Precision Wires India ltd.,PRECWIRE,BSE,B
 3548,Krypton Industries Ltd,KRYPTONQ,BSE,XT
 3549,SWISS MILITARY CONSUMER GOODS LIMITED,SWISSMLTRY,BSE,X
@@ -5087,7 +5087,7 @@ company_id,NAME OF COMPANY,company_code,Exchange,Marker
 5086,LAKHOTIA POLYESTERS (INDIA) LIMITED,LAKHOTIA,BSE,XT
 5087,GCM Securities Limited,GCMSECU,BSE,B
 5088,NRB INDUSTRIAL BEARINGS LIMITED,NIBL,BSE,B
-5089,Prime Capital Market Limited,PRIMECAPM,BSE,X
+5089,Prime Capital Market Limited,PRIMECDAKS,BSE,X
 5090,KIFS Financial Services Ltd,KIFS,BSE,XT
 5091,Sreeleathers Limited,SREEL,BSE,B
 5092,Sharda Motor Industries Ltd,SHARDAMOTR,BSE,B
@@ -5211,7 +5211,7 @@ company_id,NAME OF COMPANY,company_code,Exchange,Marker
 5210,Atishay Limited,ATISHAY,BSE,X
 5211,Sangam Finserv Limited,SANGAMFIN,BSE,XT
 5212,Dhabriya Polywood Limited,DHABRIYA,BSE,X
-5213,Aryaman Capital Markets Limited,ARYACAPM,BSE,MT
+5213,Aryaman Capital Markets Limited,ARYACDAKS,BSE,MT
 5214,PDS LIMITED,PDSL,BSE,B
 5215,HANMAN FIT LIMITED,HANMAN,BSE,M
 5216,Vibrant Global Capital Limited,VGCL,BSE,X
@@ -6160,7 +6160,7 @@ company_id,NAME OF COMPANY,company_code,Exchange,Marker
 6159,RateGain Travel Technologies Limited,RATEGAIN,BSE,A
 6160,Shriram Properties Limited,SHRIRAMPPS,BSE,A
 6161,Jet Freight Logistics Limited,JETFREIGHT,BSE,T
-6162,C.E. Info Systems Limited,MAPMYINDIA,BSE,A
+6162,C.E. Info Systems Limited,MDAKSYINDIA,BSE,A
 6163,Metro Brands Limited,METROBRAND,BSE,A
 6164,Medplus Health Services Limited,MEDPLUS,BSE,A
 6165,Data Patterns (India) Limited,DATAPATTNS,BSE,A

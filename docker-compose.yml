@@ -8,7 +8,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: apm-backend
+    container_name: daks-backend
     restart: unless-stopped
     ports:
       - "5002:5002"
@@ -22,7 +22,7 @@ services:
     volumes:
       - ./apps/backend/data:/app/data
     networks:
-      - apm-network
+      - daks-network
 
   # ═══════════════════════════════════════════════════════════════════════════
   # 🖥️ Next.js Frontend (Port 3000)
@@ -31,7 +31,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: apm-frontend
+    container_name: daks-frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -47,7 +47,7 @@ services:
     depends_on:
       - backend
     networks:
-      - apm-network
+      - daks-network
 
   # ═══════════════════════════════════════════════════════════════════════════
   # 🐍 Python Fyers Service A - ASGI/Uvicorn (Port 5001)
@@ -56,7 +56,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.python-5001
-    container_name: apm-fyers-5001
+    container_name: daks-fyers-5001
     restart: unless-stopped
     ports:
       - "5001:5001"
@@ -69,7 +69,7 @@ services:
     volumes:
       - ./apps/backend/data:/app/data
     networks:
-      - apm-network
+      - daks-network
 
   # ═══════════════════════════════════════════════════════════════════════════
   # 🐍 Python Fyers Service B - Eventlet (Port 5010)
@@ -78,7 +78,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.python-5010
-    container_name: apm-fyers-5010
+    container_name: daks-fyers-5010
     restart: unless-stopped
     ports:
       - "5010:5010"
@@ -91,8 +91,8 @@ services:
     volumes:
       - ./apps/backend/data:/app/data
     networks:
-      - apm-network
+      - daks-network
 
 networks:
-  apm-network:
+  daks-network:
     driver: bridge

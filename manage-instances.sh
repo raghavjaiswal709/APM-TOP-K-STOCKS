@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# APM TOP-K STOCKS - Multi-Instance Manager
+# DAKS TOP-K STOCKS - Multi-Instance Manager
 # A user-friendly script to manage all instances (start, stop, logs, etc.)
 # No Docker/developer knowledge required
 ################################################################################
@@ -30,7 +30,7 @@ mkdir -p "$LOG_DIR"
 
 print_header() {
     echo -e "\n${CYAN}════════════════════════════════════════════════════════${NC}"
-    echo -e "${CYAN}  APM TOP-K STOCKS - Multi-Instance Manager${NC}"
+    echo -e "${CYAN}  DAKS TOP-K STOCKS - Multi-Instance Manager${NC}"
     echo -e "${CYAN}════════════════════════════════════════════════════════${NC}\n"
 }
 
@@ -116,7 +116,7 @@ start_instance() {
     fi
     
     local env_file="$INSTANCES_DIR/$instance/.env"
-    local project="apm-$instance"
+    local project="daks-$instance"
     
     echo -e "${YELLOW}⏳ Starting $instance...${NC}"
     
@@ -139,7 +139,7 @@ stop_instance() {
         return 1
     fi
     
-    local project="apm-$instance"
+    local project="daks-$instance"
     
     echo -e "${YELLOW}⏳ Stopping $instance...${NC}"
     
@@ -167,7 +167,7 @@ check_instance_status() {
         return 1
     fi
     
-    local project="apm-$instance"
+    local project="daks-$instance"
     
     echo -e "\n${BLUE}Status of $instance:${NC}\n"
     show_container_status "$project"
@@ -197,7 +197,7 @@ show_all_status() {
     fi
     
     for instance in "${instances[@]}"; do
-        local project="apm-$instance"
+        local project="daks-$instance"
         echo -e "${CYAN}━━━ $instance ━━━${NC}"
         
         if docker compose -p "$project" ps 2>/dev/null | grep -q "Up"; then
@@ -217,7 +217,7 @@ remove_instance() {
         return 1
     fi
     
-    local project="apm-$instance"
+    local project="daks-$instance"
     
     echo -e "${YELLOW}⚠️  This will stop and remove all containers and volumes for $instance.${NC}"
     read -p "Are you sure? Type '$instance' to confirm: " confirm
@@ -325,7 +325,7 @@ view_instance_logs() {
         return 1
     fi
     
-    local project="apm-$instance"
+    local project="daks-$instance"
     
     echo -e "\n${BLUE}Live logs for $instance (Press Ctrl+C to exit)${NC}\n"
     docker compose -p "$project" logs -f 2>/dev/null || echo -e "${RED}✗ No logs found. Is the instance running?${NC}"
@@ -339,7 +339,7 @@ view_instance_logs_tail() {
         return 1
     fi
     
-    local project="apm-$instance"
+    local project="daks-$instance"
     
     echo -e "\n${BLUE}Last $lines logs for $instance:${NC}\n"
     docker compose -p "$project" logs --tail "$lines" 2>/dev/null || echo -e "${RED}✗ No logs found.${NC}"
@@ -358,12 +358,12 @@ view_all_logs() {
     
     # Use tmux if available to view multiple logs, otherwise sequential
     if command -v tmux &>/dev/null; then
-        local session="apm-logs-$$"
+        local session="daks-logs-$$"
         tmux new-session -d -s "$session" -x 200 -y 50
         
         for i in "${!instances[@]}"; do
             local instance="${instances[$i]}"
-            local project="apm-$instance"
+            local project="daks-$instance"
             
             if [[ $i -eq 0 ]]; then
                 tmux send-keys -t "$session" "docker compose -p $project logs -f" Enter
@@ -466,7 +466,7 @@ health_check() {
     echo -e "\n${BLUE}Health Check Report:${NC}\n"
     
     for instance in "${instances[@]}"; do
-        local project="apm-$instance"
+        local project="daks-$instance"
         local env_file="$INSTANCES_DIR/$instance/.env"
         
         echo -e "${CYAN}━━━ $instance ━━━${NC}"
@@ -508,7 +508,7 @@ backup_instances() {
     mapfile -t instances < <(get_instance_list)
     
     for instance in "${instances[@]}"; do
-        local project="apm-$instance"
+        local project="daks-$instance"
         
         echo "  Backing up $instance..."
         docker compose -p "$project" exec -T db pg_dump -U postgres -d "$(grep '^POSTGRES_DB=' "$INSTANCES_DIR/$instance/.env" | cut -d= -f2)" > "$backup_dir/${instance}_db.sql" 2>/dev/null || echo "    (DB backup skipped or failed)"
@@ -677,7 +677,7 @@ cli_mode() {
         *)
             cat << EOF
 
-APM TOP-K STOCKS - Multi-Instance Manager
+DAKS TOP-K STOCKS - Multi-Instance Manager
 
 INTERACTIVE MODE:
   $0                    Start interactive menu

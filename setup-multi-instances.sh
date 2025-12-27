@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ################################################################################
-# APM TOP-K STOCKS - Multi-Instance Setup Script
+# DAKS TOP-K STOCKS - Multi-Instance Setup Script
 # Initializes and configures multiple independent instances
 # Version: 1.0
 # Date: December 22, 2025
@@ -17,7 +17,7 @@ PROJECT_DIR=$(pwd)
 MULTI_INSTANCES_DIR="$PROJECT_DIR/multi-instances"
 NUM_INSTANCES=${1:-3}
 SERVER_IP=${2:-1000.93.172.21}
-POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-apm_secure_password_2025}
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-daks_secure_password_2025}
 
 # Color codes
 RED='\033[0;31m'
@@ -59,7 +59,7 @@ print_info() {
 # MAIN SETUP
 # ═══════════════════════════════════════════════════════════════════════════
 
-print_header "APM Multi-Instance Setup ($NUM_INSTANCES Instances)"
+print_header "DAKS Multi-Instance Setup ($NUM_INSTANCES Instances)"
 
 # Step 1: Create directory structure
 print_info "Step 1: Creating directory structure..."
@@ -85,13 +85,13 @@ done
 print_info "Step 2: Creating environment template..."
 cat > "$MULTI_INSTANCES_DIR/.env.template" << 'EOF'
 # ═══════════════════════════════════════════════════════════════════════════
-# APM TOP-K STOCKS - Instance Configuration Template
+# DAKS TOP-K STOCKS - Instance Configuration Template
 # Copy this and customize for each instance
 # ═══════════════════════════════════════════════════════════════════════════
 
 # Instance Identification
 INSTANCE_ID=instance1
-INSTANCE_NAME="APM Instance 1"
+INSTANCE_NAME="DAKS Instance 1"
 INSTANCE_REGION=local
 SERVER_IP=1000.93.172.21
 
@@ -111,9 +111,9 @@ REDIS_PORT=6379
 # ═══════════════════════════════════════════════════════════════════════════
 
 POSTGRES_USER=postgres
-POSTGRES_PASSWORD=apm_secure_password_2025
-POSTGRES_DB=apm_stocks_instance1
-DATABASE_URL=postgresql://postgres:apm_secure_password_2025@db:5432/apm_stocks_instance1
+POSTGRES_PASSWORD=daks_secure_password_2025
+POSTGRES_DB=daks_stocks_instance1
+DATABASE_URL=postgresql://postgres:daks_secure_password_2025@db:5432/daks_stocks_instance1
 
 # ═══════════════════════════════════════════════════════════════════════════
 # REDIS CONFIGURATION
@@ -184,7 +184,7 @@ for i in $(seq 1 $NUM_INSTANCES); do
     POSTGRES_PORT=$((5432 + (i-1)))
     REDIS_PORT=$((6379 + (i-1)))
     
-    DB_NAME="apm_stocks_instance$i"
+    DB_NAME="daks_stocks_instance$i"
     DB_URL="postgresql://postgres:$POSTGRES_PASSWORD@db:5432/$DB_NAME"
     API_URL="http://localhost:$BACKEND_PORT"
     
@@ -192,7 +192,7 @@ for i in $(seq 1 $NUM_INSTANCES); do
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
         sed -i '' "s/INSTANCE_ID=.*/INSTANCE_ID=instance$i/" "$ENV_FILE"
-        sed -i '' "s/INSTANCE_NAME=.*/INSTANCE_NAME=\"APM Instance $i\"/" "$ENV_FILE"
+        sed -i '' "s/INSTANCE_NAME=.*/INSTANCE_NAME=\"DAKS Instance $i\"/" "$ENV_FILE"
         sed -i '' "s/SERVER_IP=.*/SERVER_IP=$SERVER_IP/" "$ENV_FILE"
         sed -i '' "s/FRONTEND_PORT=.*/FRONTEND_PORT=$FRONTEND_PORT/" "$ENV_FILE"
         sed -i '' "s/BACKEND_PORT=.*/BACKEND_PORT=$BACKEND_PORT/" "$ENV_FILE"
@@ -206,7 +206,7 @@ for i in $(seq 1 $NUM_INSTANCES); do
     else
         # Linux
         sed -i "s/INSTANCE_ID=.*/INSTANCE_ID=instance$i/" "$ENV_FILE"
-        sed -i "s/INSTANCE_NAME=.*/INSTANCE_NAME=\"APM Instance $i\"/" "$ENV_FILE"
+        sed -i "s/INSTANCE_NAME=.*/INSTANCE_NAME=\"DAKS Instance $i\"/" "$ENV_FILE"
         sed -i "s/SERVER_IP=.*/SERVER_IP=$SERVER_IP/" "$ENV_FILE"
         sed -i "s/FRONTEND_PORT=.*/FRONTEND_PORT=$FRONTEND_PORT/" "$ENV_FILE"
         sed -i "s/BACKEND_PORT=.*/BACKEND_PORT=$BACKEND_PORT/" "$ENV_FILE"
@@ -269,9 +269,9 @@ print_success "Created health-check.sh"
 
 # Step 7: Create README
 cat > "$MULTI_INSTANCES_DIR/README.md" << 'EOF'
-# APM TOP-K STOCKS - Multi-Instance Deployment
+# DAKS TOP-K STOCKS - Multi-Instance Deployment
 
-This directory contains configurations for running multiple independent instances of the APM system.
+This directory contains configurations for running multiple independent instances of the DAKS system.
 
 ## Quick Start
 

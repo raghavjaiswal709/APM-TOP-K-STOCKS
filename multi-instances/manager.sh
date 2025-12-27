@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ################################################################################
-# APM TOP-K STOCKS - Multi-Instance Manager
+# DAKS TOP-K STOCKS - Multi-Instance Manager
 # Complete orchestration with Interactive Menu
 # Version: 2.0
 # Date: December 22, 2025
@@ -105,21 +105,10 @@ get_docker_status() {
 
 print_banner() {
     clear
-    echo -e "${CYAN}"
-    echo "╔════════════════════════════════════════════════════════════════════════════╗"
-    echo "║                                                                            ║"
-    echo "║     █████╗ ██████╗ ███╗   ███╗    ████████╗ ██████╗ ██████╗                ║"
-    echo "║    ██╔══██╗██╔══██╗████╗ ████║    ╚══██╔══╝██╔═══██╗██╔══██╗               ║"
-    echo "║    ███████║██████╔╝██╔████╔██║       ██║   ██║   ██║██████╔╝               ║"
-    echo "║    ██╔══██║██╔═══╝ ██║╚██╔╝██║       ██║   ██║   ██║██╔═══╝                ║"
-    echo "║    ██║  ██║██║     ██║ ╚═╝ ██║       ██║   ╚██████╔╝██║                    ║"
-    echo "║    ╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝       ╚═╝    ╚═════╝ ╚═╝                    ║"
-    echo "║                                                                            ║"
-    echo "║              ${WHITE}🚀 MULTI-INSTANCE MANAGER v2.0 🚀${CYAN}                          ║"
-    echo "║                   ${DIM}Docker Orchestration Made Easy${NC}${CYAN}                          ║"
-    echo "║                                                                            ║"
-    echo "╚════════════════════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}${WHITE}  🚀 MULTI-INSTANCE MANAGER v2.0${NC}"
+    echo -e "${DIM}  Docker Orchestration Made Easy${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
 print_section() {
@@ -211,7 +200,7 @@ is_instance_running() {
     
     # Use subshell to avoid changing directory permanently
     local running_count
-    running_count=$(cd "$instance_dir" && docker-compose -f docker-compose.standalone.yml ps -q 2>/dev/null | wc -l | tr -d ' ')
+    running_count=$(cd "$instance_dir" && docker compose -f docker-compose.standalone.yml ps -q 2>/dev/null | wc -l | tr -d ' ')
     
     if [ "$running_count" -gt 0 ] 2>/dev/null; then
         return 0
@@ -237,7 +226,7 @@ get_running_container_count() {
     local instance_dir="$MULTI_INSTANCES_DIR/$instance"
     
     # Use subshell to avoid changing directory permanently
-    (cd "$instance_dir" 2>/dev/null && docker-compose -f docker-compose.standalone.yml ps -q 2>/dev/null | wc -l | tr -d ' ') || echo "0"
+    (cd "$instance_dir" 2>/dev/null && docker compose -f docker-compose.standalone.yml ps -q 2>/dev/null | wc -l | tr -d ' ') || echo "0"
 }
 
 # STATUS DISPLAY
@@ -354,7 +343,7 @@ start_single_instance() {
     
     # Capture error output for better debugging
     local error_output
-    error_output=$(docker-compose -f docker-compose.standalone.yml up -d 2>&1)
+    error_output=$(docker compose -f docker-compose.standalone.yml up -d 2>&1)
     local exit_code=$?
     
     # Get port info before popd
@@ -406,7 +395,7 @@ stop_single_instance() {
     pushd "$instance_dir" > /dev/null 2>&1 || return 1
     
     local result=0
-    if docker-compose -f docker-compose.standalone.yml down >/dev/null 2>&1; then
+    if docker compose -f docker-compose.standalone.yml down >/dev/null 2>&1; then
         [ "$silent" = false ] && print_success "Instance $num stopped"
     else
         [ "$silent" = false ] && print_error "Failed to stop Instance $num"
@@ -427,7 +416,7 @@ restart_single_instance() {
     # Use pushd/popd to preserve current directory
     pushd "$instance_dir" > /dev/null 2>&1 || return 1
     
-    docker-compose -f docker-compose.standalone.yml restart >/dev/null 2>&1
+    docker compose -f docker-compose.standalone.yml restart >/dev/null 2>&1
     local exit_code=$?
     
     popd > /dev/null 2>&1
@@ -847,9 +836,9 @@ menu_view_logs() {
     echo ""
     
     if [ -z "$service" ]; then
-        docker-compose -f docker-compose.standalone.yml logs -f --tail=100
+        docker compose -f docker-compose.standalone.yml logs -f --tail=100
     else
-        docker-compose -f docker-compose.standalone.yml logs -f --tail=100 $service
+        docker compose -f docker-compose.standalone.yml logs -f --tail=100 $service
     fi
 }
 
@@ -984,14 +973,14 @@ menu_db_operations() {
             echo ""
             print_info "Opening database shell... (type \\q to exit)"
             echo ""
-            docker-compose -f docker-compose.standalone.yml exec db psql -U $POSTGRES_USER -d $POSTGRES_DB
+            docker compose -f docker-compose.standalone.yml exec db psql -U $POSTGRES_USER -d $POSTGRES_DB
             ;;
         2)
             mkdir -p "$instance_dir/backups"
             local backup_file="$instance_dir/backups/backup_$(date +%Y%m%d_%H%M%S).sql"
             print_loading "Creating backup..."
             
-            if docker-compose -f docker-compose.standalone.yml exec -T db pg_dump -U $POSTGRES_USER $POSTGRES_DB > "$backup_file" 2>/dev/null; then
+            if docker compose -f docker-compose.standalone.yml exec -T db pg_dump -U $POSTGRES_USER $POSTGRES_DB > "$backup_file" 2>/dev/null; then
                 print_success "Backup created: $backup_file"
                 echo -e "     ${DIM}Size: $(ls -lh "$backup_file" | awk '{print $5}')${NC}"
             else
@@ -1001,7 +990,7 @@ menu_db_operations() {
             ;;
         3)
             echo ""
-            docker-compose -f docker-compose.standalone.yml exec db psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT pg_size_pretty(pg_database_size('$POSTGRES_DB')) as database_size;" 2>/dev/null
+            docker compose -f docker-compose.standalone.yml exec db psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT pg_size_pretty(pg_database_size('$POSTGRES_DB')) as database_size;" 2>/dev/null
             ;;
         *)
             print_info "Operation cancelled"
@@ -1058,8 +1047,8 @@ menu_open_shell() {
     print_info "Opening shell in $service container... (type 'exit' to leave)"
     echo ""
     
-    docker-compose -f docker-compose.standalone.yml exec $service $shell_cmd 2>/dev/null || \
-    docker-compose -f docker-compose.standalone.yml exec $service /bin/sh
+    docker compose -f docker-compose.standalone.yml exec $service $shell_cmd 2>/dev/null || \
+    docker compose -f docker-compose.standalone.yml exec $service /bin/sh
 }
 
 menu_create_instance() {
@@ -1113,7 +1102,7 @@ menu_create_instance() {
     # Create directory structure
     mkdir -p "$new_dir"/{config,data,logs,backups}
     
-    # Copy docker-compose from template (instance1)
+    # Copy docker compose from template (instance1)
     if [ -f "$MULTI_INSTANCES_DIR/instance1/docker-compose.standalone.yml" ]; then
         cp "$MULTI_INSTANCES_DIR/instance1/docker-compose.standalone.yml" "$new_dir/"
     else
@@ -1124,13 +1113,13 @@ menu_create_instance() {
     # Create .env file
     cat > "$new_dir/.env" << EOF
 # ═══════════════════════════════════════════════════════════════════════════
-# APM TOP-K STOCKS - Instance $new_num Configuration
+# DAKS TOP-K STOCKS - Instance $new_num Configuration
 # Created: $(date)
 # ═══════════════════════════════════════════════════════════════════════════
 
 # Instance Identification
 INSTANCE_ID=$new_instance
-INSTANCE_NAME="APM Instance $new_num"
+INSTANCE_NAME="DAKS Instance $new_num"
 INSTANCE_REGION=local
 
 # Port Configuration
@@ -1143,9 +1132,9 @@ REDIS_PORT=$redis_port
 
 # Database Configuration
 POSTGRES_USER=postgres
-POSTGRES_PASSWORD=apm_secure_password_2025
-POSTGRES_DB=apm_stocks_$new_instance
-DATABASE_URL=postgresql://postgres:apm_secure_password_2025@db:5432/apm_stocks_$new_instance
+POSTGRES_PASSWORD=daks_secure_password_2025
+POSTGRES_DB=daks_stocks_$new_instance
+DATABASE_URL=postgresql://postgres:daks_secure_password_2025@db:5432/daks_stocks_$new_instance
 
 # Redis Configuration
 REDIS_URL=redis://redis:6379
@@ -1238,7 +1227,7 @@ menu_delete_instance() {
     
     # Remove volumes
     cd "$instance_dir"
-    docker-compose -f docker-compose.standalone.yml down -v >/dev/null 2>&1
+    docker compose -f docker-compose.standalone.yml down -v >/dev/null 2>&1
     
     # Remove directory
     rm -rf "$instance_dir"
@@ -1351,9 +1340,9 @@ handle_cli_command() {
             local instance_dir="$MULTI_INSTANCES_DIR/instance$arg1"
             cd "$instance_dir"
             if [ -z "$arg2" ]; then
-                docker-compose -f docker-compose.standalone.yml logs -f --tail=100
+                docker compose -f docker-compose.standalone.yml logs -f --tail=100
             else
-                docker-compose -f docker-compose.standalone.yml logs -f --tail=100 "$arg2"
+                docker compose -f docker-compose.standalone.yml logs -f --tail=100 "$arg2"
             fi
             ;;
         health-check|health)
@@ -1370,7 +1359,7 @@ handle_cli_command() {
             local instance_dir="$MULTI_INSTANCES_DIR/instance$arg1"
             cd "$instance_dir"
             source .env
-            docker-compose -f docker-compose.standalone.yml exec db psql -U $POSTGRES_USER -d $POSTGRES_DB
+            docker compose -f docker-compose.standalone.yml exec db psql -U $POSTGRES_USER -d $POSTGRES_DB
             ;;
         db-backup)
             if [ -z "$arg1" ]; then
@@ -1382,7 +1371,7 @@ handle_cli_command() {
             source .env
             mkdir -p "$instance_dir/backups"
             local backup_file="$instance_dir/backups/backup_$(date +%Y%m%d_%H%M%S).sql"
-            docker-compose -f docker-compose.standalone.yml exec -T db pg_dump -U $POSTGRES_USER $POSTGRES_DB > "$backup_file"
+            docker compose -f docker-compose.standalone.yml exec -T db pg_dump -U $POSTGRES_USER $POSTGRES_DB > "$backup_file"
             print_success "Backup created: $backup_file"
             ;;
         help|-h|--help)
@@ -1470,7 +1459,7 @@ main_interactive() {
                 ;;
             0|q|Q|exit|Exit|EXIT)
                 echo ""
-                echo -e "  ${GREEN}${BOLD}👋 Goodbye! Thanks for using APM Instance Manager.${NC}"
+                echo -e "  ${GREEN}${BOLD}👋 Goodbye! Thanks for using DAKS Instance Manager.${NC}"
                 echo ""
                 exit 0
                 ;;

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ################################################################################
-# APM TOP-K STOCKS - Multi-Instance Manager
+# DAKS TOP-K STOCKS - Multi-Instance Manager
 # Complete orchestration for running multiple independent instances
 # Version: 1.0
 # Date: December 22, 2025
@@ -13,7 +13,7 @@ set -e
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════
 
-PROJECT_DIR="/Users/raghav/Documents/GitHub/APM-TOP-K-STOCKS"
+PROJECT_DIR="/Users/raghav/Documents/GitHub/DAKS-TOP-K-STOCKS"
 MULTI_INSTANCES_DIR="$PROJECT_DIR/multi-instances"
 NUM_INSTANCES=${INSTANCES:-3}
 LOG_DIR="$MULTI_INSTANCES_DIR/logs"
@@ -295,7 +295,7 @@ generate_report() {
 
 # Function to display help
 show_help() {
-    print_header "APM Multi-Instance Manager - Help"
+    print_header "DAKS Multi-Instance Manager - Help"
     
     echo ""
     echo "Usage: $0 <command> [options]"

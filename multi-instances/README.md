@@ -1,6 +1,6 @@
-# APM TOP-K STOCKS - Multi-Instance Deployment
+# DAKS TOP-K STOCKS - Multi-Instance Deployment
 
-This directory contains configurations for running multiple independent instances of the APM system.
+This directory contains configurations for running multiple independent instances of the DAKS system.
 
 ## Quick Start
 

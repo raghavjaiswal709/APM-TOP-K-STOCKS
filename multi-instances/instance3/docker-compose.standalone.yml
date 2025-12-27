@@ -39,8 +39,8 @@ services:
       retries: 3
       start_period: 40s
     labels:
-      - "com.apm.instance=${INSTANCE_ID}"
-      - "com.apm.service=frontend"
+      - "com.daks.instance=${INSTANCE_ID}"
+      - "com.daks.service=frontend"
 
   # ═══════════════════════════════════════════════════════════════════════════
   # BACKEND API (NestJS)
@@ -80,8 +80,8 @@ services:
       retries: 3
       start_period: 30s
     labels:
-      - "com.apm.instance=${INSTANCE_ID}"
-      - "com.apm.service=backend"
+      - "com.daks.instance=${INSTANCE_ID}"
+      - "com.daks.service=backend"
 
   # ═══════════════════════════════════════════════════════════════════════════
   # DATABASE (PostgreSQL)
@@ -108,8 +108,8 @@ services:
       timeout: 5s
       retries: 5
     labels:
-      - "com.apm.instance=${INSTANCE_ID}"
-      - "com.apm.service=database"
+      - "com.daks.instance=${INSTANCE_ID}"
+      - "com.daks.service=database"
 
   # ═══════════════════════════════════════════════════════════════════════════
   # CACHE (Redis)
@@ -131,8 +131,8 @@ services:
       timeout: 5s
       retries: 5
     labels:
-      - "com.apm.instance=${INSTANCE_ID}"
-      - "com.apm.service=cache"
+      - "com.daks.instance=${INSTANCE_ID}"
+      - "com.daks.service=cache"
 
   # ═══════════════════════════════════════════════════════════════════════════
   # FYERS SERVICE 5001 (Python - AsyncIO/Uvicorn)
@@ -163,8 +163,8 @@ services:
     networks:
       - internal
     labels:
-      - "com.apm.instance=${INSTANCE_ID}"
-      - "com.apm.service=fyers-5001"
+      - "com.daks.instance=${INSTANCE_ID}"
+      - "com.daks.service=fyers-5001"
 
   # ═══════════════════════════════════════════════════════════════════════════
   # FYERS SERVICE 5010 (Python - Eventlet)
@@ -195,8 +195,8 @@ services:
     networks:
       - internal
     labels:
-      - "com.apm.instance=${INSTANCE_ID}"
-      - "com.apm.service=fyers-5010"
+      - "com.daks.instance=${INSTANCE_ID}"
+      - "com.daks.service=fyers-5010"
 
 volumes:
   postgres-data:

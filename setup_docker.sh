@@ -1,14 +1,14 @@
 #!/bin/bash
 
 ################################################################################
-# APM TOP-K STOCKS - Complete Docker Environment Setup Script
+# DAKS TOP-K STOCKS - Complete Docker Environment Setup Script
 # Version: 2.0
 # Date: December 27, 2025
 # 
 # COMPREHENSIVE SETUP SCRIPT FOR BRAND NEW SERVERS
 # ═════════════════════════════════════════════════════════════════════════════
 # 
-# This script automates the complete setup of the APM TOP-K STOCKS application
+# This script automates the complete setup of the DAKS TOP-K STOCKS application
 # on a fresh server (with or without Docker installed). It performs:
 #
 # ✅ Docker & Docker Compose Installation (if needed)
@@ -593,13 +593,13 @@ create_env_files() {
         print_task "Creating backend .env file..."
         cat > "$PROJECT_ROOT/apps/backend/.env" << 'BACKEND_ENV'
 # ═══════════════════════════════════════════════════════════════════════════
-# APM Backend Environment Configuration
+# DAKS Backend Environment Configuration
 # ═══════════════════════════════════════════════════════════════════════════
 
 # Server Configuration
 PORT=5002
 NODE_ENV=development
-APP_NAME=APM-Backend
+APP_NAME=DAKS-Backend
 
 # Database Configuration
 DB_TYPE=postgres
@@ -607,7 +607,7 @@ DB_HOST=postgres
 DB_PORT=5432
 DB_USERNAME=postgres
 DB_PASSWORD=postgres
-DB_DATABASE=apm_db
+DB_DATABASE=daks_db
 DB_SYNCHRONIZE=true
 DB_LOGGING=true
 
@@ -651,7 +651,7 @@ BACKEND_ENV
         print_task "Creating frontend .env.local file..."
         cat > "$PROJECT_ROOT/apps/frontend/.env.local" << 'FRONTEND_ENV'
 # ═══════════════════════════════════════════════════════════════════════════
-# APM Frontend Environment Configuration
+# DAKS Frontend Environment Configuration
 # ═══════════════════════════════════════════════════════════════════════════
 
 # API Configuration
@@ -664,7 +664,7 @@ BACKEND_URL=http://backend:5002
 
 # Environment
 NEXT_PUBLIC_ENV=development
-NEXT_PUBLIC_APP_NAME=APM
+NEXT_PUBLIC_APP_NAME=DAKS
 
 # Feature Flags
 NEXT_PUBLIC_ENABLE_CHARTS=true
@@ -1064,7 +1064,7 @@ print_setup_complete() {
     print_header "✨ Setup Complete!"
     
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${GREEN}           🎉 APM TOP-K STOCKS Application Ready! 🎉${NC}"
+    echo -e "${GREEN}           🎉 DAKS TOP-K STOCKS Application Ready! 🎉${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     
@@ -1186,7 +1186,7 @@ main() {
     parse_arguments "$@"
     
     # Print welcome banner
-    print_header "🚀 APM TOP-K STOCKS - Complete Docker Setup v2.0"
+    print_header "🚀 DAKS TOP-K STOCKS - Complete Docker Setup v2.0"
     print_info "Setting up complete development environment..."
     print_info "This process may take 15-30 minutes depending on your internet speed"
     echo ""

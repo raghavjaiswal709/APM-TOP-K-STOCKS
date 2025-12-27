@@ -17,7 +17,7 @@ export class AdminService {
   private readonly logger = new Logger(AdminService.name);
   
   // Path to the Python script - use absolute path for reliability
-  private readonly PYTHON_SCRIPT_PATH = '/Users/raghav/Documents/GitHub/APM-TOP-K-STOCKS/apps/backend/data/company_validate.py';
+  private readonly PYTHON_SCRIPT_PATH = '/Users/raghav/Documents/GitHub/DAKS-TOP-K-STOCKS/apps/backend/data/company_validate.py';
 
   // Track running process
   private runningProcess: ChildProcess | null = null;
@@ -68,7 +68,7 @@ export class AdminService {
 
     // Spawn the Python process
     // Use the virtual environment's Python for proper package access
-    const venvPythonPath = '/Users/raghav/Documents/GitHub/APM-TOP-K-STOCKS/.venv/bin/python';
+    const venvPythonPath = '/Users/raghav/Documents/GitHub/DAKS-TOP-K-STOCKS/.venv/bin/python';
     this.runningProcess = spawn(venvPythonPath, [this.PYTHON_SCRIPT_PATH], {
       cwd: path.dirname(this.PYTHON_SCRIPT_PATH),
       env: {
