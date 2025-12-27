@@ -62,10 +62,7 @@ export interface CompanyPredictions {
     };
 }
 
-/**
- * ✅ FIXED: Pass through GTT predictions in native array format
- * NO TRANSFORMATION - Chart expects array format with H1-H5 structure
- */
+// Pass through GTT predictions in native array format
 export function transformGttToChartPredictions(
     gttResponse: GttApiResponse | null
 ): any | null {
@@ -81,20 +78,18 @@ export function transformGttToChartPredictions(
         latestPredictionTime: gttResponse.latest.prediction_time
     });
 
-    // ✅ CRITICAL: Return data in NATIVE format (array) for PlotlyChart
+    // Return native format for PlotlyChart
     // PlotlyChart expects: { symbol, latest, predictions: Array, total_predictions }
     return {
         symbol: gttResponse.symbol,
         latest: gttResponse.latest,
-        predictions: gttResponse.predictions,  // ✅ Keep as ARRAY
+        predictions: gttResponse.predictions,  // Keep as array
         total_predictions: gttResponse.total_predictions,
         count: gttResponse.total_predictions
     };
 }
 
-/**
- * ✅ NEW: Helper function to extract latest prediction values
- */
+// Extract latest prediction values
 export function extractLatestGttValues(transformed: CompanyPredictions | null) {
     if (!transformed || !transformed.latest) return null;
 

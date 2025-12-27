@@ -176,7 +176,7 @@ const MarketDataPage: React.FC = () => {
   // Subscription Management State
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
-  // ✅ NEW: Subscription error state for failed symbols
+  // Subscription error state for failed symbols
   const [subscriptionErrors, setSubscriptionErrors] = useState<{
     code: number;
     message: string;
@@ -188,10 +188,10 @@ const MarketDataPage: React.FC = () => {
   const [currentDate, setCurrentDate] = useState<string | null>(null);
   const [filteredCompanies, setFilteredCompanies] = useState<any[]>([]);
 
-  // ✅ NEW: Shared X-Axis state for chart synchronization
+  // Shared X-Axis state for chart synchronization
   const [sharedXRange, setSharedXRange] = useState<[Date, Date] | undefined>(undefined);
 
-  // ✅ NEW: Bidirectional X-axis synchronization handler with throttling
+  // Bidirectional X-axis synchronization handler with throttling
   const handleXRangeChange = useCallback((range: [Date, Date]) => {
     console.log('🎯 [Parent] Received range change:', range);
     setSharedXRange(range);
@@ -206,7 +206,7 @@ const MarketDataPage: React.FC = () => {
   } = useWatchlist({ date: currentDate || undefined });
 
 
-  // ============ DATE SYNCHRONIZATION LOGIC ============
+  // Date Synchronization Logic
 
   // Determine the effective date (either user-selected or hook-default)
   const effectiveDate = currentDate || hookSelectedDate;
@@ -232,7 +232,7 @@ const MarketDataPage: React.FC = () => {
 
 
 
-  // ============ PREDICTION POLLING INTEGRATION ============
+  // Prediction Polling Integration
   const {
     isPolling,
     startPolling,
@@ -245,7 +245,7 @@ const MarketDataPage: React.FC = () => {
     error: predictionError,
     lastUpdated: predictionLastUpdated,
     dataAge: predictionDataAge,
-    updateTrigger, // ✅ CRITICAL: Get update trigger from hook
+    updateTrigger, // Get update trigger from hook
     elapsedTime,
     timeRemaining,
     pollCount,
@@ -269,7 +269,7 @@ const MarketDataPage: React.FC = () => {
     },
   });
 
-  // ============ GTT POLLING INTEGRATION (NEW) ============
+  // GTT Polling Integration
   const {
     predictions: rawGttPredictions,
     loading: gttLoading,
@@ -314,14 +314,14 @@ const MarketDataPage: React.FC = () => {
     return 'Not Desirable';
   }, [desirabilityScore]);
 
-  // ✅ OPTIMIZED: Use updateTrigger directly from hook (single source of truth)
+  // Use updateTrigger directly from hook
   const predictionRevision = useMemo(() => {
     if (!predictions || predictions.count === 0) return 0;
     // Use updateTrigger as the revision counter
     return updateTrigger;
   }, [predictions, updateTrigger]);
 
-  // ✅ OPTIMIZED: Stable callback using refs to avoid stale closures
+  // Stable callback using refs
   const handleTimerEnd = useCallback(async () => {
     console.log('⏰ [TIMER END] Timer reached 0 - triggering immediate refresh');
 
@@ -333,7 +333,7 @@ const MarketDataPage: React.FC = () => {
     }
   }, [refetchPredictions]);
 
-  // ✅ OPTIMIZED: Stable callback for manual refresh
+  // Stable callback for manual refresh
   const handleManualRefresh = useCallback(async () => {
     console.log('🔄 [MANUAL REFRESH] Button clicked, fetching predictions...');
 
@@ -345,7 +345,7 @@ const MarketDataPage: React.FC = () => {
     }
   }, [refetchPredictions]);
 
-  // ============ UTILITY FUNCTIONS ============
+  // Utility Functions
   const validateAndFormatSymbol = useCallback((companyCode: string, exchange: string, marker?: string): string => {
     // Preserve valid special chars (e.g., '&' in M&MFIN, '-' in BAJAJ-AUTO) while stripping whitespace
     const normalizedSymbol = companyCode
@@ -396,13 +396,11 @@ const MarketDataPage: React.FC = () => {
   }, []);
 
 
-  // ============ SUBSCRIPTION HANDLERS ============
-
-  // ============ SUBSCRIPTION HANDLERS ============
+  // Subscription Handlers
 
   const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ✅ CRITICAL FIX: Remove date restriction - subscriptions are date-independent
+  // Remove date restriction - subscriptions are date-independent
   const handleSubscribeCompanies = useCallback(async (symbols: string[]) => {
     if (!symbols || symbols.length === 0) return;
 
@@ -440,7 +438,7 @@ const MarketDataPage: React.FC = () => {
     }
   }, []); // ✅ Removed isLatestDate dependency
 
-  // ✅ CRITICAL FIX: Remove date restriction from Subscribe All
+  // Remove date restriction from Subscribe All
   const handleSubscribeAll = useCallback(() => {
     if (isSubscribing) {
       toast.warning("Subscription already in progress");
@@ -466,7 +464,7 @@ const MarketDataPage: React.FC = () => {
     handleSubscribeCompanies(symbols);
   }, [companies, validateAndFormatSymbol, handleSubscribeCompanies, isSubscribing, filteredCompanies]); // ✅ Removed isLatestDate
 
-  // ============ EVENT HANDLERS ============
+  // Event Handlers
   const handleConnect = useCallback(() => {
     console.log('✅ Connected to server');
     setSocketStatus('Connected');
@@ -519,11 +517,11 @@ const MarketDataPage: React.FC = () => {
 
   const handleError = useCallback((error: any) => {
     console.error('❌ Socket error:', error);
-    
-    // ✅ Check if this is a subscription error - don't pollute socketStatus with long error messages
+
+    // Check if this is a subscription error
     const isSubscriptionError = error && (
-      error.code === -300 || 
-      error.type === 'sub' || 
+      error.code === -300 ||
+      error.type === 'sub' ||
       error.invalid_symbols ||
       (typeof error.message === 'string' && (
         error.message.includes('invalid_symbols') ||
@@ -531,11 +529,11 @@ const MarketDataPage: React.FC = () => {
         error.message.includes('STOPPED')
       ))
     );
-    
+
     if (isSubscriptionError) {
       // Don't set socketStatus for subscription errors - they're handled separately
       console.error('🚫 Subscription error detected:', error);
-      
+
       // Parse invalid_symbols from message if it's a string
       let invalidSymbols = error.invalid_symbols || [];
       if (invalidSymbols.length === 0 && typeof error.message === 'string') {
@@ -547,14 +545,14 @@ const MarketDataPage: React.FC = () => {
             .filter((s: string) => s.length > 0);
         }
       }
-      
+
       setSubscriptionErrors({
         code: error.code || -300,
         message: error.message || 'Invalid symbol subscription failed',
         invalidSymbols: invalidSymbols,
         timestamp: Date.now()
       });
-      
+
       setFailedSymbols(prev => {
         const combined = [...new Set([...prev, ...invalidSymbols])];
         return combined;
@@ -565,14 +563,14 @@ const MarketDataPage: React.FC = () => {
     }
   }, []);
 
-  // ✅ NEW: Dedicated handler for Fyers subscription errors
+  // Dedicated handler for Fyers subscription errors
   const handleSubscriptionError = useCallback((error: any) => {
     console.error('🚫 Fyers subscription error:', error);
-    
+
     // Parse the error - handle both direct object and string formats
     let errorData = error;
     let errorMessage = '';
-    
+
     if (typeof error === 'string') {
       errorMessage = error;
       try {
@@ -584,17 +582,17 @@ const MarketDataPage: React.FC = () => {
     } else if (error && typeof error === 'object') {
       errorMessage = error.message || JSON.stringify(error);
     }
-    
+
     // Extract invalid_symbols from various formats
     let invalidSymbols: string[] = [];
-    
+
     // Try to get from direct property
     if (Array.isArray(errorData.invalid_symbols)) {
       invalidSymbols = errorData.invalid_symbols;
     } else if (Array.isArray(errorData.invalidSymbols)) {
       invalidSymbols = errorData.invalidSymbols;
     }
-    
+
     // If still empty, try to parse from message string
     if (invalidSymbols.length === 0 && errorMessage) {
       const match = errorMessage.match(/invalid_symbols['":\s]*\[([^\]]+)\]/);
@@ -605,23 +603,23 @@ const MarketDataPage: React.FC = () => {
           .filter((s: string) => s.length > 0);
       }
     }
-    
+
     console.log('🔍 Parsed invalid symbols:', invalidSymbols);
-    
+
     setSubscriptionErrors({
       code: errorData.code || -300,
       message: errorData.message || errorMessage || 'Symbol subscription failed',
       invalidSymbols: invalidSymbols,
       timestamp: Date.now()
     });
-    
+
     setFailedSymbols(prev => {
       const combined = [...new Set([...prev, ...invalidSymbols])];
       return combined;
     });
   }, []);
 
-  // ✅ NEW: Clear subscription errors
+  // Clear subscription errors
   const clearSubscriptionErrors = useCallback(() => {
     setSubscriptionErrors(null);
     setFailedSymbols([]);
@@ -643,7 +641,7 @@ const MarketDataPage: React.FC = () => {
       const symbol = data.symbol;
       const existingHistory = prev[symbol] || [];
 
-      // ✅ CRITICAL FIX: Use Map for efficient deduplication and merging
+      // Use Map for efficient deduplication and merging
       const dataMap = new Map<number, MarketData>();
 
       existingHistory.forEach(point => {
@@ -685,7 +683,7 @@ const MarketDataPage: React.FC = () => {
 
     const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
 
-    // ✅ CRITICAL FIX: MERGE socket historical data with existing data instead of REPLACING
+    // Merge socket historical data with existing data
     // This preserves the earlier historical data fetched from external API
     setHistoricalData(prev => {
       const existingData = prev[data.symbol] || [];
@@ -727,7 +725,7 @@ const MarketDataPage: React.FC = () => {
         changePercent: item.changePercent || 0
       }));
 
-      // ✅ CRITICAL FIX: Also MERGE chartUpdates instead of replacing
+      // Also merge chartUpdates instead of replacing
       setChartUpdates(prev => {
         const existingUpdates = prev[data.symbol] || [];
         const updateMap = new Map<number, typeof chartData[0]>();
@@ -780,7 +778,7 @@ const MarketDataPage: React.FC = () => {
     }
   }, []);
 
-  // ============ UTILITY FORMATTERS ============
+  // Formatters
   const formatPrice = useCallback((price?: number) => {
     return price?.toFixed(2) || '0.00';
   }, []);
@@ -823,7 +821,7 @@ const MarketDataPage: React.FC = () => {
     }
   }, []);
 
-  // ============ EFFECTS ============
+  // Effects
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -900,7 +898,7 @@ const MarketDataPage: React.FC = () => {
     };
   }, [isClient, selectedSymbol, handleConnect, handleDisconnect, handleError, handleSubscriptionError, handleMarketDataUpdate, handleChartUpdate, handleHistoricalData, handleOhlcData, handleHeartbeat]);
 
-  // ============ CRITICAL: Fetch historical data when symbol changes ============
+  // Fetch historical data on symbol change
   useEffect(() => {
     if (!isClient || !selectedSymbol || !socketRef.current) return;
 
@@ -1077,7 +1075,7 @@ const MarketDataPage: React.FC = () => {
     return () => clearInterval(healthCheckInterval);
   }, [isClient, selectedSymbol, lastDataReceived, tradingHours.isActive]);
 
-  // ============ MEMOIZED CALCULATIONS ============
+  // Memoized data
   const currentData = useMemo(() =>
     marketData[selectedSymbol] || null,
     [marketData, selectedSymbol]
@@ -1100,7 +1098,7 @@ const MarketDataPage: React.FC = () => {
 
   const isDataStale = useMemo(() => predictionDataAge > 600, [predictionDataAge]);
 
-  // ============ LOADING STATE ============
+  // Loading state
   if (!isClient) {
     return (
       <SidebarProvider>
@@ -1134,7 +1132,7 @@ const MarketDataPage: React.FC = () => {
     );
   }
 
-  // ============ MAIN RENDER ============
+  // Main render
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -1164,7 +1162,7 @@ const MarketDataPage: React.FC = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-medium">Live Market</h3>
-                  
+
                   <div className="flex items-center space-x-4">
                     {isLoadingHistorical && (
                       <div className="mt-2 flex items-center gap-2 text-xs text-blue-400">
@@ -1178,40 +1176,40 @@ const MarketDataPage: React.FC = () => {
                       </div>
                     )}
                     <div>
-                      
+
                       {/* ✅ NEW: Subscription Error Indicator with Tooltip */}
-                    {(subscriptionErrors || failedSymbols.length > 0) && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="p-2 bg-red-950/50 rounded cursor-default">
-                              <AlertCircle className="h-5 w-5 text-red-500" />
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent 
-                            side="bottom" 
-                            className="max-w-sm bg-zinc-900 border-red-800 text-white p-3"
-                          >
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2 text-red-400 font-medium">
-                                <AlertCircle className="h-4 w-4" />
-                                <span>Subscription Error</span>
+                      {(subscriptionErrors || failedSymbols.length > 0) && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="p-2 bg-red-950/50 rounded cursor-default">
+                                <AlertCircle className="h-5 w-5 text-red-500" />
                               </div>
-                              {subscriptionErrors && (
-                                <p className="text-xs text-zinc-400">
-                                  Code: {subscriptionErrors.code} - {subscriptionErrors.message}
-                                </p>
-                              )}
-                              {failedSymbols.length > 0 && (
-                                <div className="text-xs text-zinc-300">
-                                  <span className="text-red-400">{failedSymbols.length}</span> symbol(s) failed to subscribe
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="bottom"
+                              className="max-w-sm bg-zinc-900 border-red-800 text-white p-3"
+                            >
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-red-400 font-medium">
+                                  <AlertCircle className="h-4 w-4" />
+                                  <span>Subscription Error</span>
                                 </div>
-                              )}
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
+                                {subscriptionErrors && (
+                                  <p className="text-xs text-zinc-400">
+                                    Code: {subscriptionErrors.code} - {subscriptionErrors.message}
+                                  </p>
+                                )}
+                                {failedSymbols.length > 0 && (
+                                  <div className="text-xs text-zinc-300">
+                                    <span className="text-red-400">{failedSymbols.length}</span> symbol(s) failed to subscribe
+                                  </div>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                     </div>
                     <div className="flex items-center space-x-2">
                       <div className="flex items-center justify-end gap-2 ml-4 border-l pl-4 h-12">
@@ -1257,10 +1255,10 @@ const MarketDataPage: React.FC = () => {
                           : 'text-red-600 dark:text-red-400'
                         }`}>
                         {/* Only show simple status, not full error message */}
-                        {socketStatus === 'Connected' ? 'Connected' : 
-                         socketStatus === 'Error' ? 'Connected' : 
-                         isReconnecting ? 'Reconnecting...' : 
-                         socketStatus.startsWith('Disconnected') ? 'Disconnected' : socketStatus}
+                        {socketStatus === 'Connected' ? 'Connected' :
+                          socketStatus === 'Error' ? 'Connected' :
+                            isReconnecting ? 'Reconnecting...' :
+                              socketStatus.startsWith('Disconnected') ? 'Disconnected' : socketStatus}
                         {isReconnecting && ' 🔄'}
                       </span>
                     </div>
@@ -1296,12 +1294,12 @@ const MarketDataPage: React.FC = () => {
                         showMarkerFilter={true}
                       />
 
-                      
+
                     </div>
-                    
+
                   </div>
                   <div className="flex items-center justify-end gap-3 text-sm">
-                    
+
 
                     {/* ✅ ENHANCED: Hover Card for Subscribed Companies */}
                     <HoverCard openDelay={200} closeDelay={100}>

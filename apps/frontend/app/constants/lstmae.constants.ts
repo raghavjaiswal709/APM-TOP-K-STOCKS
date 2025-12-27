@@ -66,7 +66,7 @@ export const LSTMAE_CONSTANTS = {
 PERFORMANCE: {
   CACHE_TTL_SECONDS: 3600,
   
-  // ✅ INCREASED TIMEOUTS FOR SLOW NETWORK
+  // Increased timeouts for slow network
   FIRST_REQUEST_TIMEOUT: 120000, // 2 minutes (was 30 seconds)
   CACHED_REQUEST_TIMEOUT: 30000,  // 30 seconds (was 5 seconds)
   

@@ -148,7 +148,7 @@ class LSTMAEService {
 
       console.log(`Fetching plot ${plotType} for ${symbol}... (timeout: ${lstmaeConfig.timeout}ms)`);
 
-      // ✅ USE INCREASED TIMEOUT (2 minutes for slow network)
+      // Use increased timeout (2 minutes for slow network)
       const response = await fetch(url, {
         method: 'GET',
         signal: AbortSignal.timeout(lstmaeConfig.timeout), // 120000ms = 2 minutes
@@ -182,7 +182,7 @@ class LSTMAEService {
     symbol: string,
     method: ClusteringMethod = 'spectral'
   ): Promise<PlotUrls> {
-    // ✅ Use Promise.allSettled to handle missing plots gracefully
+    // Use Promise.allSettled to handle missing plots gracefully
     const results = await Promise.allSettled([
       this.getPlotViaEndpoint(symbol, 'dominant_patterns', method),
       this.getPlotViaEndpoint(symbol, 'intraday_patterns', method),
@@ -247,7 +247,7 @@ class LSTMAEService {
 
       console.log('Dashboard API response:', response);
 
-      // ✅ TRANSFORM: Ensure all paths are API routes, not filesystem paths
+      // Ensure all paths are API routes, not filesystem paths
       const dashboardResponse: LSTMAEDashboardResponse = {
         success: true,
         symbol: symbol,
@@ -258,7 +258,7 @@ class LSTMAEService {
           intraday: response.plot_paths?.intraday || `/api/lstmae/${symbol}/plot/intraday`,
           clusterTransitions: response.plot_paths?.cluster_transitions || `/api/lstmae/${symbol}/plot/cluster_transitions`,
         },
-        // ✅ CRITICAL: dashboard_path MUST be an API route
+        // dashboard_path must be an API route
         dashboardPath: response.dashboard_path?.startsWith('/api/')
           ? response.dashboard_path
           : `/api/lstmae/${symbol}/dashboard-html`,
@@ -297,7 +297,7 @@ class LSTMAEService {
         seasonality: getVisualizationPath(symbol, `${symbol}_seasonality.png`),
         transitionsAlt: getVisualizationPath(symbol, `${symbol}.transitions.png`),
       },
-      // ✅ Correct format
+      // Correct format
       dashboardPath: `/api/lstmae/${symbol}/dashboard-html`, // This endpoint serves the HTML
       reportPath: getVisualizationPath(symbol, `${symbol}_analysis_report.json`),
       nDominantPatterns: 0,

@@ -38,13 +38,13 @@ interface UseMarketDataReturn {
   backgroundDataPoints: number;
 }
 
-// ============ FIXED: Stable constants ============
+// Constants
 const STORAGE_KEY = 'market_data_cache_v2';
 const CHART_STORAGE_KEY = 'chart_updates_cache_v2';
 const MAX_CACHE_AGE = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_POINTS_PER_SYMBOL = 10000;
 
-// ============ FIXED: Stable storage helpers ============
+// Storage helpers
 const saveToStorage = (key: string, data: any) => {
   try {
     const serializedData = JSON.stringify({
@@ -78,7 +78,7 @@ const loadFromStorage = (key: string) => {
 };
 
 export const useMarketData = (initialSymbols: string[] = []): UseMarketDataReturn => {
-  // ============ FIXED: Stable state initialization ============
+  // State
   const [data, setData] = useState<Record<string, MarketData>>(() => {
     if (typeof window !== 'undefined') {
       return loadFromStorage(STORAGE_KEY) || {};
@@ -101,17 +101,17 @@ export const useMarketData = (initialSymbols: string[] = []): UseMarketDataRetur
     new Set(initialSymbols)
   );
 
-  // ============ FIXED: Stable background tracking ============
+  // Background tracking
   const [activeSymbols, setActiveSymbols] = useState<string[]>([]);
   const [cachedSymbols, setCachedSymbols] = useState<string[]>([]);
   const [backgroundDataPoints, setBackgroundDataPoints] = useState<number>(0);
 
-  // ============ FIXED: Stable refs ============
+  // Refs
   const socketRef = useRef<any>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
   const isInitializedRef = useRef(false);
 
-  // ============ FIXED: Stable data saving with debouncing ============
+  // Auto-save with debounce
   useEffect(() => {
     if (!isInitializedRef.current) {
       isInitializedRef.current = true;
@@ -140,7 +140,7 @@ export const useMarketData = (initialSymbols: string[] = []): UseMarketDataRetur
     };
   }, [data, chartUpdates]);
 
-  // ============ FIXED: Stable subscription functions ============
+  // Subscribe/unsubscribe
   const subscribeToSymbol = useCallback((symbol: string) => {
     setSubscribedSymbols((prev) => {
       if (prev.has(symbol)) return prev; // Prevent unnecessary updates
@@ -173,14 +173,14 @@ export const useMarketData = (initialSymbols: string[] = []): UseMarketDataRetur
     console.log(`Unsubscribed from ${symbol} (data preserved)`);
   }, []);
 
-  // ============ FIXED: Stable socket initialization ============
+  // Socket init
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const socket = getSocket();
     socketRef.current = socket;
 
-    // ============ FIXED: Stable event handlers ============
+    // Event handlers
     const handleMarketDataUpdate = (marketData: MarketData) => {
       if (!marketData || !marketData.symbol) return;
 
@@ -291,7 +291,7 @@ export const useMarketData = (initialSymbols: string[] = []): UseMarketDataRetur
       setError(new Error(err.message || 'Socket error'));
     };
 
-    // ============ FIXED: Register event listeners ONCE ============
+    // Register listeners
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('error', handleError);
@@ -306,7 +306,7 @@ export const useMarketData = (initialSymbols: string[] = []): UseMarketDataRetur
       socket.emit('subscribe', { symbol });
     });
 
-    // ============ FIXED: Cleanup function ============
+    // Cleanup
     return () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
@@ -322,9 +322,9 @@ export const useMarketData = (initialSymbols: string[] = []): UseMarketDataRetur
         socket.emit('unsubscribe', { symbol });
       });
     };
-  }, []); // ✅ FIXED: Empty dependency array - initialize once
+  }, []);
 
-  // ============ FIXED: Stable cleanup with proper dependencies ============
+  // Periodic cleanup
   useEffect(() => {
     const cleanupInterval = setInterval(() => {
       const cutoffTime = Date.now() - MAX_CACHE_AGE;
@@ -368,9 +368,9 @@ export const useMarketData = (initialSymbols: string[] = []): UseMarketDataRetur
     }, 3600000); // Cleanup every hour
 
     return () => clearInterval(cleanupInterval);
-  }, []); // ✅ FIXED: Empty dependency array
+  }, []);
 
-  // ============ FIXED: Update cached symbols list ============
+  // Update cached symbols
   useEffect(() => {
     setCachedSymbols(Object.keys(data));
   }, [data]);

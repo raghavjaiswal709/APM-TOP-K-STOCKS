@@ -11,11 +11,7 @@ export interface SentimentResponse {
 }
 
 export const sentimentService = {
-    /**
-     * Fetches the sentiment for a given stock ticker.
-     * @param ticker The stock symbol (e.g., "NETWEB")
-     * @returns The sentiment string (e.g., "POSITIVE", "NEGATIVE", "NEUTRAL") or "NEUTRAL" on failure.
-     */
+    // Fetch sentiment for a stock ticker (returns POSITIVE/NEGATIVE/NEUTRAL)
     fetchSentiment: async (ticker: string): Promise<string> => {
         if (!ticker) return 'NEUTRAL';
 
@@ -23,7 +19,7 @@ export const sentimentService = {
         const cleanTicker = ticker.split(':')[1]?.split('-')[0] || ticker;
 
         try {
-            // ✅ CRITICAL: Encode ticker for URL safety (handles special chars like '&' in M&MFIN)
+            // Encode ticker for URL safety
             const response = await axios.get<SentimentResponse>(`${API_BASE_URL}/${encodeURIComponent(cleanTicker)}`);
 
             if (response.data && response.data.sentiment) {

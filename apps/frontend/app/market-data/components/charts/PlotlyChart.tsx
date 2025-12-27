@@ -14,7 +14,7 @@ import ClusterChart from './ClusterChart';
 // Add Plotly import for restyle operations
 declare const Plotly: any;
 
-// ============ TYPE DEFINITIONS ============
+// Types
 interface MarketData {
   symbol: string;
   ltp: number;
@@ -42,7 +42,7 @@ interface OHLCData {
   volume: number;
 }
 
-// ============ CONFIGURATION CONSTANTS ============
+// Config Constants
 // Time Range & Buffer Constants
 const FUTURE_BUFFER_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
 const PREDICTION_EXTENSION_MS = 5 * 60 * 1000; // 5 minutes extension for predictions
@@ -87,9 +87,9 @@ const FONT_SIZE_AXIS = 12;
 const LINE_WIDTH = 2;
 const CANDLESTICK_WIDTH = 0.8;
 
-// ============ PREDICTION DATE FILTER HELPERS ============
+// Prediction Date Helpers
 /**
- * Check if a given date is today (same day, month, and year)
+ * Check if date is today
  */
 const isToday = (date: Date): boolean => {
   const today = new Date();
@@ -101,11 +101,9 @@ const isToday = (date: Date): boolean => {
 };
 
 /**
- * Filter prediction entries to only include today's predictions
- * Returns entries where the timestamp falls within today's date
+ * Filter to today's predictions only
  */
-const filterTodayPredictions = <T extends { timestamp?: string; close?: number }>(
-  predictionEntries: [string, T][]
+const filterTodayPredictions = <T extends { timestamp?: string; close?: number }>(  predictionEntries: [string, T][]
 ): [string, T][] => {
   return predictionEntries.filter(([key, pred]) => {
     const predDate = new Date(pred.timestamp || key);
@@ -117,7 +115,6 @@ const filterTodayPredictions = <T extends { timestamp?: string; close?: number }
   });
 };
 
-// ============ END CONSTANTS ============
 
 interface DataPoint {
   ltp: number;
@@ -286,7 +283,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       setGttError(null);
     }
   }, [isGttMode, symbol]);
-  // ============ AUTO-REFRESH GTT when symbol changes ============
+  // Auto-refresh GTT on symbol change
   useEffect(() => {
     if (isGttMode && symbol !== lastSymbolRef.current) {
       lastSymbolRef.current = symbol;
@@ -439,11 +436,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     yaxis?: [number, number];
   }>({});
 
-  // ============ OPTIMIZED: Throttled chart updates ============
+  // Throttled updates
   const lastUpdateRef = useRef<number>(0);
   const updateThrottleMs = 500; // Update chart maximum once every 500ms
 
-  // ============ YOUR EXISTING CALCULATION FUNCTIONS (Keep all as is) ============
+  // Calculation functions
   const calculateBuySellVolume = (dataPoint: DataPoint | OHLCPoint) => {
     let buyVolume = 0;
     let sellVolume = 0;
@@ -517,9 +514,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     };
   };
 
-  // ============ ENHANCED: prepareLineChartData with chartUpdates integration ============
+  // Prepare line chart data
   const prepareLineChartData = useMemo(() => {
-    // ✅ DATA MERGE: Combine OHLC (most reliable) + historical + live updates + current point
+    // Merge OHLC + historical + live updates
     const dataMap = new Map<number, DataPoint>();
 
     // 🔍 DEBUG: Log input data
@@ -1668,7 +1665,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const lineChartData = prepareLineChartData;
   const candlestickData = prepareCandlestickData;
 
-  // ============ ENHANCED: Stable chart rendering with state preservation ============
+  // Stable chart rendering
   useEffect(() => {
     if (!chartRef.current || !initialized) {
       if (!initialized) setInitialized(true);
@@ -1992,10 +1989,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       return today;
     };
 
-    // ========================================================
-    // 1. CLUSTER PATTERN - PRIORITY (Full Day 9:15 to 3:30)
-    // Uses Secondary Y-axis (y2) for normalized percentage change
-    // ========================================================
+    // 1. CLUSTER PATTERN (Secondary Y-axis)
     if (clusterPatternData && Array.isArray(clusterPatternData) && clusterPatternData.length > 0) {
       const clusterX: Date[] = [];
       const clusterY: number[] = []; // Normalized close (percentage change)
@@ -2046,9 +2040,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       console.warn('[Combined View] No cluster pattern data - will still show Live Market and Predictions');
     }
 
-    // ========================================================
-    // 2. LIVE MARKET DATA - PRIMARY Y-AXIS (y)
-    // ========================================================
+    // 2. LIVE MARKET DATA (Primary Y-axis)
     if (chartType === 'line') {
       const { x: timeValues, y: priceValues } = lineChartData;
       if (timeValues && timeValues.length > 0) {
@@ -2094,9 +2086,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       }
     }
 
-    // ========================================================
-    // 3. AI PREDICTIONS - PRIMARY Y-AXIS (y)
-    // ========================================================
+    // 3. AI PREDICTIONS (Primary Y-axis)
     if (predictions && predictions.count > 0 && todayPredictionInfo.hasTodayPredictions) {
       const allPredictionEntries = Object.entries(predictions.predictions);
       const predictionEntries = filterTodayPredictions(allPredictionEntries);
@@ -2198,9 +2188,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           showlegend: true
         });
 
-        // ============ GTT PREDICTION RENDERING ============
-        // ✅ FIX: Use EITHER gttExternalData (prop) OR local gttPredictions state
-        // This ensures the chart renders immediately after the local fetch in handleGttToggle
+        // GTT Prediction Rendering
+        // Use gttExternalData (prop) OR local gttPredictions state
         const gttDataToRender = (gttExternalData?.predictions && Array.isArray(gttExternalData.predictions) && gttExternalData.predictions.length > 0)
           ? gttExternalData.predictions
           : (isGttMode && gttPredictions && gttPredictions.length > 0 ? gttPredictions : null);
@@ -2776,8 +2765,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         }
       }
 
-      // ============ GTT PREDICTION RENDERING FOR CANDLESTICK ============
-      // ✅ FIX: Use EITHER gttExternalData (prop) OR local gttPredictions state
+      // GTT Prediction Rendering for Candlestick
+      // Use gttExternalData (prop) OR local gttPredictions state
       const gttCandleDataToRender = (gttExternalData?.predictions && Array.isArray(gttExternalData.predictions) && gttExternalData.predictions.length > 0)
         ? gttExternalData.predictions
         : (isGttMode && gttPredictions && gttPredictions.length > 0 ? gttPredictions : null);

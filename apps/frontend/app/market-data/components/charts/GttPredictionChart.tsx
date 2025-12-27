@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
 import { useGttPredictions } from '@/hooks/useGttPredictions';
 
-// ============ CONFIGURATION CONSTANTS ============
+// Config
 const FUTURE_BUFFER_MS = 15 * 60 * 1000; // 15 minutes
 const PREDICTION_EXTENSION_MS = 75 * 60 * 1000; // 75 minutes for H5
 
@@ -65,7 +65,7 @@ const GttPredictionChart: React.FC<GttPredictionChartProps> = ({
   // Fetch Predictions
   const { predictions, loading: predictionsLoading } = useGttPredictions(symbol, true);
 
-  // ============ DATA PREPARATION ============
+  // Data Preparation
 
   // 1. Prepare Main Chart Data (Candle/Line) - Simplified from PlotlyChart
   const mainChartData = useMemo(() => {
@@ -220,7 +220,7 @@ const GttPredictionChart: React.FC<GttPredictionChartProps> = ({
     return traces;
   }, [predictions]);
 
-  // ============ LAYOUT ============
+  // Layout
   const layout = useMemo(() => {
     const baseLayout = {
       title: {
@@ -269,7 +269,7 @@ const GttPredictionChart: React.FC<GttPredictionChartProps> = ({
     return baseLayout;
   }, [symbol]);
 
-  // ============ RENDER ============
+  // Render
   return (
     <div className="w-full h-full flex flex-col">
       <div className="w-full h-full relative flex-1">

@@ -12,7 +12,7 @@ const getBaseUrl = () => {
 
 console.log('✅ getBaseUrl function initialized');
 
-// ============ TYPES ============
+// Types
 export interface HistoricalLiveData {
     symbol: string;
     ltp: number;
@@ -49,7 +49,7 @@ export interface SthitiPrediction {
     score: number;
 }
 
-// ============ UTILITY FUNCTIONS ============
+// Utilities
 
 function parseDirectoryListing(html: string): string[] {
     const items: string[] = [];
@@ -105,7 +105,7 @@ function parseMessyJSON(rawText: string): HistoricalLiveData | null {
     return null;
 }
 
-// ============ API FUNCTIONS ============
+// API Functions
 
 export async function fetchAvailableDates(): Promise<string[]> {
     try {
@@ -345,7 +345,7 @@ export async function fetchSthitiPredictions(
     }
 }
 
-// ============ NEW: Full Historical Data Parser ============
+// Full Historical Data Parser
 export async function parseFullHistoricalData(
     symbol: string,
     isoDate: string
@@ -400,7 +400,7 @@ export async function parseFullHistoricalData(
     }
 }
 
-// ============ NEW: Convert to OHLC Candles ============
+// Convert to OHLC Candles
 export function convertToOHLC(
     dataPoints: HistoricalLiveData[],
     intervalMinutes: number = 5

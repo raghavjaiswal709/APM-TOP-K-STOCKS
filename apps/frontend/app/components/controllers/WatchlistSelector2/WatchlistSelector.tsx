@@ -28,7 +28,7 @@ interface ActiveFilters {
   showAllCompanies: boolean;
 }
 
-export const WatchlistSelector = React.memo(({ 
+export const WatchlistSelector = React.memo(({
   onCompanySelect,
   onDateChange,
   onFilteredDataChange,
@@ -37,7 +37,7 @@ export const WatchlistSelector = React.memo(({
   showSentimentFilter = true,
   showDateSelector = true
 }: WatchlistSelectorProps) => {
-  
+
   const [isFilterModalOpen, setIsFilterModalOpen] = React.useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
   const [selectedCompanyCode, setSelectedCompanyCode] = React.useState<string | null>(null);
@@ -78,10 +78,10 @@ export const WatchlistSelector = React.memo(({
       console.log(`[WatchlistSelector] Date selected: ${dateStr}`);
       setSelectedDate(dateStr);
       setIsDatePickerOpen(false);
-      
-      // ✅ Clear selected company when date changes
+
+      // Clear selected company when date changes
       setSelectedCompanyCode(null);
-      
+
       // Reset filters when date changes
       setActiveFilters({
         exchanges: [],
@@ -90,15 +90,15 @@ export const WatchlistSelector = React.memo(({
         refined: null,
         showAllCompanies: false
       });
-      
+
       // Reset refined filter in hook
       setRefinedFilter(null);
-      
-      // ✅ Notify parent that company selection is cleared
+
+      // Notify parent that company selection is cleared
       if (onCompanySelect) {
         onCompanySelect(null);
       }
-      
+
       if (onDateChange) {
         onDateChange(dateStr);
       }
@@ -107,10 +107,10 @@ export const WatchlistSelector = React.memo(({
 
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
     console.log(`[WatchlistSelector] handleCompanySelect called with: ${companyCode}`);
-    
-    // ✅ Update local state to track selected company
+
+    // Update local state to track selected company
     setSelectedCompanyCode(companyCode);
-    
+
     if (!companyCode) {
       if (onCompanySelect) {
         onCompanySelect(null);
@@ -129,14 +129,14 @@ export const WatchlistSelector = React.memo(({
 
     // Apply exchange filter
     if (activeFilters.exchanges.length > 0) {
-      filtered = filtered.filter(company => 
+      filtered = filtered.filter(company =>
         activeFilters.exchanges.includes(company.exchange)
       );
     }
 
     // Apply marker filter
     if (activeFilters.markers.length > 0) {
-      filtered = filtered.filter(company => 
+      filtered = filtered.filter(company =>
         company.marker && activeFilters.markers.includes(company.marker)
       );
     }
@@ -153,7 +153,7 @@ export const WatchlistSelector = React.memo(({
     return filtered;
   }, [companies, activeFilters]);
 
-   React.useEffect(() => {
+  React.useEffect(() => {
     if (onFilteredDataChange) {
       onFilteredDataChange(filteredCompanies);
     }
@@ -162,10 +162,10 @@ export const WatchlistSelector = React.memo(({
   const handleFiltersChange = React.useCallback((filters: ActiveFilters) => {
     console.log(`[WatchlistSelector] Filters changed:`, filters);
     setActiveFilters(filters);
-    
+
     // Update showAllCompanies state
     setShowAllCompanies(filters.showAllCompanies);
-    
+
     // Update refined filter in the hook to trigger API call
     setRefinedFilter(filters.refined);
   }, [setRefinedFilter, setShowAllCompanies]);
@@ -181,7 +181,7 @@ export const WatchlistSelector = React.memo(({
     sentiments: availableSentiments
   }), [availableExchanges, availableMarkers, availableSentiments]);
 
-  const availableDateObjects = React.useMemo(() => 
+  const availableDateObjects = React.useMemo(() =>
     availableDates.map(d => new Date(d)),
     [availableDates]
   );
@@ -190,7 +190,7 @@ export const WatchlistSelector = React.memo(({
 
   return (
     <div className="flex gap-4 flex-wrap items-center">
-      
+
       {/* Date Selector */}
       {showDateSelector && (
         <div className="flex flex-col gap-1">
@@ -210,8 +210,8 @@ export const WatchlistSelector = React.memo(({
                 mode="single"
                 selected={selectedDate ? new Date(selectedDate) : undefined}
                 onSelect={handleDateSelect}
-                disabled={(date) => 
-                  !availableDateObjects.some(d => 
+                disabled={(date) =>
+                  !availableDateObjects.some(d =>
                     d.toDateString() === date.toDateString()
                   ) || date > new Date()
                 }
@@ -253,11 +253,11 @@ export const WatchlistSelector = React.memo(({
           {error}
         </div>
       )}
-      
+
       {/* Company Selection */}
       <div>
         <SelectScrollable
-          key={`company-selector-${selectedDate}`} // ✅ Force re-render when date changes
+          key={`company-selector-${selectedDate}`} // Force re-render when date changes
           companies={filteredCompanies}
           loading={loading}
           exists={exists}
