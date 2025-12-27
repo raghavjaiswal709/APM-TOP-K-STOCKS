@@ -444,7 +444,7 @@ install_python_dependencies() {
     fi
     
     # Core Python packages for Fyers API integration
-    local python_packages=(
+    local -a python_packages=(
         # Socket.IO & Web Framework
         "python-socketio"
         "python-engineio"
@@ -831,7 +831,7 @@ setup_frontend() {
             package_name="${package%@*}"
             echo -ne "${CYAN}Installing: $package_name${NC}\r"
             if npm install --legacy-peer-deps "$package" >/dev/null 2>&1; then
-                ((installed_count++))
+                installed_count=$((installed_count + 1))
             else
                 failed_packages+=("$package")
             fi
