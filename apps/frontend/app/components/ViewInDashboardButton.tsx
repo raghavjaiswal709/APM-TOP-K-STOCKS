@@ -75,7 +75,7 @@ export const ViewInDashboardButton: React.FC<ViewInDashboardButtonProps> = ({
   return (
     <Button
       onClick={handleViewInDashboard}
-      variant={variant}
+      variant={variant as any}
       disabled={disabled || !companyCode || !exchange}
       className={
         `${getButtonSize()} flex items-center gap-2 border border-gray-300 

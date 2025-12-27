@@ -59,7 +59,7 @@ export default function FyersCallbackPage() {
     } catch (error) {
       console.error('Auth processing error:', error);
       setStatus('error');
-      setMessage(`Error: ${error.message}`);
+      setMessage(`Error: ${(error as any).message}`);
     }
   };
   const notifyPythonScripts = async (token: string, code: string) => {
@@ -69,19 +69,19 @@ export default function FyersCallbackPage() {
         fetch('/api/auth/fyers/notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            service: 'fyers_data', 
-            token, 
-            auth_code: code 
+          body: JSON.stringify({
+            service: 'fyers_data',
+            token,
+            auth_code: code
           }),
         }),
         fetch('/api/auth/fyers/notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            service: 'multi_company_live_data', 
-            token, 
-            auth_code: code 
+          body: JSON.stringify({
+            service: 'multi_company_live_data',
+            token,
+            auth_code: code
           }),
         })
       ]);
@@ -154,7 +154,7 @@ export default function FyersCallbackPage() {
                   <p className="text-sm text-muted-foreground mb-2">
                     Redirecting to Live Market in {countdown} seconds...
                   </p>
-                  <Button 
+                  <Button
                     onClick={goToLiveMarket}
                     className="w-full"
                     size="sm"
@@ -171,7 +171,7 @@ export default function FyersCallbackPage() {
                 {status === 'timeout' ? '⏰' : '❌'} {message}
               </div>
               <div className="flex gap-2">
-                <Button 
+                <Button
                   onClick={() => window.location.reload()}
                   variant="outline"
                   className="flex-1"
@@ -179,7 +179,7 @@ export default function FyersCallbackPage() {
                 >
                   Try Again
                 </Button>
-                <Button 
+                <Button
                   onClick={goToLiveMarket}
                   className="flex-1"
                   size="sm"

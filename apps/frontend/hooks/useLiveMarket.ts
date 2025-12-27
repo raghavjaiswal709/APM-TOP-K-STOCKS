@@ -87,11 +87,10 @@ export const useLiveMarket = () => {
   const reconnectAttempts = useRef<number>(0);
   const maxReconnectAttempts = 5;
   const initializeSocket = useCallback(() => {
-    const SOCKET_URL =
-      process.env.NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL ||
-      process.env.NEXT_PUBLIC_FYERS_SERVICE_5010_URL ||
-      'http://localhost:8010';
-    console.log(`🔌 Connecting to Live Market WebSocket: ${SOCKET_URL}`);
+    // ✅ STRICTLY USE LOCAL DOCKER INSTANCE ONLY - NO REMOTE SERVER FALLBACK
+    // Docker container maps 5001:5001 for the Fyers service
+    const SOCKET_URL = process.env.NEXT_PUBLIC_FYERS_SOCKET_URL || 'http://localhost:5001';
+    console.log(`🔌 Connecting to LOCAL Live Market WebSocket: ${SOCKET_URL}`);
     setConnectionStatus('Connecting');
     const socket = io(SOCKET_URL, {
       reconnectionAttempts: maxReconnectAttempts,

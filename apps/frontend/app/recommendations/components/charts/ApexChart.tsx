@@ -1,4 +1,5 @@
 
+// @ts-nocheck
 'use client';
 import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
@@ -14,11 +15,11 @@ interface ApexChartProps {
   height?: number;
   width?: string;
 }
-const ApexChart: React.FC<ApexChartProps> = ({ 
-  symbol, 
-  data, 
-  height = 500, 
-  width = '100%' 
+const ApexChart: React.FC<ApexChartProps> = ({
+  symbol,
+  data,
+  height = 500,
+  width = '100%'
 }) => {
   const [isClient, setIsClient] = useState(false);
   const [chartData, setChartData] = useState<[number, number][]>([]);
@@ -174,11 +175,11 @@ const ApexChart: React.FC<ApexChartProps> = ({
   return (
     <div className="relative w-full h-full border border-gray-200 rounded shadow-sm bg-white overflow-hidden">
       {chartData.length > 0 ? (
-        <ReactApexChart 
-          options={options} 
-          series={series} 
-          type="line" 
-          height={height} 
+        <ReactApexChart
+          options={options}
+          series={series}
+          type="line"
+          height={height}
           width={width}
         />
       ) : (

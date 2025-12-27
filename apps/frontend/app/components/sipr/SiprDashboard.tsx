@@ -99,7 +99,7 @@ const PatternCard: React.FC<{
             <div className="flex flex-wrap gap-2">
               {(() => {
                 const daysRaw = pattern.most_frequent_days;
-                
+
                 // Handle null/undefined
                 if (!daysRaw) {
                   return (
@@ -111,12 +111,12 @@ const PatternCard: React.FC<{
                     </Badge>
                   );
                 }
-                
+
                 // Normalize to string - handle both string and array types
-                const days: string = Array.isArray(daysRaw) 
-                  ? daysRaw.join(', ') 
+                const days: string = Array.isArray(daysRaw)
+                  ? daysRaw.join(', ')
                   : (typeof daysRaw === 'string' ? daysRaw : String(daysRaw));
-                
+
                 // Handle error states
                 if (days === 'No occurrence data' || days === 'No valid timestamps' || days === 'No trading day occurrences') {
                   return (
@@ -128,12 +128,12 @@ const PatternCard: React.FC<{
                     </Badge>
                   );
                 }
-                
+
                 // Check if this is placeholder "all trading days" data (without percentages)
                 const allTradingDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
                 const hasAllDays = allTradingDays.every(day => days.includes(day));
                 const hasPercentOrCount = days.includes('%') || /\(\d+\)/.test(days);
-                
+
                 // If it has all 5 days WITHOUT any stats, it's placeholder data
                 if (hasAllDays && !hasPercentOrCount) {
                   return (
@@ -145,11 +145,11 @@ const PatternCard: React.FC<{
                     </Badge>
                   );
                 }
-                
+
                 // Parse format: "Friday (24.3%), Monday (21.6%)" or "Monday (45), Tuesday (32)"
                 // Split by comma and create individual badges for each day
                 const dayEntries = days.split(',').map(entry => entry.trim()).filter(Boolean);
-                
+
                 if (dayEntries.length === 0) {
                   return (
                     <Badge
@@ -160,22 +160,22 @@ const PatternCard: React.FC<{
                     </Badge>
                   );
                 }
-                
+
                 return dayEntries.map((entry, idx) => {
                   // Extract day name and value (supports both "Monday (24.3%)" and "Monday (45)")
                   const match = entry.match(/^(\w+)\s*\(([^)]+)\)$/);
                   if (match) {
                     const [, dayName, value] = match;
                     // Color coding based on rank
-                    const colorClass = idx === 0 
+                    const colorClass = idx === 0
                       ? 'bg-green-600/30 border-green-500/50 text-green-100'
-                      : idx === 1 
-                      ? 'bg-yellow-600/30 border-yellow-500/50 text-yellow-100'
-                      : 'bg-orange-600/30 border-orange-500/50 text-orange-100';
-                    
+                      : idx === 1
+                        ? 'bg-yellow-600/30 border-yellow-500/50 text-yellow-100'
+                        : 'bg-orange-600/30 border-orange-500/50 text-orange-100';
+
                     // Format display: show percentage as-is, or add "occurrences" for counts
                     const displayValue = value.includes('%') ? value : `${value} occurrences`;
-                    
+
                     return (
                       <Badge
                         key={`${dayName}-${idx}`}
@@ -555,8 +555,8 @@ export const SiprDashboard: React.FC<SiprDashboardProps> = ({
                       <div className="h-3 bg-zinc-800 rounded-full overflow-hidden">
                         <div
                           className={`h-full ${index === 0 ? 'bg-yellow-500' :
-                              index === 1 ? 'bg-gray-400' :
-                                'bg-orange-600'
+                            index === 1 ? 'bg-gray-400' :
+                              'bg-orange-600'
                             }`}
                           style={{ width: `${percentage}%` }}
                         />
@@ -603,7 +603,7 @@ export const SiprDashboard: React.FC<SiprDashboardProps> = ({
                   onClick={() => openVisualization('top3')}
                   variant="outline"
                   className="gap-2 h-auto py-4"
-                  disabled={loading === 'loading'}
+                  disabled={(loading as string) === 'loading'}
                 >
                   <div className="text-left">
                     <div className="font-semibold">Top 3 Patterns</div>
@@ -614,7 +614,7 @@ export const SiprDashboard: React.FC<SiprDashboardProps> = ({
                   onClick={() => openVisualization('segmentation')}
                   variant="outline"
                   className="gap-2 h-auto py-4"
-                  disabled={loading === 'loading'}
+                  disabled={(loading as string) === 'loading'}
                 >
                   <div className="text-left">
                     <div className="font-semibold">Time Series Segmentation</div>
@@ -625,7 +625,7 @@ export const SiprDashboard: React.FC<SiprDashboardProps> = ({
                   onClick={() => openVisualization('cluster')}
                   variant="outline"
                   className="gap-2 h-auto py-4"
-                  disabled={loading === 'loading'}
+                  disabled={(loading as string) === 'loading'}
                 >
                   <div className="text-left">
                     <div className="font-semibold">Pattern Clusters</div>
@@ -636,7 +636,7 @@ export const SiprDashboard: React.FC<SiprDashboardProps> = ({
                   onClick={() => openVisualization('centroids')}
                   variant="outline"
                   className="gap-2 h-auto py-4"
-                  disabled={loading === 'loading'}
+                  disabled={(loading as string) === 'loading'}
                 >
                   <div className="text-left">
                     <div className="font-semibold">Centroid Shapes</div>

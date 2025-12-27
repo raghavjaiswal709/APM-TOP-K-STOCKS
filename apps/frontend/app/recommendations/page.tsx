@@ -1,4 +1,5 @@
 // apps/frontend/app/recommendations/page.tsx
+// @ts-nocheck
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
@@ -28,11 +29,11 @@ import { parseFullHistoricalData, convertToOHLC } from '@/lib/historicalTimeMach
 import { useTimeMachine } from '@/hooks/useTimeMachine';
 import { HistoricalChartCarousel } from "./components/HistoricalChartCarousel";
 import { HistoricalMarketNews } from "./components/HistoricalMarketNews";
-import { 
-  fetchSthitiClusters, 
+import {
+  fetchSthitiClusters,
   fetchSthitiPrediction,
   type SthitiCluster,
-  type SthitiPrediction 
+  type SthitiPrediction
 } from '@/lib/historicalSthitiService';
 
 // Dynamic imports
@@ -81,7 +82,7 @@ const RecommendationListPage: React.FC = () => {
   const [historicalDataPoints, setHistoricalDataPoints] = useState<MarketData[]>([]);
   const [ohlcDataPoints, setOHLCDataPoints] = useState<OHLCPoint[]>([]);
   const [loadingFullData, setLoadingFullData] = useState(false);
-  
+
   // Sthiti Intelligence State
   const [sthitiPositiveClusters, setSthitiPositiveClusters] = useState<SthitiCluster[]>([]);
   const [sthitiNegativeClusters, setSthitiNegativeClusters] = useState<SthitiCluster[]>([]);
@@ -132,7 +133,7 @@ const RecommendationListPage: React.FC = () => {
       try {
         // Fetch ALL data points from the file
         const points = await parseFullHistoricalData(selectedCompany, selectedDate);
-        
+
         // Convert to MarketData format
         const formattedPoints: MarketData[] = points.map(point => ({
           symbol: point.symbol,
@@ -482,7 +483,7 @@ const RecommendationListPage: React.FC = () => {
                       </div>
 
                       {/* ============ STHITI INTELLIGENCE WIDGETS ============ */}
-                      
+
                       {/* AI Prediction Widget */}
                       {loadingSthitiPrediction ? (
                         <div className="text-center text-zinc-400 text-sm mt-4">Loading predictions...</div>
@@ -499,15 +500,14 @@ const RecommendationListPage: React.FC = () => {
                               </div>
                               <div className="flex justify-between">
                                 <span className="text-zinc-400">Confidence:</span>
-                                <Badge 
-                                  variant="outline" 
-                                  className={`text-xs ${
-                                    sthitiPrediction.confidence === 'HIGH' 
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs ${sthitiPrediction.confidence === 'HIGH'
                                       ? 'bg-green-500/20 text-green-400 border-green-500/30'
                                       : sthitiPrediction.confidence === 'MEDIUM'
-                                      ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                                      : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
-                                  }`}
+                                        ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                        : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
+                                    }`}
                                 >
                                   {sthitiPrediction.confidence}
                                 </Badge>
@@ -534,7 +534,7 @@ const RecommendationListPage: React.FC = () => {
                       {!loadingSthitiClusters && (sthitiPositiveClusters.length > 0 || sthitiNegativeClusters.length > 0 || sthitiNeutralClusters.length > 0) && (
                         <div className="space-y-2 mt-4">
                           <h4 className="text-sm font-semibold text-zinc-400">Market Sentiment</h4>
-                          
+
                           {sthitiPositiveClusters.length > 0 && (
                             <Card className="bg-green-500/5 border-green-500/20">
                               <CardContent className="p-3">

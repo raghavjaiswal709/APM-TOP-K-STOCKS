@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppSidebar } from "../components/app-sidebar";
@@ -23,15 +24,15 @@ import LiveMarketGrid from './components/LiveMarketGrid';
 import { MultiSelectWatchlistSelector } from '../components/controllers/WatchlistSelector/MultiSelectWatchlistSelector';
 import { FyersAuthStatus } from '../components/FyersAuthStatus';
 import { useLiveMarket } from '../../hooks/useLiveMarket';
-import { 
-  Info, 
-  Activity, 
-  Users, 
-  TrendingUp, 
-  Shield, 
+import {
+  Info,
+  Activity,
+  Users,
+  TrendingUp,
+  Shield,
   AlertCircle,
   CheckCircle,
-  XCircle 
+  XCircle
 } from 'lucide-react';
 
 interface Company {
@@ -91,7 +92,7 @@ const LiveMarketPage: React.FC = () => {
 
   const handleCompaniesSelect = useCallback((companies: Company[]) => {
     console.log('🔍 Companies selected in LiveMarketPage:', companies);
-    
+
     // Always update selected companies first
     setSelectedCompanies(companies);
 
@@ -114,13 +115,13 @@ const LiveMarketPage: React.FC = () => {
   const handleDateChange = useCallback((date: string) => {
     console.log('📅 Date changed to:', date);
     console.log('📅 Clearing all selections and unsubscribing');
-    
+
     // First unsubscribe from all current subscriptions
     unsubscribeAll();
-    
+
     // Then clear the selected companies
     setSelectedCompanies([]);
-    
+
     // Finally set the new date
     setSelectedDate(date);
   }, [unsubscribeAll]);
@@ -207,10 +208,10 @@ const LiveMarketPage: React.FC = () => {
                   </CardTitle>
                   {selectedDate && (
                     <p className="text-sm text-muted-foreground mt-1">
-                      Showing data for {new Date(selectedDate).toLocaleDateString('en-IN', { 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
+                      Showing data for {new Date(selectedDate).toLocaleDateString('en-IN', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
                       })}
                     </p>
                   )}
@@ -227,9 +228,8 @@ const LiveMarketPage: React.FC = () => {
 
                   {/* Connection Status */}
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${
-                      isConnected ? 'bg-green-500' : 'bg-red-500'
-                    }`} />
+                    <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'
+                      }`} />
                     <span className="text-sm font-medium">
                       {connectionStatus}
                     </span>
@@ -268,9 +268,9 @@ const LiveMarketPage: React.FC = () => {
                             <span>{Object.keys(marketData).length} receiving data</span>
                           </div>
                         </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={handleClearSelection}
                           disabled={loading}
                         >

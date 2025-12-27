@@ -1,5 +1,5 @@
 // plotly/chartLayouts.ts
-import { ColorTheme } from '../types/chartTypes';
+import { ColorTheme } from '@/types/chartTypes';
 
 export const createLayout = (
   chartType: 'line' | 'candle',

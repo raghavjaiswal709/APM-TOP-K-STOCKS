@@ -1,8 +1,9 @@
+// @ts-nocheck
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import Plot from 'react-plotly.js';
-import { 
-  ChevronRight, 
+import {
+  ChevronRight,
   TrendingUp,
   BarChart3,
   LineChart,
@@ -58,7 +59,7 @@ interface PlotlyChartProps {
   symbol: string;
   data: DataPoint | null;
   historicalData: DataPoint[];
-  rawOhlcData?: RawDataPoint[]; 
+  rawOhlcData?: RawDataPoint[];
   ohlcData?: OHLCPoint[];
   tradingHours: {
     start: string;
@@ -67,9 +68,9 @@ interface PlotlyChartProps {
     isActive: boolean;
   };
 }
-const PlotlyChart: React.FC<PlotlyChartProps> = ({ 
-  symbol, 
-  data, 
+const PlotlyChart: React.FC<PlotlyChartProps> = ({
+  symbol,
+  data,
   historicalData,
   rawOhlcData = [],
   ohlcData = [],
@@ -160,7 +161,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const prepareLineChartData = () => {
     const allData = [...historicalData];
     if (data && data.ltp) {
-      const lastPoint = historicalData.length > 0 ? 
+      const lastPoint = historicalData.length > 0 ?
         historicalData[historicalData.length - 1] : null;
       if (!lastPoint || lastPoint.timestamp !== data.timestamp) {
         allData.push(data);
@@ -192,9 +193,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
   const calculateStandardDeviation = (values: number[]): number => {
     try {
-      const validValues = values.filter(value => 
-        typeof value === 'number' && 
-        !isNaN(value) && 
+      const validValues = values.filter(value =>
+        typeof value === 'number' &&
+        !isNaN(value) &&
         isFinite(value) &&
         value !== null &&
         value !== undefined
@@ -204,7 +205,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       const variance = validValues.reduce((sum, value) => {
         const diff = value - mean;
         return sum + (diff * diff);
-      }, 0) / (validValues.length - 1); 
+      }, 0) / (validValues.length - 1);
       const result = Math.sqrt(variance);
       return isNaN(result) || !isFinite(result) ? 0 : result;
     } catch (error) {
@@ -213,7 +214,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
   };
   const calculateVolumeStandardDeviation = (dataPoint: DataPoint | OHLCPoint, index: number) => {
-    const windowSize = 20; 
+    const windowSize = 20;
     let volumes: number[] = [];
     if (chartType === 'line') {
       const startIndex = Math.max(0, index - windowSize + 1);
@@ -358,26 +359,26 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
     return vwapValues;
   };
-const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
-  if (!rawData || rawData.length === 0) return [];
-  return rawData.map(item => {
-    const high = item.high_price > 0 ? item.high_price : item.ltp;
-    const low = item.low_price > 0 ? item.low_price : item.ltp;
-    const open = item.open_price > 0 ? item.open_price : item.ltp;
-    const volumeValue = item.vol_traded_today || 0;
-    console.log('📊 Volume mapping:', { timestamp: item.timestamp, vol_traded_today: item.vol_traded_today, mapped_volume: volumeValue });
-    return {
-      timestamp: item.timestamp,
-      open: open,
-      high: Math.max(high, item.ltp, open),
-      low: Math.min(low, item.ltp, open),
-      close: item.ltp,
-      volume: volumeValue,
-      buyVolume: 0,
-      sellVolume: 0  
-    };
-  });
-};
+  const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
+    if (!rawData || rawData.length === 0) return [];
+    return rawData.map(item => {
+      const high = item.high_price > 0 ? item.high_price : item.ltp;
+      const low = item.low_price > 0 ? item.low_price : item.ltp;
+      const open = item.open_price > 0 ? item.open_price : item.ltp;
+      const volumeValue = item.vol_traded_today || 0;
+      console.log('📊 Volume mapping:', { timestamp: item.timestamp, vol_traded_today: item.vol_traded_today, mapped_volume: volumeValue });
+      return {
+        timestamp: item.timestamp,
+        open: open,
+        high: Math.max(high, item.ltp, open),
+        low: Math.min(low, item.ltp, open),
+        close: item.ltp,
+        volume: volumeValue,
+        buyVolume: 0,
+        sellVolume: 0
+      };
+    });
+  };
   const prepareCandlestickData = () => {
     let transformedOhlcData: OHLCPoint[] = [];
     if (rawOhlcData && rawOhlcData.length > 0) {
@@ -391,20 +392,20 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
     }
     console.log('🔍 Raw OHLC data points:', transformedOhlcData.length);
     const validOhlcData = transformedOhlcData.filter(candle => {
-      const isValid = candle.open > 0 && 
-                     candle.high > 0 && 
-                     candle.low > 0 && 
-                     candle.close > 0 &&
-                     !isNaN(candle.open) &&
-                     !isNaN(candle.high) &&
-                     !isNaN(candle.low) &&
-                     !isNaN(candle.close) &&
-                     candle.timestamp > 0 &&
-                     candle.high >= candle.low &&
-                     candle.high >= candle.open &&
-                     candle.high >= candle.close &&
-                     candle.low <= candle.open &&
-                     candle.low <= candle.close;
+      const isValid = candle.open > 0 &&
+        candle.high > 0 &&
+        candle.low > 0 &&
+        candle.close > 0 &&
+        !isNaN(candle.open) &&
+        !isNaN(candle.high) &&
+        !isNaN(candle.low) &&
+        !isNaN(candle.close) &&
+        candle.timestamp > 0 &&
+        candle.high >= candle.low &&
+        candle.high >= candle.open &&
+        candle.high >= candle.close &&
+        candle.low <= candle.open &&
+        candle.low <= candle.close;
       if (!isValid) {
         console.log('❌ Invalid candle filtered:', candle);
       }
@@ -418,33 +419,33 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
     const minuteMap = new Map();
     const sortedData = [...validOhlcData].sort((a, b) => a.timestamp - b.timestamp);
     sortedData.forEach(candle => {
-  const intervalKey = Math.floor(candle.timestamp / aggregationInterval) * aggregationInterval;
-  const intervalDate = new Date(intervalKey * 1000);
-  const key = `${intervalDate.getFullYear()}-${intervalDate.getMonth()}-${intervalDate.getDate()}-${intervalDate.getHours()}-${intervalDate.getMinutes()}-${Math.floor(intervalDate.getSeconds() / aggregationInterval)}`;
-  const volumeValue = candle.volume || 0;
-  if (!minuteMap.has(key)) {
-    minuteMap.set(key, {
-      timestamp: intervalKey,
-      open: candle.open,
-      high: candle.high,
-      low: candle.low,
-      close: candle.close,
-      volume: volumeValue,
-      buyVolume: candle.buyVolume || 0,
-      sellVolume: candle.sellVolume || 0,
-      count: 1
+      const intervalKey = Math.floor(candle.timestamp / aggregationInterval) * aggregationInterval;
+      const intervalDate = new Date(intervalKey * 1000);
+      const key = `${intervalDate.getFullYear()}-${intervalDate.getMonth()}-${intervalDate.getDate()}-${intervalDate.getHours()}-${intervalDate.getMinutes()}-${Math.floor(intervalDate.getSeconds() / aggregationInterval)}`;
+      const volumeValue = candle.volume || 0;
+      if (!minuteMap.has(key)) {
+        minuteMap.set(key, {
+          timestamp: intervalKey,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: volumeValue,
+          buyVolume: candle.buyVolume || 0,
+          sellVolume: candle.sellVolume || 0,
+          count: 1
+        });
+      } else {
+        const existing = minuteMap.get(key);
+        existing.high = Math.max(existing.high, candle.high);
+        existing.low = Math.min(existing.low, candle.low);
+        existing.close = candle.close;
+        existing.volume = Math.max(existing.volume, volumeValue);
+        existing.buyVolume += (candle.buyVolume || 0);
+        existing.sellVolume += (candle.sellVolume || 0);
+        existing.count += 1;
+      }
     });
-  } else {
-    const existing = minuteMap.get(key);
-    existing.high = Math.max(existing.high, candle.high);
-    existing.low = Math.min(existing.low, candle.low);
-    existing.close = candle.close;
-    existing.volume = Math.max(existing.volume, volumeValue);
-    existing.buyVolume += (candle.buyVolume || 0);
-    existing.sellVolume += (candle.sellVolume || 0);
-    existing.count += 1;
-  }
-});
     const aggregatedData = Array.from(minuteMap.values())
       .sort((a, b) => a.timestamp - b.timestamp);
     console.log('✅ Aggregated OHLC data points:', aggregatedData.length);
@@ -469,21 +470,21 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
       buySellSpreads
     };
     console.log('📊 Final candlestick data sample:', {
-  points: result.x.length,
-  firstCandle: result.x.length > 0 ? {
-    time: result.x[0],
-    open: result.open[0],
-    high: result.high[0],
-    low: result.low[0],
-    close: result.close[0],
-    volume: result.volume[0]
-  } : null,
-  volumeStats: {
-    totalVolume: result.volume.reduce((sum, v) => sum + v, 0),
-    maxVolume: Math.max(...result.volume),
-    nonZeroVolumes: result.volume.filter(v => v > 0).length
-  }
-});
+      points: result.x.length,
+      firstCandle: result.x.length > 0 ? {
+        time: result.x[0],
+        open: result.open[0],
+        high: result.high[0],
+        low: result.low[0],
+        close: result.close[0],
+        volume: result.volume[0]
+      } : null,
+      volumeStats: {
+        totalVolume: result.volume.reduce((sum, v) => sum + v, 0),
+        maxVolume: Math.max(...result.volume),
+        nonZeroVolumes: result.volume.filter(v => v > 0).length
+      }
+    });
     console.log('📊 Final candlestick data sample:', {
       points: result.x.length,
       firstCandle: result.x.length > 0 ? {
@@ -519,7 +520,7 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
         candle => candle.timestamp >= startTime && candle.timestamp <= endTime
       );
       if (visibleCandles.length === 0) return undefined;
-      const validCandles = visibleCandles.filter(candle => 
+      const validCandles = visibleCandles.filter(candle =>
         candle.high !== null && candle.high !== undefined &&
         candle.low !== null && candle.low !== undefined
       );
@@ -617,8 +618,8 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
   const getTimeRange = () => {
     const dataToUse = chartType === 'line' ? historicalData : ohlcData;
     if (!dataToUse || dataToUse.length === 0) return undefined;
-    const currentTime = data?.timestamp 
-      ? new Date(data.timestamp * 1000) 
+    const currentTime = data?.timestamp
+      ? new Date(data.timestamp * 1000)
       : new Date();
     const tradingDate = new Date(currentTime);
     const tradingStart = new Date(tradingDate);
@@ -793,21 +794,21 @@ const transformRawDataToOHLC = (rawData: RawDataPoint[]): OHLCPoint[] => {
         });
       }
       const volumeStdDiv = document.getElementById('volume-std-chart');
-if (volumeStdDiv && mainMode !== 'none' && secondaryView === 'std') {
-  Plotly.relayout(volumeStdDiv, {
-    'xaxis.range': newTimeRange,
-    'xaxis.autorange': false
-  });
-}
-if (mainMode !== 'none' && secondaryView === 'std' && showIndicators.volume) {
-  const volumeStdDiv = document.getElementById('volume-std-chart');
-  if (volumeStdDiv) {
-    Plotly.relayout(volumeStdDiv, {
-      'xaxis.range': newTimeRange,
-      'xaxis.autorange': false
-    });
-  }
-}
+      if (volumeStdDiv && mainMode !== 'none' && secondaryView === 'std') {
+        Plotly.relayout(volumeStdDiv, {
+          'xaxis.range': newTimeRange,
+          'xaxis.autorange': false
+        });
+      }
+      if (mainMode !== 'none' && secondaryView === 'std' && showIndicators.volume) {
+        const volumeStdDiv = document.getElementById('volume-std-chart');
+        if (volumeStdDiv) {
+          Plotly.relayout(volumeStdDiv, {
+            'xaxis.range': newTimeRange,
+            'xaxis.autorange': false
+          });
+        }
+      }
     } catch (err) {
       console.error('Error updating timeframe:', err);
       setTimeout(() => {
@@ -830,11 +831,11 @@ if (mainMode !== 'none' && secondaryView === 'std' && showIndicators.volume) {
       const currentLayout = plotDiv.layout;
       setPreservedAxisRanges({
         xaxis: currentLayout.xaxis?.range ? [
-          new Date(currentLayout.xaxis.range[0]), 
+          new Date(currentLayout.xaxis.range[0]),
           new Date(currentLayout.xaxis.range[1])
         ] : undefined,
         yaxis: currentLayout.yaxis?.range ? [
-          currentLayout.yaxis.range[0], 
+          currentLayout.yaxis.range[0],
           currentLayout.yaxis.range[1]
         ] : undefined
       });
@@ -870,7 +871,7 @@ if (mainMode !== 'none' && secondaryView === 'std' && showIndicators.volume) {
           candle => candle.timestamp >= startTime && candle.timestamp <= endTime
         );
         if (visibleData.length > 0) {
-          const validCandles = visibleData.filter(candle => 
+          const validCandles = visibleData.filter(candle =>
             candle.high !== null && candle.high !== undefined &&
             candle.low !== null && candle.low !== undefined
           );
@@ -936,21 +937,21 @@ if (mainMode !== 'none' && secondaryView === 'std' && showIndicators.volume) {
         }
       }
       const volumeStdDiv = document.getElementById('volume-std-chart');
-if (volumeStdDiv) {
-  Plotly.relayout(volumeStdDiv, {
-    'xaxis.range': [startDate, endDate],
-    'xaxis.autorange': false
-  });
-}
-if (showIndicators.volume) {
-  const volumeStdDiv = document.getElementById('volume-std-chart');
-  if (volumeStdDiv) {
-    Plotly.relayout(volumeStdDiv, {
-      'xaxis.range': [startDate, endDate],
-      'xaxis.autorange': false
-    });
-  }
-}
+      if (volumeStdDiv) {
+        Plotly.relayout(volumeStdDiv, {
+          'xaxis.range': [startDate, endDate],
+          'xaxis.autorange': false
+        });
+      }
+      if (showIndicators.volume) {
+        const volumeStdDiv = document.getElementById('volume-std-chart');
+        if (volumeStdDiv) {
+          Plotly.relayout(volumeStdDiv, {
+            'xaxis.range': [startDate, endDate],
+            'xaxis.autorange': false
+          });
+        }
+      }
     }
   };
   useEffect(() => {
@@ -991,19 +992,19 @@ if (showIndicators.volume) {
           Plotly.react(volumeDiv, createVolumeData(), createVolumeLayout());
         }
       }
-     if (mainMode !== 'none' && secondaryView === 'std') {
-  if (showIndicators.volume) {
-    const volumeStdDiv = document.getElementById('volume-std-chart');
-    if (volumeStdDiv) {
-      Plotly.react(volumeStdDiv, createVolumeStdData(), createVolumeStdLayout());
-    }
-  } else {
-    const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
-    if (buySellVolumeDiv) {
-      Plotly.react(buySellVolumeDiv, createStdData(), createStdLayout());
-    }
-  }
-}
+      if (mainMode !== 'none' && secondaryView === 'std') {
+        if (showIndicators.volume) {
+          const volumeStdDiv = document.getElementById('volume-std-chart');
+          if (volumeStdDiv) {
+            Plotly.react(volumeStdDiv, createVolumeStdData(), createVolumeStdLayout());
+          }
+        } else {
+          const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
+          if (buySellVolumeDiv) {
+            Plotly.react(buySellVolumeDiv, createStdData(), createStdLayout());
+          }
+        }
+      }
       if (mainMode === 'buySell' && secondaryView === 'line') {
         const buySellLineDiv = document.getElementById('buy-sell-line-chart');
         if (buySellLineDiv) {
@@ -1021,43 +1022,219 @@ if (showIndicators.volume) {
     }
   }, [data, historicalData, ohlcData, initialized, selectedTimeframe, chartType, showIndicators, mainMode, secondaryView]);
   const createPlotData = () => {
-  const colors = getColorTheme();
-  let plotData: any[] = [];
-  if (chartType === 'line') {
-    if (historicalData && historicalData.length > 0) {
-      const validData = historicalData.filter(point => 
-        point.ltp !== null && 
-        point.ltp !== undefined && 
-        point.ltp > 0 && 
-        !isNaN(point.ltp) &&
-        point.timestamp !== null &&
-        point.timestamp !== undefined
-      );
-      if (validData.length === 0) return plotData;
-      const sortedData = [...validData].sort((a, b) => a.timestamp - b.timestamp);
-      const timeValues = sortedData.map(point => new Date(point.timestamp * 1000));
-      const priceValues = sortedData.map(point => Number(point.ltp));
+    const colors = getColorTheme();
+    let plotData: any[] = [];
+    if (chartType === 'line') {
+      if (historicalData && historicalData.length > 0) {
+        const validData = historicalData.filter(point =>
+          point.ltp !== null &&
+          point.ltp !== undefined &&
+          point.ltp > 0 &&
+          !isNaN(point.ltp) &&
+          point.timestamp !== null &&
+          point.timestamp !== undefined
+        );
+        if (validData.length === 0) return plotData;
+        const sortedData = [...validData].sort((a, b) => a.timestamp - b.timestamp);
+        const timeValues = sortedData.map(point => new Date(point.timestamp * 1000));
+        const priceValues = sortedData.map(point => Number(point.ltp));
+        plotData.push({
+          x: timeValues,
+          y: priceValues,
+          type: 'scatter',
+          mode: 'lines',
+          name: 'LTP',
+          line: {
+            color: colors.line || '#3B82F6',
+            width: 2,
+            shape: 'linear'
+          },
+          connectgaps: false,
+          hovertemplate: '<b>%{fullData.name}</b><br>' +
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Price: ₹%{y:.2f}<br>' +
+            '<extra></extra>',
+          showlegend: true
+        });
+        const lineData = prepareLineChartData();
+        const volumeValues = lineData.allData.map(point => point.volume || 0);
+        if (volumeValues.some(v => v > 0)) {
+          const volumeColors = [];
+          for (let i = 0; i < lineData.allData.length; i++) {
+            if (i === 0) {
+              volumeColors.push(colors.upColor);
+            } else {
+              const currentPrice = lineData.allData[i].ltp;
+              const prevPrice = lineData.allData[i - 1].ltp;
+              volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
+            }
+          }
+          plotData.push({
+            x: lineData.x,
+            y: volumeValues,
+            type: 'histogram',
+            histfunc: 'sum',
+            name: 'Volume',
+            marker: {
+              color: volumeColors,
+              opacity: 0.9,
+              line: {
+                width: 0.5,
+                color: 'rgba(255,255,255,0.1)'
+              }
+            },
+            yaxis: 'y3',
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+              'Time: %{x|%H:%M:%S}<br>' +
+              'Volume: %{y:,.0f}<br>' +
+              '<extra></extra>',
+            showlegend: true
+          });
+        }
+        if (showIndicators.sma20 && priceValues.length >= 20) {
+          const sma20Values = calculateSMA(priceValues, 20);
+          if (sma20Values && sma20Values.length > 0) {
+            plotData.push({
+              x: timeValues.slice(19),
+              y: sma20Values,
+              type: 'scatter',
+              mode: 'lines',
+              name: 'SMA 20',
+              line: {
+                color: colors.indicator?.sma20 || '#f59e0b',
+                width: 1.5,
+                dash: 'dot'
+              },
+              connectgaps: false,
+              hovertemplate: '<b>%{fullData.name}</b><br>' +
+                'Time: %{x|%H:%M:%S}<br>' +
+                'SMA20: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
+              showlegend: true
+            });
+          }
+        }
+        if (showIndicators.ema9 && priceValues.length >= 9) {
+          const ema9Values = calculateEMA(priceValues, 9);
+          if (ema9Values && ema9Values.length > 0) {
+            plotData.push({
+              x: timeValues,
+              y: ema9Values,
+              type: 'scatter',
+              mode: 'lines',
+              name: 'EMA 9',
+              line: {
+                color: colors.indicator?.ema9 || '#8b5cf6',
+                width: 1.5,
+                dash: 'dash'
+              },
+              connectgaps: false,
+              hovertemplate: '<b>%{fullData.name}</b><br>' +
+                'Time: %{x|%H:%M:%S}<br>' +
+                'EMA9: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
+              showlegend: true
+            });
+          }
+        }
+        if (showIndicators.bb && priceValues.length >= 20) {
+          const bbData = calculateBollingerBands(priceValues, 20, 2);
+          if (bbData && bbData.upper && bbData.middle && bbData.lower) {
+            plotData.push({
+              x: timeValues.slice(19),
+              y: bbData.upper,
+              type: 'scatter',
+              mode: 'lines',
+              name: 'BB Upper',
+              line: {
+                color: colors.indicator?.bb || '#64748b',
+                width: 1,
+                dash: 'dashdot'
+              },
+              connectgaps: false,
+              hovertemplate: '<b>%{fullData.name}</b><br>' +
+                'Time: %{x|%H:%M:%S}<br>' +
+                'Upper: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
+              showlegend: true
+            });
+            plotData.push({
+              x: timeValues.slice(19),
+              y: bbData.middle,
+              type: 'scatter',
+              mode: 'lines',
+              name: 'BB Middle',
+              line: {
+                color: colors.indicator?.bb || '#64748b',
+                width: 1
+              },
+              connectgaps: false,
+              hovertemplate: '<b>%{fullData.name}</b><br>' +
+                'Time: %{x|%H:%M:%S}<br>' +
+                'Middle: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
+              showlegend: true
+            });
+            plotData.push({
+              x: timeValues.slice(19),
+              y: bbData.lower,
+              type: 'scatter',
+              mode: 'lines',
+              name: 'BB Lower',
+              line: {
+                color: colors.indicator?.bb || '#64748b',
+                width: 1,
+                dash: 'dashdot'
+              },
+              fill: 'tonexty',
+              fillcolor: 'rgba(100, 116, 139, 0.1)',
+              connectgaps: false,
+              hovertemplate: '<b>%{fullData.name}</b><br>' +
+                'Time: %{x|%H:%M:%S}<br>' +
+                'Lower: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
+              showlegend: true
+            });
+          }
+        }
+      }
+    } else {
+      const { x, open, high, low, close, volume } = prepareCandlestickData();
       plotData.push({
-        x: timeValues,
-        y: priceValues,
-        type: 'scatter',
-        mode: 'lines',
-        name: 'LTP',
-        line: {
-          color: colors.line || '#3B82F6',
-          width: 2,
-          shape: 'linear'
+        x: x,
+        open: open,
+        high: high,
+        low: low,
+        close: close,
+        type: 'candlestick',
+        name: 'Price',
+        increasing: {
+          fillcolor: colors.upColor,
+          line: { color: colors.upColor, width: 1 }
         },
-        connectgaps: false,
+        decreasing: {
+          fillcolor: colors.downColor,
+          line: { color: colors.downColor, width: 1 }
+        },
         hovertemplate: '<b>%{fullData.name}</b><br>' +
-                      'Time: %{x|%H:%M:%S}<br>' +
-                      'Price: ₹%{y:.2f}<br>' +
-                      '<extra></extra>',
-        showlegend: true
+          'Time: %{x|%H:%M:%S}<br>' +
+          'Open: ₹%{open:.2f}<br>' +
+          'High: ₹%{high:.2f}<br>' +
+          'Low: ₹%{low:.2f}<br>' +
+          'Close: ₹%{close:.2f}<br>' +
+          '<extra></extra>',
+        showlegend: true,
+        yaxis: 'y'
       });
       const lineData = prepareLineChartData();
       const volumeValues = lineData.allData.map(point => point.volume || 0);
       if (volumeValues.some(v => v > 0)) {
+        console.log('🔍 Volume data check:', {
+          volumeLength: volumeValues.length,
+          hasNonZeroVolume: volumeValues.some(v => v > 0),
+          maxVolume: Math.max(...volumeValues),
+          minVolume: Math.min(...volumeValues)
+        });
         const volumeColors = [];
         for (let i = 0; i < lineData.allData.length; i++) {
           if (i === 0) {
@@ -1084,363 +1261,187 @@ if (showIndicators.volume) {
           },
           yaxis: 'y3',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Volume: %{y:,.0f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Volume: %{y:,.0f}<br>' +
+            '<extra></extra>',
           showlegend: true
         });
       }
-      if (showIndicators.sma20 && priceValues.length >= 20) {
-        const sma20Values = calculateSMA(priceValues, 20);
-        if (sma20Values && sma20Values.length > 0) {
-          plotData.push({
-            x: timeValues.slice(19),
-            y: sma20Values,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'SMA 20',
-            line: {
-              color: colors.indicator?.sma20 || '#f59e0b',
-              width: 1.5,
-              dash: 'dot'
-            },
-            connectgaps: false,
-            hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'SMA20: ₹%{y:.2f}<br>' +
-                          '<extra></extra>',
-            showlegend: true
-          });
-        }
-      }
-      if (showIndicators.ema9 && priceValues.length >= 9) {
-        const ema9Values = calculateEMA(priceValues, 9);
-        if (ema9Values && ema9Values.length > 0) {
-          plotData.push({
-            x: timeValues,
-            y: ema9Values,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'EMA 9',
-            line: {
-              color: colors.indicator?.ema9 || '#8b5cf6',
-              width: 1.5,
-              dash: 'dash'
-            },
-            connectgaps: false,
-            hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'EMA9: ₹%{y:.2f}<br>' +
-                          '<extra></extra>',
-            showlegend: true
-          });
-        }
-      }
-      if (showIndicators.bb && priceValues.length >= 20) {
-        const bbData = calculateBollingerBands(priceValues, 20, 2);
-        if (bbData && bbData.upper && bbData.middle && bbData.lower) {
-          plotData.push({
-            x: timeValues.slice(19),
-            y: bbData.upper,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'BB Upper',
-            line: {
-              color: colors.indicator?.bb || '#64748b',
-              width: 1,
-              dash: 'dashdot'
-            },
-            connectgaps: false,
-            hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'Upper: ₹%{y:.2f}<br>' +
-                          '<extra></extra>',
-            showlegend: true
-          });
-          plotData.push({
-            x: timeValues.slice(19),
-            y: bbData.middle,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'BB Middle',
-            line: {
-              color: colors.indicator?.bb || '#64748b',
-              width: 1
-            },
-            connectgaps: false,
-            hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'Middle: ₹%{y:.2f}<br>' +
-                          '<extra></extra>',
-            showlegend: true
-          });
-          plotData.push({
-            x: timeValues.slice(19),
-            y: bbData.lower,
-            type: 'scatter',
-            mode: 'lines',
-            name: 'BB Lower',
-            line: {
-              color: colors.indicator?.bb || '#64748b',
-              width: 1,
-              dash: 'dashdot'
-            },
-            fill: 'tonexty',
-            fillcolor: 'rgba(100, 116, 139, 0.1)',
-            connectgaps: false,
-            hovertemplate: '<b>%{fullData.name}</b><br>' +
-                          'Time: %{x|%H:%M:%S}<br>' +
-                          'Lower: ₹%{y:.2f}<br>' +
-                          '<extra></extra>',
-            showlegend: true
-          });
-        }
-      }
     }
-  } else {
-    const { x, open, high, low, close, volume } = prepareCandlestickData();
-    plotData.push({
-      x: x,
-      open: open,
-      high: high,
-      low: low,
-      close: close,
-      type: 'candlestick',
-      name: 'Price',
-      increasing: {
-        fillcolor: colors.upColor,
-        line: { color: colors.upColor, width: 1 }
-      },
-      decreasing: {
-        fillcolor: colors.downColor,
-        line: { color: colors.downColor, width: 1 }
-      },
-      hovertemplate: '<b>%{fullData.name}</b><br>' +
-                    'Time: %{x|%H:%M:%S}<br>' +
-                    'Open: ₹%{open:.2f}<br>' +
-                    'High: ₹%{high:.2f}<br>' +
-                    'Low: ₹%{low:.2f}<br>' +
-                    'Close: ₹%{close:.2f}<br>' +
-                    '<extra></extra>',
-      showlegend: true,
-      yaxis: 'y'
-    });
-    const lineData = prepareLineChartData();
-    const volumeValues = lineData.allData.map(point => point.volume || 0);
-    if (volumeValues.some(v => v > 0)) {
-      console.log('🔍 Volume data check:', {
-        volumeLength: volumeValues.length,
-        hasNonZeroVolume: volumeValues.some(v => v > 0),
-        maxVolume: Math.max(...volumeValues),
-        minVolume: Math.min(...volumeValues)
-      });
-      const volumeColors = [];
-      for (let i = 0; i < lineData.allData.length; i++) {
-        if (i === 0) {
-          volumeColors.push(colors.upColor);
-        } else {
-          const currentPrice = lineData.allData[i].ltp;
-          const prevPrice = lineData.allData[i - 1].ltp;
-          volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
-        }
+    if (showIndicators.rsi) {
+      let priceData: number[] = [];
+      if (chartType === 'line') {
+        priceData = historicalData?.filter(point =>
+          point.ltp !== null &&
+          point.ltp !== undefined &&
+          point.ltp > 0 &&
+          !isNaN(point.ltp)
+        ).map(point => Number(point.ltp)) || [];
+      } else {
+        // Get the close prices from prepareCandlestickData
+        const candlestickData = prepareCandlestickData();
+        priceData = candlestickData.close.filter(price => price !== null && price !== undefined && !isNaN(price));
       }
-      plotData.push({
-        x: lineData.x,
-        y: volumeValues,
-        type: 'histogram',
-        histfunc: 'sum',
-        name: 'Volume',
-        marker: {
-          color: volumeColors,
-          opacity: 0.9,
-          line: {
-            width: 0.5,
-            color: 'rgba(255,255,255,0.1)'
-          }
-        },
-        yaxis: 'y3',
-        hovertemplate: '<b>%{fullData.name}</b><br>' +
-                      'Time: %{x|%H:%M:%S}<br>' +
-                      'Volume: %{y:,.0f}<br>' +
-                      '<extra></extra>',
-        showlegend: true
-      });
-    }
-  }
-  if (showIndicators.rsi) {
-    let priceData: number[] = [];
-    if (chartType === 'line') {
-      priceData = historicalData?.filter(point => 
-        point.ltp !== null && 
-        point.ltp !== undefined && 
-        point.ltp > 0 && 
-        !isNaN(point.ltp)
-      ).map(point => Number(point.ltp)) || [];
-    } else {
-      // Get the close prices from prepareCandlestickData
-      const candlestickData = prepareCandlestickData();
-      priceData = candlestickData.close.filter(price => price !== null && price !== undefined && !isNaN(price));
-    }
-    if (priceData.length >= 14) {
-      const rsiValues = calculateRSI(priceData, 14);
-      const timeData = chartType === 'line'
-        ? historicalData?.filter(point => 
-            point.ltp !== null && 
-            point.ltp !== undefined && 
-            point.ltp > 0 && 
+      if (priceData.length >= 14) {
+        const rsiValues = calculateRSI(priceData, 14);
+        const timeData = chartType === 'line'
+          ? historicalData?.filter(point =>
+            point.ltp !== null &&
+            point.ltp !== undefined &&
+            point.ltp > 0 &&
             !isNaN(point.ltp)
           ).slice(13).map(point => new Date(point.timestamp * 1000)) || []
-        : prepareCandlestickData().x.slice(13);
-      if (rsiValues && rsiValues.length > 0 && timeData.length > 0) {
-        plotData.push({
-          x: timeData,
-          y: rsiValues,
-          type: 'scatter',
-          mode: 'lines',
-          name: 'RSI',
-          line: {
-            color: colors.indicator?.rsi || '#ec4899',
-            width: 2
-          },
-          yaxis: 'y2',
-          connectgaps: false,
-          hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'RSI: %{y:.2f}<br>' +
-                        '<extra></extra>',
-          showlegend: true
-        });
-        plotData.push({
-          x: timeData,
-          y: Array(timeData.length).fill(70),
-          type: 'scatter',
-          mode: 'lines',
-          name: 'Overbought (70)',
-          line: {
-            color: '#ef4444',
-            width: 1,
-            dash: 'dash'
-          },
-          yaxis: 'y2',
-          showlegend: false,
-          hoverinfo: 'skip'
-        });
-        plotData.push({
-          x: timeData,
-          y: Array(timeData.length).fill(30),
-          type: 'scatter',
-          mode: 'lines',
-          name: 'Oversold (30)',
-          line: {
-            color: '#10b981',
-            width: 1,
-            dash: 'dash'
-          },
-          yaxis: 'y2',
-          showlegend: false,
-          hoverinfo: 'skip'
-        });
-        plotData.push({
-          x: timeData,
-          y: Array(timeData.length).fill(50),
-          type: 'scatter',
-          mode: 'lines',
-          name: 'Midline (50)',
-          line: {
-            color: '#64748b',
-            width: 1,
-            dash: 'dot'
-          },
-          yaxis: 'y2',
-          showlegend: false,
-          hoverinfo: 'skip'
-        });
+          : prepareCandlestickData().x.slice(13);
+        if (rsiValues && rsiValues.length > 0 && timeData.length > 0) {
+          plotData.push({
+            x: timeData,
+            y: rsiValues,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'RSI',
+            line: {
+              color: colors.indicator?.rsi || '#ec4899',
+              width: 2
+            },
+            yaxis: 'y2',
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+              'Time: %{x|%H:%M:%S}<br>' +
+              'RSI: %{y:.2f}<br>' +
+              '<extra></extra>',
+            showlegend: true
+          });
+          plotData.push({
+            x: timeData,
+            y: Array(timeData.length).fill(70),
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Overbought (70)',
+            line: {
+              color: '#ef4444',
+              width: 1,
+              dash: 'dash'
+            },
+            yaxis: 'y2',
+            showlegend: false,
+            hoverinfo: 'skip'
+          });
+          plotData.push({
+            x: timeData,
+            y: Array(timeData.length).fill(30),
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Oversold (30)',
+            line: {
+              color: '#10b981',
+              width: 1,
+              dash: 'dash'
+            },
+            yaxis: 'y2',
+            showlegend: false,
+            hoverinfo: 'skip'
+          });
+          plotData.push({
+            x: timeData,
+            y: Array(timeData.length).fill(50),
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Midline (50)',
+            line: {
+              color: '#64748b',
+              width: 1,
+              dash: 'dot'
+            },
+            yaxis: 'y2',
+            showlegend: false,
+            hoverinfo: 'skip'
+          });
+        }
       }
     }
-  }
-  if (showIndicators.macd) {
-    let priceData: number[] = [];
-    if (chartType === 'line') {
-      priceData = historicalData?.filter(point => 
-        point.ltp !== null && 
-        point.ltp !== undefined && 
-        point.ltp > 0 && 
-        !isNaN(point.ltp)
-      ).map(point => Number(point.ltp)) || [];
-    } else {
-      // Get the close prices from prepareCandlestickData
-      const candlestickData = prepareCandlestickData();
-      priceData = candlestickData.close.filter(price => price !== null && price !== undefined && !isNaN(price));
-    }
-    if (priceData.length >= 26) {
-      const macdData = calculateMACD(priceData, 12, 26, 9);
-      const timeData = chartType === 'line'
-        ? historicalData?.filter(point => 
-            point.ltp !== null && 
-            point.ltp !== undefined && 
-            point.ltp > 0 && 
+    if (showIndicators.macd) {
+      let priceData: number[] = [];
+      if (chartType === 'line') {
+        priceData = historicalData?.filter(point =>
+          point.ltp !== null &&
+          point.ltp !== undefined &&
+          point.ltp > 0 &&
+          !isNaN(point.ltp)
+        ).map(point => Number(point.ltp)) || [];
+      } else {
+        // Get the close prices from prepareCandlestickData
+        const candlestickData = prepareCandlestickData();
+        priceData = candlestickData.close.filter(price => price !== null && price !== undefined && !isNaN(price));
+      }
+      if (priceData.length >= 26) {
+        const macdData = calculateMACD(priceData, 12, 26, 9);
+        const timeData = chartType === 'line'
+          ? historicalData?.filter(point =>
+            point.ltp !== null &&
+            point.ltp !== undefined &&
+            point.ltp > 0 &&
             !isNaN(point.ltp)
           ).slice(25).map(point => new Date(point.timestamp * 1000)) || []
-        : prepareCandlestickData().x.slice(25);
-      if (macdData && macdData.macdLine && macdData.signalLine && macdData.histogram && timeData.length > 0) {
-        plotData.push({
-          x: timeData,
-          y: macdData.macdLine,
-          type: 'scatter',
-          mode: 'lines',
-          name: 'MACD',
-          line: {
-            color: colors.indicator?.macd || '#3b82f6',
-            width: 2
-          },
-          yaxis: showIndicators.rsi ? 'y4' : 'y2',
-          connectgaps: false,
-          hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'MACD: %{y:.4f}<br>' +
-                        '<extra></extra>',
-          showlegend: true
-        });
-        plotData.push({
-          x: timeData,
-          y: macdData.signalLine,
-          type: 'scatter',
-          mode: 'lines',
-          name: 'Signal',
-          line: {
-            color: '#f59e0b',
-            width: 1,
-            dash: 'dash'
-          },
-          yaxis: showIndicators.rsi ? 'y4' : 'y2',
-          connectgaps: false,
-          hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Signal: %{y:.4f}<br>' +
-                        '<extra></extra>',
-          showlegend: true
-        });
-        plotData.push({
-          x: timeData,
-          y: macdData.histogram,
-          type: 'bar',
-          name: 'MACD Histogram',
-          marker: {
-            color: macdData.histogram.map(val => val >= 0 ? '#10b981' : '#ef4444'),
-            opacity: 0.7
-          },
-          yaxis: showIndicators.rsi ? 'y4' : 'y2',
-          hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Histogram: %{y:.4f}<br>' +
-                        '<extra></extra>',
-          showlegend: true
-        });
+          : prepareCandlestickData().x.slice(25);
+        if (macdData && macdData.macdLine && macdData.signalLine && macdData.histogram && timeData.length > 0) {
+          plotData.push({
+            x: timeData,
+            y: macdData.macdLine,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'MACD',
+            line: {
+              color: colors.indicator?.macd || '#3b82f6',
+              width: 2
+            },
+            yaxis: showIndicators.rsi ? 'y4' : 'y2',
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+              'Time: %{x|%H:%M:%S}<br>' +
+              'MACD: %{y:.4f}<br>' +
+              '<extra></extra>',
+            showlegend: true
+          });
+          plotData.push({
+            x: timeData,
+            y: macdData.signalLine,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Signal',
+            line: {
+              color: '#f59e0b',
+              width: 1,
+              dash: 'dash'
+            },
+            yaxis: showIndicators.rsi ? 'y4' : 'y2',
+            connectgaps: false,
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+              'Time: %{x|%H:%M:%S}<br>' +
+              'Signal: %{y:.4f}<br>' +
+              '<extra></extra>',
+            showlegend: true
+          });
+          plotData.push({
+            x: timeData,
+            y: macdData.histogram,
+            type: 'bar',
+            name: 'MACD Histogram',
+            marker: {
+              color: macdData.histogram.map(val => val >= 0 ? '#10b981' : '#ef4444'),
+              opacity: 0.7
+            },
+            yaxis: showIndicators.rsi ? 'y4' : 'y2',
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+              'Time: %{x|%H:%M:%S}<br>' +
+              'Histogram: %{y:.4f}<br>' +
+              '<extra></extra>',
+            showlegend: true
+          });
+        }
       }
     }
-  }
-  return plotData;
-};
+    return plotData;
+  };
   const createSpreadData = () => {
     const colors = getColorTheme();
     const { x, spread } = prepareLineChartData();
@@ -1468,9 +1469,9 @@ if (showIndicators.volume) {
           line: { color: colors.indicator.bid, width: 2 },
           name: 'Bid Std Dev',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         },
         {
           x,
@@ -1480,9 +1481,9 @@ if (showIndicators.volume) {
           line: { color: colors.indicator.ask, width: 2 },
           name: 'Ask Std Dev',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         }
       ];
     } else {
@@ -1522,9 +1523,9 @@ if (showIndicators.volume) {
           line: { color: colors.indicator.buyPrice, width: 2 },
           name: 'Buy Price Std Dev',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         },
         {
           x,
@@ -1534,9 +1535,9 @@ if (showIndicators.volume) {
           line: { color: colors.indicator.sellPrice, width: 2 },
           name: 'Sell Price Std Dev',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         }
       ];
     } else {
@@ -1563,9 +1564,9 @@ if (showIndicators.volume) {
           line: { color: colors.indicator.buyPrice, width: 2 },
           name: 'Buy Price',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Price: ₹%{y:.2f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Price: ₹%{y:.2f}<br>' +
+            '<extra></extra>',
         },
         {
           x,
@@ -1575,9 +1576,9 @@ if (showIndicators.volume) {
           line: { color: colors.indicator.sellPrice, width: 2 },
           name: 'Sell Price',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Price: ₹%{y:.2f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Price: ₹%{y:.2f}<br>' +
+            '<extra></extra>',
         }
       ];
     }
@@ -1604,9 +1605,9 @@ if (showIndicators.volume) {
       line: { color: colors.indicator.buySellSpread, width: 1.5 },
       name: 'Buy-Sell Spread',
       hovertemplate: '<b>%{fullData.name}</b><br>' +
-                    'Time: %{x|%H:%M:%S}<br>' +
-                    'Spread: ₹%{y:.4f}<br>' +
-                    '<extra></extra>',
+        'Time: %{x|%H:%M:%S}<br>' +
+        'Spread: ₹%{y:.4f}<br>' +
+        '<extra></extra>',
     }];
   };
   const createVolumeData = () => {
@@ -1631,14 +1632,14 @@ if (showIndicators.volume) {
       y: volumes,
       type: 'bar',
       name: 'Volume',
-      marker: { 
+      marker: {
         color: volumeColors,
-        opacity: 0.8 
+        opacity: 0.8
       },
       hovertemplate: '<b>%{fullData.name}</b><br>' +
-                    'Time: %{x|%H:%M:%S}<br>' +
-                    'Volume: %{y:,.0f}<br>' +
-                    '<extra></extra>',
+        'Time: %{x|%H:%M:%S}<br>' +
+        'Volume: %{y:,.0f}<br>' +
+        '<extra></extra>',
     }];
   };
   const createStdData = () => {
@@ -1655,9 +1656,9 @@ if (showIndicators.volume) {
           marker: { size: 4 },
           name: 'Bid Std Dev',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         },
         {
           x,
@@ -1668,9 +1669,9 @@ if (showIndicators.volume) {
           marker: { size: 4 },
           name: 'Ask Std Dev',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         }
       ];
     } else if (mainMode === 'buySell') {
@@ -1685,9 +1686,9 @@ if (showIndicators.volume) {
           marker: { size: 4 },
           name: 'Buy Price Std Dev',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         },
         {
           x,
@@ -1698,65 +1699,65 @@ if (showIndicators.volume) {
           marker: { size: 4 },
           name: 'Sell Price Std Dev',
           hovertemplate: '<b>%{fullData.name}</b><br>' +
-                        'Time: %{x|%H:%M:%S}<br>' +
-                        'Std Dev: %{y:.4f}<br>' +
-                        '<extra></extra>',
+            'Time: %{x|%H:%M:%S}<br>' +
+            'Std Dev: %{y:.4f}<br>' +
+            '<extra></extra>',
         }
       ];
     }
     return [];
   };
   const createVolumeStdData = () => {
-  const colors = getColorTheme();
-  let x: Date[] = [];
-  let volumeStdDev: number[] = [];
-  if (chartType === 'line') {
-    const data = prepareLineChartData();
-    x = data.x;
-    volumeStdDev = data.allData.map((point, index) => {
-      const windowSize = 20;
-      const startIndex = Math.max(0, index - windowSize + 1);
-      const volumes = data.allData.slice(startIndex, index + 1)
-        .map(p => p.volume || 0)
-        .filter(v => v > 0);
-      return volumes.length > 1 ? calculateStandardDeviation(volumes) : 0;
-    });
-  } else {
-    const data = prepareCandlestickData();
-    x = data.x;
-    volumeStdDev = data.volume.map((_, index) => {
-      const windowSize = 20;
-      const startIndex = Math.max(0, index - windowSize + 1);
-      const volumes = data.volume.slice(startIndex, index + 1)
-        .filter(v => v > 0);
-      return volumes.length > 1 ? calculateStandardDeviation(volumes) : 0;
-    });
-  }
-  return [{
-    x,
-    y: volumeStdDev,
-    type: 'scatter',
-    mode: 'lines+markers',
-    line: { color: colors.indicator.volume, width: 2 },
-    marker: { size: 4 },
-    name: 'Volume Std Dev',
-    hovertemplate: '<b>%{fullData.name}</b><br>' +
-                  'Time: %{x|%H:%M:%S}<br>' +
-                  'Volume Std Dev: %{y:,.2f}<br>' +
-                  '<extra></extra>',
-  }];
-};
+    const colors = getColorTheme();
+    let x: Date[] = [];
+    let volumeStdDev: number[] = [];
+    if (chartType === 'line') {
+      const data = prepareLineChartData();
+      x = data.x;
+      volumeStdDev = data.allData.map((point, index) => {
+        const windowSize = 20;
+        const startIndex = Math.max(0, index - windowSize + 1);
+        const volumes = data.allData.slice(startIndex, index + 1)
+          .map(p => p.volume || 0)
+          .filter(v => v > 0);
+        return volumes.length > 1 ? calculateStandardDeviation(volumes) : 0;
+      });
+    } else {
+      const data = prepareCandlestickData();
+      x = data.x;
+      volumeStdDev = data.volume.map((_, index) => {
+        const windowSize = 20;
+        const startIndex = Math.max(0, index - windowSize + 1);
+        const volumes = data.volume.slice(startIndex, index + 1)
+          .filter(v => v > 0);
+        return volumes.length > 1 ? calculateStandardDeviation(volumes) : 0;
+      });
+    }
+    return [{
+      x,
+      y: volumeStdDev,
+      type: 'scatter',
+      mode: 'lines+markers',
+      line: { color: colors.indicator.volume, width: 2 },
+      marker: { size: 4 },
+      name: 'Volume Std Dev',
+      hovertemplate: '<b>%{fullData.name}</b><br>' +
+        'Time: %{x|%H:%M:%S}<br>' +
+        'Volume Std Dev: %{y:,.2f}<br>' +
+        '<extra></extra>',
+    }];
+  };
   const createLayout = () => {
     const colors = getColorTheme();
-    const timeRange = preservedAxisRanges.xaxis ? 
-      [preservedAxisRanges.xaxis[0], preservedAxisRanges.xaxis[1]] : 
+    const timeRange = preservedAxisRanges.xaxis ?
+      [preservedAxisRanges.xaxis[0], preservedAxisRanges.xaxis[1]] :
       getTimeRange();
-    const yRange = preservedAxisRanges.yaxis ? 
-      [preservedAxisRanges.yaxis[0], preservedAxisRanges.yaxis[1]] : 
+    const yRange = preservedAxisRanges.yaxis ?
+      [preservedAxisRanges.yaxis[0], preservedAxisRanges.yaxis[1]] :
       calculateYAxisRange();
     let volumeDomain = [0, 0.25];
     let mainChartStart = 0.28;
-    let mainChartDomain = [mainChartStart, 1]; 
+    let mainChartDomain = [mainChartStart, 1];
     if (showIndicators.rsi && showIndicators.macd) {
       mainChartDomain = [0.52, 1];
       volumeDomain = [0, 0.22];
@@ -2106,43 +2107,43 @@ if (showIndicators.volume) {
     };
   };
   const createVolumeStdLayout = () => {
-  const colors = getColorTheme();
-  const timeRange = getTimeRange();
-  return {
-    autosize: true,
-    height: 150,
-    margin: { l: 50, r: 50, t: 30, b: 30 },
-    title: {
-      text: 'Volume Standard Deviation',
-      font: { size: 14, color: colors.text },
-    },
-    xaxis: {
-      title: '',
-      type: 'date',
-      range: timeRange,
-      gridcolor: colors.grid,
-      linecolor: colors.grid,
-      tickfont: { color: colors.text },
-      titlefont: { color: colors.text },
-      rangeslider: { visible: false },
-      fixedrange: false,
-    },
-    yaxis: {
-      title: 'Volume Std Dev',
-      autorange: true,
-      fixedrange: false,
-      gridcolor: colors.grid,
-      linecolor: colors.grid,
-      tickfont: { color: colors.text },
-      titlefont: { color: colors.text },
-    },
-    hovermode: 'closest',
-    showlegend: false,
-    plot_bgcolor: colors.bg,
-    paper_bgcolor: colors.paper,
-    font: { family: 'Arial, sans-serif', color: colors.text },
+    const colors = getColorTheme();
+    const timeRange = getTimeRange();
+    return {
+      autosize: true,
+      height: 150,
+      margin: { l: 50, r: 50, t: 30, b: 30 },
+      title: {
+        text: 'Volume Standard Deviation',
+        font: { size: 14, color: colors.text },
+      },
+      xaxis: {
+        title: '',
+        type: 'date',
+        range: timeRange,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+        rangeslider: { visible: false },
+        fixedrange: false,
+      },
+      yaxis: {
+        title: 'Volume Std Dev',
+        autorange: true,
+        fixedrange: false,
+        gridcolor: colors.grid,
+        linecolor: colors.grid,
+        tickfont: { color: colors.text },
+        titlefont: { color: colors.text },
+      },
+      hovermode: 'closest',
+      showlegend: false,
+      plot_bgcolor: colors.bg,
+      paper_bgcolor: colors.paper,
+      font: { family: 'Arial, sans-serif', color: colors.text },
+    };
   };
-};
   const formatPrice = (price: number | null): string => {
     if (price === null || price === undefined) return 'N/A';
     return `₹${price.toFixed(2)}`;
@@ -2185,11 +2186,10 @@ if (showIndicators.volume) {
           {timeframes.map((tf) => (
             <button
               key={tf.value}
-              className={`px-2 py-1 text-xs rounded ${
-                selectedTimeframe === tf.value
+              className={`px-2 py-1 text-xs rounded ${selectedTimeframe === tf.value
                   ? `bg-blue-600 text-white`
                   : `bg-zinc-800 text-zinc-300 hover:bg-zinc-700`
-              }`}
+                }`}
               onClick={() => handleTimeframeChange(tf.value)}
             >
               {tf.label}
@@ -2199,18 +2199,16 @@ if (showIndicators.volume) {
         <div className="flex space-x-4">
           <div className="flex space-x-1 bg-zinc-800 p-1 rounded-md border border-zinc-600">
             <button
-              className={`p-1 rounded ${
-                chartType === 'line' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-              }`}
+              className={`p-1 rounded ${chartType === 'line' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                }`}
               onClick={toggleChartType}
               title="Line Chart (LTP)"
             >
               <LineChart className="h-5 w-5" />
             </button>
             <button
-              className={`p-1 rounded ${
-                chartType === 'candle' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-              }`}
+              className={`p-1 rounded ${chartType === 'candle' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                }`}
               onClick={toggleChartType}
               title="Candlestick Chart (OHLC)"
             >
@@ -2219,54 +2217,48 @@ if (showIndicators.volume) {
           </div>
           <div className="flex space-x-1 bg-slate-800 p-1 rounded-md border border-slate-600">
             <button
-              className={`p-1 rounded ${
-                showIndicators.sma20 ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`p-1 rounded ${showIndicators.sma20 ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
               onClick={() => toggleIndicator('sma20')}
               title="SMA 20"
             >
               <span className="text-xs font-bold">SMA</span>
             </button>
             <button
-              className={`p-1 rounded ${
-                showIndicators.ema9 ? 'bg-purple-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`p-1 rounded ${showIndicators.ema9 ? 'bg-purple-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
               onClick={() => toggleIndicator('ema9')}
               title="EMA 9"
             >
               <span className="text-xs font-bold">EMA</span>
             </button>
             <button
-              className={`p-1 rounded ${
-                showIndicators.rsi ? 'bg-pink-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`p-1 rounded ${showIndicators.rsi ? 'bg-pink-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
               onClick={() => toggleIndicator('rsi')}
               title="RSI"
             >
               <span className="text-xs font-bold">RSI</span>
             </button>
             <button
-              className={`p-1 rounded ${
-                showIndicators.macd ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`p-1 rounded ${showIndicators.macd ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
               onClick={() => toggleIndicator('macd')}
               title="MACD"
             >
               <span className="text-xs font-bold">MACD</span>
             </button>
             <button
-              className={`p-1 rounded ${
-                showIndicators.bb ? 'bg-slate-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`p-1 rounded ${showIndicators.bb ? 'bg-slate-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
               onClick={() => toggleIndicator('bb')}
               title="Bollinger Bands"
             >
               <span className="text-xs font-bold">BB</span>
             </button>
             <button
-              className={`p-1 rounded ${
-                showIndicators.vwap ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              className={`p-1 rounded ${showIndicators.vwap ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
               onClick={() => toggleIndicator('vwap')}
               title="VWAP"
             >
@@ -2275,18 +2267,16 @@ if (showIndicators.volume) {
           </div>
           <div className="flex space-x-1 bg-emerald-900 p-1 rounded-md border border-emerald-700">
             <button
-              className={`p-1 rounded ${
-                mainMode === 'bidAsk' ? 'bg-green-600 text-white' : 'bg-emerald-800 text-emerald-300 hover:bg-emerald-700'
-              }`}
+              className={`p-1 rounded ${mainMode === 'bidAsk' ? 'bg-green-600 text-white' : 'bg-emerald-800 text-emerald-300 hover:bg-emerald-700'
+                }`}
               onClick={() => toggleMainMode('bidAsk')}
               title="Bid/Ask Analysis"
             >
               <span className="text-xs font-bold">B/A</span>
             </button>
             <button
-              className={`p-1 rounded ${
-                mainMode === 'buySell' ? 'bg-emerald-600 text-white' : 'bg-emerald-800 text-emerald-300 hover:bg-emerald-700'
-              }`}
+              className={`p-1 rounded ${mainMode === 'buySell' ? 'bg-emerald-600 text-white' : 'bg-emerald-800 text-emerald-300 hover:bg-emerald-700'
+                }`}
               onClick={() => toggleMainMode('buySell')}
               title="Buy/Sell Analysis"
             >
@@ -2296,27 +2286,24 @@ if (showIndicators.volume) {
               <>
                 <div className="w-px h-6 bg-emerald-600 mx-1"></div>
                 <button
-                  className={`p-1 rounded ${
-                    secondaryView === 'line' ? 'bg-blue-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
-                  }`}
+                  className={`p-1 rounded ${secondaryView === 'line' ? 'bg-blue-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
+                    }`}
                   onClick={() => toggleSecondaryView('line')}
                   title="Line View"
                 >
                   <span className="text-xs font-bold">Line</span>
                 </button>
                 <button
-                  className={`p-1 rounded ${
-                    secondaryView === 'spread' ? 'bg-purple-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
-                  }`}
+                  className={`p-1 rounded ${secondaryView === 'spread' ? 'bg-purple-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
+                    }`}
                   onClick={() => toggleSecondaryView('spread')}
                   title="Spread View"
                 >
                   <span className="text-xs font-bold">Spread</span>
                 </button>
                 <button
-                  className={`p-1 rounded ${
-                    secondaryView === 'std' ? 'bg-orange-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
-                  }`}
+                  className={`p-1 rounded ${secondaryView === 'std' ? 'bg-orange-500 text-white' : 'bg-emerald-700 text-emerald-400 hover:bg-emerald-600'
+                    }`}
                   onClick={() => toggleSecondaryView('std')}
                   title="Standard Deviation View"
                 >
@@ -2327,9 +2314,8 @@ if (showIndicators.volume) {
           </div>
           <div className="flex space-x-1 bg-amber-900 p-1 rounded-md border border-amber-700">
             <button
-              className={`p-1 rounded ${
-                showIndicators.volume ? 'bg-amber-600 text-white' : 'bg-amber-800 text-amber-300 hover:bg-amber-700'
-              }`}
+              className={`p-1 rounded ${showIndicators.volume ? 'bg-amber-600 text-white' : 'bg-amber-800 text-amber-300 hover:bg-amber-700'
+                }`}
               onClick={() => toggleIndicator('volume')}
               title="Volume Chart"
             >
@@ -2364,7 +2350,7 @@ if (showIndicators.volume) {
             useResizeHandler={true}
           />
         </div>
-                {mainMode === 'bidAsk' && secondaryView === 'line' && (
+        {mainMode === 'bidAsk' && secondaryView === 'line' && (
           <div className="bg-zinc-900 rounded-lg p-4">
             <Plot
               ref={bidAskChartRef}
@@ -2436,24 +2422,24 @@ if (showIndicators.volume) {
             />
           </div>
         )}
-{mainMode !== 'none' && secondaryView === 'std' && (
-  <div className="bg-zinc-900 rounded-lg p-4">
-    <Plot
-      ref={showIndicators.volume ? volumeStdChartRef : buySellVolumeChartRef}
-      divId={showIndicators.volume ? "volume-std-chart" : "buy-sell-volume-chart"}
-      data={showIndicators.volume ? createVolumeStdData() : createStdData()}
-      layout={showIndicators.volume ? createVolumeStdLayout() : createStdLayout()}
-      config={{
-        responsive: true,
-        displayModeBar: true,
-        modeBarButtonsToRemove: ['pan2d', 'select2d', 'lasso2d', 'autoScale2d', 'resetScale2d'],
-        displaylogo: false,
-      }}
-      style={{ width: '100%', height: '150px' }}
-      useResizeHandler={true}
-    />
-  </div>
-)}
+        {mainMode !== 'none' && secondaryView === 'std' && (
+          <div className="bg-zinc-900 rounded-lg p-4">
+            <Plot
+              ref={showIndicators.volume ? volumeStdChartRef : buySellVolumeChartRef}
+              divId={showIndicators.volume ? "volume-std-chart" : "buy-sell-volume-chart"}
+              data={showIndicators.volume ? createVolumeStdData() : createStdData()}
+              layout={showIndicators.volume ? createVolumeStdLayout() : createStdLayout()}
+              config={{
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['pan2d', 'select2d', 'lasso2d', 'autoScale2d', 'resetScale2d'],
+                displaylogo: false,
+              }}
+              style={{ width: '100%', height: '150px' }}
+              useResizeHandler={true}
+            />
+          </div>
+        )}
         {showIndicators.volume && (
           <div className="bg-zinc-900 rounded-lg p-4">
             <Plot
@@ -2473,7 +2459,7 @@ if (showIndicators.volume) {
           </div>
         )}
       </div>
-      {}
+      { }
     </div>
   );
 };

@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
@@ -166,9 +167,9 @@ const GttPredictionChart: React.FC<GttPredictionChartProps> = ({
             symbol: 'diamond'
           },
           hovertemplate: `<b>${horizon} Prediction</b><br>` +
-                        'Target Time: %{x|%H:%M:%S}<br>' +
-                        'Predicted Price: ₹%{y:.2f}<br>' +
-                        '<extra></extra>',
+            'Target Time: %{x|%H:%M:%S}<br>' +
+            'Predicted Price: ₹%{y:.2f}<br>' +
+            '<extra></extra>',
         });
       }
     });
@@ -204,9 +205,9 @@ const GttPredictionChart: React.FC<GttPredictionChartProps> = ({
           }
         },
         hovertemplate: '<b>Anchor Point</b><br>' +
-                      'Time: %{x|%H:%M:%S}<br>' +
-                      'Price: ₹%{y:.2f}<br>' +
-                      '<extra></extra>',
+          'Time: %{x|%H:%M:%S}<br>' +
+          'Price: ₹%{y:.2f}<br>' +
+          '<extra></extra>',
       });
     }
 

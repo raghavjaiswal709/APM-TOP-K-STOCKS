@@ -791,7 +791,8 @@ def onmessage(message):
                 current_candle['high'] = max(current_candle['high'], simplified_data['ltp'])
                 current_candle['low'] = min(current_candle['low'], simplified_data['ltp'])
                 current_candle['close'] = simplified_data['ltp']
-                current_candle['volume'] = simplified_data['volume']
+                # ✅ CRITICAL FIX: Accumulate volume instead of replacing it
+                current_candle['volume'] += simplified_data['volume']
             
             # Save to file if needed
             save_to_file(symbol, simplified_data)

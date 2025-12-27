@@ -415,7 +415,8 @@ def update_ohlc_data(symbol, data_point):
         current_candle['high'] = max(current_candle['high'], price)
         current_candle['low'] = min(current_candle['low'], price)
         current_candle['close'] = price
-        current_candle['volume'] = data_point.get('volume', current_candle['volume'])
+        # ✅ CRITICAL FIX: Accumulate volume instead of replacing it
+        current_candle['volume'] += data_point.get('volume', 0)
 
 def calculate_indicators_optimized(symbol, init=False):
     if symbol not in ohlc_data or len(ohlc_data[symbol]) < 20:

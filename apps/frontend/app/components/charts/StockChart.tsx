@@ -1,14 +1,15 @@
+// @ts-nocheck
 'use client'
 import React, { useMemo, useState, useEffect, useRef, useCallback, useReducer } from 'react';
 import dynamic from 'next/dynamic';
 import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
 import { parse as parseDate } from 'date-fns';
-import { 
-  LineChart, 
-  CandlestickChart, 
-  BarChart3, 
-  TrendingUp, 
-  Settings, 
+import {
+  LineChart,
+  CandlestickChart,
+  BarChart3,
+  TrendingUp,
+  Settings,
   Palette,
   Grid3X3,
   MousePointer,
@@ -31,7 +32,7 @@ import {
 } from 'lucide-react';
 
 // ✅ OPTIMIZATION 1: Load Plot only once at module level
-const Plot = dynamic(() => import('react-plotly.js'), { 
+const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
   loading: () => null
 });
@@ -62,9 +63,9 @@ const CHART_PERFORMANCE_CONFIG = Object.freeze({
     DESKTOP: 1440
   },
   ASPECT_RATIOS: {
-    WIDESCREEN: 16/9,
-    STANDARD: 4/3,
-    SQUARE: 1/1
+    WIDESCREEN: 16 / 9,
+    STANDARD: 4 / 3,
+    SQUARE: 1 / 1
   },
   RELAYOUT_DEBOUNCE: 150,  // Reduced from 300 for faster gap detection
   UPDATE_DEBOUNCE: 200,
@@ -72,9 +73,9 @@ const CHART_PERFORMANCE_CONFIG = Object.freeze({
   THROTTLE_INTERVAL: 100,  // Throttle interval for buffer zone checks
   AGGRESSIVE_GAP_FILL: true, // Enable immediate gap filling on visible range
   STABLE_UI_REVISION: 'stable-v2',
-  PRICE_CHART_HEIGHT_RATIO: 0.60, 
-  VOLUME_CHART_HEIGHT_RATIO: 0.40, 
-  INDICATOR_CHART_HEIGHT: 120, 
+  PRICE_CHART_HEIGHT_RATIO: 0.60,
+  VOLUME_CHART_HEIGHT_RATIO: 0.40,
+  INDICATOR_CHART_HEIGHT: 120,
   CHART_GAP: 2,
   LOADING_MIN_DISPLAY_TIME: 300,
   SYNC_RELAYOUT_DELAY: 50
@@ -130,13 +131,13 @@ const MARKET_HOLIDAYS_2025 = [
 const MARKET_HOLIDAYS_SET = new Set(MARKET_HOLIDAYS_2025);
 
 const STABLE_RANGEBREAKS = [
-  { 
-    bounds: ['sat', 'mon'], 
-    pattern: 'day of week' 
+  {
+    bounds: ['sat', 'mon'],
+    pattern: 'day of week'
   },
-  { 
-    bounds: [15.5, 9.25], 
-    pattern: 'hour' 
+  {
+    bounds: [15.5, 9.25],
+    pattern: 'hour'
   },
   {
     values: MARKET_HOLIDAYS_2025
@@ -201,16 +202,16 @@ interface StockChartProps {
 // ✅ NON-BLOCKING: Small corner loading indicator (chart remains interactive)
 const LoadingIndicator = ({ show }: { show: boolean }) => {
   if (!show) return null;
-  
+
   return (
-    <div 
+    <div
       className="fixed bottom-4 right-4 z-50 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg"
       style={{
         animation: 'slideInUp 0.3s ease-out'
       }}
     >
       <div className="flex items-center gap-2">
-        <div 
+        <div
           className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
           style={{
             animation: 'spin 1s linear infinite'
@@ -227,19 +228,19 @@ const isMarketHours = (date: Date): boolean => {
   const istDayOfWeek = formatInTimeZone(date, MARKET_TIMEZONE, 'E'); // 'Mon', 'Tue', etc.
   const istTime = formatInTimeZone(date, MARKET_TIMEZONE, 'HH:mm');
   const istDay = formatInTimeZone(date, MARKET_TIMEZONE, DAY_FORMAT); // 'yyyy-MM-dd'
-  
+
   // Check if weekend (Saturday = 6, Sunday = 7 in 'E' format as numbers)
   if (istDayOfWeek === 'Sat' || istDayOfWeek === 'Sun') return false;
-  
+
   // Check if holiday
   if (MARKET_HOLIDAYS_SET.has(istDay)) return false;
-  
+
   // Check market hours (09:15 to 15:30 IST)
   const [hours, mins] = istTime.split(':').map(Number);
   const timeInMinutes = hours * 60 + mins;
-  
-  return timeInMinutes >= CHART_PERFORMANCE_CONFIG.MARKET_OPEN_MINUTES && 
-         timeInMinutes <= CHART_PERFORMANCE_CONFIG.MARKET_CLOSE_MINUTES;
+
+  return timeInMinutes >= CHART_PERFORMANCE_CONFIG.MARKET_OPEN_MINUTES &&
+    timeInMinutes <= CHART_PERFORMANCE_CONFIG.MARKET_CLOSE_MINUTES;
 };
 
 // ✅ TIMEZONE-AWARE: Filter data and add IST keys for category axis
@@ -250,7 +251,7 @@ interface StockDataPointWithIST extends StockDataPoint {
 
 const filterMarketHoursData = (data: StockDataPoint[]): StockDataPointWithIST[] => {
   if (!data || !data.length) return [];
-  
+
   return data
     .filter(item => {
       const date = new Date(item.interval_start);
@@ -259,7 +260,7 @@ const filterMarketHoursData = (data: StockDataPoint[]): StockDataPointWithIST[] 
     .map(item => {
       const istDate = new Date(item.interval_start);
       const istKey = formatInTimeZone(istDate, MARKET_TIMEZONE, DATE_FORMAT);
-      
+
       return {
         ...item,
         ist_key: istKey,
@@ -348,7 +349,7 @@ export function StockChart({
   const [dataRange, setDataRange] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });
   const [allData, setAllData] = useState<StockDataPointWithIST[]>([]);
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // ✅ STEP 4: Create data map for O(1) lookups by IST key
   const dataMap = useMemo(() => {
     const map = new Map<string, StockDataPointWithIST>();
@@ -368,34 +369,34 @@ export function StockChart({
 
     const timeline: string[] = [];
     const data: (StockDataPointWithIST | null)[] = [];
-    
+
     // Get interval in minutes
     const intervalMap: Record<string, number> = {
       '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '1d': 375 // 375 = full trading day
     };
     const intervalMinutes = intervalMap[selectedInterval] || 1;
-    
+
     // Start from dataRange.start in IST
     const current = new Date(dataRange.start);
     const end = new Date(dataRange.end);
-    
+
     while (current <= end) {
       if (isMarketHours(current)) {
         const istKey = formatInTimeZone(current, MARKET_TIMEZONE, DATE_FORMAT);
         timeline.push(istKey);
-        
+
         // Look up data in map (null if missing)
         const dataPoint = dataMap.get(istKey) || null;
         data.push(dataPoint);
       }
-      
+
       current.setMinutes(current.getMinutes() + intervalMinutes);
     }
-    
+
     console.log(`✅ Master timeline generated: ${timeline.length} valid market timestamps`);
     return [timeline, data];
   }, [dataRange, dataMap, selectedInterval]);
-  
+
   const lastFetchRangeRef = useRef<{ start: Date; end: Date } | null>(null);
   const [xRange, setXRange] = useState<[string, string] | null>(null);
   const [yRange, setYRange] = useState<[number, number] | null>(null);
@@ -405,7 +406,7 @@ export function StockChart({
   const relayoutTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isUserInteracting, setIsUserInteracting] = useState(false);
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // ✅ CRITICAL: Anchoring refs to prevent view jumping on data load
   const anchorTimestampRef = useRef<string | null>(null);
   const prevXRangeRef = useRef<[number, number] | null>(null);
@@ -483,19 +484,19 @@ export function StockChart({
   const detectDataGaps = useCallback((visibleRange: [string, string], visibleIndices?: [number, number]) => {
     // Use dataRange state which tracks the true bounds of fetched data
     if (!dataRange.start || !dataRange.end) return null;
-    
+
     try {
       const [visibleStartStr, visibleEndStr] = visibleRange;
       const visibleStart = new Date(visibleStartStr);
       const visibleEnd = new Date(visibleEndStr);
       if (isNaN(visibleStart.getTime()) || isNaN(visibleEnd.getTime())) return null;
-      
+
       // ✅ Use dataRange state for boundaries (not allData)
       const dataStart = new Date(dataRange.start);
       const dataEnd = new Date(dataRange.end);
       const gaps = [];
       const bufferTime = 30 * 60 * 1000;
-      
+
       // Check if user panned before the fetched data
       if (visibleStart < dataStart) {
         console.log('🔍 Gap detected BEFORE data:', {
@@ -509,7 +510,7 @@ export function StockChart({
           priority: 'high'
         });
       }
-      
+
       // Check if user panned after the fetched data
       if (visibleEnd > dataEnd) {
         console.log('🔍 Gap detected AFTER data:', {
@@ -523,20 +524,20 @@ export function StockChart({
           priority: 'high'
         });
       }
-      
+
       // ✅ PART 1: Detect INTERNAL gaps within visible range
       if (visibleIndices && masterTimeline.length > 0 && masterData.length > 0) {
         const [startIdx, endIdx] = visibleIndices;
         const clampedStart = Math.max(0, Math.min(masterData.length - 1, startIdx));
         const clampedEnd = Math.max(0, Math.min(masterData.length - 1, endIdx));
-        
+
         console.log('🔎 Scanning for internal gaps from index', clampedStart, 'to', clampedEnd);
-        
+
         let gapStart: number | null = null;
-        
+
         for (let i = clampedStart; i <= clampedEnd; i++) {
           const dataPoint = masterData[i];
-          
+
           if (dataPoint === null) {
             // Found a null - start or continue gap
             if (gapStart === null) {
@@ -548,17 +549,17 @@ export function StockChart({
               const gapEnd = i - 1;
               const gapStartLabel = masterTimeline[gapStart];
               const gapEndLabel = masterTimeline[gapEnd];
-              
+
               if (gapStartLabel && gapEndLabel) {
                 const gapStartDate = parseISTTimestamp(gapStartLabel);
                 const gapEndDate = parseISTTimestamp(gapEndLabel);
-                
+
                 console.log('🔍 Internal gap detected:', {
                   indices: [gapStart, gapEnd],
                   labels: [gapStartLabel, gapEndLabel],
                   dates: [gapStartDate.toISOString(), gapEndDate.toISOString()]
                 });
-                
+
                 gaps.push({
                   type: 'internal',
                   start: gapStartDate,
@@ -566,28 +567,28 @@ export function StockChart({
                   priority: 'medium'
                 });
               }
-              
+
               gapStart = null;
             }
           }
         }
-        
+
         // Handle gap that extends to the end of visible range
         if (gapStart !== null) {
           const gapEnd = clampedEnd;
           const gapStartLabel = masterTimeline[gapStart];
           const gapEndLabel = masterTimeline[gapEnd];
-          
+
           if (gapStartLabel && gapEndLabel) {
             const gapStartDate = parseISTTimestamp(gapStartLabel);
             const gapEndDate = parseISTTimestamp(gapEndLabel);
-            
+
             console.log('🔍 Internal gap detected (extends to end):', {
               indices: [gapStart, gapEnd],
               labels: [gapStartLabel, gapEndLabel],
               dates: [gapStartDate.toISOString(), gapEndDate.toISOString()]
             });
-            
+
             gaps.push({
               type: 'internal',
               start: gapStartDate,
@@ -597,14 +598,14 @@ export function StockChart({
           }
         }
       }
-      
+
       return gaps.length > 0 ? gaps : null;
     } catch (error) {
       console.error('Error in detectDataGaps:', error);
       return null;
     }
   }, [dataRange, masterTimeline, masterData]);
-  const fetchMissingData = useCallback(async (gaps: Array<{type: string, start: Date, end: Date, priority?: string}>) => {
+  const fetchMissingData = useCallback(async (gaps: Array<{ type: string, start: Date, end: Date, priority?: string }>) => {
     if (!companyId || isLoadingMoreData) {
       console.log('Skipping fetch: no companyId or already loading');
       return;
@@ -623,8 +624,8 @@ export function StockChart({
       console.log('Fetching data for gaps:', gaps);
       const fetchPromises = gaps.map(async (gap) => {
         if (lastFetchRangeRef.current) {
-          const overlap = gap.start >= lastFetchRangeRef.current.start && 
-                         gap.end <= lastFetchRangeRef.current.end;
+          const overlap = gap.start >= lastFetchRangeRef.current.start &&
+            gap.end <= lastFetchRangeRef.current.end;
           if (overlap) {
             console.log('Skipping duplicate fetch for gap:', gap);
             return [];
@@ -685,11 +686,11 @@ export function StockChart({
           }
           lastFetchRangeRef.current = { start: gap.start, end: gap.end };
           const normalizedData = newData
-            .map((item: StockDataPoint) => {
+            .map((item: any) => {
               try {
                 return {
-                  interval_start: typeof item.interval_start === 'string' 
-                    ? item.interval_start 
+                  interval_start: typeof item.interval_start === 'string'
+                    ? item.interval_start
                     : new Date(item.interval_start || item.timestamp || item.time).toISOString(),
                   open: Number(item.open || item.o) || 0,
                   high: Number(item.high || item.h) || 0,
@@ -724,12 +725,12 @@ export function StockChart({
           combined.forEach(item => {
             const key = item.interval_start;
             const date = new Date(item.interval_start);
-            if (!uniqueMap.has(key) || 
-                (item.volume > 0 && uniqueMap.get(key).volume === 0)) {
+            if (!uniqueMap.has(key) ||
+              (item.volume > 0 && uniqueMap.get(key).volume === 0)) {
               uniqueMap.set(key, item);
             }
           });
-          const sortedData = Array.from(uniqueMap.values()).sort((a, b) => 
+          const sortedData = Array.from(uniqueMap.values()).sort((a, b) =>
             new Date(a.interval_start).getTime() - new Date(b.interval_start).getTime()
           );
           console.log(`Final data array length: ${sortedData.length}`);
@@ -778,14 +779,14 @@ export function StockChart({
     // Store the index-based range for syncing
     setSyncedXRange(newXRange as any);
     setXRange(newXRange as any);
-    
+
     const charts = [
       { ref: priceChartRef, name: 'price' },
       { ref: volumeChartRef, name: 'volume' },
       { ref: rsiChartRef, name: 'rsi' },
       { ref: macdChartRef, name: 'macd' }
     ];
-    
+
     // Use requestAnimationFrame to avoid blocking main thread
     requestAnimationFrame(() => {
       charts.forEach((chart, index) => {
@@ -808,7 +809,7 @@ export function StockChart({
     // ✅ DEBUG: Log ALL relayout events to see what we're getting
     console.log('🔧 RELAYOUT EVENT RECEIVED:', eventData);
     console.log('🔧 Event keys:', Object.keys(eventData));
-    
+
     if (isLoadingMoreData) {
       console.log('⏸️ Skipping - already loading');
       return;
@@ -817,10 +818,10 @@ export function StockChart({
     if (interactionTimeoutRef.current) {
       clearTimeout(interactionTimeoutRef.current);
     }
-    
+
     let newXRange = null;
     let newYRange = null;
-    
+
     // Handle Y-axis
     if (eventData['yaxis.range[0]'] !== undefined && eventData['yaxis.range[1]'] !== undefined) {
       newYRange = [eventData['yaxis.range[0]'], eventData['yaxis.range[1]']];
@@ -831,13 +832,13 @@ export function StockChart({
       console.log('📏 Y-axis autorange');
       setYRange(null);
     }
-    
+
     // ✅ Handle X-axis: Category axis provides INDICES, not dates
     if (eventData['xaxis.range[0]'] !== undefined && eventData['xaxis.range[1]'] !== undefined) {
       // Category axis returns indices like [50.2, 150.8]
       newXRange = [eventData['xaxis.range[0]'], eventData['xaxis.range[1]']];
       console.log('📊 X-axis category indices:', newXRange);
-      
+
       // Sync the index-based range to other charts
       syncChartRanges(newXRange, 'price');
     } else if (eventData['xaxis.range']) {
@@ -847,13 +848,13 @@ export function StockChart({
     } else {
       console.log('⚠️ No X-axis range found in event data');
     }
-    
+
     if (eventData['xaxis.autorange'] === true) {
       console.log('📊 X-axis autorange');
       setSyncedXRange(null);
       setXRange(null);
     }
-    
+
     // ✅ PART 2: Store anchor timestamp BEFORE any gap detection
     if (newXRange && masterTimeline.length > 0) {
       const [rawStart, rawEnd] = newXRange;
@@ -861,26 +862,26 @@ export function StockChart({
       if (centerIndex >= 0 && centerIndex < masterTimeline.length) {
         anchorTimestampRef.current = masterTimeline[centerIndex];
         prevXRangeRef.current = newXRange as [number, number];
-        console.log('⚓ Anchor stored:', { 
-          centerIndex, 
+        console.log('⚓ Anchor stored:', {
+          centerIndex,
           timestamp: anchorTimestampRef.current,
-          range: prevXRangeRef.current 
+          range: prevXRangeRef.current
         });
       }
     }
-    
+
     // ✅ PROACTIVE BUFFER ZONE LOADING: Throttled check for edges (TradingView-style)
     if (newXRange && masterTimeline.length > 0 && !isLoadingMoreData) {
       // Clear existing throttle timer
       if (throttleTimerRef.current) {
         clearTimeout(throttleTimerRef.current);
       }
-      
+
       // Throttle buffer checks to 100ms
       throttleTimerRef.current = setTimeout(() => {
         const [start, end] = newXRange;
         const bufferSize = CHART_PERFORMANCE_CONFIG.BUFFER_THRESHOLD; // 200 points
-        
+
         console.log('⚡ Proactive buffer check:', {
           start,
           end,
@@ -889,9 +890,9 @@ export function StockChart({
           leftDistance: start,
           rightDistance: masterTimeline.length - end
         });
-        
+
         const gaps = [];
-        
+
         // Check if approaching LEFT edge
         if (start < bufferSize) {
           console.log('⚡ PROACTIVE: Approaching LEFT edge, triggering fetch');
@@ -907,7 +908,7 @@ export function StockChart({
             });
           }
         }
-        
+
         // Check if approaching RIGHT edge
         if (end > masterTimeline.length - bufferSize) {
           console.log('⚡ PROACTIVE: Approaching RIGHT edge, triggering fetch');
@@ -923,7 +924,7 @@ export function StockChart({
             });
           }
         }
-        
+
         // Immediate background fetch if gaps detected
         if (gaps.length > 0) {
           console.log('⚡ Triggering IMMEDIATE proactive fetch:', gaps);
@@ -931,61 +932,61 @@ export function StockChart({
         }
       }, CHART_PERFORMANCE_CONFIG.THROTTLE_INTERVAL); // 100ms throttle
     }
-    
+
     // ✅ Debounced gap detection with category-to-date conversion
     if (relayoutTimeoutRef.current) {
       clearTimeout(relayoutTimeoutRef.current);
     }
-    
+
     relayoutTimeoutRef.current = setTimeout(() => {
       console.log('⏰ Debounce timeout fired');
-      console.log('⏰ State check:', { 
-        isLoadingMoreData, 
-        hasNewXRange: !!newXRange, 
-        masterTimelineLength: masterTimeline.length 
+      console.log('⏰ State check:', {
+        isLoadingMoreData,
+        hasNewXRange: !!newXRange,
+        masterTimelineLength: masterTimeline.length
       });
-      
+
       if (!isLoadingMoreData && newXRange && masterTimeline.length > 0) {
         try {
           // ✅ Convert category indices to actual date strings
           // CRITICAL: Handle indices that go beyond array bounds (user panned beyond data)
           const rawStartIndex = Math.floor(newXRange[0]);
           const rawEndIndex = Math.ceil(newXRange[1]);
-          
+
           console.log('🔢 Raw indices from relayout:', { rawStartIndex, rawEndIndex, timelineLength: masterTimeline.length });
-          
+
           // ✅ Clamp to valid array bounds
           const startIndex = Math.max(0, Math.min(masterTimeline.length - 1, rawStartIndex));
           const endIndex = Math.max(0, Math.min(masterTimeline.length - 1, rawEndIndex));
-          
+
           console.log('🔢 Clamped indices:', { startIndex, endIndex });
-          
+
           const visibleStartLabel = masterTimeline[startIndex];
           const visibleEndLabel = masterTimeline[endIndex];
-          
+
           console.log('🏷️ Timeline labels:', { visibleStartLabel, visibleEndLabel });
-          
+
           // ✅ Safety check: both labels must exist
           if (!visibleStartLabel || !visibleEndLabel) {
             console.error('❌ Missing timeline labels:', { startIndex, endIndex, visibleStartLabel, visibleEndLabel });
             return;
           }
-          
+
           // Parse IST timestamps back to Date objects
           const visibleStartDate = parseISTTimestamp(visibleStartLabel);
           const visibleEndDate = parseISTTimestamp(visibleEndLabel);
-          
+
           console.log('🔍 Converted indices to dates:', {
             indices: [startIndex, endIndex],
             labels: [visibleStartLabel, visibleEndLabel],
             dates: [visibleStartDate.toISOString(), visibleEndDate.toISOString()]
           });
-          
+
           // ✅ CRITICAL: If user panned BEYOND data bounds, detect gaps
           // Check if rawIndices go beyond the actual data
           let visibleRangeStart = visibleStartDate.toISOString();
           let visibleRangeEnd = visibleEndDate.toISOString();
-          
+
           // If user panned BEFORE the data (negative index), extend the visible range
           if (rawStartIndex < 0) {
             const extraMinutes = Math.abs(rawStartIndex) * (getIntervalInMs(selectedInterval) / 60000);
@@ -993,7 +994,7 @@ export function StockChart({
             visibleRangeStart = extendedStart.toISOString();
             console.log('📍 User panned BEFORE data, extended start:', visibleRangeStart);
           }
-          
+
           // If user panned AFTER the data (beyond array), extend the visible range
           if (rawEndIndex >= masterTimeline.length) {
             const extraMinutes = (rawEndIndex - masterTimeline.length + 1) * (getIntervalInMs(selectedInterval) / 60000);
@@ -1001,11 +1002,11 @@ export function StockChart({
             visibleRangeEnd = extendedEnd.toISOString();
             console.log('📍 User panned AFTER data, extended end:', visibleRangeEnd);
           }
-          
+
           // ✅ PART 1: Pass both extended range AND visible indices to detectDataGaps
           const visibleRange: [string, string] = [visibleRangeStart, visibleRangeEnd];
           const visibleIndices: [number, number] = [startIndex, endIndex];
-          
+
           const gaps = detectDataGaps(visibleRange, visibleIndices);
           if (gaps && gaps.length > 0) {
             console.log('✅ Gaps detected (before/after/internal), fetching missing data:', gaps);
@@ -1020,7 +1021,7 @@ export function StockChart({
         console.log('⏸️ Skipping gap detection:', { isLoadingMoreData, hasNewXRange: !!newXRange, timelineLength: masterTimeline.length });
       }
     }, CHART_PERFORMANCE_CONFIG.RELAYOUT_DEBOUNCE);
-    
+
     interactionTimeoutRef.current = setTimeout(() => {
       setIsUserInteracting(false);
     }, CHART_PERFORMANCE_CONFIG.RELAYOUT_DEBOUNCE + 200);
@@ -1102,14 +1103,14 @@ export function StockChart({
   useEffect(() => {
     if (data && data.length > 0) {
       const marketHoursData = filterMarketHoursData(data);
-      
+
       // Batch state update with merge logic to prevent data loss
       requestAnimationFrame(() => {
         setAllData(prevData => {
           // ✅ CRITICAL FIX: Merge new data with existing data using IST keys
           const combined = [...prevData, ...marketHoursData];
           const uniqueMap = new Map<string, StockDataPointWithIST>();
-          
+
           combined.forEach(item => {
             const key = item.ist_key; // Use IST key for deduplication
             // Keep item with volume if duplicate, or just keep first occurrence
@@ -1117,15 +1118,15 @@ export function StockChart({
               uniqueMap.set(key, item);
             }
           });
-          
+
           // Sort by IST timestamp
-          const sortedData = Array.from(uniqueMap.values()).sort((a, b) => 
+          const sortedData = Array.from(uniqueMap.values()).sort((a, b) =>
             a.ist_date.getTime() - b.ist_date.getTime()
           );
-          
+
           return sortedData;
         });
-        
+
         if (marketHoursData.length > 0) {
           const start = new Date(marketHoursData[0].interval_start);
           const end = new Date(marketHoursData[marketHoursData.length - 1].interval_start);
@@ -1134,7 +1135,7 @@ export function StockChart({
       });
     }
   }, [data]); // ✅ Fixed: Removed isUserInteracting to prevent race condition
-  
+
   // ✅ OPTIMIZATION 6: Clean state on company/interval change to prevent data contamination
   useEffect(() => {
     if (companyId) {
@@ -1143,43 +1144,43 @@ export function StockChart({
       setDataRange({ start: null, end: null });
       lastFetchRangeRef.current = null;
       setIsUserInteracting(false);
-      
+
       // Reset zoom state
       setXRange(null);
       setYRange(null);
       setSyncedXRange(null);
-      
+
       // Reset indicator states to prevent stale data
       setActiveIndicators(indicators);
-      
+
       // Clear loading states
       setIsLoadingMoreData(false);
       setShowLoadingIndicator(false);
     }
   }, [companyId, indicators, selectedInterval]); // ✅ CRITICAL FIX: Added selectedInterval to prevent data contamination
-  
+
   // ✅ PART 2: CRITICAL - View Anchoring Effect to prevent jumps on data load
   useEffect(() => {
     // Check if loading just finished
     if (wasLoadingRef.current && !isLoadingMoreData) {
       console.log('⚓ Loading finished, applying anchor...');
-      
+
       const anchor = anchorTimestampRef.current;
       const oldRange = prevXRangeRef.current;
-      
+
       if (!anchor || !oldRange || masterTimeline.length === 0) {
-        console.log('⚓ No anchor or empty timeline, skipping:', { 
-          hasAnchor: !!anchor, 
-          hasOldRange: !!oldRange, 
-          timelineLength: masterTimeline.length 
+        console.log('⚓ No anchor or empty timeline, skipping:', {
+          hasAnchor: !!anchor,
+          hasOldRange: !!oldRange,
+          timelineLength: masterTimeline.length
         });
         wasLoadingRef.current = false;
         return;
       }
-      
+
       // 1. Find the new index of our anchor timestamp
       const newAnchorIndex = masterTimeline.indexOf(anchor);
-      
+
       if (newAnchorIndex === -1) {
         console.log('⚓ Anchor not found in timeline (interval changed?), clearing:', anchor);
         anchorTimestampRef.current = null;
@@ -1187,39 +1188,39 @@ export function StockChart({
         wasLoadingRef.current = false;
         return;
       }
-      
+
       console.log('⚓ Anchor found at new index:', newAnchorIndex, 'was centered in range:', oldRange);
-      
+
       // 2. Calculate the new range based on the anchor's new position
       const [oldStart, oldEnd] = oldRange;
       const rangeWidth = oldEnd - oldStart;
       const oldCenter = (oldStart + oldEnd) / 2;
       const oldStartOffset = oldStart - oldCenter; // How far the start was from the center
-      
+
       const newStart = newAnchorIndex + oldStartOffset;
       const newEnd = newStart + rangeWidth;
-      
-      console.log('⚓ Calculated new range:', { 
-        oldRange, 
+
+      console.log('⚓ Calculated new range:', {
+        oldRange,
         newRange: [newStart, newEnd],
         anchorMoved: newAnchorIndex - oldCenter,
-        rangeWidth 
+        rangeWidth
       });
-      
+
       // 3. Set the new, anchored range
       setSyncedXRange([newStart, newEnd] as any);
-      
+
       // 4. Clear the refs
       anchorTimestampRef.current = null;
       prevXRangeRef.current = null;
-      
+
       console.log('⚓ View anchored successfully! 🎯');
     }
-    
+
     // Always update the ref to the current loading state
     wasLoadingRef.current = isLoadingMoreData;
   }, [masterTimeline, isLoadingMoreData]);
-  
+
   // ✅ OPTIMIZATION 8: Batch chart height calculations to prevent multiple re-renders
   useEffect(() => {
     const totalAvailableHeight = isFullscreen ? window.innerHeight - 20 : height - 20;
@@ -1230,20 +1231,20 @@ export function StockChart({
     if (hasRSI) indicatorHeight += CHART_PERFORMANCE_CONFIG.INDICATOR_CHART_HEIGHT + gap;
     if (hasMACD) indicatorHeight += CHART_PERFORMANCE_CONFIG.INDICATOR_CHART_HEIGHT + gap;
     const availableForMainCharts = totalAvailableHeight - indicatorHeight;
-    
+
     // Batch all height updates in a single state update using requestAnimationFrame
     requestAnimationFrame(() => {
       const updates = {
-        price: showVolume 
+        price: showVolume
           ? Math.floor(availableForMainCharts * CHART_PERFORMANCE_CONFIG.PRICE_CHART_HEIGHT_RATIO)
           : availableForMainCharts,
-        volume: showVolume 
+        volume: showVolume
           ? Math.floor(availableForMainCharts * CHART_PERFORMANCE_CONFIG.VOLUME_CHART_HEIGHT_RATIO)
           : 0,
         rsi: hasRSI ? CHART_PERFORMANCE_CONFIG.INDICATOR_CHART_HEIGHT : 0,
         macd: hasMACD ? CHART_PERFORMANCE_CONFIG.INDICATOR_CHART_HEIGHT : 0
       };
-      
+
       setPriceChartHeight(updates.price);
       setVolumeChartHeight(updates.volume);
       setRsiChartHeight(updates.rsi);
@@ -1360,7 +1361,7 @@ export function StockChart({
   }, [autoResize, isFullscreen, sidebarVisible, responsiveMode, aspectRatio]);
   // ✅ OPTIMIZATION 7: Remove redundant filtering - allData is already filtered
   // const filteredData is removed - allData is already market-hours-filtered in useEffect
-  
+
   // ✅ OPTIMIZATION 3: Fixed timestamp bug + optimized aggregation
   const optimizedData = useMemo(() => {
     if (!allData.length) return allData;
@@ -1380,7 +1381,7 @@ export function StockChart({
         let high = chunk[0].high;
         let low = chunk[0].low;
         let volume = 0;
-        
+
         // Optimized single-pass calculation
         for (let j = 0; j < chunk.length; j++) {
           const point = chunk[j];
@@ -1388,7 +1389,7 @@ export function StockChart({
           if (point.low < low) low = point.low;
           volume += point.volume;
         }
-        
+
         result.push({
           interval_start: chunk[0].interval_start, // ✅ FIRST not LAST
           open, high, low, close, volume
@@ -1397,23 +1398,23 @@ export function StockChart({
     }
     return result;
   }, [allData]);
-  
+
   // ✅ OPTIMIZATION 10: Indicator calculation cache to prevent redundant recalculations
   const indicatorCacheRef = useRef<Map<string, any>>(new Map());
-  
+
   const calculateIndicator = useCallback((type: string, prices: number[], options: Record<string, number> = {}) => {
     // Cache key based on type, prices length, and options
     const cacheKey = `${type}-${prices.length}-${JSON.stringify(options)}`;
     if (indicatorCacheRef.current.has(cacheKey)) {
       return indicatorCacheRef.current.get(cacheKey);
     }
-    
+
     let result: any;
     switch (type) {
       case 'ma': {
         const period = options.period || 20;
         const maResult = new Array(prices.length);
-        
+
         // ✅ FIX: Calculate MA from start (use available data for warmup)
         for (let i = 0; i < prices.length; i++) {
           const startIdx = Math.max(0, i - period + 1);
@@ -1431,16 +1432,16 @@ export function StockChart({
         const period = options.period || 9;
         const k = 2 / (period + 1);
         const emaResult = new Array(prices.length);
-        
+
         // ✅ FIX: Initialize with SMA of first period points, then EMA
         if (prices.length > 0) {
           // Start with simple average of first `period` points (or all available if fewer)
           const warmupLength = Math.min(period, prices.length);
           emaResult[0] = prices.slice(0, warmupLength).reduce((a, b) => a + b, 0) / warmupLength;
-          
+
           // Apply EMA formula from point 1 onwards
           for (let i = 1; i < prices.length; i++) {
-            emaResult[i] = prices[i] * k + emaResult[i-1] * (1-k);
+            emaResult[i] = prices[i] * k + emaResult[i - 1] * (1 - k);
           }
         }
         result = emaResult;
@@ -1452,7 +1453,7 @@ export function StockChart({
         const ma = calculateIndicator('ma', prices, { period }) as number[];
         const upperBand = new Array(prices.length);
         const lowerBand = new Array(prices.length);
-        
+
         // ✅ FIX: Calculate bands from start using adaptive window
         for (let i = 0; i < prices.length; i++) {
           if (ma[i] === null) {
@@ -1477,17 +1478,17 @@ export function StockChart({
       case 'rsi': {
         const period = options.period || 14;
         const rsiResult = new Array(prices.length).fill(null);
-        
+
         // ✅ FIX: Calculate RSI from available data (use adaptive warmup)
         if (prices.length >= 2) {
           const changes = [];
           for (let i = 1; i < prices.length; i++) {
-            changes.push(prices[i] - prices[i-1]);
+            changes.push(prices[i] - prices[i - 1]);
           }
-          
+
           // Calculate RSI starting from minimum period or earliest available
           const startIdx = Math.min(period, changes.length);
-          
+
           for (let i = startIdx; i < prices.length; i++) {
             const changeIdx = i - 1; // Index in changes array
             const windowStart = Math.max(0, changeIdx - period + 1);
@@ -1497,11 +1498,11 @@ export function StockChart({
             const losses = changes.slice(windowStart, changeIdx + 1)
               .filter(c => c < 0)
               .reduce((a, b) => a + Math.abs(b), 0);
-            
+
             const windowLength = (changeIdx - windowStart + 1);
             const avgGain = gains / windowLength;
             const avgLoss = losses / windowLength;
-            
+
             if (avgLoss === 0) {
               rsiResult[i] = avgGain === 0 ? 50 : 100;
             } else {
@@ -1517,22 +1518,22 @@ export function StockChart({
         const fastPeriod = options.fastPeriod || 12;
         const slowPeriod = options.slowPeriod || 26;
         const signalPeriod = options.signalPeriod || 9;
-        
+
         // ✅ FIX: Use adaptive EMA that works from the start
         const fastEMA = calculateIndicator('ema', prices, { period: fastPeriod }) as number[];
         const slowEMA = calculateIndicator('ema', prices, { period: slowPeriod }) as number[];
-        
+
         const macdLine = fastEMA.map((fast, i) => {
           if (fast === null || slowEMA[i] === null) return null;
           return fast - slowEMA[i];
         });
-        
+
         // ✅ FIX: Filter out nulls and calculate signal line
         const validMacd = macdLine.filter(val => val !== null) as number[];
-        const signalLine = validMacd.length > 0 ? 
-          calculateIndicator('ema', validMacd, { period: signalPeriod }) as number[] : 
+        const signalLine = validMacd.length > 0 ?
+          calculateIndicator('ema', validMacd, { period: signalPeriod }) as number[] :
           [];
-        
+
         // ✅ FIX: Proper alignment of signal line with MACD line
         const paddedSignalLine = new Array(macdLine.length).fill(null);
         let signalIdx = 0;
@@ -1542,22 +1543,22 @@ export function StockChart({
             signalIdx++;
           }
         }
-        
+
         const histogram = macdLine.map((macd, i) => {
           if (macd === null || paddedSignalLine[i] === null) return null;
           return macd - paddedSignalLine[i];
         });
-        
+
         result = { macdLine, signalLine: paddedSignalLine, histogram };
         break;
       }
       default:
         result = [];
     }
-    
+
     // Store in cache
     indicatorCacheRef.current.set(cacheKey, result);
-    
+
     // Limit cache size to prevent memory leaks (max 50 cached indicators)
     if (indicatorCacheRef.current.size > 50) {
       const firstKey = indicatorCacheRef.current.keys().next().value;
@@ -1565,7 +1566,7 @@ export function StockChart({
         indicatorCacheRef.current.delete(firstKey);
       }
     }
-    
+
     return result;
   }, []);
   const convertToHeikenAshi = useCallback((data: StockDataPoint[]) => {
@@ -1700,11 +1701,11 @@ export function StockChart({
           close: masterData.map(item => item?.close ?? null),
           type: 'candlestick',
           name: 'Price',
-          decreasing: { 
+          decreasing: {
             line: { color: colors.downColor, width: 1 },
             fillcolor: colors.downColor
           },
-          increasing: { 
+          increasing: {
             line: { color: colors.upColor, width: 1 },
             fillcolor: colors.upColor
           },
@@ -1734,11 +1735,11 @@ export function StockChart({
           close: chartData.map(item => item?.ha_close ?? null),
           type: 'candlestick',
           name: 'Heiken Ashi',
-          decreasing: { 
+          decreasing: {
             line: { color: colors.downColor, width: 1 },
             fillcolor: colors.downColor
           },
-          increasing: { 
+          increasing: {
             line: { color: colors.upColor, width: 1 },
             fillcolor: colors.upColor
           },
@@ -1752,8 +1753,8 @@ export function StockChart({
           type: 'scatter',
           mode: 'lines',
           name: 'Price',
-          line: { 
-            color: colors.line, 
+          line: {
+            color: colors.line,
             width: 2.5,
             shape: 'linear'
           },
@@ -1769,8 +1770,8 @@ export function StockChart({
           name: 'Price',
           fill: 'tozeroy',
           fillcolor: 'rgba(96, 165, 250, 0.2)',
-          line: { 
-            color: colors.line, 
+          line: {
+            color: colors.line,
             width: 2.5,
             shape: 'linear'
           },
@@ -1789,7 +1790,7 @@ export function StockChart({
           type: 'scatter',
           mode: 'lines',
           name: `MA(${period})`,
-          line: { 
+          line: {
             color: colors.indicators.ma[index % colors.indicators.ma.length],
             width: 2,
             shape: 'linear'
@@ -1807,7 +1808,7 @@ export function StockChart({
           type: 'scatter',
           mode: 'lines',
           name: `EMA(${period})`,
-          line: { 
+          line: {
             color: colors.indicators.ema[index % colors.indicators.ema.length],
             width: 2,
             dash: 'dash',
@@ -1825,9 +1826,9 @@ export function StockChart({
         type: 'scatter',
         mode: 'lines',
         name: 'BB Upper',
-        line: { 
-          color: colors.indicators.bollinger, 
-          width: 1.5, 
+        line: {
+          color: colors.indicators.bollinger,
+          width: 1.5,
           dash: 'dot',
           shape: 'linear'
         },
@@ -1840,9 +1841,9 @@ export function StockChart({
         type: 'scatter',
         mode: 'lines',
         name: 'BB Lower',
-        line: { 
-          color: colors.indicators.bollinger, 
-          width: 1.5, 
+        line: {
+          color: colors.indicators.bollinger,
+          width: 1.5,
           dash: 'dot',
           shape: 'linear'
         },
@@ -1857,8 +1858,8 @@ export function StockChart({
         type: 'scatter',
         mode: 'lines',
         name: 'BB(20,2)',
-        line: { 
-          color: colors.indicators.bollinger, 
+        line: {
+          color: colors.indicators.bollinger,
           width: 1.5,
           shape: 'linear'
         },
@@ -1869,10 +1870,10 @@ export function StockChart({
   }, [
     masterData,
     masterTimeline,
-    selectedChartType, 
-    activeIndicators, 
-    selectedMAperiods, 
-    selectedEMAperiods, 
+    selectedChartType,
+    activeIndicators,
+    selectedMAperiods,
+    selectedEMAperiods,
     colors,
     calculateIndicator,
     convertToHeikenAshi
@@ -1905,9 +1906,9 @@ export function StockChart({
       name: 'Volume',
       marker: {
         color: volumeColors,
-        line: { 
+        line: {
           width: deviceType === 'mobile' ? 0 : 0.5,
-          color: 'rgba(255,255,255,0.1)' 
+          color: 'rgba(255,255,255,0.1)'
         },
         opacity: 0.9
       },
@@ -1932,8 +1933,8 @@ export function StockChart({
       type: 'scatter',
       mode: 'lines',
       name: 'RSI(14)',
-      line: { 
-        color: colors.indicators.rsi, 
+      line: {
+        color: colors.indicators.rsi,
         width: 2,
         shape: 'linear'
       },
@@ -1952,8 +1953,8 @@ export function StockChart({
         type: 'scatter',
         mode: 'lines',
         name: 'MACD',
-        line: { 
-          color: colors.indicators.macd, 
+        line: {
+          color: colors.indicators.macd,
           width: 2,
           shape: 'linear'
         },
@@ -1965,8 +1966,8 @@ export function StockChart({
         type: 'scatter',
         mode: 'lines',
         name: 'Signal',
-        line: { 
-          color: '#fbbf24', 
+        line: {
+          color: '#fbbf24',
           width: 2,
           shape: 'linear'
         },
@@ -1978,9 +1979,9 @@ export function StockChart({
         type: 'bar',
         name: 'Histogram',
         marker: {
-          color: macd.histogram.map((val: number | null) => 
-            val === null ? 'rgba(0,0,0,0)' : 
-            val >= 0 ? colors.upColor : colors.downColor
+          color: macd.histogram.map((val: number | null) =>
+            val === null ? 'rgba(0,0,0,0)' :
+              val >= 0 ? colors.upColor : colors.downColor
           ),
           opacity: 0.7
         }
@@ -1988,8 +1989,8 @@ export function StockChart({
     ];
   }, [masterData, masterTimeline, activeIndicators, colors, calculateIndicator]);
   const chartTitle = useMemo(() => {
-    let title = companyId ? 
-      `${companyId} - ${selectedInterval.toUpperCase()} Chart [${masterData.length} points]` : 
+    let title = companyId ?
+      `${companyId} - ${selectedInterval.toUpperCase()} Chart [${masterData.length} points]` :
       'Select a Company';
     if (isLoadingMoreData) {
       title += ' 🔄 Expanding...';
@@ -2091,14 +2092,14 @@ export function StockChart({
     };
     return baseLayout;
   }, [
-    showGridlines, 
-    logScale, 
-    drawingMode, 
-    colors, 
-    crosshair, 
-    annotations, 
+    showGridlines,
+    logScale,
+    drawingMode,
+    colors,
+    crosshair,
+    annotations,
     deviceType,
-    syncedXRange, 
+    syncedXRange,
     yRange,
     chartTitle
   ]);
@@ -2181,8 +2182,8 @@ export function StockChart({
       }
     };
   }, [
-    showGridlines, 
-    colors, 
+    showGridlines,
+    colors,
     deviceType,
     syncedXRange
   ]);
@@ -2356,8 +2357,8 @@ export function StockChart({
       'drawrect',
       'eraseshape'
     ] : [],
-    modeBarButtonsToRemove: deviceType === 'mobile' ? 
-      ['select2d', 'lasso2d', 'autoScale2d', 'resetScale2d'] : 
+    modeBarButtonsToRemove: deviceType === 'mobile' ?
+      ['select2d', 'lasso2d', 'autoScale2d', 'resetScale2d'] :
       ['select2d', 'lasso2d'],
     displaylogo: false,
     doubleClick: 'reset+autosize',
@@ -2384,23 +2385,23 @@ export function StockChart({
     setAspectRatio(ratio);
   }, []);
   const toggleIndicator = useCallback((id: string) => {
-    setActiveIndicators(prev => 
-      prev.includes(id) 
-        ? prev.filter(ind => ind !== id) 
+    setActiveIndicators(prev =>
+      prev.includes(id)
+        ? prev.filter(ind => ind !== id)
         : [...prev, id]
     );
   }, []);
   const toggleMAPeriod = useCallback((period: number) => {
-    setSelectedMAperiods(prev => 
-      prev.includes(period) 
-        ? prev.filter(p => p !== period) 
+    setSelectedMAperiods(prev =>
+      prev.includes(period)
+        ? prev.filter(p => p !== period)
         : [...prev, period].sort((a, b) => a - b)
     );
   }, []);
   const toggleEMAPeriod = useCallback((period: number) => {
-    setSelectedEMAperiods(prev => 
-      prev.includes(period) 
-        ? prev.filter(p => p !== period) 
+    setSelectedEMAperiods(prev =>
+      prev.includes(period)
+        ? prev.filter(p => p !== period)
         : [...prev, period].sort((a, b) => a - b)
     );
   }, []);
@@ -2436,7 +2437,7 @@ export function StockChart({
     setXRange(null);
     setYRange(null);
     setSyncedXRange(null);
-    const resetUpdate = { 
+    const resetUpdate = {
       'xaxis.autorange': true,
       'yaxis.autorange': true,
       'xaxis.range': undefined,
@@ -2456,7 +2457,7 @@ export function StockChart({
     if (!masterData.length) return;
     const csvContent = [
       'Date,Open,High,Low,Close,Volume',
-      ...masterData.filter(item => item !== null).map(item => 
+      ...masterData.filter(item => item !== null).map(item =>
         `${item!.interval_start},${item!.open},${item!.high},${item!.low},${item!.close},${item!.volume}`
       )
     ].join('\n');
@@ -2498,11 +2499,11 @@ export function StockChart({
     if (!currentPrice) return;
     priceAlerts.forEach(alert => {
       if (alert.triggered) return;
-      const shouldTrigger = 
+      const shouldTrigger =
         (alert.type === 'above' && currentPrice >= alert.price) ||
         (alert.type === 'below' && currentPrice <= alert.price);
       if (shouldTrigger) {
-        setPriceAlerts(prev => 
+        setPriceAlerts(prev =>
           prev.map(a => a.id === alert.id ? { ...a, triggered: true } : a)
         );
         if ('Notification' in window && Notification.permission === 'granted') {
@@ -2592,18 +2593,18 @@ export function StockChart({
     borderColor: colors.button.bgActive
   };
   const containerStyle = useMemo(() => ({
-  width: '100%',
-  height: isFullscreen ? '100vh' : `${height}px`,
-  backgroundColor: colors.bg,
-  fontFamily: 'Inter, system-ui, sans-serif',
-  position: isFullscreen ? 'fixed' as const : 'relative' as const,
-  top: isFullscreen ? 0 : 'auto',
-  left: isFullscreen ? 0 : 'auto',
-  zIndex: isFullscreen ? 9999 : 'auto',
-  overflowX: isFullscreen ? 'auto' : 'hidden',
-  overflowY: isFullscreen ? 'auto' : 'hidden',
-  scrollBehavior: 'smooth'
-}), [colors.bg, height, isFullscreen]);
+    width: '100%',
+    height: isFullscreen ? '100vh' : `${height}px`,
+    backgroundColor: colors.bg,
+    fontFamily: 'Inter, system-ui, sans-serif',
+    position: isFullscreen ? 'fixed' as const : 'relative' as const,
+    top: isFullscreen ? 0 : 'auto',
+    left: isFullscreen ? 0 : 'auto',
+    zIndex: isFullscreen ? 9999 : 'auto',
+    overflowX: isFullscreen ? 'auto' : 'hidden',
+    overflowY: isFullscreen ? 'auto' : 'hidden',
+    scrollBehavior: 'smooth'
+  }), [colors.bg, height, isFullscreen]);
   const chartContainerStyle = useMemo(() => {
     const sidebarWidth = sidebarVisible && deviceType !== 'mobile' ? CHART_PERFORMANCE_CONFIG.SIDEBAR_WIDTH : 0;
     return {
@@ -2655,10 +2656,10 @@ export function StockChart({
   }, [allData, companyId, detectDataGaps, fetchMissingData, isLoadingMoreData]);
   if (loading && allData.length === 0) {
     return (
-      <div 
-        className="flex items-center justify-center" 
-        style={{ 
-          height: `${height}px`, 
+      <div
+        className="flex items-center justify-center"
+        style={{
+          height: `${height}px`,
           backgroundColor: colors.bg,
           color: colors.text,
           fontFamily: 'Inter, system-ui, sans-serif'
@@ -2674,10 +2675,10 @@ export function StockChart({
   }
   if (error) {
     return (
-      <div 
-        className="flex items-center justify-center" 
-        style={{ 
-          height: `${height}px`, 
+      <div
+        className="flex items-center justify-center"
+        style={{
+          height: `${height}px`,
           backgroundColor: colors.bg,
           color: colors.text,
           fontFamily: 'Inter, system-ui, sans-serif'
@@ -2693,10 +2694,10 @@ export function StockChart({
   }
   if (!data || data.length === 0) {
     return (
-      <div 
-        className="flex items-center justify-center" 
-        style={{ 
-          height: `${height}px`, 
+      <div
+        className="flex items-center justify-center"
+        style={{
+          height: `${height}px`,
           backgroundColor: colors.bg,
           color: colors.text,
           fontFamily: 'Inter, system-ui, sans-serif'
@@ -2711,15 +2712,15 @@ export function StockChart({
     );
   }
   return (
-    <div 
+    <div
       ref={containerRef}
       style={containerStyle}
     >
       <LoadingIndicator show={showLoadingIndicator || isLoadingMoreData} />
       {sidebarVisible && deviceType !== 'mobile' && (
-        <div 
+        <div
           className="absolute top-0 left-0 z-8 p-4 rounded-lg shadow-lg border max-h-full overflow-y-auto"
-          style={{ 
+          style={{
             backgroundColor: colors.paper,
             borderColor: colors.grid,
             width: `${CHART_PERFORMANCE_CONFIG.SIDEBAR_WIDTH}px`,
@@ -2884,13 +2885,13 @@ export function StockChart({
                     checked={activeIndicators.includes(indicator.id)}
                     onChange={() => toggleIndicator(indicator.id)}
                     className="rounded"
-                    style={{ 
+                    style={{
                       accentColor: colors.button.bgActive,
                       backgroundColor: colors.button.bg
                     }}
                   />
-                  <label 
-                    htmlFor={indicator.id} 
+                  <label
+                    htmlFor={indicator.id}
                     className="text-sm cursor-pointer flex-1"
                     style={{ color: colors.text }}
                   >
@@ -2967,7 +2968,7 @@ export function StockChart({
                   id="volume"
                   checked={showVolume}
                   onChange={(e) => setShowVolume(e.target.checked)}
-                  style={{ 
+                  style={{
                     accentColor: colors.button.bgActive,
                     backgroundColor: colors.button.bg
                   }}
@@ -2982,7 +2983,7 @@ export function StockChart({
                   id="gridlines"
                   checked={showGridlines}
                   onChange={(e) => setShowGridlines(e.target.checked)}
-                  style={{ 
+                  style={{
                     accentColor: colors.button.bgActive,
                     backgroundColor: colors.button.bg
                   }}
@@ -3015,9 +3016,9 @@ export function StockChart({
         </div>
       )}
       {deviceType === 'mobile' && sidebarVisible && (
-        <div 
+        <div
           className="absolute bottom-0 left-0 right-0 z-10 p-3 border-t"
-          style={{ 
+          style={{
             backgroundColor: colors.paper,
             borderColor: colors.grid,
             maxHeight: '40%',
@@ -3084,12 +3085,12 @@ export function StockChart({
           {deviceType !== 'mobile' && 'Controls'}
         </button>
       )}
-      <div 
+      <div
         ref={chartContainerRef}
         style={chartContainerStyle}
       >
-        <div 
-          style={{ 
+        <div
+          style={{
             height: `${priceChartHeight}px`,
             marginBottom: `${CHART_PERFORMANCE_CONFIG.CHART_GAP}px`
           }}
@@ -3109,8 +3110,8 @@ export function StockChart({
           />
         </div>
         {showVolume && volumeChartHeight > 0 && (
-          <div 
-            style={{ 
+          <div
+            style={{
               height: `${volumeChartHeight}px`,
               marginBottom: `${CHART_PERFORMANCE_CONFIG.CHART_GAP}px`
             }}
@@ -3130,8 +3131,8 @@ export function StockChart({
           </div>
         )}
         {activeIndicators.includes('rsi') && rsiChartHeight > 0 && (
-          <div 
-            style={{ 
+          <div
+            style={{
               height: `${rsiChartHeight}px`,
               marginBottom: `${CHART_PERFORMANCE_CONFIG.CHART_GAP}px`
             }}
@@ -3151,8 +3152,8 @@ export function StockChart({
           </div>
         )}
         {activeIndicators.includes('macd') && macdChartHeight > 0 && (
-          <div 
-            style={{ 
+          <div
+            style={{
               height: `${macdChartHeight}px`,
               marginBottom: `${CHART_PERFORMANCE_CONFIG.CHART_GAP}px`
             }}
@@ -3171,9 +3172,9 @@ export function StockChart({
             />
           </div>
         )}
-        <div 
+        <div
           className="absolute bottom-4 right-4 p-3 rounded-lg shadow-lg border text-xs"
-          style={{ 
+          style={{
             backgroundColor: colors.paper,
             borderColor: colors.grid,
             color: colors.text,

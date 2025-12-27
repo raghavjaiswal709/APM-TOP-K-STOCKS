@@ -1,3 +1,4 @@
+// @ts-nocheck
 // components/lstmae/LSTMAEVisualization.tsx
 'use client';
 

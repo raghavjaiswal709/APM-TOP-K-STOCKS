@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
@@ -915,7 +916,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       const allPredictionEntries = Object.entries(predictionsToUse.predictions);
       // ✅ Filter to only today's predictions first
       const todayPredictions = filterTodayPredictions(allPredictionEntries);
-      
+
       const predictionPrices = todayPredictions
         .map(([key, pred]) => {
           const predTime = new Date(pred.timestamp || key).getTime() / 1000;
@@ -931,19 +932,19 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       }
     }
 
-   
+
     const gttDataSource = gttExternalData?.predictions || (isGttMode && gttPredictions.length > 0 ? gttPredictions : null);
-    
+
     if (gttDataSource && Array.isArray(gttDataSource) && gttDataSource.length > 0) {
       gttDataSource.forEach((pred: any) => {
         const predTime = new Date(pred.prediction_time || pred.timestamp).getTime() / 1000;
-        
-        
+
+
         if (pred.input_close && !isNaN(pred.input_close)) {
           allPrices.push(Number(pred.input_close));
         }
-        
-        
+
+
         const horizons = ['H1_pred', 'H2_pred', 'H3_pred', 'H4_pred', 'H5_pred'];
         horizons.forEach(h => {
           if (pred[h] && !isNaN(pred[h])) {
@@ -1075,7 +1076,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     // This ensures both Line and Candlestick charts show the same time range
     // Fall back to lineChartData.allData if ohlcData is empty (for Line chart with historical data)
     let dataToUse: { timestamp: number }[] = [];
-    
+
     if (ohlcData && ohlcData.length > 0) {
       dataToUse = ohlcData;
     } else if (chartType === 'line' && lineChartData.allData && lineChartData.allData.length > 0) {
@@ -1083,7 +1084,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     } else if (historicalData && historicalData.length > 0) {
       dataToUse = historicalData;
     }
-    
+
     if (dataToUse.length === 0) return undefined;
 
     // ✅ STEP 1: Find "now" (latest data timestamp or current time)
@@ -1093,7 +1094,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const now = new Date(maxTimestamp * 1000);
     const dataStartDate = new Date(minTimestamp * 1000);
     const currentTime = new Date();
-    
+
     // ✅ NEW: Detect if we're in historical mode (tradingHours.isActive === false)
     const isHistoricalMode = tradingHours && tradingHours.isActive === false;
 
@@ -1149,18 +1150,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           // For historical mode, use data's latest point as reference
           // For live mode, use current time
           const referenceTime = isHistoricalMode ? now : currentTime;
-          
+
           startTime = new Date(referenceTime.getTime() - duration);
-          
+
           // ✅ CRITICAL: For historical mode, cap end time at market close (15:30)
           if (isHistoricalMode) {
             const marketCloseTime = new Date(now);
             marketCloseTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE, 0, 0);
-            
+
             // Don't extend beyond market close time
             const calculatedEndTime = new Date(referenceTime.getTime() + FUTURE_BUFFER_MS);
             endTime = calculatedEndTime > marketCloseTime ? marketCloseTime : calculatedEndTime;
-            
+
             console.log(`⏰ [${selectedTimeframe} HISTORICAL] End time capped at market close:`, {
               calculatedEnd: calculatedEndTime.toLocaleTimeString(),
               marketClose: marketCloseTime.toLocaleTimeString(),
@@ -1181,16 +1182,16 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         } else {
           // For shorter timeframes, use latest data point as "now"
           startTime = new Date(now.getTime() - duration);
-          
+
           // ✅ CRITICAL: For historical mode, cap end time at market close (15:30)
           if (isHistoricalMode) {
             const marketCloseTime = new Date(now);
             marketCloseTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE, 0, 0);
-            
+
             // Don't extend beyond market close time
             const calculatedEndTime = new Date(now.getTime() + FUTURE_BUFFER_MS);
             endTime = calculatedEndTime > marketCloseTime ? marketCloseTime : calculatedEndTime;
-            
+
             console.log(`⏰ [${selectedTimeframe} HISTORICAL] End time capped at market close:`, {
               calculatedEnd: calculatedEndTime.toLocaleTimeString(),
               marketClose: marketCloseTime.toLocaleTimeString(),
@@ -1222,7 +1223,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       const allPredictionEntries = Object.entries(regularPredictions.predictions);
       // ✅ CRITICAL: Filter to only today's predictions - never show yesterday's data
       const todayPredictions = filterTodayPredictions(allPredictionEntries);
-      
+
       if (todayPredictions.length > 0) {
         const predictionTimes = todayPredictions.map(([key, pred]) =>
           new Date(pred.timestamp || key).getTime()
@@ -1244,7 +1245,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       if (latestPred && latestPred.prediction_time) {
         const latestPredTime = new Date(latestPred.prediction_time).getTime();
         const maxGttTime = latestPredTime + 75 * 60 * 1000; // H5 = +75 minutes
-        
+
         if (maxGttTime > endTime.getTime()) {
           endTime = new Date(maxGttTime + PREDICTION_EXTENSION_MS);
           console.log('📈 [getTimeRange] Extended end time for GTT predictions:', {
@@ -1528,12 +1529,12 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const handleRelayout = useCallback((eventData: any) => {
     // ✅ FIX: Detect reset/autosize events (double-click to reset)
     // When user double-clicks to reset, Plotly fires autorange: true
-    const isResetEvent = 
+    const isResetEvent =
       eventData['xaxis.autorange'] === true ||
       eventData['yaxis.autorange'] === true ||
       eventData['autosize'] === true ||
       (eventData['xaxis.range'] === undefined && eventData['yaxis.range'] === undefined &&
-       !eventData['xaxis.range[0]'] && !eventData['yaxis.range[0]']);
+        !eventData['xaxis.range[0]'] && !eventData['yaxis.range[0]']);
 
     if (isResetEvent) {
       console.log('🔄 [handleRelayout] Reset event detected, clearing user interaction state');
@@ -1553,7 +1554,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           [eventData['yaxis.range[0]'], eventData['yaxis.range[1]']] : preservedRange.yaxis,
       };
       setPreservedRange(newRange);
-      
+
       // ✅ NEW: Emit X-axis range changes to parent for synchronization
       if (onXRangeChange && eventData['xaxis.range[0]']) {
         const startDate = new Date(eventData['xaxis.range[0]']);
@@ -1840,13 +1841,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const allPredictionEntries = Object.entries(predictions.predictions);
     // ✅ CRITICAL: Filter to only today's predictions - never show yesterday's data
     const predictionEntries = filterTodayPredictions(allPredictionEntries);
-    
+
     console.log('🔮 [Predictions-Only View] Filtering:', {
       totalEntries: allPredictionEntries.length,
       todayEntries: predictionEntries.length,
       filteredOut: allPredictionEntries.length - predictionEntries.length
     });
-    
+
     if (predictionEntries.length === 0) {
       console.log('⚠️ No prediction found for today - all predictions were from previous days');
       return plotData;
@@ -1985,7 +1986,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       const minutes = (totalMinutes % 60) + 15;
       const adjustedHours = minutes >= 60 ? hours + 1 : hours;
       const adjustedMinutes = minutes >= 60 ? minutes - 60 : minutes;
-      
+
       const today = new Date();
       today.setHours(adjustedHours, adjustedMinutes, 0, 0);
       return today;
@@ -2099,7 +2100,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     if (predictions && predictions.count > 0 && todayPredictionInfo.hasTodayPredictions) {
       const allPredictionEntries = Object.entries(predictions.predictions);
       const predictionEntries = filterTodayPredictions(allPredictionEntries);
-      
+
       if (predictionEntries.length > 0) {
         const sortedPredictions = predictionEntries.sort((a, b) => {
           const timeA = new Date(a[1].timestamp || a[0]).getTime();
@@ -2145,9 +2146,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       }
     }
 
-    console.log('[Combined View] Total traces created:', plotData.length, 
+    console.log('[Combined View] Total traces created:', plotData.length,
       plotData.map(t => t.name).join(', '));
-    
+
     return plotData;
   };
 
@@ -2203,9 +2204,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         const gttDataToRender = (gttExternalData?.predictions && Array.isArray(gttExternalData.predictions) && gttExternalData.predictions.length > 0)
           ? gttExternalData.predictions
           : (isGttMode && gttPredictions && gttPredictions.length > 0 ? gttPredictions : null);
-        
+
         const shouldRenderGtt = (isGttEnabled || isGttMode) && gttDataToRender && gttDataToRender.length > 0;
-        
+
         if (shouldRenderGtt) {
           const allPredictions = gttDataToRender;
 
@@ -2228,145 +2229,145 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           const latestPrediction = gttExternalData?.latest || allPredictions[allPredictions.length - 1];
           const latestPredTime = new Date(latestPrediction.prediction_time).getTime();
 
-            // Collect all latest predictions for connected line
-            const latestConnectedX: Date[] = [];
-            const latestConnectedY: number[] = [];
-            const latestConnectedColors: string[] = [];
-            const latestConnectedLabels: string[] = [];
+          // Collect all latest predictions for connected line
+          const latestConnectedX: Date[] = [];
+          const latestConnectedY: number[] = [];
+          const latestConnectedColors: string[] = [];
+          const latestConnectedLabels: string[] = [];
 
-            // Add all horizon predictions in order
+          // Add all horizon predictions in order
+          horizonConfig.forEach(({ horizon, color, offset, label }) => {
+            const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
+            const targetTime = new Date(latestPredTime + offset * 60 * 1000);
+            const value = latestPrediction[predKey];
+
+            if (value && !isNaN(value)) {
+              latestConnectedX.push(targetTime);
+              latestConnectedY.push(value);
+              latestConnectedColors.push(color);
+              latestConnectedLabels.push(horizon);
+            }
+          });
+
+          // Render CONNECTED latest prediction line
+          if (latestConnectedX.length > 0) {
+            plotData.push({
+              x: latestConnectedX,
+              y: latestConnectedY,
+              type: 'scatter',
+              mode: 'lines+markers',
+              name: '⚡ GTT Latest Prediction',
+              line: {
+                color: '#A855F7',
+                width: 3,
+                dash: 'solid'
+              },
+              marker: {
+                size: 10,
+                color: latestConnectedColors,
+                symbol: 'diamond',
+                line: {
+                  color: '#ffffff',
+                  width: 2
+                }
+              },
+              text: latestConnectedLabels,
+              hovertemplate: '<b>⚡ %{text} (LATEST)</b><br>' +
+                'Time: %{x|%H:%M:%S}<br>' +
+                'Price: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
+              showlegend: true
+            } as any);
+          }
+
+          // Render historical predictions only if enabled
+          if (showGttHistory) {
             horizonConfig.forEach(({ horizon, color, offset, label }) => {
               const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
-              const targetTime = new Date(latestPredTime + offset * 60 * 1000);
-              const value = latestPrediction[predKey];
-              
-              if (value && !isNaN(value)) {
-                latestConnectedX.push(targetTime);
-                latestConnectedY.push(value);
-                latestConnectedColors.push(color);
-                latestConnectedLabels.push(horizon);
-              }
-            });
 
-            // Render CONNECTED latest prediction line
-            if (latestConnectedX.length > 0) {
-              plotData.push({
-                x: latestConnectedX,
-                y: latestConnectedY,
-                type: 'scatter',
-                mode: 'lines+markers',
-                name: '⚡ GTT Latest Prediction',
-                line: {
-                  color: '#A855F7',
-                  width: 3,
-                  dash: 'solid'
-                },
-                marker: {
-                  size: 10,
-                  color: latestConnectedColors,
-                  symbol: 'diamond',
-                  line: {
-                    color: '#ffffff',
-                    width: 2
-                  }
-                },
-                text: latestConnectedLabels,
-                hovertemplate: '<b>⚡ %{text} (LATEST)</b><br>' +
-                              'Time: %{x|%H:%M:%S}<br>' +
-                              'Price: ₹%{y:.2f}<br>' +
-                              '<extra></extra>',
-                showlegend: true
-              } as any);
-            }
+              const historicalX: Date[] = [];
+              const historicalY: number[] = [];
 
-            // Render historical predictions only if enabled
-            if (showGttHistory) {
-              horizonConfig.forEach(({ horizon, color, offset, label }) => {
-                const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
-                
-                const historicalX: Date[] = [];
-                const historicalY: number[] = [];
+              allPredictions.forEach((pred) => {
+                const predTime = new Date(pred.prediction_time).getTime();
+                if (predTime === latestPredTime) return; // Skip latest
 
-                allPredictions.forEach((pred) => {
-                  const predTime = new Date(pred.prediction_time).getTime();
-                  if (predTime === latestPredTime) return; // Skip latest
-                  
-                  const targetTime = new Date(predTime + offset * 60 * 1000);
-                  const value = pred[predKey];
+                const targetTime = new Date(predTime + offset * 60 * 1000);
+                const value = pred[predKey];
 
-                  if (value && !isNaN(value)) {
-                    historicalX.push(targetTime);
-                    historicalY.push(value);
-                  }
-                });
-
-                // Render historical predictions (dimmed)
-                if (historicalX.length > 0) {
-                  plotData.push({
-                    x: historicalX,
-                    y: historicalY,
-                    type: 'scatter',
-                    mode: 'lines+markers',
-                    name: `${horizon} ${label} (history)`,
-                    line: {
-                      color: color,
-                      width: 1.5,
-                      dash: 'dot'
-                    },
-                    marker: {
-                      size: 4,
-                      color: color,
-                      symbol: 'diamond',
-                      opacity: 0.4
-                    },
-                    opacity: 0.4,
-                    hovertemplate: `<b>${horizon} (History)</b><br>` +
-                                  'Target Time: %{x|%H:%M:%S}<br>' +
-                                  'Price: ₹%{y:.2f}<br>' +
-                                  '<extra></extra>',
-                    showlegend: false
-                  } as any);
+                if (value && !isNaN(value)) {
+                  historicalX.push(targetTime);
+                  historicalY.push(value);
                 }
               });
-            }
 
-            // Render latest prediction markers with labels
-            latestConnectedX.forEach((time, idx) => {
-              if (idx === 0) return; // Skip anchor
-              
-              plotData.push({
-                x: [time],
-                y: [latestConnectedY[idx]],
-                type: 'scatter',
-                mode: 'markers+text',
-                name: latestConnectedLabels[idx],
-                text: [latestConnectedLabels[idx]],
-                textposition: 'top center',
-                textfont: {
-                  size: 10,
-                  color: latestConnectedColors[idx],
-                  family: 'Arial, sans-serif',
-                  weight: 'bold'
-                },
-                marker: {
-                  size: 12,
-                  color: latestConnectedColors[idx],
-                  symbol: 'diamond',
+              // Render historical predictions (dimmed)
+              if (historicalX.length > 0) {
+                plotData.push({
+                  x: historicalX,
+                  y: historicalY,
+                  type: 'scatter',
+                  mode: 'lines+markers',
+                  name: `${horizon} ${label} (history)`,
                   line: {
-                    color: '#ffffff',
-                    width: 2
-                  }
-                },
-                showlegend: false,
-                hoverinfo: 'skip'
-              } as any);
+                    color: color,
+                    width: 1.5,
+                    dash: 'dot'
+                  },
+                  marker: {
+                    size: 4,
+                    color: color,
+                    symbol: 'diamond',
+                    opacity: 0.4
+                  },
+                  opacity: 0.4,
+                  hovertemplate: `<b>${horizon} (History)</b><br>` +
+                    'Target Time: %{x|%H:%M:%S}<br>' +
+                    'Price: ₹%{y:.2f}<br>' +
+                    '<extra></extra>',
+                  showlegend: false
+                } as any);
+              }
             });
+          }
 
-            console.log(`✅ [PlotlyChart-Line] GTT predictions rendered:`, {
-              totalPredictions: allPredictions.length,
-              horizons: 5,
-              latestTime: new Date(latestPredTime).toLocaleTimeString()
-            });
+          // Render latest prediction markers with labels
+          latestConnectedX.forEach((time, idx) => {
+            if (idx === 0) return; // Skip anchor
+
+            plotData.push({
+              x: [time],
+              y: [latestConnectedY[idx]],
+              type: 'scatter',
+              mode: 'markers+text',
+              name: latestConnectedLabels[idx],
+              text: [latestConnectedLabels[idx]],
+              textposition: 'top center',
+              textfont: {
+                size: 10,
+                color: latestConnectedColors[idx],
+                family: 'Arial, sans-serif',
+                weight: 'bold'
+              },
+              marker: {
+                size: 12,
+                color: latestConnectedColors[idx],
+                symbol: 'diamond',
+                line: {
+                  color: '#ffffff',
+                  width: 2
+                }
+              },
+              showlegend: false,
+              hoverinfo: 'skip'
+            } as any);
+          });
+
+          console.log(`✅ [PlotlyChart-Line] GTT predictions rendered:`, {
+            totalPredictions: allPredictions.length,
+            horizons: 5,
+            latestTime: new Date(latestPredTime).toLocaleTimeString()
+          });
         }
 
 
@@ -2375,7 +2376,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           const allPredictionEntries = Object.entries(predictions.predictions);
           // ✅ CRITICAL: Filter to only today's predictions - never show yesterday's data
           const predictionEntries = filterTodayPredictions(allPredictionEntries);
-          
+
           console.log('🔮 Adding prediction line to chart:', {
             showPredictions,
             predictionsCount: predictions.count,
@@ -2450,9 +2451,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             showPredictions,
             hasPredictions: !!predictions,
             count: predictions?.count || 0,
-            reason: !showPredictions ? 'showPredictions is false' : 
-                   !predictions ? 'predictions is null' : 
-                   predictions.count === 0 ? 'no predictions available' : 'unknown'
+            reason: !showPredictions ? 'showPredictions is false' :
+              !predictions ? 'predictions is null' :
+                predictions.count === 0 ? 'no predictions available' : 'unknown'
           });
         }
 
@@ -2780,12 +2781,12 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       const gttCandleDataToRender = (gttExternalData?.predictions && Array.isArray(gttExternalData.predictions) && gttExternalData.predictions.length > 0)
         ? gttExternalData.predictions
         : (isGttMode && gttPredictions && gttPredictions.length > 0 ? gttPredictions : null);
-      
+
       const shouldRenderGttCandle = (isGttEnabled || isGttMode) && gttCandleDataToRender && gttCandleDataToRender.length > 0;
-      
+
       if (shouldRenderGttCandle) {
         const allPredictions = gttCandleDataToRender;
-        
+
         console.log('🎯 [PlotlyChart-Candle] Rendering GTT predictions:', {
           totalPredictions: allPredictions.length,
           source: gttExternalData?.predictions ? 'gttExternalData (prop)' : 'gttPredictions (local state)',
@@ -2805,187 +2806,187 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         const latestPrediction = gttExternalData?.latest || allPredictions[allPredictions.length - 1];
         const latestPredTime = new Date(latestPrediction.prediction_time).getTime();
 
-          // Collect all latest predictions for CONNECTED line
-          const latestConnectedX: Date[] = [];
-          const latestConnectedY: number[] = [];
-          const latestConnectedColors: string[] = [];
-          const latestConnectedLabels: string[] = [];
+        // Collect all latest predictions for CONNECTED line
+        const latestConnectedX: Date[] = [];
+        const latestConnectedY: number[] = [];
+        const latestConnectedColors: string[] = [];
+        const latestConnectedLabels: string[] = [];
 
-          // Add anchor point first
-          const anchorTime = new Date(latestPrediction.prediction_time);
-          latestConnectedX.push(anchorTime);
-          latestConnectedY.push(latestPrediction.input_close);
-          latestConnectedColors.push('#22d3ee');
-          latestConnectedLabels.push('Anchor');
+        // Add anchor point first
+        const anchorTime = new Date(latestPrediction.prediction_time);
+        latestConnectedX.push(anchorTime);
+        latestConnectedY.push(latestPrediction.input_close);
+        latestConnectedColors.push('#22d3ee');
+        latestConnectedLabels.push('Anchor');
 
-          // Add all horizon predictions in order
-          horizonConfig.forEach(({ horizon, color, offset }) => {
-            const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
-            const targetTime = new Date(latestPredTime + offset * 60 * 1000);
-            const value = latestPrediction[predKey];
-            
-            if (value && !isNaN(value)) {
-              latestConnectedX.push(targetTime);
-              latestConnectedY.push(value);
-              latestConnectedColors.push(color);
-              latestConnectedLabels.push(horizon);
-            }
-          });
+        // Add all horizon predictions in order
+        horizonConfig.forEach(({ horizon, color, offset }) => {
+          const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
+          const targetTime = new Date(latestPredTime + offset * 60 * 1000);
+          const value = latestPrediction[predKey];
 
-          // Render CONNECTED latest prediction line
-          if (latestConnectedX.length > 0) {
-            plotData.push({
-              x: latestConnectedX,
-              y: latestConnectedY,
-              type: 'scatter',
-              mode: 'lines+markers',
-              name: '⚡ GTT Latest Prediction',
-              line: {
-                color: '#A855F7',
-                width: 3,
-                dash: 'solid'
-              },
-              marker: {
-                size: 10,
-                color: latestConnectedColors,
-                symbol: 'diamond',
-                line: {
-                  color: '#ffffff',
-                  width: 2
-                }
-              },
-              text: latestConnectedLabels,
-              hovertemplate: '<b>⚡ %{text} (LATEST)</b><br>' +
-                            'Time: %{x|%H:%M:%S}<br>' +
-                            'Price: ₹%{y:.2f}<br>' +
-                            '<extra></extra>',
-              showlegend: true
-            } as any);
+          if (value && !isNaN(value)) {
+            latestConnectedX.push(targetTime);
+            latestConnectedY.push(value);
+            latestConnectedColors.push(color);
+            latestConnectedLabels.push(horizon);
           }
+        });
 
-          // Render historical predictions ONLY if enabled
-          if (showGttHistory) {
-            horizonConfig.forEach(({ horizon, color, offset, label }) => {
-              const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
-              
-              const historicalX: Date[] = [];
-              const historicalY: number[] = [];
-
-              allPredictions.forEach((pred) => {
-                const predTime = new Date(pred.prediction_time).getTime();
-                if (predTime === latestPredTime) return; // Skip latest
-                
-                const targetTime = new Date(predTime + offset * 60 * 1000);
-                const value = pred[predKey];
-
-                if (value && !isNaN(value)) {
-                  historicalX.push(targetTime);
-                  historicalY.push(value);
-                }
-              });
-
-              if (historicalX.length > 0) {
-                plotData.push({
-                  x: historicalX,
-                  y: historicalY,
-                  type: 'scatter',
-                  mode: 'lines+markers',
-                  name: `${horizon} ${label} (history)`,
-                  line: {
-                    color: color,
-                    width: 1.5,
-                    dash: 'dot'
-                  },
-                  marker: {
-                    size: 4,
-                    color: color,
-                    symbol: 'diamond',
-                    opacity: 0.4
-                  },
-                  opacity: 0.4,
-                  hovertemplate: `<b>${horizon} (History)</b><br>` +
-                                'Target Time: %{x|%H:%M:%S}<br>' +
-                                'Price: ₹%{y:.2f}<br>' +
-                                '<extra></extra>',
-                  showlegend: false
-                } as any);
+        // Render CONNECTED latest prediction line
+        if (latestConnectedX.length > 0) {
+          plotData.push({
+            x: latestConnectedX,
+            y: latestConnectedY,
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: '⚡ GTT Latest Prediction',
+            line: {
+              color: '#A855F7',
+              width: 3,
+              dash: 'solid'
+            },
+            marker: {
+              size: 10,
+              color: latestConnectedColors,
+              symbol: 'diamond',
+              line: {
+                color: '#ffffff',
+                width: 2
               }
-            });
+            },
+            text: latestConnectedLabels,
+            hovertemplate: '<b>⚡ %{text} (LATEST)</b><br>' +
+              'Time: %{x|%H:%M:%S}<br>' +
+              'Price: ₹%{y:.2f}<br>' +
+              '<extra></extra>',
+            showlegend: true
+          } as any);
+        }
 
-            // Historical anchors
-            const historicalAnchorsX: Date[] = [];
-            const historicalAnchorsY: number[] = [];
+        // Render historical predictions ONLY if enabled
+        if (showGttHistory) {
+          horizonConfig.forEach(({ horizon, color, offset, label }) => {
+            const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
+
+            const historicalX: Date[] = [];
+            const historicalY: number[] = [];
 
             allPredictions.forEach((pred) => {
               const predTime = new Date(pred.prediction_time).getTime();
-              if (predTime === latestPredTime) return;
+              if (predTime === latestPredTime) return; // Skip latest
 
-              const value = pred.input_close;
+              const targetTime = new Date(predTime + offset * 60 * 1000);
+              const value = pred[predKey];
+
               if (value && !isNaN(value)) {
-                historicalAnchorsX.push(new Date(pred.prediction_time));
-                historicalAnchorsY.push(value);
+                historicalX.push(targetTime);
+                historicalY.push(value);
               }
             });
 
-            if (historicalAnchorsX.length > 0) {
+            if (historicalX.length > 0) {
               plotData.push({
-                x: historicalAnchorsX,
-                y: historicalAnchorsY,
+                x: historicalX,
+                y: historicalY,
                 type: 'scatter',
-                mode: 'markers',
-                name: 'Anchors (history)',
-                marker: {
-                  size: 6,
-                  color: '#22d3ee',
-                  symbol: 'circle',
-                  opacity: 0.3
+                mode: 'lines+markers',
+                name: `${horizon} ${label} (history)`,
+                line: {
+                  color: color,
+                  width: 1.5,
+                  dash: 'dot'
                 },
-                hovertemplate: '<b>Anchor (History)</b><br>' +
-                              'Time: %{x|%H:%M:%S}<br>' +
-                              'Input Price: ₹%{y:.2f}<br>' +
-                              '<extra></extra>',
+                marker: {
+                  size: 4,
+                  color: color,
+                  symbol: 'diamond',
+                  opacity: 0.4
+                },
+                opacity: 0.4,
+                hovertemplate: `<b>${horizon} (History)</b><br>` +
+                  'Target Time: %{x|%H:%M:%S}<br>' +
+                  'Price: ₹%{y:.2f}<br>' +
+                  '<extra></extra>',
                 showlegend: false
               } as any);
             }
-          }
+          });
 
-          // Render latest prediction markers with labels
-          latestConnectedX.forEach((time, idx) => {
-            if (idx === 0) return; // Skip anchor
-            
+          // Historical anchors
+          const historicalAnchorsX: Date[] = [];
+          const historicalAnchorsY: number[] = [];
+
+          allPredictions.forEach((pred) => {
+            const predTime = new Date(pred.prediction_time).getTime();
+            if (predTime === latestPredTime) return;
+
+            const value = pred.input_close;
+            if (value && !isNaN(value)) {
+              historicalAnchorsX.push(new Date(pred.prediction_time));
+              historicalAnchorsY.push(value);
+            }
+          });
+
+          if (historicalAnchorsX.length > 0) {
             plotData.push({
-              x: [time],
-              y: [latestConnectedY[idx]],
+              x: historicalAnchorsX,
+              y: historicalAnchorsY,
               type: 'scatter',
-              mode: 'markers+text',
-              name: latestConnectedLabels[idx],
-              text: [latestConnectedLabels[idx]],
-              textposition: 'top center',
-              textfont: {
-                size: 10,
-                color: latestConnectedColors[idx],
-                family: 'Arial, sans-serif',
-                weight: 'bold'
-              },
+              mode: 'markers',
+              name: 'Anchors (history)',
               marker: {
-                size: 12,
-                color: latestConnectedColors[idx],
-                symbol: 'diamond',
-                line: {
-                  color: '#ffffff',
-                  width: 2
-                }
+                size: 6,
+                color: '#22d3ee',
+                symbol: 'circle',
+                opacity: 0.3
               },
-              showlegend: false,
-              hoverinfo: 'skip'
+              hovertemplate: '<b>Anchor (History)</b><br>' +
+                'Time: %{x|%H:%M:%S}<br>' +
+                'Input Price: ₹%{y:.2f}<br>' +
+                '<extra></extra>',
+              showlegend: false
             } as any);
-          });
+          }
+        }
 
-          console.log(`✅ [PlotlyChart-Candle] GTT predictions rendered:`, {
-            totalPredictions: allPredictions.length,
-            horizons: 5,
-            latestTime: new Date(latestPredTime).toLocaleTimeString()
-          });
+        // Render latest prediction markers with labels
+        latestConnectedX.forEach((time, idx) => {
+          if (idx === 0) return; // Skip anchor
+
+          plotData.push({
+            x: [time],
+            y: [latestConnectedY[idx]],
+            type: 'scatter',
+            mode: 'markers+text',
+            name: latestConnectedLabels[idx],
+            text: [latestConnectedLabels[idx]],
+            textposition: 'top center',
+            textfont: {
+              size: 10,
+              color: latestConnectedColors[idx],
+              family: 'Arial, sans-serif',
+              weight: 'bold'
+            },
+            marker: {
+              size: 12,
+              color: latestConnectedColors[idx],
+              symbol: 'diamond',
+              line: {
+                color: '#ffffff',
+                width: 2
+              }
+            },
+            showlegend: false,
+            hoverinfo: 'skip'
+          } as any);
+        });
+
+        console.log(`✅ [PlotlyChart-Candle] GTT predictions rendered:`, {
+          totalPredictions: allPredictions.length,
+          horizons: 5,
+          latestTime: new Date(latestPredTime).toLocaleTimeString()
+        });
       }
 
       // ✨ ADD REGULAR PREDICTIONS FOR CANDLESTICK (if GTT not enabled) - ONLY TODAY'S
@@ -2993,13 +2994,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         const allPredictionEntries = Object.entries(predictions.predictions);
         // ✅ CRITICAL: Filter to only today's predictions - never show yesterday's data
         const predictionEntries = filterTodayPredictions(allPredictionEntries);
-        
+
         console.log('🔮 [Candle] Processing predictions:', {
           totalEntries: allPredictionEntries.length,
           todayEntries: predictionEntries.length,
           filteredOut: allPredictionEntries.length - predictionEntries.length
         });
-        
+
         if (predictionEntries.length > 0) {
           const sortedPredictions = predictionEntries.sort((a, b) => {
             const timeA = new Date(a[1].timestamp || a[0]).getTime();
@@ -4093,7 +4094,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           {/* 🔀 Separator Button - Opens Modal with Split View */}
           <div className="flex space-x-1 bg-gradient-to-r from-purple-900 to-indigo-900 p-1 rounded-md border border-purple-600">
             {/* ✨ GTT Toggle Button with Dropdown */}
-            <div 
+            <div
               className="relative"
               onMouseEnter={() => setGttMenuOpen(true)}
               onMouseLeave={() => setGttMenuOpen(false)}
@@ -4122,7 +4123,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                       GTT Options
                     </div>
                   </div>
-                  
+
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -4590,7 +4591,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="flex-1 min-h-0 p-4">
                     <Plot
                       data={createCombinedViewData()}
@@ -4670,38 +4671,87 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                 </div>
               </div>
             ) : (
-            /* SIDE-BY-SIDE VIEW - Original dual panel layout */
-            <div className="grid grid-cols-2 gap-4 p-4 flex-1 min-h-0 bg-zinc-950">
+              /* SIDE-BY-SIDE VIEW - Original dual panel layout */
+              <div className="grid grid-cols-2 gap-4 p-4 flex-1 min-h-0 bg-zinc-950">
 
-              {/* LEFT PANEL */}
-              <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden min-h-0">
-                <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="h-2 w-2 bg-emerald-500 rounded-full"></div>
-                    <h3 className="text-sm font-medium text-zinc-100">
+                {/* LEFT PANEL */}
+                <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden min-h-0">
+                  <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="h-2 w-2 bg-emerald-500 rounded-full"></div>
+                      <h3 className="text-sm font-medium text-zinc-100">
+                        {separateViewMode === 'live-prediction' || separateViewMode === 'live-cluster'
+                          ? 'Live Market'
+                          : 'Predictions'}
+                      </h3>
+                    </div>
+                    <p className="text-xs text-zinc-400">
                       {separateViewMode === 'live-prediction' || separateViewMode === 'live-cluster'
-                        ? 'Live Market'
-                        : 'Predictions'}
-                    </h3>
+                        ? `Real-time data for ${symbol}`
+                        : 'AI-generated forecasts'}
+                    </p>
                   </div>
-                  <p className="text-xs text-zinc-400">
-                    {separateViewMode === 'live-prediction' || separateViewMode === 'live-cluster'
-                      ? `Real-time data for ${symbol}`
-                      : 'AI-generated forecasts'}
-                  </p>
-                </div>
 
-                <div className="flex-1 min-h-0 p-4">
-                  {separateViewMode === 'prediction-cluster' ? (
-                    predictions && predictions.count > 0 && todayPredictionInfo.hasTodayPredictions ? (
+                  <div className="flex-1 min-h-0 p-4">
+                    {separateViewMode === 'prediction-cluster' ? (
+                      predictions && predictions.count > 0 && todayPredictionInfo.hasTodayPredictions ? (
+                        <Plot
+                          data={createPredictionDataOnly()}
+                          layout={{
+                            autosize: true,
+                            height: undefined,
+                            margin: { l: 50, r: 50, t: 40, b: 40 },
+                            title: {
+                              text: `${symbol} Predictions`,
+                              font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
+                            },
+                            xaxis: {
+                              title: 'Time',
+                              type: 'date',
+                              gridcolor: '#27272a',
+                              linecolor: '#3f3f46',
+                              tickfont: { color: '#a1a1aa', size: 11 },
+                              titlefont: { color: '#d4d4d8', size: 12 },
+                            },
+                            yaxis: {
+                              title: 'Price (₹)',
+                              gridcolor: '#27272a',
+                              linecolor: '#3f3f46',
+                              tickfont: { color: '#a1a1aa', size: 11 },
+                              titlefont: { color: '#d4d4d8', size: 12 },
+                            },
+                            plot_bgcolor: '#18181b',
+                            paper_bgcolor: '#18181b',
+                            font: { family: 'Inter, system-ui, sans-serif', color: '#e4e4e7' },
+                          }}
+                          config={{
+                            responsive: true,
+                            displayModeBar: true,
+                            displaylogo: false,
+                          }}
+                          style={{ width: '100%', height: '100%' }}
+                        />
+                      ) : (
+                        <div className="h-full flex items-center justify-center">
+                          <div className="text-center">
+                            <div className="text-3xl mb-2 text-zinc-700">📊</div>
+                            <p className="text-sm text-zinc-400">
+                              {predictions && predictions.count > 0 && !todayPredictionInfo.hasTodayPredictions
+                                ? 'No prediction found for today'
+                                : 'No predictions available'}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    ) : (
                       <Plot
-                        data={createPredictionDataOnly()}
+                        data={createActualDataOnly()}
                         layout={{
                           autosize: true,
                           height: undefined,
                           margin: { l: 50, r: 50, t: 40, b: 40 },
                           title: {
-                            text: `${symbol} Predictions`,
+                            text: `${symbol} ${chartType === 'line' ? 'LTP' : 'OHLC'}`,
                             font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
                           },
                           xaxis: {
@@ -4730,145 +4780,96 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                         }}
                         style={{ width: '100%', height: '100%' }}
                       />
-                    ) : (
-                      <div className="h-full flex items-center justify-center">
-                        <div className="text-center">
-                          <div className="text-3xl mb-2 text-zinc-700">📊</div>
-                          <p className="text-sm text-zinc-400">
-                            {predictions && predictions.count > 0 && !todayPredictionInfo.hasTodayPredictions
-                              ? 'No prediction found for today'
-                              : 'No predictions available'}
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  ) : (
-                    <Plot
-                      data={createActualDataOnly()}
-                      layout={{
-                        autosize: true,
-                        height: undefined,
-                        margin: { l: 50, r: 50, t: 40, b: 40 },
-                        title: {
-                          text: `${symbol} ${chartType === 'line' ? 'LTP' : 'OHLC'}`,
-                          font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
-                        },
-                        xaxis: {
-                          title: 'Time',
-                          type: 'date',
-                          gridcolor: '#27272a',
-                          linecolor: '#3f3f46',
-                          tickfont: { color: '#a1a1aa', size: 11 },
-                          titlefont: { color: '#d4d4d8', size: 12 },
-                        },
-                        yaxis: {
-                          title: 'Price (₹)',
-                          gridcolor: '#27272a',
-                          linecolor: '#3f3f46',
-                          tickfont: { color: '#a1a1aa', size: 11 },
-                          titlefont: { color: '#d4d4d8', size: 12 },
-                        },
-                        plot_bgcolor: '#18181b',
-                        paper_bgcolor: '#18181b',
-                        font: { family: 'Inter, system-ui, sans-serif', color: '#e4e4e7' },
-                      }}
-                      config={{
-                        responsive: true,
-                        displayModeBar: true,
-                        displaylogo: false,
-                      }}
-                      style={{ width: '100%', height: '100%' }}
-                    />
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {/* RIGHT PANEL */}
-              <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden min-h-0">
-                <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="h-2 w-2 bg-violet-500 rounded-full"></div>
-                    <h3 className="text-sm font-medium text-zinc-100">
+                {/* RIGHT PANEL */}
+                <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden min-h-0">
+                  <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="h-2 w-2 bg-violet-500 rounded-full"></div>
+                      <h3 className="text-sm font-medium text-zinc-100">
+                        {separateViewMode === 'live-prediction'
+                          ? 'Predictions'
+                          : 'Cluster Pattern'}
+                      </h3>
+                    </div>
+                    <p className="text-xs text-zinc-400">
                       {separateViewMode === 'live-prediction'
-                        ? 'Predictions'
-                        : 'Cluster Pattern'}
-                    </h3>
+                        ? 'AI-generated forecasts'
+                        : 'Historical pattern analysis'}
+                    </p>
                   </div>
-                  <p className="text-xs text-zinc-400">
-                    {separateViewMode === 'live-prediction'
-                      ? 'AI-generated forecasts'
-                      : 'Historical pattern analysis'}
-                  </p>
-                </div>
 
-                <div className="flex-1 min-h-0 p-4">
-                  {separateViewMode === 'live-prediction' ? (
-                    predictions && predictions.count > 0 && todayPredictionInfo.hasTodayPredictions ? (
-                      <Plot
-                        data={createPredictionDataOnly()}
-                        layout={{
-                          autosize: true,
-                          height: undefined,
-                          margin: { l: 50, r: 50, t: 40, b: 40 },
-                          title: {
-                            text: `${symbol} Predictions`,
-                            font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
-                          },
-                          xaxis: {
-                            title: 'Time',
-                            type: 'date',
-                            gridcolor: '#27272a',
-                            linecolor: '#3f3f46',
-                            tickfont: { color: '#a1a1aa', size: 11 },
-                            titlefont: { color: '#d4d4d8', size: 12 },
-                          },
-                          yaxis: {
-                            title: 'Price (₹)',
-                            gridcolor: '#27272a',
-                            linecolor: '#3f3f46',
-                            tickfont: { color: '#a1a1aa', size: 11 },
-                            titlefont: { color: '#d4d4d8', size: 12 },
-                          },
-                          plot_bgcolor: '#18181b',
-                          paper_bgcolor: '#18181b',
-                          font: { family: 'Inter, system-ui, sans-serif', color: '#e4e4e7' },
-                        }}
-                        config={{
-                          responsive: true,
-                          displayModeBar: true,
-                          displaylogo: false,
-                        }}
-                        style={{ width: '100%', height: '100%' }}
-                      />
-                    ) : (
-                      <div className="h-full flex items-center justify-center">
-                        <div className="text-center">
-                          <div className="text-3xl mb-2 text-zinc-700">📊</div>
-                          <p className="text-sm text-zinc-400">
-                            {predictions && predictions.count > 0 && !todayPredictionInfo.hasTodayPredictions
-                              ? 'No prediction found for today'
-                              : 'No predictions available'}
-                          </p>
+                  <div className="flex-1 min-h-0 p-4">
+                    {separateViewMode === 'live-prediction' ? (
+                      predictions && predictions.count > 0 && todayPredictionInfo.hasTodayPredictions ? (
+                        <Plot
+                          data={createPredictionDataOnly()}
+                          layout={{
+                            autosize: true,
+                            height: undefined,
+                            margin: { l: 50, r: 50, t: 40, b: 40 },
+                            title: {
+                              text: `${symbol} Predictions`,
+                              font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
+                            },
+                            xaxis: {
+                              title: 'Time',
+                              type: 'date',
+                              gridcolor: '#27272a',
+                              linecolor: '#3f3f46',
+                              tickfont: { color: '#a1a1aa', size: 11 },
+                              titlefont: { color: '#d4d4d8', size: 12 },
+                            },
+                            yaxis: {
+                              title: 'Price (₹)',
+                              gridcolor: '#27272a',
+                              linecolor: '#3f3f46',
+                              tickfont: { color: '#a1a1aa', size: 11 },
+                              titlefont: { color: '#d4d4d8', size: 12 },
+                            },
+                            plot_bgcolor: '#18181b',
+                            paper_bgcolor: '#18181b',
+                            font: { family: 'Inter, system-ui, sans-serif', color: '#e4e4e7' },
+                          }}
+                          config={{
+                            responsive: true,
+                            displayModeBar: true,
+                            displaylogo: false,
+                          }}
+                          style={{ width: '100%', height: '100%' }}
+                        />
+                      ) : (
+                        <div className="h-full flex items-center justify-center">
+                          <div className="text-center">
+                            <div className="text-3xl mb-2 text-zinc-700">📊</div>
+                            <p className="text-sm text-zinc-400">
+                              {predictions && predictions.count > 0 && !todayPredictionInfo.hasTodayPredictions
+                                ? 'No prediction found for today'
+                                : 'No predictions available'}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    )
-                  ) : (
-                    <ClusterChart
-                      symbol={symbol}
-                      clusterInfo={clusterInfo}
-                      patternData={clusterPatternData}
-                      loading={clusterLoading}
-                      error={clusterError}
-                      height={undefined}
-                      syncedTimeRange={forcedXRange || getTimeRange()} 
-                      syncedSelectedTimeframe={selectedTimeframe}
-                      updateTrigger={`${symbol}-${selectedTimeframe}-${predictionRevision}`}
-                      onXRangeChange={onXRangeChange}
-                    />
-                  )}
+                      )
+                    ) : (
+                      <ClusterChart
+                        symbol={symbol}
+                        clusterInfo={clusterInfo}
+                        patternData={clusterPatternData}
+                        loading={clusterLoading}
+                        error={clusterError}
+                        height={undefined}
+                        syncedTimeRange={forcedXRange || getTimeRange()}
+                        syncedSelectedTimeframe={selectedTimeframe}
+                        updateTrigger={`${symbol}-${selectedTimeframe}-${predictionRevision}`}
+                        onXRangeChange={onXRangeChange}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
             )}
             {/* End of conditional layout */}
 

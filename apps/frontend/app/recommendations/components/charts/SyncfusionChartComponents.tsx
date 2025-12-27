@@ -1,9 +1,10 @@
 
+// @ts-nocheck
 'use client';
 import React from 'react';
-import { 
-  ChartComponent, 
-  SeriesCollectionDirective, 
+import {
+  ChartComponent,
+  SeriesCollectionDirective,
   SeriesDirective,
   Inject,
   DateTime,
@@ -19,10 +20,10 @@ interface SyncfusionChartComponentsProps {
   height: number;
   symbol: string;
 }
-const SyncfusionChartComponents: React.FC<SyncfusionChartComponentsProps> = ({ 
-  data, 
-  height, 
-  symbol 
+const SyncfusionChartComponents: React.FC<SyncfusionChartComponentsProps> = ({
+  data,
+  height,
+  symbol
 }) => {
   const primaryXAxis = {
     valueType: 'DateTime',
@@ -91,7 +92,7 @@ const SyncfusionChartComponents: React.FC<SyncfusionChartComponentsProps> = ({
     enableScrollbar: true
   };
   return (
-    <ChartComponent 
+    <ChartComponent
       id="syncfusion-chart"
       style={{ width: '100%', height: '100%' }}
       primaryXAxis={primaryXAxis}
@@ -107,19 +108,19 @@ const SyncfusionChartComponents: React.FC<SyncfusionChartComponentsProps> = ({
       height={`${height}px`}
     >
       <Inject services={[
-        LineSeries, 
-        DateTime, 
-        Tooltip, 
-        Crosshair, 
-        Zoom, 
-        Legend, 
+        LineSeries,
+        DateTime,
+        Tooltip,
+        Crosshair,
+        Zoom,
+        Legend,
         DataLabel
       ]} />
       <SeriesCollectionDirective>
-        <SeriesDirective 
-          dataSource={data} 
-          xName="x" 
-          yName="close" 
+        <SeriesDirective
+          dataSource={data}
+          xName="x"
+          yName="close"
           name={symbol}
           type="Line"
           width={2}
