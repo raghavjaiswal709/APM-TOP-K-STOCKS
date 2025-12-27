@@ -5,7 +5,7 @@ import type { LSTMAEConfig } from '.././types/lstmae.types';
 
 
 export const lstmaeConfig: LSTMAEConfig = {
-  // ✅ USE YOUR NESTJS BACKEND INSTEAD OF DIRECT CONNECTION
+  // Use NestJS backend proxy
   apiBaseUrl: '/api/lstmae', // This goes through your NestJS backend
   
   visualizationBasePath: LSTMAE_CONSTANTS.PATHS.VISUALIZATIONS,
@@ -14,7 +14,7 @@ export const lstmaeConfig: LSTMAEConfig = {
   retryAttempts: 2,
   fallbackEnabled: true,
   
-  // ✅ ENABLE API ENDPOINT METHOD - Now it works through your backend
+  // Enable API endpoint method
   useEndpointMethod: true,
 };
 // config/lstmae.config.ts

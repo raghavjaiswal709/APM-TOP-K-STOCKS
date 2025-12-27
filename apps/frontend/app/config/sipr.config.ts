@@ -42,7 +42,7 @@ export const SIPR_CONSTANTS = {
     INVALID_RESPONSE: 'SIPR_INVALID_RESPONSE',
   },
   
-  // ✅ NEW: Day of week constants
+  // Day of week constants
   WEEKDAYS: [
     'Monday',
     'Tuesday',

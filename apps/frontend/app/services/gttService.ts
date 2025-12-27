@@ -1,6 +1,4 @@
-// ========================================================
-// GTT LIVE TRADING SYSTEM - SERVICE LAYER (PORT 5113)
-// ========================================================
+// GTT Live Trading Service (Port 5113)
 
 export interface GttPrediction {
     timestamp: string;
@@ -28,10 +26,7 @@ class GttService {
     private readonly BASE_URL = '/api/gtt-predictions';
     private readonly BACKEND_URL = process.env.NEXT_PUBLIC_GTT_API_URL || 'http://localhost:5002';
 
-    /**
-     * ✅ MAIN METHOD: Fetch predictions for a specific stock symbol from GTT Live Trading System
-     * @param symbol Stock symbol (e.g., "RELIANCE", "TCS", "NSE:BANDHANBNK-EQ")
-     */
+    // Fetch predictions for symbol
     async fetchPredictions(symbol: string): Promise<GttStockHistoryResponse> {
         try {
             // Extract company code from full symbol format (NSE:RELIANCE-EQ -> RELIANCE)
@@ -43,7 +38,7 @@ class GttService {
 
             console.log(`[GTT Service] 📡 Fetching predictions for ${companyCode} via proxy`);
 
-            // ✅ CRITICAL: Encode company code for URL safety (handles special chars like '&' in M&MFIN)
+            // Encode company code for URL safety
             const response = await fetch(`${this.BASE_URL}?symbol=${encodeURIComponent(companyCode)}`, {
                 method: 'GET',
                 headers: {
@@ -61,7 +56,7 @@ class GttService {
 
             const data: GttStockHistoryResponse = await response.json();
 
-            // ✅ VALIDATION: Ensure data structure is correct
+            // Validation
             if (!data.latest || !data.predictions || !Array.isArray(data.predictions)) {
                 throw new Error('Invalid response format from GTT service');
             }
@@ -87,13 +82,11 @@ class GttService {
         }
     }
 
-    /**
-     * ✅ DIRECT BACKEND CALL: Bypass Next.js proxy (for debugging)
-     */
+    // Direct backend call (bypass proxy)
     async fetchPredictionsDirect(symbol: string): Promise<GttStockHistoryResponse> {
         try {
             const companyCode = this.extractCompanyCode(symbol);
-            // ✅ CRITICAL: Encode company code for URL safety (handles special chars like '&' in M&MFIN)
+            // Encode company code for URL safety
             const url = `${this.BACKEND_URL}/gtt/stock/${encodeURIComponent(companyCode)}`;
 
             console.log(`[GTT Service] 📡 Direct fetch from ${url}`);
@@ -121,12 +114,7 @@ class GttService {
         }
     }
 
-    /**
-     * ✅ Extract company code from full symbol format
-     * NSE:RELIANCE-EQ -> RELIANCE
-     * BSE:TCS-EQ -> TCS
-     * BANDHANBNK -> BANDHANBNK
-     */
+    // Extract company code from symbol
     private extractCompanyCode(symbol: string): string {
         if (!symbol) {
             console.warn('[GTT Service] ⚠️ Empty symbol provided');
@@ -151,9 +139,7 @@ class GttService {
         return symbol.split('-')[0]; // Remove marker if exists (BANDHANBNK-EQ -> BANDHANBNK)
     }
 
-    /**
-     * ✅ Health check for GTT service
-     */
+    // Health check
     async healthCheck(): Promise<{ proxy: boolean; backend: boolean }> {
         const results = { proxy: false, backend: false };
 
@@ -183,9 +169,7 @@ class GttService {
         return results;
     }
 
-    /**
-     * ✅ Get service status and configuration
-     */
+    // Get service config
     getConfig() {
         return {
             proxyUrl: this.BASE_URL,
@@ -194,9 +178,7 @@ class GttService {
         };
     }
 
-    /**
-     * ✅ Clear cache for a specific symbol (future implementation)
-     */
+    // Clear cache
     clearCache(symbol: string): void {
         console.log(`[GTT Service] 🗑️ Clearing cache for ${symbol}`);
         // TODO: Implement cache clearing logic if needed

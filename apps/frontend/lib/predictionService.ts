@@ -5,9 +5,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_PREDICTION_API || 'http://localhost:511
 export class PredictionAPIService {
   private static readonly DEFAULT_TIMEOUT = 10000; // 10 seconds
 
-  /**
-   * Fetch predictions for a single company
-   */
+  // Fetch predictions for a company
   static async getCompanyPredictions(
     company: string,
     options?: {
@@ -16,7 +14,7 @@ export class PredictionAPIService {
       timeout?: number;
     }
   ): Promise<CompanyPredictions> {
-    // ✅ CRITICAL: Encode company name for URL safety (handles special chars like '&' in M&MFIN)
+    // Encode company name for URL safety
     const url = new URL(`${BASE_URL}/predictions/${encodeURIComponent(company)}`);
 
     if (options?.starttime) {
@@ -114,9 +112,7 @@ export class PredictionAPIService {
     }
   }
 
-  /**
-   * Get specific prediction for a company at a timestamp
-   */
+  // Get specific prediction for a company at a timestamp
   static async getSpecificPrediction(
     company: string,
     timestamp: string,
@@ -124,7 +120,7 @@ export class PredictionAPIService {
       timeout?: number;
     }
   ): Promise<{ company: string; timestamp: string; prediction: any }> {
-    // ✅ CRITICAL: Encode company name for URL safety (handles special chars like '&' in M&MFIN)
+    // Encode company name for URL safety
     const url = `${BASE_URL}/predictions/${encodeURIComponent(company)}/${encodeURIComponent(timestamp)}`;
 
     try {

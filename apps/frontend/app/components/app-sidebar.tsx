@@ -33,9 +33,9 @@ import {
 } from "@/components/ui/sidebar"
 const data = {
   user: {
-    name: "Raghav",
-    email: "raghavjaiswal0000@gmail.com",
-    avatar: "/avatars/shadcn.jpg",
+    name: process.env.NEXT_PUBLIC_USER_NAME || "Raghav",
+    email: process.env.NEXT_PUBLIC_USER_EMAIL || "raghavjaiswal0000@gmail.com",
+    avatar: process.env.NEXT_PUBLIC_USER_AVATAR || "/avatars/shadcn.jpg",
   },
   navMain: [
     {
@@ -44,9 +44,11 @@ const data = {
       icon: PieChart,
       isActive: true,
       items: [
-        { title: "Historical Data",
-      url: "/",
-      icon: SquareTerminal,},
+        {
+          title: "Historical Data",
+          url: "/",
+          icon: SquareTerminal,
+        },
         {
           title: "Overview",
           url: "#",

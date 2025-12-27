@@ -8,7 +8,7 @@ import { X, Plus, Check, Loader2, AlertCircle, RefreshCw, Clock, Calendar } from
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 
-// ============ Types ============
+// Types
 interface Company {
     company_code: string;
     name: string;
@@ -27,7 +27,7 @@ interface SubscriptionManagerModalProps {
     isLatestDate?: boolean;       // ✅ NEW: Flag for latest date
 }
 
-// ============ Helper Functions ============
+// Helpers
 const formatSymbol = (company: Company): string => {
     return `${company.exchange}:${company.company_code}-${company.marker || 'EQ'}`;
 };
@@ -42,7 +42,7 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
     currentDate,
     isLatestDate = true  // ✅ Default to true for backward compatibility
 }) => {
-    // ============ State ============
+    // State
     const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
     const [stagedChanges, setStagedChanges] = useState<Set<string>>(new Set());
     const [originalSubscriptions, setOriginalSubscriptions] = useState<Set<string>>(new Set());
@@ -50,16 +50,16 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
     const [error, setError] = useState<string | null>(null);
     const [isFetchingSubscriptions, setIsFetchingSubscriptions] = useState(false);
 
-    // ============ Effects ============
+    // Effects
 
-    // ✅ CRITICAL FIX: Fetch subscriptions from backend on mount (ignore date)
+    // Fetch subscriptions on mount
     useEffect(() => {
         if (isOpen) {
             fetchCurrentSubscriptions();
         }
     }, [isOpen]);
 
-    // ✅ NEW: Fetch current subscriptions from backend (DATE-INDEPENDENT)
+    // Fetch current subscriptions
     const fetchCurrentSubscriptions = async () => {
         setIsFetchingSubscriptions(true);
         setError(null);
@@ -100,7 +100,7 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
         }
     };
 
-    // ============ Derived State ============
+    // Derived State
 
     const { subscribedList, availableList } = useMemo(() => {
         const subscribed: Company[] = [];
@@ -132,7 +132,7 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
         return { subscribedList: subscribed, availableList: available };
     }, [availableCompanies, filteredCompanies, selectedSymbols]);
 
-    // ✅ ENHANCED: Calculate actual changes (additions and removals)
+    // Calculate changes
     const subscriptionChanges = useMemo(() => {
         const additions: string[] = [];
         const removals: string[] = [];
@@ -154,9 +154,9 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
         return { additions, removals, hasChanges: additions.length > 0 || removals.length > 0 };
     }, [selectedSymbols, originalSubscriptions]);
 
-    // ============ Handlers ============
+    // Handlers
 
-    // ✅ ENHANCED: Track staging state with proper change detection
+    // Toggle subscription
     const toggleSubscription = useCallback((symbol: string) => {
         setSelectedSymbols(prev => {
             const newSet = new Set(prev);
@@ -200,13 +200,9 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
         setSelectedSymbols(new Set());
     }, [subscribedList]);
 
-    // ✅ CRITICAL FIX: Handle confirmation with proper change detection
+    // Handle confirmation
     const handleConfirm = async () => {
         if (isSubmitting) return;
-
-        // ✅ CRITICAL: Allow subscriptions regardless of date
-        // The date filter is only for viewing historical data
-        // Subscriptions are always made to the latest/real-time data
 
         if (!subscriptionChanges.hasChanges) {
             toast.info("No changes to apply");
@@ -262,7 +258,7 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
         }
     };
 
-    // ✅ NEW: Reset to original state
+    // Reset to original state
     const handleReset = useCallback(() => {
         setSelectedSymbols(new Set(originalSubscriptions));
         setStagedChanges(new Set());
@@ -270,7 +266,7 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
         toast.info("Changes discarded");
     }, [originalSubscriptions]);
 
-    // ============ Render ============
+    // Render
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !isSubmitting && onClose()}>
             <DialogContent className="sm:max-w-[900px] h-[85vh] flex flex-col bg-zinc-950 border-zinc-800">

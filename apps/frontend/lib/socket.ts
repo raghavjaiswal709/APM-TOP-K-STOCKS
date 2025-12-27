@@ -7,12 +7,11 @@ const MAX_RECONNECT_ATTEMPTS = 10; // Increased from 5 to 10
 const INITIAL_RECONNECT_DELAY = 1000;
 const MAX_RECONNECT_DELAY = 10000;
 
-// 🔄 Reconnection callbacks registry
+// Reconnection callbacks
 const reconnectionCallbacks: Set<() => void> = new Set();
 
 /**
- * Register a callback to be executed when socket reconnects
- * This allows components to re-subscribe or re-initialize after reconnection
+ * Register reconnection callback
  */
 export const onReconnect = (callback: () => void): (() => void) => {
   reconnectionCallbacks.add(callback);
@@ -21,12 +20,11 @@ export const onReconnect = (callback: () => void): (() => void) => {
 };
 
 /**
- * Get or create socket instance with professional reconnection handling
+ * Get or create socket instance
  */
 export const getSocket = (): Socket => {
   if (!socket) {
-    // ✅ STRICTLY USE LOCAL DOCKER INSTANCE ONLY - NO REMOTE SERVER FALLBACK
-    // Docker container maps 5001:5001 for the Fyers service
+    // Local Docker instance
     const SOCKET_URL = process.env.NEXT_PUBLIC_FYERS_SOCKET_URL || 'http://localhost:5001';
     console.log(`🔌 Connecting to LOCAL WebSocket server at ${SOCKET_URL}`);
     
@@ -45,7 +43,7 @@ export const getSocket = (): Socket => {
       console.log(`✅ Connected to WebSocket server with ID: ${socket?.id}`);
       reconnectAttempts = 0;
       
-      // 🔄 Execute all reconnection callbacks
+      // Execute reconnection callbacks
       console.log(`🔄 Executing ${reconnectionCallbacks.size} reconnection callbacks...`);
       reconnectionCallbacks.forEach(callback => {
         try {

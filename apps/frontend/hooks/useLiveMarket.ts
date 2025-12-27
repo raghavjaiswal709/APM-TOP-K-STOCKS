@@ -87,8 +87,7 @@ export const useLiveMarket = () => {
   const reconnectAttempts = useRef<number>(0);
   const maxReconnectAttempts = 5;
   const initializeSocket = useCallback(() => {
-    // ✅ STRICTLY USE LOCAL DOCKER INSTANCE ONLY - NO REMOTE SERVER FALLBACK
-    // Docker container maps 5001:5001 for the Fyers service
+    // Local Docker instance
     const SOCKET_URL = process.env.NEXT_PUBLIC_FYERS_SOCKET_URL || 'http://localhost:5001';
     console.log(`🔌 Connecting to LOCAL Live Market WebSocket: ${SOCKET_URL}`);
     setConnectionStatus('Connecting');
@@ -234,8 +233,7 @@ export const useLiveMarket = () => {
     });
     socket.on('fyersError', (data) => {
       console.log('🔗 Fyers error:', data);
-      // ✅ Don't display raw subscription errors in the error state
-      // Check if it's a subscription error (code -300 or contains invalid_symbols)
+      // Skip subscription errors
       const isSubscriptionError = data && (
         data.code === -300 || 
         data.type === 'sub' || 
@@ -254,7 +252,7 @@ export const useLiveMarket = () => {
     });
     socket.on('error', (data: { message: string }) => {
       console.error('❌ Server error:', data);
-      // ✅ Don't display raw subscription errors in the error state
+      // Skip subscription errors
       const message = data.message || '';
       const isSubscriptionError = 
         message.includes('invalid_symbols') ||

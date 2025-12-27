@@ -46,7 +46,7 @@ symbol_to_clients = {}
 running = True
 auth_initialized = False
 
-# ============ ENHANCED: Multi-symbol persistent data storage ============
+# Multi-symbol persistent data storage
 historical_data = {}           # All historical data for all symbols
 ohlc_data = {}                # All OHLC data for all symbols
 chart_updates = {}            # Real-time updates for all symbols
@@ -62,7 +62,7 @@ INDIA_TZ = pytz.timezone('Asia/Kolkata')
 fyers = None
 fyers_client = None
 
-# ✅ Configure requests session with timeouts and retries
+# Configure requests session with timeouts and retries
 def create_resilient_session():
     """Create HTTP session with retries and timeouts."""
     session = requests.Session()
@@ -80,13 +80,13 @@ def create_resilient_session():
 # Global session for reuse
 http_session = create_resilient_session()
 
-# ============ ENHANCED: Real-time Configuration ============
+# Real-time Configuration
 REAL_TIME_INTERVAL = 0.2
 CHART_UPDATE_INTERVAL = 0.1
 last_emit_time = defaultdict(float)
 pending_data = {}
 
-# ============ ENHANCED: Persistent data management ============
+# Persistent data management
 cached_indicators = {}
 data_cleanup_interval = 3600  # Cleanup every hour
 last_cleanup_time = time.time()
@@ -130,7 +130,7 @@ def initialize_fyers():
             logger.warning("⚠️ No access token found in auth file")
             return False
 
-        # ✅ Use client_id from file if not in env
+        # Use client_id from file if not in env
         if not client_id and auth_data.get('client_id'):
             client_id = auth_data.get('client_id')
             logger.info(f"🔑 Using client_id from auth file: {client_id}")
@@ -341,11 +341,11 @@ def disconnect(sid):
 
 
 def fetch_historical_intraday_data(symbol, date=None):
-    """Enhanced to always fetch and store data regardless of current subscriptions"""
+    """Always fetch and store data regardless of subscriptions"""
     if not date:
         date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
 
-    # ✅ ENHANCED: Log symbol details for debugging special characters (e.g., M&MFIN)
+    # Log symbol details for debugging
     logger.info(f"📊 fetch_historical_intraday_data called for symbol: '{symbol}' | Repr: {repr(symbol)}")
 
     try:
@@ -383,7 +383,7 @@ def fetch_historical_intraday_data(symbol, date=None):
             "cont_flag": "1"
         }
 
-        # ✅ ENHANCED: Log the API request details
+        # Log the API request details
         logger.info(f"📤 Fyers API request - symbol: '{symbol}' | data_args: {data_args}")
 
         # Set explicit timeout
@@ -393,7 +393,7 @@ def fetch_historical_intraday_data(symbol, date=None):
             logger.error(f"⏱️ Timeout fetching data for {symbol}")
             return []
 
-        # ✅ ENHANCED: Log the API response status
+        # Log the API response status
         logger.info(f"📥 Fyers API response for '{symbol}' - status: {response.get('s') if response else 'None'}")
 
         if response and response.get('s') == 'ok' and 'candles' in response:
@@ -423,7 +423,7 @@ def fetch_historical_intraday_data(symbol, date=None):
 
                 result.append(data_point)
 
-                # ============ ENHANCED: Always store regardless of active subscriptions ============
+                # Always store regardless of active subscriptions
                 if symbol not in ohlc_data:
                     ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
 
@@ -441,7 +441,7 @@ def fetch_historical_intraday_data(symbol, date=None):
                 if not ohlc_data[symbol] or ohlc_data[symbol][-1]['timestamp'] != minute_timestamp:
                     ohlc_data[symbol].append(ohlc_candle)
 
-            # ============ PRO FIX: Also populate historical_data directly ============
+            # Populate historical_data directly
             # This ensures Line chart has full day data from the start
             # Using regular list (NOT deque) to keep ALL trading day data without sliding window loss
             if result and symbol not in historical_data:
@@ -464,7 +464,7 @@ def fetch_historical_intraday_data(symbol, date=None):
 
             return result
         else:
-            # ✅ ENHANCED: More detailed error logging
+            # More detailed error logging
             logger.error(f"❌ Failed to fetch historical data for '{symbol}'")
             logger.error(f"   Response: {response}")
             if response:
@@ -516,7 +516,7 @@ def subscribe(sid, data):
     if not symbol:
         return {'success': False, 'error': 'No symbol provided'}
     
-    # ✅ ENHANCED: Log symbol details for debugging special characters (e.g., M&MFIN)
+    # Log symbol details for debugging
     logger.info(f"📥 Subscribe request - Raw symbol: '{symbol}' | Repr: {repr(symbol)} | Length: {len(symbol)}")
     
     if not auth_initialized:
@@ -533,7 +533,7 @@ def subscribe(sid, data):
     symbol_subscriptions[symbol] += 1
     active_symbols.add(symbol)
 
-    # ============ PRO FIX: Fetch and populate full day data if not cached ============
+    # Fetch and populate full day data if not cached
     if symbol not in historical_data or len(historical_data.get(symbol, [])) == 0:
         logger.info(f"🚀 Fetching fresh historical data for {symbol} (no cached data)")
         # fetch_historical_intraday_data now automatically populates both ohlc_data AND historical_data
@@ -603,7 +603,7 @@ def unsubscribe(sid, data):
     return {'success': True, 'symbol': symbol}
 
 
-# ✅ FIXED: Robust batch subscription with rate limiting and timeouts
+# Robust batch subscription with rate limiting and timeouts
 @sio.event
 async def subscribe_companies(sid, data):
     """
@@ -625,7 +625,7 @@ async def subscribe_companies(sid, data):
     failed_symbols = []
     
     try:
-        # ✅ Rate limiting: Process in batches of 10 to prevent overload
+        # Rate limiting: Process in batches of 10
         BATCH_SIZE = 10
         
         for i in range(0, len(symbols), BATCH_SIZE):
@@ -652,7 +652,7 @@ async def subscribe_companies(sid, data):
             if i + BATCH_SIZE < len(symbols):
                 await asyncio.sleep(0.1)
         
-        # ✅ Batch subscribe to Fyers with timeout
+        # Batch subscribe to Fyers with timeout
         if fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
             try:
                 loop = asyncio.get_event_loop()
@@ -677,7 +677,7 @@ async def subscribe_companies(sid, data):
                 logger.error(f"❌ Error in Fyers batch subscription: {e}")
                 # Continue - local subscriptions are still valid
         
-        # ✅ Background task for historical data (non-blocking)
+        # Background task for historical data (non-blocking)
         asyncio.create_task(send_batch_historical_data(sid, symbols))
         
         logger.info(f"✅ Successfully subscribed to {subscribed_count}/{len(symbols)} symbols")
@@ -697,7 +697,7 @@ async def subscribe_companies(sid, data):
             'count': subscribed_count
         }
 
-# ✅ NEW: Optimized background historical data sender
+# Optimized background historical data sender
 async def send_batch_historical_data(sid, symbols):
     """
     Send historical data for symbols in background without blocking main thread.
@@ -747,7 +747,7 @@ async def send_batch_historical_data(sid, symbols):
     except Exception as e:
         logger.error(f"❌ Critical error in send_batch_historical_data: {e}")
 
-# ✅ NEW: Get active subscriptions endpoint
+# Get active subscriptions endpoint
 @sio.event
 def get_active_subscriptions(sid, data):
     """

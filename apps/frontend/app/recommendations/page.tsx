@@ -108,19 +108,19 @@ const RecommendationListPage: React.FC = () => {
     setIsClient(true);
   }, []);
 
-  // ✅ BRIDGE: Handle company selection from WatchlistSelector and update Time Machine state
+  // Handle company selection from WatchlistSelector
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
     console.log(`🔗 [Bridge] WatchlistSelector selected company: ${companyCode}`);
     setSelectedCompany(companyCode);
   }, [setSelectedCompany]);
 
-  // ✅ BRIDGE: Handle date change from WatchlistSelector and update Time Machine state
+  // Handle date change from WatchlistSelector
   const handleDateChange = React.useCallback((dateStr: string) => {
     console.log(`🔗 [Bridge] WatchlistSelector selected date: ${dateStr}`);
     setSelectedDate(dateStr);
   }, [setSelectedDate]);
 
-  // ✅ CRITICAL: Fetch full historical data when company/date changes
+  // Fetch full historical data when company/date changes
   useEffect(() => {
     if (!selectedDate || !selectedCompany) {
       setHistoricalDataPoints([]);
@@ -169,7 +169,7 @@ const RecommendationListPage: React.FC = () => {
     loadChartData();
   }, [selectedDate, selectedCompany]);
 
-  // ✅ NEW: Fetch Sthiti Intelligence data when company/date changes
+  // Fetch Sthiti Intelligence data when company/date changes
   useEffect(() => {
     if (!selectedDate || !selectedCompany) {
       setSthitiPositiveClusters([]);
@@ -237,7 +237,7 @@ const RecommendationListPage: React.FC = () => {
     };
   }, [priceData, selectedCompany, historicalDataPoints]);
 
-  // ✅ Create trading hours object for historical data
+  // Create trading hours object for historical data
   const tradingHours = useMemo<TradingHours>(() => {
     if (!selectedDate) {
       return {
