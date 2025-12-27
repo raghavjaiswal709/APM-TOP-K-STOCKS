@@ -1,6 +1,5 @@
 python-socketio[client]
 python-socketio[asyncio]
-eventlet
 uvicorn
 requests
 numpy

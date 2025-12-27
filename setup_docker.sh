@@ -446,31 +446,28 @@ install_python_dependencies() {
     # Core Python packages for Fyers API integration
     local python_packages=(
         # Socket.IO & Web Framework
-        "python-socketio==5.11.0"
-        "python-engineio==4.9.0"
-        "flask==3.0.0"
-        "flask-socketio==5.3.6"
-        "uvicorn[standard]==0.27.0"
-        "websockets==12.0"
+        "python-socketio"
+        "python-engineio"
+        "flask"
+        "flask-socketio"
+        "uvicorn[standard]"
+        "websockets"
         
         # Fyers API
         "fyers-apiv3"
         
         # Data Processing
-        "pandas>=2.2.0"
-        "numpy>=1.26.3"
-        
-        # Event-driven networking
-        "eventlet==0.33.3"
+        "pandas"
+        "numpy"
         
         # Utilities
-        "python-dotenv==1.0.0"
-        "requests==2.31.0"
-        "pytz==2024.1"
-        "ratelimit==2.2.1"
+        "python-dotenv"
+        "requests"
+        "pytz"
+        "ratelimit"
         
         # Database
-        "psycopg2-binary==2.9.9"
+        "psycopg2-binary"
         
         # Additional utilities
         "urllib3"
@@ -512,8 +509,7 @@ critical_packages = [
     'uvicorn',
     'fyers_apiv3',
     'pandas',
-    'numpy',
-    'eventlet'
+    'numpy'
 ]
 
 failed = []
