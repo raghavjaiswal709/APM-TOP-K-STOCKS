@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, Logger } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { StockData } from '../stock/entities/stock.entity';
 import { Companies } from '../watchlist/entities/companies.entity';
@@ -22,11 +22,14 @@ import { DailyWatchlistMetrics } from '../watchlist/entities/daily-watchlist-met
       ],
       synchronize: false,
       ssl: false,
-      logging: true,
-      retryAttempts: 3,
-      retryDelay: 3000,
+      logging: false,
+      retryAttempts: 2,
+      retryDelay: 1000,
       autoLoadEntities: true,
+      connectTimeoutMS: 5000,
     }),
   ],
 })
-export class DatabaseModule { }
+export class DatabaseModule {
+  private readonly logger = new Logger(DatabaseModule.name);
+}

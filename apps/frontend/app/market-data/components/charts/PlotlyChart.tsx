@@ -519,17 +519,17 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     // Merge OHLC + historical + live updates
     const dataMap = new Map<number, DataPoint>();
 
-    // 🔍 DEBUG: Log input data
-    console.log(`🔍 [prepareLineChartData] Input:`, {
-      ohlcCount: ohlcData?.length || 0,
-      historicalCount: historicalData.length,
-      chartUpdatesCount: chartUpdates?.length || 0,
-      hasCurrentData: !!data,
-      firstOhlc: ohlcData?.[0],
-      lastOhlc: ohlcData?.[ohlcData.length - 1],
-      firstHistorical: historicalData[0],
-      lastHistorical: historicalData[historicalData.length - 1]
-    });
+    // 🔍 DEBUG: Log input data (disabled to reduce console noise)
+    // console.log(`🔍 [prepareLineChartData] Input:`, {
+    //   ohlcCount: ohlcData?.length || 0,
+    //   historicalCount: historicalData.length,
+    //   chartUpdatesCount: chartUpdates?.length || 0,
+    //   hasCurrentData: !!data,
+    //   firstOhlc: ohlcData?.[0],
+    //   lastOhlc: ohlcData?.[ohlcData.length - 1],
+    //   firstHistorical: historicalData[0],
+    //   lastHistorical: historicalData[historicalData.length - 1]
+    // });
 
     // ✅ CRITICAL FIX: First, add ALL OHLC data (this is the most reliable source with full day data)
     // Convert OHLC candles to LTP points using the close price
@@ -550,7 +550,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           dataMap.set(candle.timestamp, dataPoint);
         }
       });
-      console.log(`📊 [prepareLineChartData] Added ${ohlcData.length} OHLC points as base data`);
+      // console.log(`📊 [prepareLineChartData] Added ${ohlcData.length} OHLC points as base data`);
     }
 
     // ✅ Add historical data (may override OHLC for same timestamps, that's OK)
@@ -588,11 +588,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     // Convert to array and sort (this maintains ALL data from 9:15 AM onwards)
     const allData = Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 
-    console.log(`📊 [prepareLineChartData] Output:`, {
-      totalPoints: allData.length,
-      firstPoint: allData[0] ? { timestamp: allData[0].timestamp, date: new Date(allData[0].timestamp * 1000), ltp: allData[0].ltp } : null,
-      lastPoint: allData[allData.length - 1] ? { timestamp: allData[allData.length - 1].timestamp, date: new Date(allData[allData.length - 1].timestamp * 1000), ltp: allData[allData.length - 1].ltp } : null
-    });
+    // console.log(`📊 [prepareLineChartData] Output:`, {
+    //   totalPoints: allData.length,
+    //   firstPoint: allData[0] ? { timestamp: allData[0].timestamp, date: new Date(allData[0].timestamp * 1000), ltp: allData[0].ltp } : null,
+    //   lastPoint: allData[allData.length - 1] ? { timestamp: allData[allData.length - 1].timestamp, date: new Date(allData[allData.length - 1].timestamp * 1000), ltp: allData[allData.length - 1].ltp } : null
+    // });
 
     const x = allData.map(point => new Date(point.timestamp * 1000));
     const y = allData.map(point => point.ltp);
@@ -1095,12 +1095,12 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     // ✅ NEW: Detect if we're in historical mode (tradingHours.isActive === false)
     const isHistoricalMode = tradingHours && tradingHours.isActive === false;
 
-    // ✅ CRITICAL: Log data date range for debugging
-    console.log(`📊 [Chart Data Range] ${dataStartDate.toLocaleDateString()} ${dataStartDate.toLocaleTimeString()} → ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`, {
-      isHistoricalMode,
-      tradingHoursActive: tradingHours?.isActive,
-      dataSource: ohlcData?.length > 0 ? 'ohlcData' : 'historicalData/lineChartData'
-    });
+    // ✅ CRITICAL: Log data date range for debugging (disabled to reduce console noise)
+    // console.log(`📊 [Chart Data Range] ${dataStartDate.toLocaleDateString()} ${dataStartDate.toLocaleTimeString()} → ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`, {
+    //   isHistoricalMode,
+    //   tradingHoursActive: tradingHours?.isActive,
+    //   dataSource: ohlcData?.length > 0 ? 'ohlcData' : 'historicalData/lineChartData'
+    // });
 
     let startTime: Date;
     let endTime: Date;
@@ -1202,7 +1202,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           // ✅ CRITICAL: Ensure start time is not before earliest data
           const earliestDataTime = new Date(minTimestamp * 1000);
           if (startTime < earliestDataTime) {
-            console.log(`⚠️ Adjusted start time from ${startTime.toLocaleTimeString()} to earliest data at ${earliestDataTime.toLocaleTimeString()}`);
+            // console.debug(`⚠️ Adjusted start time from ${startTime.toLocaleTimeString()} to earliest data at ${earliestDataTime.toLocaleTimeString()}`);
             startTime = earliestDataTime;
           }
         }
@@ -1263,13 +1263,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       }
     }
 
-    console.log('⏱️ [TIMEFRAME] Time Range Calculated:', {
-      selectedTimeframe,
-      startTime: startTime.toLocaleTimeString(),
-      endTime: endTime.toLocaleTimeString(),
-      duration: `${((endTime.getTime() - startTime.getTime()) / 60000).toFixed(1)} minutes`,
-      futureBuffer: `${((endTime.getTime() - now.getTime()) / 60000).toFixed(1)} minutes`
-    });
+    // console.log('⏱️ [TIMEFRAME] Time Range Calculated:', {
+    //   selectedTimeframe,
+    //   startTime: startTime.toLocaleTimeString(),
+    //   endTime: endTime.toLocaleTimeString(),
+    //   duration: `${((endTime.getTime() - startTime.getTime()) / 60000).toFixed(1)} minutes`,
+    //   futureBuffer: `${((endTime.getTime() - now.getTime()) / 60000).toFixed(1)} minutes`
+    // });
 
     return [startTime, endTime];
   };
@@ -2146,13 +2146,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const colors = getColorTheme();
     let plotData: any[] = [];
 
-    console.log(`🎨 [createPlotData] Called with:`, {
-      chartType,
-      historicalDataLength: historicalData?.length || 0,
-      lineChartDataLength: lineChartData?.x?.length || 0,
-      hasData: !!data,
-      symbol
-    });
+    // console.log(`🎨 [createPlotData] Called with:`, {
+    //   chartType,
+    //   historicalDataLength: historicalData?.length || 0,
+    //   lineChartDataLength: lineChartData?.x?.length || 0,
+    //   hasData: !!data,
+    //   symbol
+    // });
 
     if (chartType === 'line') {
       // ✅ CRITICAL FIX: Use lineChartData (which merges historicalData + chartUpdates + data)
@@ -2161,13 +2161,13 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       const { x: timeValues, y: priceValues, allData } = lineChartData;
 
       if (timeValues && timeValues.length > 0) {
-        console.log(`✅ [createPlotData] Using lineChartData:`, {
-          totalPoints: timeValues.length,
-          firstTime: timeValues[0]?.toLocaleTimeString(),
-          lastTime: timeValues[timeValues.length - 1]?.toLocaleTimeString(),
-          firstPrice: priceValues[0],
-          lastPrice: priceValues[priceValues.length - 1]
-        });
+        // console.log(`✅ [createPlotData] Using lineChartData:`, {
+        //   totalPoints: timeValues.length,
+        //   firstTime: timeValues[0]?.toLocaleTimeString(),
+        //   lastTime: timeValues[timeValues.length - 1]?.toLocaleTimeString(),
+        //   firstPrice: priceValues[0],
+        //   lastPrice: priceValues[priceValues.length - 1]
+        // });
 
         plotData.push({
           x: timeValues,
@@ -2436,14 +2436,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             console.log('⚠️ No prediction found for today - all predictions were from previous days');
           }
         } else {
-          console.log('⚠️ Predictions not added:', {
-            showPredictions,
-            hasPredictions: !!predictions,
-            count: predictions?.count || 0,
-            reason: !showPredictions ? 'showPredictions is false' :
-              !predictions ? 'predictions is null' :
-                predictions.count === 0 ? 'no predictions available' : 'unknown'
-          });
+          // Only log if showPredictions is enabled but predictions are missing (muted to reduce noise)
+          // if (showPredictions && !predictions) {
+          //   console.debug('⚠️ Predictions enabled but not available');
+          // }
         }
 
         const volumeValues = allData.map(point => point.volume || 0);

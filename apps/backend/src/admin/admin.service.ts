@@ -16,8 +16,10 @@ export interface ValidationLogEntry {
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
   
-  // Path to the Python script - use absolute path for reliability
-  private readonly PYTHON_SCRIPT_PATH = '/Users/raghav/Documents/GitHub/DAKS-TOP-K-STOCKS/apps/backend/data/company_validate.py';
+  // Path to the Python script - works in both Docker and local environments
+  private readonly PYTHON_SCRIPT_PATH = '/app/data/company_validate.py';
+  // Fallback for local development (outside Docker)
+  private readonly PYTHON_SCRIPT_PATH_LOCAL = `${process.cwd()}/data/company_validate.py`;
 
   // Track running process
   private runningProcess: ChildProcess | null = null;
@@ -40,18 +42,24 @@ export class AdminService {
       return subject.asObservable();
     }
 
+    // Determine the correct script path (Docker or local)
+    let scriptPath = this.PYTHON_SCRIPT_PATH;
+    if (!fs.existsSync(scriptPath)) {
+      scriptPath = this.PYTHON_SCRIPT_PATH_LOCAL;
+    }
+
     // Verify script exists
-    if (!fs.existsSync(this.PYTHON_SCRIPT_PATH)) {
+    if (!fs.existsSync(scriptPath)) {
       subject.next({
         type: 'error',
-        message: `Script not found at: ${this.PYTHON_SCRIPT_PATH}`,
+        message: `Script not found at: ${scriptPath}`,
         timestamp: new Date().toISOString(),
       });
       subject.complete();
       return subject.asObservable();
     }
 
-    this.logger.log(`Starting validation script: ${this.PYTHON_SCRIPT_PATH}`);
+    this.logger.log(`Starting validation script: ${scriptPath}`);
 
     // Emit start message
     subject.next({
@@ -62,15 +70,15 @@ export class AdminService {
 
     subject.next({
       type: 'info',
-      message: `Script path: ${this.PYTHON_SCRIPT_PATH}`,
+      message: `Script path: ${scriptPath}`,
       timestamp: new Date().toISOString(),
     });
 
     // Spawn the Python process
-    // Use the virtual environment's Python for proper package access
-    const venvPythonPath = '/Users/raghav/Documents/GitHub/DAKS-TOP-K-STOCKS/.venv/bin/python';
-    this.runningProcess = spawn(venvPythonPath, [this.PYTHON_SCRIPT_PATH], {
-      cwd: path.dirname(this.PYTHON_SCRIPT_PATH),
+    // Use python3 (works in Docker and most systems)
+    const pythonCmd = 'python3';
+    this.runningProcess = spawn(pythonCmd, [scriptPath], {
+      cwd: path.dirname(scriptPath),
       env: {
         ...process.env,
         PYTHONUNBUFFERED: '1', // Ensure real-time output
@@ -117,7 +125,12 @@ export class AdminService {
       });
 
       this.runningProcess = null;
-      subject.complete();
+      
+      // Keep the stream open for a short period to ensure all data is received
+      // Then complete the stream
+      setTimeout(() => {
+        subject.complete();
+      }, 500);
     });
 
     // Handle process errors
@@ -131,7 +144,11 @@ export class AdminService {
       });
 
       this.runningProcess = null;
-      subject.complete();
+      
+      // Keep the stream open for a short period before completing
+      setTimeout(() => {
+        subject.complete();
+      }, 500);
     });
 
     return subject.asObservable();

@@ -137,8 +137,8 @@ export const usePredictions = (options: UsePredictionsOptions) => {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
+            // 'Cache-Control': 'no-cache, no-store, must-revalidate',
+            // 'Pragma': 'no-cache',
           },
           signal: abortControllerRef.current.signal,
         });

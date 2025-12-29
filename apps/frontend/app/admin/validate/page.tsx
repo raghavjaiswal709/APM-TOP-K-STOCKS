@@ -156,8 +156,24 @@ export default function AdminValidatePage() {
       eventSourceRef.current.close();
     }
 
+    // Dynamically determine backend URL based on window location
+    // This ensures it works both locally and on server
+    let backendUrl: string;
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      // If accessing from server IP, use server IP for backend
+      if (hostname === '100.93.172.21') {
+        backendUrl = 'http://100.93.172.21:5002';
+      } else {
+        // For localhost or other, use environment variable or default
+        backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5002';
+      }
+    } else {
+      backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5002';
+    }
+    
     // Create SSE connection
-    const eventSource = new EventSource('http://localhost:5002/api/admin/validate/run');
+    const eventSource = new EventSource(`${backendUrl}/api/admin/validate/run`);
     eventSourceRef.current = eventSource;
 
     // Handler for processing log entries
@@ -216,8 +232,21 @@ export default function AdminValidatePage() {
         eventSourceRef.current.close();
       }
 
+      // Dynamically determine backend URL based on window location
+      let backendUrl: string;
+      if (typeof window !== 'undefined') {
+        const hostname = window.location.hostname;
+        if (hostname === '100.93.172.21') {
+          backendUrl = 'http://100.93.172.21:5002';
+        } else {
+          backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5002';
+        }
+      } else {
+        backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5002';
+      }
+
       // Call stop endpoint
-      const response = await fetch('http://localhost:5002/api/admin/validate/stop', {
+      const response = await fetch(`${backendUrl}/api/admin/validate/stop`, {
         method: 'POST',
       });
       const result = await response.json();
