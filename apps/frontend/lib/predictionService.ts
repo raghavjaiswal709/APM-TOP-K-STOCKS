@@ -1,6 +1,7 @@
 import { CompanyPredictions, HealthStatus } from '@/hooks/usePredictions';
 
-const BASE_URL = process.env.NEXT_PUBLIC_PREDICTION_API || 'http://localhost:5112';
+// Use Next.js API proxy routes (NOT direct to prediction server)
+const BASE_URL = '/api/predictions';
 
 export class PredictionAPIService {
   private static readonly DEFAULT_TIMEOUT = 10000; // 10 seconds
@@ -14,8 +15,9 @@ export class PredictionAPIService {
       timeout?: number;
     }
   ): Promise<CompanyPredictions> {
-    // Encode company name for URL safety
-    const url = new URL(`${BASE_URL}/predictions/${encodeURIComponent(company)}`);
+    // Use proxy route with query params
+    const url = new URL(`${BASE_URL}`, window.location.origin);
+    url.searchParams.append('company', company);
 
     if (options?.starttime) {
       url.searchParams.append('start_time', options.starttime);
@@ -65,17 +67,18 @@ export class PredictionAPIService {
       timeout?: number;
     }
   ): Promise<Record<string, CompanyPredictions>> {
-    const url = new URL(`${BASE_URL}/predictions/batch/multiple`);
+    // Use proxy route for batch
+    const url = new URL(`${BASE_URL}/batch`, window.location.origin);
 
     companies.forEach((company) => {
       url.searchParams.append('companies', company);
     });
 
     if (options?.starttime) {
-      url.searchParams.append('starttime', options.starttime);
+      url.searchParams.append('start_time', options.starttime);
     }
     if (options?.endtime) {
-      url.searchParams.append('endtime', options.endtime);
+      url.searchParams.append('end_time', options.endtime);
     }
 
     try {
@@ -120,8 +123,10 @@ export class PredictionAPIService {
       timeout?: number;
     }
   ): Promise<{ company: string; timestamp: string; prediction: any }> {
-    // Encode company name for URL safety
-    const url = `${BASE_URL}/predictions/${encodeURIComponent(company)}/${encodeURIComponent(timestamp)}`;
+    // Use proxy route with query params
+    const url = new URL(`${BASE_URL}`, window.location.origin);
+    url.searchParams.append('company', company);
+    url.searchParams.append('timestamp', timestamp);
 
     try {
       const controller = new AbortController();

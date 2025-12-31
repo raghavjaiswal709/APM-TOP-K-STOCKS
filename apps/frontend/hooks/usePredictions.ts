@@ -106,7 +106,7 @@ export const usePredictions = (options: UsePredictionsOptions) => {
       if (!enabled || !company) return null;
 
       const cacheKey = `predictions_${company}`;
-      
+
       // Only use cache if not bypassing and this is the first attempt
       if (!bypassCache && attempt === 0) {
         const cached = predictionCache.get(cacheKey);
@@ -124,11 +124,12 @@ export const usePredictions = (options: UsePredictionsOptions) => {
         setRetrying(attempt > 0);
 
         abortControllerRef.current = new AbortController();
-        const baseUrl = process.env.NEXT_PUBLIC_PREDICTION_API || 'http://localhost:5112';
-        
+        // Use Next.js API proxy route (NOT direct to prediction server)
+        const proxyUrl = '/api/predictions';
+
         // Add timestamp to prevent browser caching
         const timestamp = Date.now();
-        const url = `${baseUrl}/predictions/${company}?t=${timestamp}`;
+        const url = `${proxyUrl}?company=${encodeURIComponent(company)}&t=${timestamp}`;
 
         console.log(`🌐 Fetching fresh predictions for ${company}... (attempt ${attempt + 1})`);
 
@@ -153,10 +154,10 @@ export const usePredictions = (options: UsePredictionsOptions) => {
         const data: CompanyPredictions = await response.json();
 
         console.log(`✅ Fetched ${data.count} predictions for ${company}`);
-        
+
         // Always update cache with fresh data
         predictionCache.set(cacheKey, data);
-        
+
         // Create new object to force React re-render
         setPredictions({ ...data, _updateId: Date.now() } as any);
         setLastUpdated(new Date());
@@ -258,8 +259,8 @@ export const useHealth = () => {
   const checkHealth = useCallback(async () => {
     try {
       setLoading(true);
-      const baseUrl = process.env.NEXT_PUBLIC_PREDICTION_API || 'http://localhost:5112';
-      const response = await fetch(`${baseUrl}/health`);
+      // Use Next.js API proxy route
+      const response = await fetch('/api/predictions/health');
 
       if (!response.ok) throw new Error('Health check failed');
 
