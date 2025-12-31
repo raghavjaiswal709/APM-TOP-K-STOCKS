@@ -37,8 +37,9 @@ services:
       - "3000:3000"
     environment:
       # Client-side: Browser uses localhost (host machine perspective)
-      - NEXT_PUBLIC_API_URL=http://localhost:5002
-      - NEXT_PUBLIC_BACKEND_URL=http://localhost:5002
+      - NEXT_PUBLIC_API_URL=http://100.93.172.21:5002
+      - NEXT_PUBLIC_BACKEND_URL=http://100.93.172.21:5002
+      - NEXT_PUBLIC_GTT_API_URL=http://100.93.172.21:5002
       # Server-side: Node.js uses Docker network
       - BACKEND_URL=http://backend:5002
     env_file:

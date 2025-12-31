@@ -1,7 +1,12 @@
 'use client';
 
 import React, { useCallback } from 'react';
-import { PlayCircle, PauseCircle, RotateCcw, Download } from 'lucide-react';
+import { PlayCircle, PauseCircle, RotateCcw, Download, Clock, Activity, Loader2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 
 export interface PredictionControlPanelProps {
   isPolling: boolean;
@@ -40,111 +45,132 @@ export const PredictionControlPanel: React.FC<PredictionControlPanelProps> = ({
   }, []);
 
   return (
-    <div className="relative bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-lg backdrop-blur-sm p-4 space-y-4">
-      {/* Status */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between bg-blue-500/10 p-4 rounded-lg border border-blue-400/20 hover:bg-blue-500/15 transition-colors">
-          <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${isPolling ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`}></div>
-            <span className="text-sm font-medium text-purple-300/70">Status</span>
+    <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+            <Activity className="h-4 w-4" />
+            Control Panel
+          </CardTitle>
+          <Badge variant={isPolling ? "default" : "secondary"} className={isPolling ? "bg-green-600 hover:bg-green-700" : ""}>
+            {isPolling ? (
+              <span className="flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                </span>
+                Active
+              </span>
+            ) : (
+              'Stopped'
+            )}
+          </Badge>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-6">
+        {/* Status Grid */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Updates</span>
+            <p className="text-2xl font-bold tracking-tight">{pollCount}</p>
           </div>
-          <span className="text-lg font-bold text-blue-400">
-            {isPolling ? 'Active' : 'Stopped'}
-          </span>
-        </div>
-        
-        <div className="flex items-center justify-between bg-purple-500/10 p-4 rounded-lg border border-purple-400/20 hover:bg-purple-500/15 transition-colors">
-          <span className="text-sm font-medium text-purple-300/70">Updates</span>
-          <span className="text-lg font-bold text-purple-400">{pollCount}</span>
-        </div>
-        
-        <div className="flex items-center justify-between bg-green-500/10 p-4 rounded-lg border border-green-400/20 hover:bg-green-500/15 transition-colors">
-          <span className="text-sm font-medium text-purple-300/70">Elapsed</span>
-          <span className="text-lg font-bold text-green-400">{formatTime(elapsedTime)}</span>
-        </div>
-        
-        <div className="flex items-center justify-between bg-amber-500/10 p-4 rounded-lg border border-amber-400/20 hover:bg-amber-500/15 transition-colors">
-          <span className="text-sm font-medium text-purple-300/70">Remaining</span>
-          <span className="text-lg font-bold text-amber-400">{formatTime(timeRemaining)}</span>
-        </div>
-      </div>
 
-      {/* Progress Bar */}
-      <div className="space-y-2">
-        <div className="flex justify-between items-center">
-          <p className="text-sm font-medium text-purple-200">Collection Progress</p>
-          <p className="text-sm text-purple-300">{Math.round(progressPercentage)}%</p>
-        </div>
-        <div className="w-full bg-slate-700/50 rounded-full h-2">
-          <div
-            className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${Math.min(progressPercentage, 100)}%` }}
-          />
-        </div>
-      </div>
+          <div className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Elapsed</span>
+            <p className="text-2xl font-bold tracking-tight font-mono">
+              {formatTime(elapsedTime)}
+            </p>
+          </div>
 
-      {/* Next Poll Time */}
-      {nextPollTime && isPolling && (
-        <div className="bg-blue-500/10 p-3 rounded-lg border border-blue-400/20">
-          <p className="text-sm text-purple-200">
-            <span className="font-semibold">Next update:</span>{' '}
-            {nextPollTime.toLocaleTimeString('en-IN')}
-          </p>
+          <div className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Remaining</span>
+            <p className="text-2xl font-bold tracking-tight font-mono text-muted-foreground">
+              {formatTime(timeRemaining)}
+            </p>
+          </div>
         </div>
-      )}
 
-      {/* Control Buttons */}
-      <div className="flex flex-wrap gap-2">
-        {!isPolling ? (
-          <button
-            onClick={onStart}
-            disabled={disabled}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-600 disabled:text-gray-400 transition-colors"
-          >
-            <PlayCircle className="w-4 h-4" />
-            Start Collection
-          </button>
-        ) : (
-          <button
-            onClick={onPause}
-            disabled={disabled}
-            className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:bg-gray-600 disabled:text-gray-400 transition-colors"
-          >
-            <PauseCircle className="w-4 h-4" />
-            Pause
-          </button>
+        <Separator />
+
+        {/* Progress Section */}
+        <div className="space-y-2">
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-muted-foreground">Collection Progress</span>
+            <span className="font-medium">{Math.round(progressPercentage)}%</span>
+          </div>
+          <Progress value={progressPercentage} className="h-2" />
+        </div>
+
+        {/* Next Poll Indicator */}
+        {nextPollTime && isPolling && (
+          <div className="text-xs text-center text-muted-foreground bg-secondary/50 py-2 rounded-md border border-border/50 flex items-center justify-center gap-2">
+            <Clock className="h-3 w-3" />
+            Next update at <span className="font-medium text-foreground">{nextPollTime.toLocaleTimeString('en-IN')}</span>
+          </div>
         )}
 
-        <button
-          onClick={onStop}
-          disabled={disabled}
-          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-600 disabled:text-gray-400 transition-colors"
-        >
-          <RotateCcw className="w-4 h-4" />
-          Reset
-        </button>
+        {/* Action Buttons */}
+        <div className="flex flex-col gap-2 pt-2">
+          <div className="grid grid-cols-2 gap-2">
+            {!isPolling ? (
+              <Button
+                onClick={onStart}
+                disabled={disabled}
+                className="w-full gap-2 bg-green-600 hover:bg-green-700"
+              >
+                <PlayCircle className="h-4 w-4" />
+                Start
+              </Button>
+            ) : (
+              <Button
+                onClick={onPause}
+                disabled={disabled}
+                variant="secondary"
+                className="w-full gap-2"
+              >
+                <PauseCircle className="h-4 w-4" />
+                Pause
+              </Button>
+            )}
 
-        <button
-          onClick={onRefresh}
-          disabled={disabled}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-600 disabled:text-gray-400 transition-colors"
-        >
-          <RotateCcw className="w-4 h-4" />
-          Refresh Now
-        </button>
+            <Button
+              onClick={onStop}
+              disabled={disabled}
+              variant="destructive"
+              className="w-full gap-2"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reset
+            </Button>
+          </div>
 
-        {onDownload && (
-          <button
-            onClick={onDownload}
-            disabled={disabled}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-600 disabled:text-gray-400 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export
-          </button>
-        )}
-      </div>
-    </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={onRefresh}
+              disabled={disabled}
+              variant="outline"
+              className="flex-1 gap-2"
+            >
+              <Loader2 className={`h-4 w-4 ${disabled ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+
+            {onDownload && (
+              <Button
+                onClick={onDownload}
+                disabled={disabled}
+                variant="outline"
+                className="flex-1 gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Export
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 

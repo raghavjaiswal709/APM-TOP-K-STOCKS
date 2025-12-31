@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
+import { Card, CardContent } from "@/components/ui/card";
+import { Loader2, Zap } from 'lucide-react';
 
 export interface PredictionTimerProps {
   timeUntilNextPoll: number; // milliseconds
@@ -22,12 +24,12 @@ export const PredictionTimer: React.FC<PredictionTimerProps> = ({
   useEffect(() => {
     const wasPositive = previousTimeRef.current > 0;
     const isZeroOrNegative = timeUntilNextPoll <= 0;
-    
+
     // When timer transitions from positive to 0 or negative, trigger refresh IMMEDIATELY
     if (wasPositive && isZeroOrNegative && isPolling && onTimerEnd && !hasTriggeredRef.current) {
       console.log('⏰ [TIMER END] Timer hit 0 - triggering refresh NOW');
       hasTriggeredRef.current = true;
-      
+
       // Execute callback immediately (no delay)
       Promise.resolve(onTimerEnd()).then(() => {
         console.log('✅ [TIMER END] Refresh completed successfully');
@@ -40,7 +42,7 @@ export const PredictionTimer: React.FC<PredictionTimerProps> = ({
         hasTriggeredRef.current = false;
       });
     }
-    
+
     previousTimeRef.current = timeUntilNextPoll;
   }, [timeUntilNextPoll, isPolling, onTimerEnd]);
 
@@ -54,103 +56,69 @@ export const PredictionTimer: React.FC<PredictionTimerProps> = ({
   // Calculate progress (5 minutes = 300000ms)
   const maxTime = 5 * 60 * 1000; // 5 minutes
   const progress = Math.max(0, Math.min(100, ((maxTime - timeUntilNextPoll) / maxTime) * 100));
-  
+
   // Calculate stroke dash offset for circular progress
-  const radius = 45;
+  const radius = 40;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
 
   if (!isPolling) {
     return (
-      <div className="flex items-center justify-center p-4 bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-lg backdrop-blur-sm">
-        <div className="text-center">
-          <div className="w-24 h-24 mx-auto mb-2 rounded-full bg-slate-700/50 flex items-center justify-center">
-            <svg className="w-12 h-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <p className="text-sm text-slate-400">Polling Stopped</p>
+      <Card className="border-border/50 bg-card/50 backdrop-blur-sm h-full flex items-center justify-center p-4">
+        <div className="text-center text-muted-foreground">
+          <Loader2 className="h-8 w-8 mx-auto mb-2 opacity-20" />
+          <p className="text-sm">Timer Paused</p>
         </div>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="relative p-6 bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-lg backdrop-blur-sm border border-purple-500/20">
-      {/* Animated background glow */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(120,119,198,0.05),transparent_50%)] rounded-lg"></div>
-      
-      <div className="relative flex flex-col items-center gap-3">
-        {/* Circular Timer */}
-        <div className="relative w-32 h-32">
-          {/* Background circle */}
-          <svg className="w-full h-full transform -rotate-90">
-            <circle
-              cx="64"
-              cy="64"
-              r={radius}
-              stroke="rgba(100, 116, 139, 0.2)"
-              strokeWidth="8"
-              fill="none"
-            />
-            {/* Progress circle */}
-            <circle
-              cx="64"
-              cy="64"
-              r={radius}
-              stroke="url(#gradient)"
-              strokeWidth="8"
-              fill="none"
-              strokeDasharray={circumference}
-              strokeDashoffset={strokeDashoffset}
-              strokeLinecap="round"
-              className="transition-all duration-1000 ease-linear"
-            />
-            {/* Gradient definition */}
-            <defs>
-              <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#8B5CF6" />
-                <stop offset="50%" stopColor="#6366F1" />
-                <stop offset="100%" stopColor="#3B82F6" />
-              </linearGradient>
-            </defs>
-          </svg>
-          
-          {/* Center content */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              {formatTime(timeUntilNextPoll)}
-            </div>
-            <div className="text-xs text-purple-300/70 mt-1">until update</div>
-          </div>
-        </div>
+    <Card className="relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm h-full flex flex-col items-center justify-center p-6">
+      <div className="relative w-32 h-32 flex items-center justify-center">
+        {/* Background circle */}
+        <svg className="w-full h-full transform -rotate-90">
+          <circle
+            cx="64"
+            cy="64"
+            r={radius}
+            stroke="currentColor"
+            strokeWidth="6"
+            fill="none"
+            className="text-muted/20"
+          />
+          {/* Progress circle */}
+          <circle
+            cx="64"
+            cy="64"
+            r={radius}
+            stroke="currentColor"
+            strokeWidth="6"
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            className="text-primary transition-all duration-1000 ease-linear"
+          />
+        </svg>
 
-        {/* Next Poll Time */}
-        {nextPollTime && (
-          <div className="text-center">
-            <p className="text-xs text-purple-300/70 mb-1">Next Update At</p>
-            <div className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 rounded-lg border border-blue-400/20">
-              <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="text-sm font-semibold text-blue-400">
-                {nextPollTime.toLocaleTimeString('en-IN', { 
-                  hour: '2-digit', 
-                  minute: '2-digit',
-                  second: '2-digit'
-                })}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Status indicator */}
-        <div className="flex items-center gap-2 text-xs">
-          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-          <span className="text-purple-300/70">Synced with server schedule</span>
+        {/* Center content */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-3xl font-bold tracking-tighter tabular-nums">
+            {formatTime(timeUntilNextPoll)}
+          </span>
+          <span className="text-xs text-muted-foreground font-medium">MINUTES</span>
         </div>
       </div>
-    </div>
+
+      {/* Next Poll Time */}
+      {nextPollTime && (
+        <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-full">
+          <Zap className="h-3 w-3 text-primary" />
+          <span>Refresh at {nextPollTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
+      )}
+    </Card>
   );
 };
 

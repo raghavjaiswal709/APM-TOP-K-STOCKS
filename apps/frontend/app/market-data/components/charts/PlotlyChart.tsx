@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { Zap } from 'lucide-react';
 import { useClusterPattern } from '@/hooks/useClusterPattern';
 import ClusterChart from './ClusterChart';
+import { Button } from "@/components/ui/button";
 
 
 // Add Plotly import for restyle operations
@@ -103,7 +104,7 @@ const isToday = (date: Date): boolean => {
 /**
  * Filter to today's predictions only
  */
-const filterTodayPredictions = <T extends { timestamp?: string; close?: number }>(  predictionEntries: [string, T][]
+const filterTodayPredictions = <T extends { timestamp?: string; close?: number }>(predictionEntries: [string, T][]
 ): [string, T][] => {
   return predictionEntries.filter(([key, pred]) => {
     const predDate = new Date(pred.timestamp || key);
@@ -4077,67 +4078,64 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
         <div className="flex space-x-4">
           {/* 🔀 Separator Button - Opens Modal with Split View */}
-          <div className="flex space-x-1 bg-gradient-to-r from-purple-900 to-indigo-900 p-1 rounded-md border border-purple-600">
+          <div className="flex items-center gap-2 bg-zinc-800/50 p-1.5 rounded-lg border border-border/50">
             {/* ✨ GTT Toggle Button with Dropdown */}
             <div
               className="relative"
               onMouseEnter={() => setGttMenuOpen(true)}
               onMouseLeave={() => setGttMenuOpen(false)}
             >
-              <button
+              <Button
+                variant={isGttEnabled ? "default" : "secondary"}
+                size="sm"
                 onClick={() => onGttToggle?.(!isGttEnabled)}
                 disabled={!symbol || gttLoading}
-                className={`px-3 py-1.5 rounded transition-all flex items-center gap-2 ${isGttEnabled
-                  ? 'bg-purple-600 text-white hover:bg-purple-700'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  } ${(!symbol || gttLoading) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`gap-2 h-8 ${isGttEnabled ? 'bg-purple-600 hover:bg-purple-700 text-white' : ''}`}
                 title={isGttEnabled ? 'Disable GTT Predictions' : 'Enable GTT Predictions'}
               >
-                <Zap className={`h-4 w-4 ${isGttEnabled ? 'animate-pulse' : ''}`} />
-                <span className="text-xs font-medium">
-                  {gttLoading ? 'Loading...' : (isGttEnabled ? 'GTT ON' : 'GTT OFF')}
-                </span>
-              </button>
+                <Zap className={`h-3 w-3 ${isGttEnabled ? 'animate-pulse' : ''}`} />
+                {gttLoading ? 'Loading...' : (isGttEnabled ? 'GTT ON' : 'GTT OFF')}
+              </Button>
 
               {/* Dropdown Menu */}
               {gttMenuOpen && isGttEnabled && (
-                <div className="absolute top-full left-0 mt-1 w-48 bg-zinc-900 border border-purple-600 rounded-md shadow-xl z-50 overflow-hidden">
-                  <div className="p-2 border-b border-zinc-700">
-                    <div className="text-xs font-bold text-purple-400 flex items-center gap-2">
-                      <Zap className="h-3 w-3" />
+                <div className="absolute top-full left-0 mt-2 w-56 bg-popover border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                  <div className="p-3 border-b border-border bg-muted/50">
+                    <div className="text-xs font-semibold flex items-center gap-2 text-foreground">
+                      <Zap className="h-3 w-3 text-purple-500" />
                       GTT Options
                     </div>
                   </div>
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowGttHistory(!showGttHistory);
-                    }}
-                    className="w-full px-3 py-2 text-left hover:bg-purple-900/50 transition-colors flex items-center justify-between"
-                  >
-                    <div className="flex flex-col">
-                      <span className="text-xs font-medium text-white">
-                        Show History
-                      </span>
-                      <span className="text-[10px] text-zinc-400">
-                        {showGttHistory ? 'All 25 predictions visible' : 'Only latest prediction'}
-                      </span>
-                    </div>
-                    <div className={`w-10 h-5 rounded-full transition-colors ${showGttHistory ? 'bg-purple-600' : 'bg-gray-600'} relative`}>
-                      <div className={`absolute top-0.5 ${showGttHistory ? 'right-0.5' : 'left-0.5'} w-4 h-4 bg-white rounded-full transition-all shadow-md`}></div>
-                    </div>
-                  </button>
-
-                  <div className="p-2 border-t border-zinc-700 bg-zinc-800/50">
-                    <div className="text-[10px] text-zinc-500 space-y-1">
-                      <div className="flex justify-between">
-                        <span>Latest:</span>
-                        <span className="text-purple-400 font-medium">Bold & Bright</span>
+                  <div className="p-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowGttHistory(!showGttHistory);
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground rounded-md transition-colors flex items-center justify-between group"
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium">Show History</span>
+                        <span className="text-[10px] text-muted-foreground group-hover:text-muted-foreground/80">
+                          {showGttHistory ? 'Visible' : 'Hidden'}
+                        </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span>History:</span>
-                        <span className="text-zinc-400 font-medium">Dimmed {showGttHistory ? '(24 preds)' : '(Hidden)'}</span>
+                      <div className={`w-8 h-4 rounded-full transition-colors ${showGttHistory ? 'bg-purple-600' : 'bg-muted'} relative`}>
+                        <div className={`absolute top-0.5 ${showGttHistory ? 'right-0.5' : 'left-0.5'} w-3 h-3 bg-white rounded-full transition-all shadow-sm`}></div>
+                      </div>
+                    </button>
+                  </div>
+
+                  <div className="p-2 border-t border-border bg-muted/30">
+                    <div className="text-[10px] text-muted-foreground space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span>Latest Prediction</span>
+                        <span className="text-purple-500 font-medium">Highlighted</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Past Predictions</span>
+                        <span className="font-medium">{showGttHistory ? 'Visible' : 'Hidden'}</span>
                       </div>
                     </div>
                   </div>
@@ -4145,16 +4143,16 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               )}
             </div>
 
-            <div className="w-px h-4 bg-purple-700 my-auto mx-1"></div>
-
-            <button
-              className="px-3 py-1 rounded bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 flex items-center space-x-2 transition-all"
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-2"
               onClick={() => setIsSeparatorModalOpen(true)}
               title="Open Separate View - Compare Actual vs Predicted"
             >
-              <Maximize2 className="h-4 w-4" />
-              <span className="text-xs font-bold">Separate View</span>
-            </button>
+              <Maximize2 className="h-3 w-3" />
+              Separate View
+            </Button>
           </div>
 
           {/* Chart Type Toggle */}

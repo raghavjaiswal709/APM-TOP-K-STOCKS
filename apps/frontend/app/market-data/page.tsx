@@ -39,7 +39,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelector2/WatchlistSelector";
 import { ImageCarousel } from "./components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
-import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
 import { isMarketOpen } from "@/lib/marketHours";
 import { fetchHistoricalData, detectDataGaps } from "@/lib/historicalDataFetcher";
@@ -1588,14 +1588,12 @@ const MarketDataPage: React.FC = () => {
                     <button
                       onClick={() => setActiveTab('predictions')}
                       className={`flex-1 py-2 px-4 rounded-md transition-all duration-200 font-medium ${activeTab === 'predictions'
-                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg'
+                        ? 'bg-zinc-700 text-white shadow-lg'
                         : 'text-zinc-400 hover:text-white'
                         }`}
                     >
                       <div className="flex items-center justify-center gap-2">
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>
-                        </svg>
+                        <Activity className="w-4 h-4" />
                         Predictions
                       </div>
                     </button>
@@ -1854,22 +1852,19 @@ const MarketDataPage: React.FC = () => {
 
                             {/* PREDICTION CONTROL PANEL */}
                             {showPredictions && (
-                              <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900/20 to-slate-900 rounded-lg border border-purple-500/20">
-                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(120,119,198,0.05),transparent_50%)]"></div>
-                                <PredictionControlPanel
-                                  isPolling={isPolling}
-                                  elapsedTime={elapsedTime}
-                                  timeRemaining={timeRemaining}
-                                  progressPercentage={progressPercentage}
-                                  pollCount={pollCount}
-                                  nextPollTime={nextPollTime}
-                                  onStart={startPolling}
-                                  onPause={pausePolling}
-                                  onStop={stopPolling}
-                                  onRefresh={handleManualRefresh}
-                                  disabled={predictionLoading}
-                                />
-                              </div>
+                              <PredictionControlPanel
+                                isPolling={isPolling}
+                                elapsedTime={elapsedTime}
+                                timeRemaining={timeRemaining}
+                                progressPercentage={progressPercentage}
+                                pollCount={pollCount}
+                                nextPollTime={nextPollTime}
+                                onStart={startPolling}
+                                onPause={pausePolling}
+                                onStop={stopPolling}
+                                onRefresh={handleManualRefresh}
+                                disabled={predictionLoading}
+                              />
                             )}
                           </div>
                         )}
@@ -1908,7 +1903,7 @@ const MarketDataPage: React.FC = () => {
           />
         </div>
       </SidebarInset>
-    </SidebarProvider>
+    </SidebarProvider >
   );
 };
 
