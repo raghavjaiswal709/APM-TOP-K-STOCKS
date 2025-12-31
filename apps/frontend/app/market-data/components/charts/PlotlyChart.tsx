@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
 import Plot from 'react-plotly.js';
-import { ChevronRight, TrendingUp, BarChart3, LineChart, CandlestickChart, ArrowLeftRight, ShoppingCart, TrendingDown, Maximize2, X } from 'lucide-react';
+import { ChevronRight, TrendingUp, BarChart3, LineChart, CandlestickChart, ArrowLeftRight, ShoppingCart, TrendingDown, Maximize2, Minimize2, X } from 'lucide-react';
 import { gttService, type GttPrediction } from '@/app/services/gttService';
 import { toast } from 'sonner';
 import { Zap } from 'lucide-react';
@@ -206,6 +206,8 @@ interface PlotlyChartProps {
   gttError?: string | null;
   forcedXRange?: [Date, Date] | undefined; // ✅ NEW: External X-axis range control
   onXRangeChange?: (range: [Date, Date]) => void; // ✅ NEW: Emit range changes
+  isFullscreen?: boolean; // ✅ NEW: App-level fullscreen mode
+  onFullscreenToggle?: () => void; // ✅ NEW: Toggle fullscreen callback
 }
 
 
@@ -227,6 +229,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   gttLoading = false,
   forcedXRange, // ✅ NEW: External range control
   onXRangeChange, // ✅ NEW: Range change callback
+  isFullscreen = false, // ✅ NEW: App-level fullscreen mode
+  onFullscreenToggle, // ✅ NEW: Toggle fullscreen callback
   // gttError = null,
 }) => {
 
@@ -4306,6 +4310,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               title="Volume Chart"
             >
               VOL
+            </button>
+          </div>
+
+          {/* Fullscreen Toggle */}
+          <div className="flex space-x-1 bg-orange-900 p-1 rounded-md border border-orange-700">
+            <button
+              className={`p-1 rounded flex items-center gap-1 ${isFullscreen ? 'bg-orange-600 text-white' : 'bg-orange-800 text-orange-300 hover:bg-orange-700'
+                }`}
+              onClick={onFullscreenToggle}
+              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen View"}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
           </div>
         </div>

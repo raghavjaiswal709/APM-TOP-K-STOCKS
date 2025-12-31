@@ -191,6 +191,21 @@ const MarketDataPage: React.FC = () => {
   // Shared X-Axis state for chart synchronization
   const [sharedXRange, setSharedXRange] = useState<[Date, Date] | undefined>(undefined);
 
+  // Fullscreen mode state for chart section
+  const [isChartFullscreen, setIsChartFullscreen] = useState<boolean>(false);
+
+  // Handle Escape key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isChartFullscreen) {
+        setIsChartFullscreen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isChartFullscreen]);
+
   // Bidirectional X-axis synchronization handler with throttling
   const handleXRangeChange = useCallback((range: [Date, Date]) => {
     console.log('🎯 [Parent] Received range change:', range);
@@ -1501,12 +1516,12 @@ const MarketDataPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          <div className="min-h-screen bg-zinc-900 text-zinc-100 rounded-lg">
-            <div className="w-full p-4">
-              <div className="flex gap-6 mb-6">
+          <div className={`${isChartFullscreen ? 'fixed inset-0 z-50 bg-zinc-900 overflow-auto' : 'min-h-screen bg-zinc-900'} text-zinc-100 rounded-lg transition-all duration-300`}>
+            <div className={`w-full ${isChartFullscreen ? 'min-h-full' : ''} p-4`}>
+              <div className={`flex gap-6 ${isChartFullscreen ? 'min-h-[calc(100vh-2rem)]' : 'mb-6'}`}>
                 {/* ============ MAIN CHART AREA ============ */}
-                <div className="w-3/4">
-                  <div className="bg-zinc-800 rounded-lg shadow-lg h-[800px]">
+                <div className={`${isChartFullscreen ? 'w-3/4 min-h-[calc(100vh-2rem)]' : 'w-3/4'}`}>
+                  <div className={`bg-zinc-800 rounded-lg shadow-lg ${isChartFullscreen ? 'h-[calc(100vh-2rem)]' : 'h-[800px]'}`}>
                     {!marketOpen ? (
                       <div className="h-full w-full flex items-center justify-center p-0">
                         <div className="h-full w-full flex items-center justify-center">
@@ -1555,6 +1570,8 @@ const MarketDataPage: React.FC = () => {
                           gttError={gttError}
                           forcedXRange={sharedXRange}
                           onXRangeChange={handleXRangeChange}
+                          isFullscreen={isChartFullscreen}
+                          onFullscreenToggle={() => setIsChartFullscreen(!isChartFullscreen)}
                         />
 
                       </div>
@@ -1570,7 +1587,7 @@ const MarketDataPage: React.FC = () => {
                 </div>
 
                 {/* ============ SIDE PANEL: CURRENT DATA + PREDICTIONS ============ */}
-                <div className="w-1/4 bg-zinc-800 p-4 rounded-lg shadow-lg max-h-[800px] overflow-hidden flex flex-col">
+                <div className={`w-1/4 bg-zinc-800 p-4 rounded-lg shadow-lg ${isChartFullscreen ? 'h-[calc(100vh-2rem)] overflow-y-auto' : 'max-h-[800px] overflow-hidden'} flex flex-col`}>
                   {/* Tab Switcher */}
                   <div className="flex gap-2 mb-4 bg-zinc-900 p-1 rounded-lg">
                     <button
