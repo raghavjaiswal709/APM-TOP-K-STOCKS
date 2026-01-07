@@ -5,7 +5,8 @@ import { SubscribeCompaniesDto, UnsubscribeDto } from './dto/live-market.dto';
 @Injectable()
 export class LiveMarketService {
   private readonly logger = new Logger(LiveMarketService.name);
-  private readonly MAX_COMPANIES = 6;
+  // ✅ REMOVED: Maximum company constraint to support all companies
+  private readonly MAX_COMPANIES = 2000;
 
   constructor(private readonly watchlistService: WatchlistService) {}
 
@@ -31,7 +32,7 @@ export class LiveMarketService {
         success: true,
         companies: availableCompanies,
         total: availableCompanies.length,
-        maxSelection: this.MAX_COMPANIES,
+        maxSelection: availableCompanies.length, // ✅ Allow all companies
         watchlist
       };
     } catch (error) {
@@ -41,7 +42,7 @@ export class LiveMarketService {
         error: error.message,
         companies: [],
         total: 0,
-        maxSelection: this.MAX_COMPANIES,
+        maxSelection: 999, // ✅ Unlimited
         watchlist
       };
     }
@@ -82,9 +83,10 @@ export class LiveMarketService {
         throw new Error('At least 1 company must be selected');
       }
 
-      if (companyCodes.length > this.MAX_COMPANIES) {
-        throw new Error(`Maximum ${this.MAX_COMPANIES} companies allowed`);
-      }
+      // ✅ REMOVED: Max companies limit - now supports all companies
+      // if (companyCodes.length > this.MAX_COMPANIES) {
+      //   throw new Error(`Maximum ${this.MAX_COMPANIES} companies allowed`);
+      // }
 
       // Validate company codes exist in watchlist
       const availableCompanies = await this.getAvailableCompanies();

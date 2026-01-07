@@ -109,9 +109,9 @@ const filterTodayPredictions = <T extends { timestamp?: string; close?: number }
   return predictionEntries.filter(([key, pred]) => {
     const predDate = new Date(pred.timestamp || key);
     const isTodayPred = isToday(predDate);
-    if (!isTodayPred) {
-      console.log(`⚠️ [FILTER] Excluding old prediction from ${predDate.toLocaleDateString()}`);
-    }
+    // if (!isTodayPred) {
+    //   console.log(`⚠️ [FILTER] Excluding old prediction from ${predDate.toLocaleDateString()}`);
+    // }
     return isTodayPred;
   });
 };
@@ -252,7 +252,31 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const [gttError, setGttError] = useState<string | null>(null);
   const [showGttHistory, setShowGttHistory] = useState(true); // GTT history toggle
   const [gttMenuOpen, setGttMenuOpen] = useState(false); // Dropdown menu state
+  const gttTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for hover delay
   const lastSymbolRef = useRef<string>('');
+
+  // ✅ Hover handlers for GTT dropdown to prevent instant disappearance
+  const handleGttMouseEnter = useCallback(() => {
+    if (gttTimeoutRef.current) clearTimeout(gttTimeoutRef.current);
+    setGttMenuOpen(true);
+  }, []);
+
+  const handleGttMouseLeave = useCallback(() => {
+    gttTimeoutRef.current = setTimeout(() => {
+      setGttMenuOpen(false);
+    }, 200); // 200ms delay to allow moving to dropdown
+  }, []);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (gttTimeoutRef.current) clearTimeout(gttTimeoutRef.current);
+    };
+  }, []);
+  
+  // ✅ Refs to track logged warnings (prevent duplicate logs on re-renders)
+  const lastRegularPredictionWarning = useRef<string>('');
+  const lastGttPredictionWarning = useRef<string>('');
 
   const handleGttToggle = useCallback(async () => {
     const newGttMode = !isGttMode;
@@ -1844,14 +1868,18 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     // ✅ CRITICAL: Filter to only today's predictions - never show yesterday's data
     const predictionEntries = filterTodayPredictions(allPredictionEntries);
 
-    console.log('🔮 [Predictions-Only View] Filtering:', {
-      totalEntries: allPredictionEntries.length,
-      todayEntries: predictionEntries.length,
-      filteredOut: allPredictionEntries.length - predictionEntries.length
-    });
+    // console.log('🔮 [Predictions-Only View] Filtering:', {
+    //   totalEntries: allPredictionEntries.length,
+    //   todayEntries: predictionEntries.length,
+    //   filteredOut: allPredictionEntries.length - predictionEntries.length
+    // });
 
     if (predictionEntries.length === 0) {
-      console.log('⚠️ No prediction found for today - all predictions were from previous days');
+      const warningKey = `predictions-only-${symbol}`;
+      if (lastRegularPredictionWarning.current !== warningKey) {
+        console.warn('⚠️ [REGULAR PREDICTIONS] No predictions available for today');
+        lastRegularPredictionWarning.current = warningKey;
+      }
       return plotData;
     }
 
@@ -2204,11 +2232,27 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         if (shouldRenderGtt) {
           const allPredictions = gttDataToRender;
 
-          console.log('🎯 [PlotlyChart-Line] Rendering GTT predictions:', {
-            totalPredictions: allPredictions.length,
-            source: gttExternalData?.predictions ? 'gttExternalData (prop)' : 'gttPredictions (local state)',
-            symbol: gttExternalData?.symbol || symbol
+          // Filter GTT predictions for today only
+          const todayGttPredictions = allPredictions.filter(pred => {
+            const predDate = new Date(pred.prediction_time || pred.timestamp);
+            return isToday(predDate);
           });
+
+          if (todayGttPredictions.length === 0) {
+            const warningKey = `gtt-line-${symbol}-${allPredictions.length}`;
+            if (lastGttPredictionWarning.current !== warningKey) {
+              console.warn('⚠️ [GTT PREDICTIONS] No predictions available for today');
+              lastGttPredictionWarning.current = warningKey;
+            }
+          } else {
+            console.log('✅ [GTT PREDICTIONS] Rendering', todayGttPredictions.length, 'predictions for today');
+          }
+
+          // console.log('🎯 [PlotlyChart-Line] Rendering GTT predictions:', {
+          //   totalPredictions: allPredictions.length,
+          //   source: gttExternalData?.predictions ? 'gttExternalData (prop)' : 'gttPredictions (local state)',
+          //   symbol: gttExternalData?.symbol || symbol
+          // });
 
           // Define horizon colors and time offsets
           const horizonConfig = [
@@ -2371,15 +2415,15 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           // ✅ CRITICAL: Filter to only today's predictions - never show yesterday's data
           const predictionEntries = filterTodayPredictions(allPredictionEntries);
 
-          console.log('🔮 Adding prediction line to chart:', {
-            showPredictions,
-            predictionsCount: predictions.count,
-            totalEntries: allPredictionEntries.length,
-            todayEntries: predictionEntries.length,
-            filteredOut: allPredictionEntries.length - predictionEntries.length,
-            firstEntry: predictionEntries[0],
-            lastEntry: predictionEntries[predictionEntries.length - 1]
-          });
+          // console.log('🔮 Adding prediction line to chart:', {
+          //   showPredictions,
+          //   predictionsCount: predictions.count,
+          //   totalEntries: allPredictionEntries.length,
+          //   todayEntries: predictionEntries.length,
+          //   filteredOut: allPredictionEntries.length - predictionEntries.length,
+          //   firstEntry: predictionEntries[0],
+          //   lastEntry: predictionEntries[predictionEntries.length - 1]
+          // });
 
           if (predictionEntries.length > 0) {
             // Sort predictions by timestamp (use key as timestamp if value.timestamp is not available)
@@ -2394,17 +2438,17 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             );
             const predictionValues = sortedPredictions.map(([, pred]) => Number(pred.close));
 
-            console.log('🔮 Prediction trace data:', {
-              firstTime: predictionTimes[0],
-              lastTime: predictionTimes[predictionTimes.length - 1],
-              firstValue: predictionValues[0],
-              lastValue: predictionValues[predictionValues.length - 1],
-              totalPoints: predictionTimes.length,
-              timeRange: {
-                start: predictionTimes[0]?.toLocaleString(),
-                end: predictionTimes[predictionTimes.length - 1]?.toLocaleString()
-              }
-            });
+            // console.log('🔮 Prediction trace data:', {
+            //   firstTime: predictionTimes[0],
+            //   lastTime: predictionTimes[predictionTimes.length - 1],
+            //   firstValue: predictionValues[0],
+            //   lastValue: predictionValues[predictionValues.length - 1],
+            //   totalPoints: predictionTimes.length,
+            //   timeRange: {
+            //     start: predictionTimes[0]?.toLocaleString(),
+            //     end: predictionTimes[predictionTimes.length - 1]?.toLocaleString()
+            //   }
+            // });
 
             plotData.push({
               x: predictionTimes,
@@ -2435,10 +2479,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
               visible: true  // Ensure it's visible
             });
 
-            console.log('✅ Prediction trace added to plotData, total traces:', plotData.length);
+            console.log('✅ [REGULAR PREDICTIONS] Added to chart:', predictionTimes.length, 'points');
           } else {
             // ✅ Today's predictions are empty - all predictions were from previous days
-            console.log('⚠️ No prediction found for today - all predictions were from previous days');
+            const warningKey = `regular-line-${symbol}-${predictions.count}`;
+            if (lastRegularPredictionWarning.current !== warningKey) {
+              console.warn('⚠️ [REGULAR PREDICTIONS] No predictions available for today');
+              lastRegularPredictionWarning.current = warningKey;
+            }
           }
         } else {
           // Only log if showPredictions is enabled but predictions are missing (muted to reduce noise)
@@ -2777,12 +2825,28 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       if (shouldRenderGttCandle) {
         const allPredictions = gttCandleDataToRender;
 
-        console.log('🎯 [PlotlyChart-Candle] Rendering GTT predictions:', {
-          totalPredictions: allPredictions.length,
-          source: gttExternalData?.predictions ? 'gttExternalData (prop)' : 'gttPredictions (local state)',
-          symbol: gttExternalData?.symbol || symbol,
-          showHistory: showGttHistory
+        // Filter GTT predictions for today only
+        const todayGttPredictions = allPredictions.filter(pred => {
+          const predDate = new Date(pred.prediction_time || pred.timestamp);
+          return isToday(predDate);
         });
+
+        if (todayGttPredictions.length === 0) {
+          const warningKey = `gtt-candle-${symbol}-${allPredictions.length}`;
+          if (lastGttPredictionWarning.current !== warningKey) {
+            console.warn('⚠️ [GTT PREDICTIONS - Candle] No predictions available for today');
+            lastGttPredictionWarning.current = warningKey;
+          }
+        } else {
+          console.log('✅ [GTT PREDICTIONS - Candle] Rendering', todayGttPredictions.length, 'predictions for today');
+        }
+
+        // console.log('🎯 [PlotlyChart-Candle] Rendering GTT predictions:', {
+        //   totalPredictions: allPredictions.length,
+        //   source: gttExternalData?.predictions ? 'gttExternalData (prop)' : 'gttPredictions (local state)',
+        //   symbol: gttExternalData?.symbol || symbol,
+        //   showHistory: showGttHistory
+        // });
 
         const horizonConfig = [
           { horizon: 'H1', color: '#10b981', offset: 15, label: '+15min' },
@@ -2985,11 +3049,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         // ✅ CRITICAL: Filter to only today's predictions - never show yesterday's data
         const predictionEntries = filterTodayPredictions(allPredictionEntries);
 
-        console.log('🔮 [Candle] Processing predictions:', {
-          totalEntries: allPredictionEntries.length,
-          todayEntries: predictionEntries.length,
-          filteredOut: allPredictionEntries.length - predictionEntries.length
-        });
+        // console.log('🔮 [Candle] Processing predictions:', {
+        //   totalEntries: allPredictionEntries.length,
+        //   todayEntries: predictionEntries.length,
+        //   filteredOut: allPredictionEntries.length - predictionEntries.length
+        // });
 
         if (predictionEntries.length > 0) {
           const sortedPredictions = predictionEntries.sort((a, b) => {
@@ -3055,10 +3119,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             visible: true
           });
 
-          console.log('✅ [Candle] Prediction trace added, total points:', predictionTimes.length);
+          console.log('✅ [REGULAR PREDICTIONS - Candle] Added to chart:', predictionTimes.length, 'points');
         } else {
           // ✅ Today's predictions are empty - all predictions were from previous days
-          console.log('⚠️ [Candle] No prediction found for today - all predictions were from previous days');
+          const warningKey = `regular-candle-${symbol}-${predictions.count}`;
+          if (lastRegularPredictionWarning.current !== warningKey) {
+            console.warn('⚠️ [REGULAR PREDICTIONS - Candle] No predictions available for today');
+            lastRegularPredictionWarning.current = warningKey;
+          }
         }
       }
     }
@@ -4082,30 +4150,38 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
         <div className="flex space-x-4">
           {/* 🔀 Separator Button - Opens Modal with Split View */}
-          <div className="flex items-center gap-2 bg-zinc-800/50 p-1.5 rounded-lg border border-border/50">
+          <div className="flex items-center gap-2 bg-zinc-900/50 p-1.5 rounded-lg border border-zinc-700/50 backdrop-blur-sm">
             {/* ✨ GTT Toggle Button with Dropdown */}
             <div
               className="relative"
-              onMouseEnter={() => setGttMenuOpen(true)}
-              onMouseLeave={() => setGttMenuOpen(false)}
+              onMouseEnter={handleGttMouseEnter}
+              onMouseLeave={handleGttMouseLeave}
             >
               <Button
-                variant={isGttEnabled ? "default" : "secondary"}
+                variant="outline"
                 size="sm"
                 onClick={() => onGttToggle?.(!isGttEnabled)}
                 disabled={!symbol || gttLoading}
-                className={`gap-2 h-8 ${isGttEnabled ? 'bg-purple-600 hover:bg-purple-700 text-white' : ''}`}
+                className={`gap-2 h-8 transition-all duration-300 ${
+                  isGttEnabled 
+                    ? 'border-purple-400 bg-purple-400/20 text-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.25)]' 
+                    : 'border-purple-400 text-purple-400 hover:bg-purple-400/10'
+                }`}
                 title={isGttEnabled ? 'Disable GTT Predictions' : 'Enable GTT Predictions'}
               >
-                <Zap className={`h-3 w-3 ${isGttEnabled ? 'animate-pulse' : ''}`} />
+                <Zap className={`h-3.5 w-3.5 ${isGttEnabled ? 'animate-pulse text-purple-300' : 'text-purple-400'}`} />
                 {gttLoading ? 'Loading...' : (isGttEnabled ? 'GTT ON' : 'GTT OFF')}
               </Button>
 
               {/* Dropdown Menu */}
               {gttMenuOpen && isGttEnabled && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-popover border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                  <div className="p-3 border-b border-border bg-muted/50">
-                    <div className="text-xs font-semibold flex items-center gap-2 text-foreground">
+                <div 
+                  className="absolute top-full left-0 mt-1 w-56 bg-zinc-900 border border-purple-500/30 rounded-lg shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 backdrop-blur-md"
+                  onMouseEnter={handleGttMouseEnter}
+                  onMouseLeave={handleGttMouseLeave}
+                >
+                  <div className="p-3 border-b border-zinc-800 bg-purple-500/5">
+                    <div className="text-xs font-semibold flex items-center gap-2 text-purple-300">
                       <Zap className="h-3 w-3 text-purple-500" />
                       GTT Options
                     </div>
@@ -4117,29 +4193,29 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                         e.stopPropagation();
                         setShowGttHistory(!showGttHistory);
                       }}
-                      className="w-full px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground rounded-md transition-colors flex items-center justify-between group"
+                      className="w-full px-3 py-2 text-left hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 rounded-md transition-colors flex items-center justify-between group"
                     >
                       <div className="flex flex-col gap-0.5">
                         <span className="text-sm font-medium">Show History</span>
-                        <span className="text-[10px] text-muted-foreground group-hover:text-muted-foreground/80">
+                        <span className="text-[10px] text-zinc-500 group-hover:text-purple-400/70">
                           {showGttHistory ? 'Visible' : 'Hidden'}
                         </span>
                       </div>
-                      <div className={`w-8 h-4 rounded-full transition-colors ${showGttHistory ? 'bg-purple-600' : 'bg-muted'} relative`}>
+                      <div className={`w-8 h-4 rounded-full transition-colors ${showGttHistory ? 'bg-purple-600' : 'bg-zinc-700'} relative`}>
                         <div className={`absolute top-0.5 ${showGttHistory ? 'right-0.5' : 'left-0.5'} w-3 h-3 bg-white rounded-full transition-all shadow-sm`}></div>
                       </div>
                     </button>
                   </div>
 
-                  <div className="p-2 border-t border-border bg-muted/30">
-                    <div className="text-[10px] text-muted-foreground space-y-1.5">
+                  <div className="p-2 border-t border-zinc-800 bg-zinc-900/50">
+                    <div className="text-[10px] text-zinc-500 space-y-1.5">
                       <div className="flex justify-between items-center">
                         <span>Latest Prediction</span>
                         <span className="text-purple-500 font-medium">Highlighted</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span>Past Predictions</span>
-                        <span className="font-medium">{showGttHistory ? 'Visible' : 'Hidden'}</span>
+                        <span className="font-medium text-zinc-400">{showGttHistory ? 'Visible' : 'Hidden'}</span>
                       </div>
                     </div>
                   </div>
@@ -4150,11 +4226,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 gap-2"
+              className="h-8 gap-2 border-blue-400 text-blue-400 hover:bg-blue-400/10 transition-all duration-300"
               onClick={() => setIsSeparatorModalOpen(true)}
               title="Open Separate View - Compare Actual vs Predicted"
             >
-              <Maximize2 className="h-3 w-3" />
+              <Maximize2 className="h-3.5 w-3.5" />
               Separate View
             </Button>
           </div>

@@ -415,43 +415,62 @@ const MarketDataPage: React.FC = () => {
 
   const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Remove date restriction - subscriptions are date-independent
-  const handleSubscribeCompanies = useCallback(async (symbols: string[]) => {
-    if (!symbols || symbols.length === 0) return;
+  // ✅ FIXED: Use WebSocket directly to Python Fyers service (port 5001) instead of HTTP API
+  // This sends subscription requests directly to fyers_new_5001.py which handles unlimited companies
+  const handleSubscribeCompanies = useCallback(async (companyCodes: string[]) => {
+    if (!companyCodes || companyCodes.length === 0) return;
+
+    if (!socketRef.current || !socketRef.current.connected) {
+      toast.error('Not connected to server. Please wait for connection.');
+      return;
+    }
 
     setIsSubscribing(true);
     try {
-      console.log(`📤 Sending subscription request for ${symbols.length} symbols`);
+      console.log(`📤 Sending subscription request for ${companyCodes.length} companies via WebSocket to port 5001`);
 
-      const response = await fetch('/api/market-data/subscribe', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ symbols }),
+      // ✅ Convert company codes to Fyers format symbols (NSE:CODE-EQ)
+      const fyersSymbols = companyCodes.map(code => {
+        // Find the company in our list to get exchange and marker
+        const company = companies?.find((c: any) => c.company_code === code);
+        const exchange = company?.exchange || 'NSE';
+        const marker = company?.marker || 'EQ';
+        return `${exchange}:${code}-${marker}`;
       });
 
-      // ✅ Extract error details from response
-      const result = await response.json();
+      console.log(`📤 Converted to Fyers symbols:`, fyersSymbols.slice(0, 5), `... (${fyersSymbols.length} total)`);
 
-      if (!response.ok) {
-        console.error('❌ Subscription failed:', result);
-        throw new Error(result.error || result.message || 'Failed to subscribe');
-      }
+      // ✅ Use socket.emit to send directly to Python fyers_new_5001.py service
+      socketRef.current.emit('subscribe_companies', { 
+        symbols: fyersSymbols,
+        companyCodes: companyCodes 
+      }, (response: any) => {
+        setIsSubscribing(false);
+        
+        if (response && response.success) {
+          console.log('✅ Subscription successful:', response);
+          toast.success(`Successfully subscribed to ${response.count || companyCodes.length} companies`);
+          
+          // Update subscribed set
+          fyersSymbols.forEach(s => isSubscribedRef.current.add(s));
+        } else {
+          const errorMsg = response?.error || response?.message || 'Subscription failed';
+          console.error('❌ Subscription failed:', response);
+          toast.error(errorMsg);
+        }
+      });
 
-      console.log('✅ Subscription successful:', result);
-      toast.success(`Successfully subscribed to ${result.count} companies`);
-
-      // Optimistically update subscribed set
-      symbols.forEach(s => isSubscribedRef.current.add(s));
+      // Fallback timeout in case callback doesn't fire
+      setTimeout(() => {
+        setIsSubscribing(false);
+      }, 30000);
 
     } catch (error: any) {
       console.error('❌ Subscription error:', error);
       toast.error(error.message || 'Failed to update subscriptions');
-    } finally {
       setIsSubscribing(false);
     }
-  }, []); // ✅ Removed isLatestDate dependency
+  }, [companies]); // ✅ Removed isSubscribing to avoid stale closure issues
 
   // Remove date restriction from Subscribe All
   const handleSubscribeAll = useCallback(() => {
@@ -472,12 +491,11 @@ const MarketDataPage: React.FC = () => {
 
     const targetList = filteredCompanies.length > 0 ? filteredCompanies : companies;
 
-    const symbols = targetList.map((c: any) =>
-      validateAndFormatSymbol(c.company_code, c.exchange, c.marker)
-    ).filter(Boolean);
+    // ✅ FIXED: Send company_code (not formatted symbols) to backend
+    const companyCodes = targetList.map((c: any) => c.company_code).filter(Boolean);
 
-    handleSubscribeCompanies(symbols);
-  }, [companies, validateAndFormatSymbol, handleSubscribeCompanies, isSubscribing, filteredCompanies]); // ✅ Removed isLatestDate
+    handleSubscribeCompanies(companyCodes);
+  }, [companies, handleSubscribeCompanies, isSubscribing, filteredCompanies]); // ✅ Removed validateAndFormatSymbol dependency
 
   // Event Handlers
   const handleConnect = useCallback(() => {

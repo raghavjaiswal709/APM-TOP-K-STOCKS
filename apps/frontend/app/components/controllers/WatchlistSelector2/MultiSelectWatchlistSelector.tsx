@@ -38,7 +38,7 @@ export const MultiSelectWatchlistSelector = React.memo(({
   onCompaniesSelect,
   selectedWatchlist: externalSelectedWatchlist,
   onWatchlistChange,
-  maxSelection = 6,
+  maxSelection = 2000,
   selectedCompanies = [],
   showExchangeFilter = true,
   showMarkerFilter = true,

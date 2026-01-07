@@ -80,7 +80,7 @@ export const useLiveMarket = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [maxCompanies, setMaxCompanies] = useState<number>(6);
+  const [maxCompanies, setMaxCompanies] = useState<number>(999); // ✅ Unlimited companies
   const [tradingHours, setTradingHours] = useState<TradingHours | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const subscribedCompanyCodes = useRef<Set<string>>(new Set());
@@ -146,7 +146,7 @@ export const useLiveMarket = () => {
         symbol.company_code !== null
       );
       setAvailableCompanies(validSymbols);
-      setMaxCompanies(data.maxCompanies || 6);
+      setMaxCompanies(data.maxCompanies || 999); // ✅ Unlimited if not specified
       setTradingHours(data.tradingHours || null);
     });
     // Handle marketData event from backend
@@ -297,10 +297,11 @@ export const useLiveMarket = () => {
       setError('No valid companies provided. Please check company data.');
       return Promise.resolve(false);
     }
-    if (validCompanies.length > maxCompanies) {
-      setError(`Maximum ${maxCompanies} companies allowed`);
-      return Promise.resolve(false);
-    }
+    // ✅ REMOVED: maxCompanies validation - now supports unlimited companies
+    // if (validCompanies.length > maxCompanies) {
+    //   setError(`Maximum ${maxCompanies} companies allowed`);
+    //   return Promise.resolve(false);
+    // }
     setLoading(true);
     setError(null);
     const companyCodes = validCompanies
@@ -337,10 +338,11 @@ export const useLiveMarket = () => {
       setError('No valid company codes provided');
       return Promise.resolve(false);
     }
-    if (validCompanyCodes.length > maxCompanies) {
-      setError(`Maximum ${maxCompanies} companies allowed`);
-      return Promise.resolve(false);
-    }
+    // ✅ REMOVED: maxCompanies validation - now supports unlimited companies
+    // if (validCompanyCodes.length > maxCompanies) {
+    //   setError(`Maximum ${maxCompanies} companies allowed`);
+    //   return Promise.resolve(false);
+    // }
     setLoading(true);
     setError(null);
     subscribedCompanyCodes.current = new Set(validCompanyCodes);

@@ -283,7 +283,7 @@ const LiveMarketPage: React.FC = () => {
                   <MultiSelectWatchlistSelector
                     onCompaniesSelect={handleCompaniesSelect}
                     onDateChange={handleDateChange}
-                    maxSelection={6}
+                    maxSelection={2000}
                     selectedCompanies={selectedCompanies}
                     showExchangeFilter={true}
                     showMarkerFilter={true}

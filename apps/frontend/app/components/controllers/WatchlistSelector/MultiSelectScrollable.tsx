@@ -36,7 +36,7 @@ export function MultiSelectScrollable({
   exists, 
   onCompaniesSelect,
   selectedCompanies,
-  maxSelection = 6,
+  maxSelection = 2000,
   disabled = false
 }: MultiSelectScrollableProps) {
   const [isOpen, setIsOpen] = React.useState(false);
