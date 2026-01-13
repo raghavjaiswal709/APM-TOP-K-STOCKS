@@ -19,6 +19,10 @@ const nextConfig = {
         destination: `http://${SERVER_IP}:8508/desirability/:path*`,
       },
       {
+        source: '/api/proxy/visualize/:path*',
+        destination: `http://${SERVER_IP}:8506/visualize/:path*`,
+      },
+      {
         source: '/api/proxy/intraday/:path*',
         destination: `http://${SERVER_IP}:8505/intraday/:path*`,
       },

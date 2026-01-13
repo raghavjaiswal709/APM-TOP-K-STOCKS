@@ -73,19 +73,19 @@ export const PredictionControlPanel: React.FC<PredictionControlPanelProps> = ({
         <div className="grid grid-cols-3 gap-4">
           <div className="space-y-1 p-2 rounded-md bg-blue-400/5 border border-blue-400/10">
             <span className="text-xs font-medium text-blue-300/70">Updates</span>
-            <p className="text-2xl font-bold tracking-tight text-blue-400">{pollCount}</p>
+            <p className="text-lg font-bold tracking-tight text-blue-400">{pollCount}</p>
           </div>
 
           <div className="space-y-1 p-2 rounded-md bg-blue-400/5 border border-blue-400/10">
             <span className="text-xs font-medium text-blue-300/70">Elapsed</span>
-            <p className="text-2xl font-bold tracking-tight font-mono text-blue-400">
+            <p className="text-lg font-bold tracking-tight font-mono text-blue-400">
               {formatTime(elapsedTime)}
             </p>
           </div>
 
           <div className="space-y-1 p-2 rounded-md bg-blue-400/5 border border-blue-400/10">
             <span className="text-xs font-medium text-blue-300/70">Remaining</span>
-            <p className="text-2xl font-bold tracking-tight font-mono text-blue-300/70">
+            <p className="text-lg font-bold tracking-tight font-mono text-blue-300/70">
               {formatTime(timeRemaining)}
             </p>
           </div>
@@ -93,20 +93,13 @@ export const PredictionControlPanel: React.FC<PredictionControlPanelProps> = ({
 
         <Separator className="bg-blue-400/20" />
 
-        {/* Progress Section */}
-        <div className="space-y-2">
-          <div className="flex justify-between items-center text-sm">
-            <span className="text-blue-300/70">Collection Progress</span>
-            <span className="font-medium text-blue-400">{Math.round(progressPercentage)}%</span>
-          </div>
-          <Progress value={progressPercentage} className="h-2 bg-blue-400/10" />
-        </div>
-
         {/* Next Poll Indicator */}
         {nextPollTime && isPolling && (
           <div className="text-xs text-center text-blue-300/70 bg-blue-500/10 py-2 rounded-md border border-blue-400/20 flex items-center justify-center gap-2">
             <Clock className="h-3 w-3 text-blue-400" />
-            Next update at <span className="font-medium text-blue-400">{nextPollTime.toLocaleTimeString('en-IN')}</span>
+            Next update at <span className="font-medium text-blue-400">
+              {isNaN(nextPollTime.getTime()) ? '--:--' : nextPollTime.toLocaleTimeString('en-IN')}
+            </span>
           </div>
         )}
 

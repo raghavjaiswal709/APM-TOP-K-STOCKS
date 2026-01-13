@@ -7,6 +7,8 @@ import {
     DesirabilityResultDto,
     ClassificationEnum,
     AnalyzeResponseDto,
+    AnalyzeAllRequestDto,
+    AnalyzeClusterRequestDto,
     ClassificationResponseDto,
     FilterResponseDto,
     GetDesirableResponseDto,
@@ -45,7 +47,65 @@ export class DesirabilityService {
     }
 
     /**
-     * Analyze All Clusters
+     * Analyze All Clusters - NEW PDF SPEC
+     * POST /desirability/analyze/all
+     * Uses symbol in request body (not path)
+     */
+    async analyzeAll(
+        request: AnalyzeAllRequestDto,
+    ): Promise<AnalyzeResponseDto> {
+        try {
+            const url = `${this.DESIRABILITY_API_URL}/desirability/analyze/all`;
+            this.logger.log(`📊 Analyzing all clusters for ${request.symbol}...`);
+            this.logger.log(`   👉 URL: ${url}`);
+            
+            const response = await firstValueFrom(
+                this.httpService.post(url, {
+                    symbol: request.symbol,
+                    method: request.method || 'spectral',
+                    exchange: request.exchange || 'NSE',
+                }, { timeout: this.TIMEOUT }),
+            );
+            
+            this.logger.log(`✅ Analyze all completed for ${request.symbol}`);
+            return response.data;
+        } catch (error: any) {
+            this.handleError(error, request.symbol, 'analyzeAll');
+            throw error;
+        }
+    }
+
+    /**
+     * Analyze Single Cluster - NEW PDF SPEC
+     * POST /desirability/analyze/cluster
+     */
+    async analyzeCluster(
+        request: AnalyzeClusterRequestDto,
+    ): Promise<any> {
+        try {
+            const url = `${this.DESIRABILITY_API_URL}/desirability/analyze/cluster`;
+            this.logger.log(`📊 Analyzing cluster ${request.cluster_id} for ${request.symbol}...`);
+            this.logger.log(`   👉 URL: ${url}`);
+            
+            const response = await firstValueFrom(
+                this.httpService.post(url, {
+                    symbol: request.symbol,
+                    cluster_id: request.cluster_id,
+                    method: request.method || 'spectral',
+                    exchange: request.exchange || 'NSE',
+                }, { timeout: this.TIMEOUT }),
+            );
+            
+            this.logger.log(`✅ Analyze cluster completed for ${request.symbol} cluster ${request.cluster_id}`);
+            return response.data;
+        } catch (error: any) {
+            this.handleError(error, request.symbol, 'analyzeCluster');
+            throw error;
+        }
+    }
+
+    /**
+     * Analyze All Clusters (LEGACY - kept for backward compatibility)
      * POST /desirability/analyze/{symbol}
      */
     async analyzeAllClusters(

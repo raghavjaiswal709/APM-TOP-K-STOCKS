@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, AlertTriangle, XCircle, Info, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle, XCircle, RefreshCw } from 'lucide-react';
 import {
     Tooltip,
     TooltipContent,
@@ -154,6 +154,14 @@ export function DesirabilityPanel({ score, classification, loading, onFetch, dat
     const desirabilityConfig = getScoreConfig(score);
     const reoccurrenceProbability = data?.top_pattern?.reoccurrence_probability ?? null;
     const reoccurrenceConfig = getReoccurrenceConfig(reoccurrenceProbability);
+    const details = data?.top_pattern?.details;
+
+    // Format detail values for tooltip
+    const formatValue = (val: number | null | undefined, multiplier = 1, suffix = '') => {
+        if (val === null || val === undefined) return 'N/A';
+        const adjusted = val * multiplier;
+        return `${adjusted.toFixed(2)}${suffix}`;
+    };
 
     return (
         <Card className="bg-zinc-800 border-zinc-700 h-full flex flex-col">
@@ -163,129 +171,148 @@ export function DesirabilityPanel({ score, classification, loading, onFetch, dat
             <CardContent className="space-y-4 flex-1 px-4 pb-4">
                 {loading ? (
                     <div className="space-y-3">
-                        <div className="h-24 bg-zinc-700/50 rounded-lg animate-pulse" />
-                        <div className="h-24 bg-zinc-700/50 rounded-lg animate-pulse" />
-                        <div className="h-16 bg-zinc-700/50 rounded-lg animate-pulse" />
+                        <div className="h-32 bg-zinc-700/50 rounded-lg animate-pulse" />
+                        <div className="h-32 bg-zinc-700/50 rounded-lg animate-pulse" />
                     </div>
                 ) : (
-                    <>
-                        {/* Split Grid: Desirability (Left) | Reoccurrence (Right) */}
-                        <div className="grid grid-cols-2 gap-3">
-                            {/* LEFT: Desirability */}
-                            <div className={`p-3 rounded-lg border-2 ${desirabilityConfig.bgColor} ${desirabilityConfig.borderColor} space-y-2`}>
-                                <div className="flex items-center justify-between">
-                                    <TooltipProvider>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <div className="flex items-center gap-1 cursor-help">
-                                                    <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Desirability</span>
-                                                    <Info className="w-3 h-3 text-zinc-500" />
-                                                </div>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                <p className="text-xs">Measures how favorable the pattern is for trading</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    </TooltipProvider>
-                                    <desirabilityConfig.Icon className={`w-4 h-4 ${desirabilityConfig.color}`} />
-                                </div>
-                                <div className={`text-2xl font-bold ${desirabilityConfig.color}`}>
-                                    {score !== null ? `${Math.round(score * 100)}%` : 'N/A'}
-                                </div>
-                                <div
-                                    className={`px-2 py-1 rounded text-xs font-medium border ${desirabilityConfig.bgColor} ${desirabilityConfig.textColor} ${desirabilityConfig.borderColor}`}
-                                >
-                                    {desirabilityConfig.label}
-                                </div>
-                            </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        {/* LEFT: Desirability Card with Detailed Tooltip */}
+                        <TooltipProvider delayDuration={100}>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <div className={`p-4 rounded-lg border-2 ${desirabilityConfig.bgColor} ${desirabilityConfig.borderColor} space-y-3 cursor-help transition-all hover:scale-[1.02] hover:shadow-lg`}>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Desirability</span>
+                                            <desirabilityConfig.Icon className={`w-5 h-5 ${desirabilityConfig.color}`} />
+                                        </div>
+                                        <div className={`text-3xl font-bold ${desirabilityConfig.color}`}>
+                                            {score !== null ? `${Math.round(score * 100)}%` : 'N/A'}
+                                        </div>
+                                        <div className={`px-2 py-1 rounded text-xs font-medium border inline-block ${desirabilityConfig.bgColor} ${desirabilityConfig.textColor} ${desirabilityConfig.borderColor}`}>
+                                            {desirabilityConfig.label}
+                                        </div>
+                                        <p className="text-xs text-zinc-400 leading-snug">
+                                            {desirabilityConfig.description}
+                                        </p>
+                                    </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="w-72 p-0">
+                                    <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-4 space-y-3">
+                                        <h4 className="text-sm font-semibold text-zinc-200 border-b border-zinc-700 pb-2">
+                                            Desirability Details
+                                        </h4>
+                                        <div className="space-y-2 text-xs">
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Classification</span>
+                                                <span className={`font-medium ${desirabilityConfig.textColor}`}>{classification || 'N/A'}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Cluster ID</span>
+                                                <span className="text-zinc-200 font-medium">{data?.top_pattern?.cluster_id ?? 'N/A'}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Trend Strength</span>
+                                                <span className="text-zinc-200 font-medium">{formatValue(details?.trend_strength)}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Max Drawdown</span>
+                                                <span className="text-red-400 font-medium">{formatValue(details?.max_drawdown, 100, '%')}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Net Change</span>
+                                                <span className={`font-medium ${(details?.net_change ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                    {formatValue(details?.net_change, 100, '%')}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Time Above Open</span>
+                                                <span className="text-zinc-200 font-medium">{formatValue(details?.time_above_open_pct, 1, '%')}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Volatility</span>
+                                                <span className="text-zinc-200 font-medium">{formatValue(details?.pattern_volatility, 100, '%')}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Slope</span>
+                                                <span className="text-zinc-200 font-medium">{details?.slope?.toExponential(2) ?? 'N/A'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
 
-                            {/* RIGHT: Reoccurrence */}
-                            <div className={`p-3 rounded-lg border-2 ${reoccurrenceConfig.bgColor} ${reoccurrenceConfig.borderColor} space-y-2`}>
-                                <div className="flex items-center justify-between">
-                                    <TooltipProvider>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <div className="flex items-center gap-1 cursor-help">
-                                                    <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Reoccurrence</span>
-                                                    <Info className="w-3 h-3 text-zinc-500" />
-                                                </div>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                <p className="text-xs">Probability that this pattern will repeat in the future</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    </TooltipProvider>
-                                    <reoccurrenceConfig.Icon className={`w-4 h-4 ${reoccurrenceConfig.color}`} />
-                                </div>
-                                <div className={`text-2xl font-bold ${reoccurrenceConfig.color}`}>
-                                    {reoccurrenceProbability !== null ? `${(reoccurrenceProbability * 100).toFixed(1)}%` : 'N/A'}
-                                </div>
-                                <div
-                                    className={`px-2 py-1 rounded text-xs font-medium border ${reoccurrenceConfig.bgColor} ${reoccurrenceConfig.textColor} ${reoccurrenceConfig.borderColor}`}
-                                >
-                                    {reoccurrenceConfig.label}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Description Cards */}
-                        <div className="grid grid-cols-2 gap-2">
-                            <div className={`p-2 rounded-md border ${desirabilityConfig.bgColor} ${desirabilityConfig.borderColor}`}>
-                                <p className="text-xs text-zinc-300 leading-snug">
-                                    {desirabilityConfig.description}
-                                </p>
-                            </div>
-                            <div className={`p-2 rounded-md border ${reoccurrenceConfig.bgColor} ${reoccurrenceConfig.borderColor}`}>
-                                <p className="text-xs text-zinc-300 leading-snug">
-                                    {reoccurrenceConfig.description}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Detailed Metrics Grid */}
-                        {data?.details && (
-                            <div className="pt-3 border-t border-zinc-700">
-                                <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Technical Details</h4>
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                                    <MetricRow label="Trend Strength" value={data.details.trend_strength} tooltip="Overall strength of the trend (0-1)" />
-                                    <MetricRow label="Recovery" value={data.details.recovery_time_minutes} suffix="m" tooltip="Time to recover from dips" />
-                                    <MetricRow label="Drawdown" value={data.details.max_drawdown} suffix="%" tooltip="Maximum percentage drop" />
-                                    <MetricRow label="Slope" value={data.details.slope} tooltip="Normalized price slope" />
-                                </div>
-                            </div>
-                        )}
-                    </>
+                        {/* RIGHT: Reoccurrence Card with Detailed Tooltip */}
+                        <TooltipProvider delayDuration={100}>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <div className={`p-4 rounded-lg border-2 ${reoccurrenceConfig.bgColor} ${reoccurrenceConfig.borderColor} space-y-3 cursor-help transition-all hover:scale-[1.02] hover:shadow-lg`}>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Reoccurrence</span>
+                                            <reoccurrenceConfig.Icon className={`w-5 h-5 ${reoccurrenceConfig.color}`} />
+                                        </div>
+                                        <div className={`text-3xl font-bold ${reoccurrenceConfig.color}`}>
+                                            {reoccurrenceProbability !== null ? `${(reoccurrenceProbability * 100).toFixed(1)}%` : 'N/A'}
+                                        </div>
+                                        <div className={`px-2 py-1 rounded text-xs font-medium border inline-block ${reoccurrenceConfig.bgColor} ${reoccurrenceConfig.textColor} ${reoccurrenceConfig.borderColor}`}>
+                                            {reoccurrenceConfig.label}
+                                        </div>
+                                        <p className="text-xs text-zinc-400 leading-snug">
+                                            {reoccurrenceConfig.description}
+                                        </p>
+                                    </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="w-72 p-0">
+                                    <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-4 space-y-3">
+                                        <h4 className="text-sm font-semibold text-zinc-200 border-b border-zinc-700 pb-2">
+                                            Reoccurrence Details
+                                        </h4>
+                                        <div className="space-y-2 text-xs">
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Probability</span>
+                                                <span className={`font-medium ${reoccurrenceConfig.textColor}`}>
+                                                    {reoccurrenceProbability !== null ? `${(reoccurrenceProbability * 100).toFixed(2)}%` : 'N/A'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Prediction Date</span>
+                                                <span className="text-zinc-200 font-medium">{data?.prediction_date ?? 'N/A'}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Day of Week</span>
+                                                <span className="text-zinc-200 font-medium">{data?.day_of_week ?? 'N/A'}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Pattern Length</span>
+                                                <span className="text-zinc-200 font-medium">{details?.pattern_length ?? 'N/A'} min</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Recovery Time</span>
+                                                <span className="text-zinc-200 font-medium">
+                                                    {details?.recovery_time_minutes !== null && details?.recovery_time_minutes !== undefined 
+                                                        ? `${details.recovery_time_minutes} min` 
+                                                        : 'N/A'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-zinc-400">Total Clusters</span>
+                                                <span className="text-zinc-200 font-medium">{data?.all_patterns_count ?? 'N/A'}</span>
+                                            </div>
+                                        </div>
+                                        {data?.all_clusters && data.all_clusters.length > 1 && (
+                                            <div className="pt-2 border-t border-zinc-700">
+                                                <p className="text-xs text-zinc-500">
+                                                    Top {Math.min(3, data.all_clusters.length)} predicted clusters by probability
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    </div>
                 )}
             </CardContent>
         </Card>
-    );
-}
-
-function MetricRow({ label, value, suffix = '', tooltip }: { label: string, value: number | null | undefined, suffix?: string, tooltip: string }) {
-    if (value === null || value === undefined) return null;
-
-    const displayValue = typeof value === 'number'
-        ? (Math.abs(value) < 0.01 && value !== 0 ? value.toExponential(1) : value.toFixed(2))
-        : value;
-
-    return (
-        <div className="flex justify-between items-center group">
-            <TooltipProvider>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <div className="flex items-center gap-1 cursor-help">
-                            <span className="text-zinc-500">{label}</span>
-                            <Info className="w-3 h-3 text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                        <p>{tooltip}</p>
-                    </TooltipContent>
-                </Tooltip>
-            </TooltipProvider>
-            <span className="text-zinc-300 font-medium">
-                {displayValue}{suffix}
-            </span>
-        </div>
     );
 }

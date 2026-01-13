@@ -98,7 +98,12 @@ export const PredictionOverlay: React.FC<PredictionOverlayProps> = ({
                     ₹{latestPrediction.close.toFixed(2)}
                   </span>
                   <span className="text-xs text-blue-300/60">
-                    @ {new Date(latestPrediction.predictedat).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                    @ {(() => {
+                      const d = new Date(latestPrediction.predictedat);
+                      return isNaN(d.getTime())
+                        ? '--:--'
+                        : d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                    })()}
                   </span>
                 </div>
               </div>

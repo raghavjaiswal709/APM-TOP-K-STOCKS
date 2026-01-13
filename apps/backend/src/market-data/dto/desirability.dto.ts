@@ -41,12 +41,16 @@ export class DesirabilityResultDto {
 
 export interface ClusterDetailsDto {
     time_above_open_pct: number;
-    slope: number;
-    final_position: number;
     max_drawdown: number;
-    recovery_time_minutes: number | null;
-    trend_strength: number;
-    pattern_length: number;
+    final_gain_pct: number;
+    recovery_ratio: number;
+    momentum_score: number;
+    // Legacy fields (may still be returned by some endpoints)
+    slope?: number;
+    final_position?: number;
+    recovery_time_minutes?: number | null;
+    trend_strength?: number;
+    pattern_length?: number;
 }
 
 export interface ClusterMetricsDto {
@@ -59,13 +63,35 @@ export interface ClusterMetricsDto {
     details?: ClusterDetailsDto;
 }
 
+export interface RankedClusterDto {
+    cluster_id: number;
+    score: number;
+}
+
 export interface AnalyzeResponseDto {
     symbol: string;
     method: string;
     n_clusters_analyzed: number;
-    desirable_clusters: number[];
-    scores: Record<string, number>;
     clusters: Record<string, ClusterMetricsDto>;
+    ranked_clusters: RankedClusterDto[];
+    // Legacy fields (backward compatibility)
+    desirable_clusters?: number[];
+    scores?: Record<string, number>;
+}
+
+// Request body for POST /desirability/analyze/all
+export interface AnalyzeAllRequestDto {
+    symbol: string;
+    method?: string;
+    exchange?: string;
+}
+
+// Request body for POST /desirability/analyze/cluster
+export interface AnalyzeClusterRequestDto {
+    symbol: string;
+    cluster_id: number;
+    method?: string;
+    exchange?: string;
 }
 
 export interface FilterRequestDto {

@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Body, Param, Query, HttpException, HttpStatus } from '@nestjs/common';
 import { DesirabilityService } from './services/desirability.service';
+import { AnalyzeAllRequestDto, AnalyzeClusterRequestDto } from './dto/desirability.dto';
 
 @Controller('desirability')
 export class DesirabilityController {
@@ -55,7 +56,44 @@ export class DesirabilityController {
     }
 
     /**
-     * POST /desirability/analyze/:symbol
+     * POST /desirability/analyze/all - NEW PDF SPEC
+     * Analyzes desirability scores for all clusters of a symbol
+     * Symbol is passed in request body (not path)
+     */
+    @Post('analyze/all')
+    async analyzeAll(
+        @Body() body: AnalyzeAllRequestDto,
+    ) {
+        try {
+            return await this.desirabilityService.analyzeAll(body);
+        } catch (error) {
+            throw new HttpException(
+                error.message || 'Failed to analyze all clusters',
+                error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    /**
+     * POST /desirability/analyze/cluster - NEW PDF SPEC
+     * Analyzes desirability for a specific cluster
+     */
+    @Post('analyze/cluster')
+    async analyzeCluster(
+        @Body() body: AnalyzeClusterRequestDto,
+    ) {
+        try {
+            return await this.desirabilityService.analyzeCluster(body);
+        } catch (error) {
+            throw new HttpException(
+                error.message || 'Failed to analyze cluster',
+                error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    /**
+     * POST /desirability/analyze/:symbol - LEGACY (kept for backward compatibility)
      */
     @Post('analyze/:symbol')
     async analyzeAllClusters(

@@ -235,6 +235,104 @@ export_env_for_instance() {
     fi
 }
 
+# REPAIR FUNCTION
+check_and_repair_instances() {
+    local repaired=0
+    
+    # Iterate through all directories matching instance*
+    for dir in "$MULTI_INSTANCES_DIR"/instance*; do
+        if [ -d "$dir" ]; then
+            local instance_name=$(basename "$dir")
+            
+            # Check if .env is missing
+            if [ ! -f "$dir/.env" ]; then
+                # It's a valid instance dir but missing .env - REPAIR IT
+                local num=$(echo "$instance_name" | sed 's/instance//')
+                
+                # Verify it's a number
+                if [[ "$num" =~ ^[0-9]+$ ]]; then
+                    echo -e "  ${YELLOW}⚠ Detected broken instance: $instance_name (missing .env)${NC}"
+                    print_loading "Reparing configuration for $instance_name..."
+                    
+                    # Calculate default ports (Updated Scheme: 3000 + instance_num)
+                    local frontend_port=$((3000 + num))
+                    local backend_port=$((5002 + (num - 1) * 100))
+                    local base_fyers_5001=$((8001 + (num - 1) * 100))
+                    local base_fyers_5010=$((8010 + (num - 1) * 100))
+                    local postgres_port=$((5432 + (num - 1) * 10))
+                    local redis_port=$((6379 + (num - 1) * 10))
+                    
+                    # Create .env file
+                    cat > "$dir/.env" << EOF
+# ═══════════════════════════════════════════════════════════════════════════
+# DAKS TOP-K STOCKS - Instance $num Configuration
+# Auto-Repaired: $(date)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Instance Identification
+INSTANCE_ID=$instance_name
+INSTANCE_NAME="DAKS Instance $num"
+INSTANCE_REGION=local
+
+# Port Configuration
+FRONTEND_PORT=$frontend_port
+BACKEND_PORT=$backend_port
+FYERS_5001_PORT=$base_fyers_5001
+FYERS_5010_PORT=$base_fyers_5010
+POSTGRES_PORT=$postgres_port
+REDIS_PORT=$redis_port
+
+# Database Configuration
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=daks_secure_password_2025
+POSTGRES_DB=daks_stocks_$instance_name
+DATABASE_URL=postgresql://postgres:daks_secure_password_2025@db:5432/daks_stocks_$instance_name
+
+# Redis Configuration
+REDIS_URL=redis://redis:6379
+REDIS_PASSWORD=
+
+# Fyers API Configuration
+FYERS_CLIENT_ID=YOUR_FYERS_CLIENT_ID_HERE
+FYERS_SECRET_ID=YOUR_FYERS_SECRET_ID_HERE
+FYERS_REDIRECT_URI=http://localhost:$frontend_port/auth/callback
+FYERS_ACCESS_TOKEN=YOUR_FYERS_ACCESS_TOKEN_HERE
+
+# Environment Configuration
+NODE_ENV=development
+PYTHONUNBUFFERED=1
+PYTHONDONTWRITEBYTECODE=1
+TZ=Asia/Kolkata
+
+# Service URLs
+NEXT_PUBLIC_API_URL=http://localhost:$backend_port
+BACKEND_URL=http://backend:$backend_port
+FYERS_SERVICE_5001_URL=http://localhost:$base_fyers_5001
+FYERS_SERVICE_5010_URL=http://localhost:$base_fyers_5010
+
+# Logging
+LOG_LEVEL=debug
+LOG_DIR=/app/logs
+
+# Performance
+MAX_CONNECTIONS=100
+REDIS_MAX_MEMORY=512mb
+WORKER_THREADS=4
+EOF
+                    print_success "Repaired $instance_name successfully"
+                    ((repaired++))
+                fi
+            fi
+        fi
+    done
+    
+    if [ $repaired -gt 0 ]; then
+        echo ""
+        print_success "Repaired $repaired instance(s). Press Enter to continue..."
+        read -r
+    fi
+}
+
 # INSTANCE DISCOVERY
 
 # Get all available instance directories
@@ -1168,7 +1266,8 @@ menu_create_instance() {
     echo ""
     
     # Calculate default ports based on instance number
-    local base_frontend=$((3000 + (new_num - 1) * 100))
+    # Frontend: 3000 + instance_num (e.g., 3001, 3002, 3003)
+    local base_frontend=$((3000 + new_num))
     local base_backend=$((5002 + (new_num - 1) * 100))
     local base_fyers_5001=$((8001 + (new_num - 1) * 100))
     local base_fyers_5010=$((8010 + (new_num - 1) * 100))
@@ -1333,6 +1432,8 @@ menu_delete_instance() {
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAIN MENU
 # ═══════════════════════════════════════════════════════════════════════════════
+
+check_and_repair_instances
 
 show_main_menu() {
     print_banner
