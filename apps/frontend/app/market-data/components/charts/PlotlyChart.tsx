@@ -266,6 +266,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   const buySellSpreadChartRef = useRef<any>(null);
   const volumeChartRef = useRef<any>(null);
 
+  const isRelayoutInProgress = useRef(false);
+  const relayoutTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isProgrammaticChange = useRef(false); 
+
   const [initialized, setInitialized] = useState(false);
   // ✅ DEFAULT: Show 1 hour view
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1H');
@@ -1609,8 +1613,23 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     return [startTime, endTime];
   };
 
-  const handleTimeframeChange = (timeframe: string) => {
+  const handleTimeframeChange = useCallback((timeframe: string) => {
     console.log(`🔄 [handleTimeframeChange] Changing timeframe to: ${timeframe}`);
+
+    if (isRelayoutInProgress.current) {
+      console.log('⏳ [handleTimeframeChange] Skipping - relayout in progress');
+      return;
+    }
+
+    // Clear any pending timeout
+    if (relayoutTimeoutRef.current) {
+      clearTimeout(relayoutTimeoutRef.current);
+      relayoutTimeoutRef.current = null;
+    }
+
+    // Mark that we're doing a programmatic change (not user zoom/pan)
+    isProgrammaticChange.current = true;
+    isRelayoutInProgress.current = true;
 
     // ✅ Reset user interaction tracking on manual timeframe change
     setUserHasInteracted(false);
@@ -1618,104 +1637,127 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     setPreservedAxisRanges({});
 
     // ✅ CRITICAL FIX: Calculate time range BEFORE updating state
-    // This ensures we use the NEW timeframe for calculation
     const newTimeRange = calculateTimeRangeForTimeframe(timeframe);
 
-    // Now update the state
+    // Update the state
     setSelectedTimeframe(timeframe);
 
-    if (!chartRef.current || !newTimeRange) return;
-    const plotDiv = document.getElementById('plotly-chart');
-    if (!plotDiv) return;
-
-    try {
-      // Use the pre-calculated time range (already in correct order)
-      const newYRange = calculateYAxisRange(newTimeRange);
-
-      if (typeof Plotly !== 'undefined' && Plotly.relayout) {
-        Plotly.relayout(plotDiv, {
-          'xaxis.range': newTimeRange,
-          'xaxis.autorange': false,
-          'yaxis.range': newYRange,
-          'yaxis.autorange': newYRange ? false : true
-        });
+    // ✅ Use requestAnimationFrame for smoother rendering
+    requestAnimationFrame(() => {
+      if (!chartRef.current || !newTimeRange) {
+        isRelayoutInProgress.current = false;
+        isProgrammaticChange.current = false;
+        return;
       }
 
-      const spreadDiv = document.getElementById('spread-chart');
-      if (spreadDiv && mainMode === 'bidAsk' && secondaryView === 'spread' && typeof Plotly !== 'undefined') {
-        Plotly.relayout(spreadDiv, {
-          'xaxis.range': newTimeRange,
-          'xaxis.autorange': false,
-          'yaxis.range': calculateSpreadRange(),
-          'yaxis.autorange': false
-        });
-      }
+      try {
+        const newYRange = calculateYAxisRange(newTimeRange);
 
-      const bidAskDiv = document.getElementById('bid-ask-chart');
-      if (bidAskDiv && mainMode === 'bidAsk' && secondaryView === 'line' && typeof Plotly !== 'undefined') {
-        Plotly.relayout(bidAskDiv, {
-          'xaxis.range': newTimeRange,
-          'xaxis.autorange': false,
-          'yaxis.range': calculateBidAskRange(),
-          'yaxis.autorange': false
-        });
-      }
+        // ✅ Batch all relayouts together using Promises
+        const relayoutPromises: Promise<any>[] = [];
 
-      const volumeDiv = document.getElementById('volume-chart');
-      if (volumeDiv && showIndicators.volume && typeof Plotly !== 'undefined') {
-        Plotly.relayout(volumeDiv, {
-          'xaxis.range': newTimeRange,
-          'xaxis.autorange': false,
-          'yaxis.range': calculateVolumeRange(),
-          'yaxis.autorange': false
-        });
-      }
-
-      const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
-      if (buySellVolumeDiv && mainMode !== 'none' && secondaryView === 'std' && typeof Plotly !== 'undefined') {
-        Plotly.relayout(buySellVolumeDiv, {
-          'xaxis.range': newTimeRange,
-          'xaxis.autorange': false,
-          'yaxis.range': calculateBuySellVolumeRange(),
-          'yaxis.autorange': false
-        });
-      }
-
-      const buySellLineDiv = document.getElementById('buy-sell-line-chart');
-      if (buySellLineDiv && mainMode === 'buySell' && secondaryView === 'line' && typeof Plotly !== 'undefined') {
-        Plotly.relayout(buySellLineDiv, {
-          'xaxis.range': newTimeRange,
-          'xaxis.autorange': false,
-          'yaxis.range': calculateBuySellRange(),
-          'yaxis.autorange': false
-        });
-      }
-
-      const buySellSpreadDiv = document.getElementById('buy-sell-spread-chart');
-      if (buySellSpreadDiv && mainMode === 'buySell' && secondaryView === 'spread' && typeof Plotly !== 'undefined') {
-        Plotly.relayout(buySellSpreadDiv, {
-          'xaxis.range': newTimeRange,
-          'xaxis.autorange': false,
-          'yaxis.range': calculateBuySellSpreadRange(),
-          'yaxis.autorange': false
-        });
-      }
-    } catch (err) {
-      console.error('Error updating timeframe:', err);
-      setTimeout(() => {
-        try {
-          if (chartRef.current) {
-            const plotDiv = document.getElementById('plotly-chart');
-            if (plotDiv && typeof Plotly !== 'undefined') {
-              Plotly.react(plotDiv, createPlotData(), createLayout());
-            }
-          }
-        } catch (fallbackErr) {
-          console.error('Fallback chart update failed:', fallbackErr);
+        const plotDiv = document.getElementById('plotly-chart');
+        if (plotDiv && typeof Plotly !== 'undefined' && Plotly.relayout) {
+          relayoutPromises.push(
+            Plotly.relayout(plotDiv, {
+              'xaxis.range': newTimeRange,
+              'xaxis.autorange': false,
+              'yaxis.range': newYRange,
+              'yaxis.autorange': newYRange ? false : true
+            })
+          );
         }
-      }, 100);
-    }
-  };
+
+        const spreadDiv = document.getElementById('spread-chart');
+        if (spreadDiv && mainMode === 'bidAsk' && secondaryView === 'spread' && typeof Plotly !== 'undefined') {
+          relayoutPromises.push(
+            Plotly.relayout(spreadDiv, {
+              'xaxis.range': newTimeRange,
+              'xaxis.autorange': false,
+              'yaxis.range': calculateSpreadRange(),
+              'yaxis.autorange': false
+            })
+          );
+        }
+
+        const bidAskDiv = document.getElementById('bid-ask-chart');
+        if (bidAskDiv && mainMode === 'bidAsk' && secondaryView === 'line' && typeof Plotly !== 'undefined') {
+          relayoutPromises.push(
+            Plotly.relayout(bidAskDiv, {
+              'xaxis.range': newTimeRange,
+              'xaxis.autorange': false,
+              'yaxis.range': calculateBidAskRange(),
+              'yaxis.autorange': false
+            })
+          );
+        }
+
+        const volumeDiv = document.getElementById('volume-chart');
+        if (volumeDiv && showIndicators.volume && typeof Plotly !== 'undefined') {
+          relayoutPromises.push(
+            Plotly.relayout(volumeDiv, {
+              'xaxis.range': newTimeRange,
+              'xaxis.autorange': false,
+              'yaxis.range': calculateVolumeRange(),
+              'yaxis.autorange': false
+            })
+          );
+        }
+
+        const buySellVolumeDiv = document.getElementById('buy-sell-volume-chart');
+        if (buySellVolumeDiv && mainMode !== 'none' && secondaryView === 'std' && typeof Plotly !== 'undefined') {
+          relayoutPromises.push(
+            Plotly.relayout(buySellVolumeDiv, {
+              'xaxis.range': newTimeRange,
+              'xaxis.autorange': false,
+              'yaxis.range': calculateBuySellVolumeRange(),
+              'yaxis.autorange': false
+            })
+          );
+        }
+
+        const buySellLineDiv = document.getElementById('buy-sell-line-chart');
+        if (buySellLineDiv && mainMode === 'buySell' && secondaryView === 'line' && typeof Plotly !== 'undefined') {
+          relayoutPromises.push(
+            Plotly.relayout(buySellLineDiv, {
+              'xaxis.range': newTimeRange,
+              'xaxis.autorange': false,
+              'yaxis.range': calculateBuySellRange(),
+              'yaxis.autorange': false
+            })
+          );
+        }
+
+        const buySellSpreadDiv = document.getElementById('buy-sell-spread-chart');
+        if (buySellSpreadDiv && mainMode === 'buySell' && secondaryView === 'spread' && typeof Plotly !== 'undefined') {
+          relayoutPromises.push(
+            Plotly.relayout(buySellSpreadDiv, {
+              'xaxis.range': newTimeRange,
+              'xaxis.autorange': false,
+              'yaxis.range': calculateBuySellSpreadRange(),
+              'yaxis.autorange': false
+            })
+          );
+        }
+
+        // ✅ Wait for all relayouts to complete, then release the lock
+        Promise.all(relayoutPromises)
+          .catch(err => console.error('Relayout error:', err))
+          .finally(() => {
+            // Release lock after a short delay to prevent immediate re-triggers
+            relayoutTimeoutRef.current = setTimeout(() => {
+              isRelayoutInProgress.current = false;
+              isProgrammaticChange.current = false;
+            }, 100);
+          });
+
+      } catch (err) {
+        console.error('Error updating timeframe:', err);
+        isRelayoutInProgress.current = false;
+        isProgrammaticChange.current = false;
+      }
+    });
+  }, [mainMode, secondaryView, showIndicators.volume, calculateTimeRangeForTimeframe, calculateYAxisRange, calculateSpreadRange, calculateBidAskRange, calculateVolumeRange, calculateBuySellVolumeRange, calculateBuySellRange, calculateBuySellSpreadRange]);
 
   const toggleChartType = () => {
     const plotDiv = document.getElementById('plotly-chart');
@@ -1744,8 +1786,14 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
   // ✅ ENHANCED: Capture user interactions and preserve state + emit to parent
   const handleRelayout = useCallback((eventData: any) => {
+    // ✅ STABILITY FIX: Skip processing if a programmatic change is in progress
+    // This prevents conflicts when handleTimeframeChange is updating the chart
+    if (isProgrammaticChange.current) {
+      console.log('⏳ [handleRelayout] Skipping - programmatic change in progress');
+      return;
+    }
+
     // ✅ FIX: Detect reset/autosize events (double-click to reset or button clicks)
-    // When user double-clicks to reset or clicks autoscale/reset button, Plotly fires autorange: true
     const isResetEvent =
       eventData['xaxis.autorange'] === true ||
       eventData['yaxis.autorange'] === true ||
@@ -1759,12 +1807,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       setPreservedRange({});
       setPreservedAxisRanges({});
 
-      // ✅ CRITICAL FIX: Actively calculate and set the correct time range after reset
-      // This prevents Plotly's autorange from potentially reversing the axis
-      setTimeout(() => {
+      // ✅ STABILITY FIX: Use requestAnimationFrame instead of setTimeout for better timing
+      requestAnimationFrame(() => {
         const plotDiv = document.getElementById('plotly-chart');
         if (plotDiv && typeof Plotly !== 'undefined') {
-          // Calculate the correct time range using getTimeRange
           const timeRange = getTimeRange();
           if (timeRange) {
             const [start, end] = ensureTimeRangeOrder(timeRange);
@@ -1779,7 +1825,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             });
           }
         }
-      }, 50); // Small delay to let Plotly complete its internal reset first
+      });
 
       return; // Exit early - we've handled the reset
     }
