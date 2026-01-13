@@ -22,7 +22,7 @@ services:
       - BACKEND_URL=http://backend:5002
       - NODE_ENV=development
     env_file:
-      - .env
+      - ${DAKS_ENV_TARGET:-.env}
     volumes:
       - ../../apps/frontend:/app
       - frontend-node-modules:/app/node_modules
@@ -63,7 +63,7 @@ services:
       - FYERS_ACCESS_TOKEN=${FYERS_ACCESS_TOKEN}
       - FYERS_REDIRECT_URI=${FYERS_REDIRECT_URI}
     env_file:
-      - .env
+      - ${DAKS_ENV_TARGET:-.env}
     volumes:
       - ./data:/app/data
     depends_on:
@@ -154,7 +154,7 @@ services:
       - FYERS_ACCESS_TOKEN=${FYERS_ACCESS_TOKEN}
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     env_file:
-      - .env
+      - ${DAKS_ENV_TARGET:-.env}
     volumes:
       - ./data:/app/data
     depends_on:
@@ -186,7 +186,7 @@ services:
       - FYERS_ACCESS_TOKEN=${FYERS_ACCESS_TOKEN}
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     env_file:
-      - .env
+      - ${DAKS_ENV_TARGET:-.env}
     volumes:
       - ./data:/app/data
     depends_on:

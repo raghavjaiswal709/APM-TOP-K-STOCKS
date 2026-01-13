@@ -83,22 +83,35 @@ for INSTANCE in "${INSTANCES[@]}"; do
         fi
     done
     
-    # Update .env with Fyers credentials if backend .env exists
+    # ✅ SMART ENV UPDATE: Update Fyers credentials only
+    # Preserves instance-specific config (PORTS, INSTANCE_ID)
     if [ -f "$BACKEND_ENV" ] && [ -f "$INSTANCE/.env" ]; then
+        # Read credentials from backend
         FYERS_CLIENT_ID=$(grep "^FYERS_CLIENT_ID=" "$BACKEND_ENV" 2>/dev/null | cut -d'=' -f2 || echo "")
         FYERS_SECRET_ID=$(grep "^FYERS_SECRET_ID=" "$BACKEND_ENV" 2>/dev/null | cut -d'=' -f2 || echo "")
         FYERS_REDIRECT_URI=$(grep "^FYERS_REDIRECT_URI=" "$BACKEND_ENV" 2>/dev/null | cut -d'=' -f2 || echo "")
         FYERS_ACCESS_TOKEN=$(grep "^FYERS_ACCESS_TOKEN=" "$BACKEND_ENV" 2>/dev/null | cut -d'=' -f2 || echo "")
         
+        # Backup before SED
+        cp -f "$INSTANCE/.env" "$INSTANCE/.env.bak"
+        
+        UPDATED=0
         if [ -n "$FYERS_CLIENT_ID" ]; then
-            sed -i.bak "s|^FYERS_CLIENT_ID=.*|FYERS_CLIENT_ID=$FYERS_CLIENT_ID|" "$INSTANCE/.env"
-            sed -i.bak "s|^FYERS_SECRET_ID=.*|FYERS_SECRET_ID=$FYERS_SECRET_ID|" "$INSTANCE/.env"
-            sed -i.bak "s|^FYERS_REDIRECT_URI=.*|FYERS_REDIRECT_URI=$FYERS_REDIRECT_URI|" "$INSTANCE/.env"
-            sed -i.bak "s|^FYERS_ACCESS_TOKEN=.*|FYERS_ACCESS_TOKEN=$FYERS_ACCESS_TOKEN|" "$INSTANCE/.env"
-            rm -f "$INSTANCE/.env.bak"
+            # Use strict regex to replace only the values
+            # Escape special characters if needed (assuming standard alphanumeric tokens)
+            sed -i.tmp "s|^FYERS_CLIENT_ID=.*|FYERS_CLIENT_ID=$FYERS_CLIENT_ID|" "$INSTANCE/.env" && rm "$INSTANCE/.env.tmp"
+            sed -i.tmp "s|^FYERS_SECRET_ID=.*|FYERS_SECRET_ID=$FYERS_SECRET_ID|" "$INSTANCE/.env" && rm "$INSTANCE/.env.tmp"
+            # URI might have slashes, use alternate delimiter |
+            sed -i.tmp "s|^FYERS_REDIRECT_URI=.*|FYERS_REDIRECT_URI=$FYERS_REDIRECT_URI|" "$INSTANCE/.env" && rm "$INSTANCE/.env.tmp"
+            sed -i.tmp "s|^FYERS_ACCESS_TOKEN=.*|FYERS_ACCESS_TOKEN=$FYERS_ACCESS_TOKEN|" "$INSTANCE/.env" && rm "$INSTANCE/.env.tmp"
+            
+            UPDATED=1
+        fi
+        
+        if [ $UPDATED -eq 1 ]; then
             echo "   ✅ Copied $COPIED files, updated Fyers credentials"
         else
-            echo "   ✅ Copied $COPIED files (no Fyers credentials in source .env)"
+            echo "   ✅ Copied $COPIED files (no credentials found or update skipped)"
         fi
     else
         echo "   ✅ Copied $COPIED files"

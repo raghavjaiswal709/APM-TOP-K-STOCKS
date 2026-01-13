@@ -160,6 +160,81 @@ spinner() {
     printf "    \b\b\b\b"
 }
 
+# ENVIRONMENT MODE SELECTION
+# This determines whether to use default (apps/backend/.env) or instance-specific .env
+
+# Global variable to track selected environment mode
+# Values: "default" or "instance"
+ENV_MODE="default"
+
+# Prompt user to select environment mode
+select_env_mode() {
+    echo ""
+    echo -e "  ${BOLD}${WHITE}📁 Select Environment Mode:${NC}"
+    echo ""
+    echo -e "     ${YELLOW}1)${NC} ${GREEN}Default${NC}  - Use ${DIM}apps/backend/.env${NC} ${CYAN}(recommended for single instance)${NC}"
+    echo -e "     ${YELLOW}2)${NC} ${MAGENTA}Instance${NC} - Use ${DIM}multi-instances/instanceX/.env${NC} ${CYAN}(for multi-instance)${NC}"
+    echo ""
+    echo -n "  Select mode (1/2) [default: 1]: "
+    read -r env_choice
+    
+    case "$env_choice" in
+        2)
+            ENV_MODE="instance"
+            echo ""
+            echo -e "  ${MAGENTA}✓${NC} Using ${BOLD}Instance-Specific${NC} environment files"
+            ;;
+        *)
+            ENV_MODE="default"
+            echo ""
+            echo -e "  ${GREEN}✓${NC} Using ${BOLD}Default${NC} environment (apps/backend/.env)"
+            ;;
+    esac
+    echo ""
+}
+
+# Get the environment file path based on mode
+get_env_file_path() {
+    local instance=$1
+    
+    if [ "$ENV_MODE" = "instance" ]; then
+        echo "$MULTI_INSTANCES_DIR/$instance/.env"
+    else
+        echo "$PROJECT_DIR/apps/backend/.env"
+    fi
+}
+
+# Export environment for Python services
+export_env_for_instance() {
+    local instance=$1
+    local instance_env="$MULTI_INSTANCES_DIR/$instance/.env"
+    
+    # ALWAYS use instance .env as base (contains INSTANCE_ID, PORTS, DB_CONFIG)
+    if [ -f "$instance_env" ]; then
+        export DAKS_ENV_FILE="$instance_env"
+        export DAKS_ENV_TARGET="$instance_env"
+        export DAKS_DATA_DIR="$MULTI_INSTANCES_DIR/$instance/data"
+    fi
+
+    # Default Mode: Override API Credentials from backend .env
+    # This keeps Instance Infrastructure (IDs/Ports) but uses Shared Credentials
+    if [ "$ENV_MODE" = "default" ]; then
+        local backend_env="$PROJECT_DIR/apps/backend/.env"
+        if [ -f "$backend_env" ]; then
+             export FYERS_CLIENT_ID=$(grep "^FYERS_CLIENT_ID=" "$backend_env" | cut -d'=' -f2)
+             export FYERS_SECRET_ID=$(grep "^FYERS_SECRET_ID=" "$backend_env" | cut -d'=' -f2)
+             export FYERS_REDIRECT_URI=$(grep "^FYERS_REDIRECT_URI=" "$backend_env" | cut -d'=' -f2)
+             export FYERS_ACCESS_TOKEN=$(grep "^FYERS_ACCESS_TOKEN=" "$backend_env" | cut -d'=' -f2)
+        fi
+    else
+        # Instance Mode: Clear overrides so values come from instance .env
+        unset FYERS_CLIENT_ID
+        unset FYERS_SECRET_ID
+        unset FYERS_REDIRECT_URI
+        unset FYERS_ACCESS_TOKEN
+    fi
+}
+
 # INSTANCE DISCOVERY
 
 # Get all available instance directories
@@ -338,13 +413,22 @@ start_single_instance() {
     
     [ "$silent" = false ] && print_loading "Starting Instance $num..."
     
+    # ✅ MULTI-INSTANCE SUPPORT: Export environment based on selected mode
+    export_env_for_instance "$instance"
+    local env_file=$(get_env_file_path "$instance")
+    [ "$silent" = false ] && echo -e "     ${DIM}Using env: $env_file${NC}"
+    
     # Use pushd/popd to preserve current directory
     pushd "$instance_dir" > /dev/null 2>&1 || return 1
     
-    # Capture error output for better debugging
-    local error_output
-    error_output=$(docker compose -f docker-compose.standalone.yml up -d 2>&1)
-    local exit_code=$?
+    # Capture output to temp file for reliable error display
+    local log_file="/tmp/daks_instance_${instance}_start.log"
+    
+    if docker compose -f docker-compose.standalone.yml up -d > "$log_file" 2>&1; then
+        local exit_code=0
+    else
+        local exit_code=1
+    fi
     
     # Get port info before popd
     local frontend_port=""
@@ -358,6 +442,7 @@ start_single_instance() {
     
     if [ $exit_code -eq 0 ]; then
         [ "$silent" = false ] && print_success "Instance $num started successfully"
+        rm -f "$log_file"
         
         if [ "$silent" = false ] && [ -n "$frontend_port" ]; then
             echo -e "     ${DIM}Frontend: http://localhost:$frontend_port${NC}"
@@ -366,9 +451,13 @@ start_single_instance() {
         return 0
     else
         [ "$silent" = false ] && print_error "Failed to start Instance $num"
-        if [ "$silent" = false ] && [ -n "$error_output" ]; then
-            echo -e "     ${DIM}Error: $(echo "$error_output" | head -3)${NC}"
+        if [ "$silent" = false ]; then
+            echo -e "     ${DIM}Error details:${NC}"
+            echo -e "${RED}----------------------------------------${NC}"
+            cat "$log_file"
+            echo -e "${RED}----------------------------------------${NC}"
         fi
+        rm -f "$log_file"
         return 1
     fi
 }
@@ -458,6 +547,9 @@ start_all_instances() {
         print_warning "No instances found"
         return
     fi
+    
+    # ✅ MULTI-INSTANCE SUPPORT: Select environment mode
+    select_env_mode
     
     local started=0
     local skipped=0
@@ -694,6 +786,9 @@ menu_start_instance() {
         sleep 2
         return
     fi
+    
+    # ✅ MULTI-INSTANCE SUPPORT: Select environment mode
+    select_env_mode
     
     echo ""
     echo -e "${CYAN}  Starting: $instance${NC}" >&2

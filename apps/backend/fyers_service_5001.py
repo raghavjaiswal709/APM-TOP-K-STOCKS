@@ -33,7 +33,12 @@ sio = socketio.Server(cors_allowed_origins='*', async_mode='eventlet')
 app = socketio.WSGIApp(sio)
 
 from dotenv import load_dotenv
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+# ✅ MULTI-INSTANCE SUPPORT: Check DAKS_ENV_FILE for custom env path
+# Default: uses apps/backend/.env (unchanged behavior)
+# Instance mode: set DAKS_ENV_FILE=/path/to/instance/.env
+_default_env = os.path.join(os.path.dirname(__file__), ".env")
+_env_file = os.environ.get('DAKS_ENV_FILE', _default_env)
+load_dotenv(dotenv_path=_env_file)
 client_id = os.getenv("FYERS_CLIENT_ID")
 secret_key = os.getenv("FYERS_SECRET_ID")
 redirect_uri = os.getenv("FYERS_REDIRECT_URI")
