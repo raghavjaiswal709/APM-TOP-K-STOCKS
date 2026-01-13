@@ -1094,14 +1094,27 @@ def onmessage(message):
     # Always add symbol to active symbols when we receive data
     active_symbols.add(symbol)
 
+    # ✅ CRITICAL FIX: Calculate change from TODAY'S OPENING price, not previous close
+    ltp = message.get('ltp', 0)
+    open_price = message.get('open_price', 0)
+    
+    # Calculate change from today's opening
+    if open_price and open_price > 0:
+        change_from_open = ltp - open_price
+        change_percent_from_open = (change_from_open / open_price) * 100
+    else:
+        # Fallback to Fyers ch/chp if open_price not available
+        change_from_open = message.get('ch', 0)
+        change_percent_from_open = message.get('chp', 0)
+
     # Create optimized data structure
     simplified_data = {
         'symbol': symbol,
-        'ltp': message.get('ltp'),
-        'change': message.get('ch'),
-        'changePercent': message.get('chp'),
+        'ltp': ltp,
+        'change': change_from_open,  # ✅ Now from today's opening
+        'changePercent': change_percent_from_open,  # ✅ Now from today's opening
         'volume': message.get('vol_traded_today'),
-        'open': message.get('open_price'),
+        'open': open_price,
         'high': message.get('high_price'),
         'low': message.get('low_price'),
         'close': message.get('prev_close_price'),

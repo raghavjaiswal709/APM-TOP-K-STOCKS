@@ -624,8 +624,8 @@ const ChartTabs: React.FC<ChartTabsProps> = ({
     { key: 'intraday' as const, label: 'Intraday', count: intradayCount, showCount: true, disabled: false },
     { key: 'interday' as const, label: 'Interday', count: interdayCount, showCount: true, disabled: false },
     { key: 'LSTMAE' as const, label: 'LSTMAE', count: lstmaeCount, showCount: false, disabled: false },
-    { key: 'SiPR' as const, label: 'SiPR', count: siprCount, showCount: false, disabled: false },
-    { key: 'MSAX' as const, label: 'MSAX', count: msaxCount, showCount: false, disabled: false }
+    // { key: 'SiPR' as const, label: 'SiPR', count: siprCount, showCount: false, disabled: false },
+    // { key: 'MSAX' as const, label: 'MSAX', count: msaxCount, showCount: false, disabled: false }
   ];
 
   return (

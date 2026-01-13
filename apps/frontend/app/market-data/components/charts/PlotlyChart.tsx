@@ -102,6 +102,30 @@ const isToday = (date: Date): boolean => {
 };
 
 /**
+ * ✅ CRITICAL FIX: Ensure time range is always in correct order (start < end)
+ * This prevents the x-axis from being reversed (older times should be on the left)
+ */
+const ensureTimeRangeOrder = <T extends Date | string | number>(range: [T, T] | undefined): [T, T] | undefined => {
+  if (!range || range.length !== 2) return range;
+
+  const [first, second] = range;
+  const firstTime = first instanceof Date ? first.getTime() : new Date(first).getTime();
+  const secondTime = second instanceof Date ? second.getTime() : new Date(second).getTime();
+
+  // If first time is later than second time, swap them
+  if (firstTime > secondTime) {
+    console.warn('⚠️ [TIME RANGE FIX] Detected reversed time range, correcting order:', {
+      before: [first, second],
+      firstTime: new Date(firstTime).toLocaleTimeString(),
+      secondTime: new Date(secondTime).toLocaleTimeString()
+    });
+    return [second, first];
+  }
+
+  return range;
+};
+
+/**
  * Filter to today's predictions only
  */
 const filterTodayPredictions = <T extends { timestamp?: string; close?: number }>(predictionEntries: [string, T][]
@@ -273,7 +297,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       if (gttTimeoutRef.current) clearTimeout(gttTimeoutRef.current);
     };
   }, []);
-  
+
   // ✅ Refs to track logged warnings (prevent duplicate logs on re-renders)
   const lastRegularPredictionWarning = useRef<string>('');
   const lastGttPredictionWarning = useRef<string>('');
@@ -561,10 +585,16 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     // });
 
     // ✅ CRITICAL FIX: First, add ALL OHLC data (this is the most reliable source with full day data)
+    // OHLC data from Fyers historical API has CORRECT per-candle volume (not cumulative)
     // Convert OHLC candles to LTP points using the close price
+    const ohlcVolumeMap = new Map<number, number>(); // Store original OHLC volumes separately
+
     if (ohlcData && ohlcData.length > 0) {
       ohlcData.forEach(candle => {
         if (candle.close > 0 && !isNaN(candle.close) && candle.timestamp > 0) {
+          // Store the original OHLC per-candle volume
+          ohlcVolumeMap.set(candle.timestamp, candle.volume || 0);
+
           // Use OHLC close price as LTP for the line chart
           const dataPoint: DataPoint = {
             symbol: symbol,
@@ -574,24 +604,26 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             high: candle.high,
             low: candle.low,
             close: candle.close,
-            volume: candle.volume
+            volume: candle.volume // This is per-candle volume from Fyers
           };
           dataMap.set(candle.timestamp, dataPoint);
         }
       });
-      // console.log(`📊 [prepareLineChartData] Added ${ohlcData.length} OHLC points as base data`);
     }
 
-    // ✅ Add historical data (may override OHLC for same timestamps, that's OK)
+    // ✅ Add historical data - but PRESERVE OHLC volume (don't overwrite with cumulative)
     historicalData.forEach(point => {
       if (point.ltp > 0 && !isNaN(point.ltp) && point.timestamp > 0) {
-        // Historical data has actual LTP, use it (more accurate than OHLC close)
-        dataMap.set(point.timestamp, point);
+        const existingOhlcVolume = ohlcVolumeMap.get(point.timestamp);
+        // If we have OHLC volume for this timestamp, use it instead of cumulative
+        const volumeToUse = existingOhlcVolume !== undefined ? existingOhlcVolume : point.volume;
+        dataMap.set(point.timestamp, { ...point, volume: volumeToUse });
       }
     });
 
     // ✨ ENHANCED: Merge chart updates for ultra-smooth line
     // Only add updates if timestamp is NEW (don't overwrite existing data)
+    // For new updates, set volume to 0 since we can't calculate proper per-interval volume
     if (chartUpdates && chartUpdates.length > 0) {
       chartUpdates.forEach(update => {
         if (!dataMap.has(update.timestamp)) {
@@ -599,7 +631,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
             symbol: update.symbol,
             ltp: update.price,
             timestamp: update.timestamp,
-            volume: update.volume,
+            volume: 0, // Set to 0 - we don't have per-interval volume for live updates
             change: update.change,
             changePercent: update.changePercent
           } as DataPoint);
@@ -608,20 +640,55 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
 
     // Add current data point if not already in map (only if new)
+    // Set volume to 0 for live data points
     if (data && data.ltp && data.ltp > 0 && !isNaN(data.ltp)) {
       if (!dataMap.has(data.timestamp)) {
-        dataMap.set(data.timestamp, data);
+        dataMap.set(data.timestamp, { ...data, volume: 0 });
       }
     }
 
     // Convert to array and sort (this maintains ALL data from 9:15 AM onwards)
     const allData = Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 
-    // console.log(`📊 [prepareLineChartData] Output:`, {
-    //   totalPoints: allData.length,
-    //   firstPoint: allData[0] ? { timestamp: allData[0].timestamp, date: new Date(allData[0].timestamp * 1000), ltp: allData[0].ltp } : null,
-    //   lastPoint: allData[allData.length - 1] ? { timestamp: allData[allData.length - 1].timestamp, date: new Date(allData[allData.length - 1].timestamp * 1000), ltp: allData[allData.length - 1].ltp } : null
-    // });
+    // ✅ CRITICAL FIX: Calculate volume deltas properly
+    // - OHLC data: Use directly (already per-candle from Fyers API)
+    // - Historical data (vol_traded_today): Calculate delta between consecutive points
+    // - Live updates: Set to 0 (no reliable per-interval volume)
+    const volumeDeltas = allData.map((point, index) => {
+      // Check if this point has OHLC volume (per-candle, correct)
+      const ohlcVolume = ohlcVolumeMap.get(point.timestamp);
+      if (ohlcVolume !== undefined) {
+        return ohlcVolume; // Use OHLC per-candle volume directly
+      }
+
+      // For historical data points without OHLC, calculate delta from previous point
+      // Historical volume (vol_traded_today) is cumulative - we need the difference
+      const currentVolume = point.volume || 0;
+
+      // If this is the first point or previous point has no volume, we can't calculate delta
+      if (index === 0 || currentVolume === 0) {
+        return 0;
+      }
+
+      // Get previous point's volume to calculate delta
+      const prevPoint = allData[index - 1];
+      const prevVolume = prevPoint.volume || 0;
+
+      // If previous point also has OHLC volume, we can't use cumulative logic
+      const prevOhlcVolume = ohlcVolumeMap.get(prevPoint.timestamp);
+      if (prevOhlcVolume !== undefined) {
+        // Previous was OHLC, current is cumulative - can't mix, set to 0
+        return 0;
+      }
+
+      // Both are cumulative (vol_traded_today), calculate the delta
+      // Delta = current cumulative - previous cumulative = volume traded in this interval
+      const volumeDelta = currentVolume - prevVolume;
+
+      // Ensure delta is non-negative (volume can't decrease in cumulative data)
+      // A negative delta indicates a data reset (new day), return current as-is in that edge case
+      return volumeDelta >= 0 ? volumeDelta : 0;
+    });
 
     const x = allData.map(point => new Date(point.timestamp * 1000));
     const y = allData.map(point => point.ltp);
@@ -639,8 +706,15 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const ema9 = allData.map(point => point.ema9 || null);
     const rsi = allData.map(point => point.rsi14 || null);
 
-    const buyVolumes = allData.map(point => calculateBuySellVolume(point).buyVolume);
-    const sellVolumes = allData.map(point => calculateBuySellVolume(point).sellVolume);
+    // ✅ Use volume deltas for buy/sell volume calculations
+    const buyVolumes = allData.map((point, index) => {
+      const vol = volumeDeltas[index];
+      return calculateBuySellVolume({ ...point, volume: vol }).buyVolume;
+    });
+    const sellVolumes = allData.map((point, index) => {
+      const vol = volumeDeltas[index];
+      return calculateBuySellVolume({ ...point, volume: vol }).sellVolume;
+    });
 
     // Calculate buy/sell prices (simplified calculation)
     const buyPrices = allData.map(point => point.ltp * 1.001); // Slightly above LTP
@@ -652,6 +726,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
       x,
       y,
       allData,
+      volumeDeltas, // ✅ Added: Per-interval volume instead of cumulative
       sma20,
       ema9,
       rsi,
@@ -860,24 +935,35 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     });
 
     const sortedData = Array.from(uniqueData.values()).sort((a, b) => a.timestamp - b.timestamp);
-    const buyVolumes = sortedData.map(candle => calculateBuySellVolume(candle).buyVolume);
-    const sellVolumes = sortedData.map(candle => calculateBuySellVolume(candle).sellVolume);
+
+    // ✅ IMPORTANT: Fyers historical OHLC API returns PER-CANDLE volume (NOT cumulative)
+    // The candle data from fyers_data.py line 222 extracts: timestamp, open, high, low, close, volume
+    // This volume is already the volume traded during that specific candle interval
+    // DO NOT calculate deltas - just use the volume directly!
+    const processedVolume = sortedData.map((candle) => {
+      const vol = candle.volume;
+      if (vol === null || vol === undefined || isNaN(Number(vol))) {
+        return 0;
+      }
+      return Math.max(0, Number(vol));
+    });
+
+    const buyVolumes = sortedData.map((candle, index) => {
+      const vol = processedVolume[index];
+      return calculateBuySellVolume({ ...candle, volume: vol }).buyVolume;
+    });
+    const sellVolumes = sortedData.map((candle, index) => {
+      const vol = processedVolume[index];
+      return calculateBuySellVolume({ ...candle, volume: vol }).sellVolume;
+    });
     const volumeStdDev = sortedData.map((candle, index) =>
-      calculateVolumeStandardDeviation(candle, index)
+      calculateVolumeStandardDeviation({ ...candle, volume: processedVolume[index] }, index)
     );
     const buyPrices = sortedData.map((candle, index) => calculateBuySellPrices(candle, index).buyPrice);
     const sellPrices = sortedData.map((candle, index) => calculateBuySellPrices(candle, index).sellPrice);
     const buySellSpreads = sortedData.map((candle, index) => {
       const { buyPrice, sellPrice } = calculateBuySellPrices(candle, index);
       return buyPrice - sellPrice;
-    });
-
-    const processedVolume = sortedData.map(candle => {
-      const vol = candle.volume;
-      if (vol === null || vol === undefined || isNaN(vol)) {
-        return 0;
-      }
-      return Number(vol);
     });
 
     return {
@@ -1066,16 +1152,31 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
 
   const calculateVolumeRange = () => {
-    let volumes: number[] = [];
     if (chartType === 'line') {
-      volumes = historicalData.map(point => point.volume || 0).filter(v => v > 0);
+      // ✅ CRITICAL FIX: Use 1-minute aggregated volumeDeltas for range calculation
+      const volumeDeltas = lineChartData.volumeDeltas || [];
+      const allData = lineChartData.allData || [];
+
+      // Aggregate by minute to get max volume per minute
+      const minuteVolumeMap = new Map<number, number>();
+      allData.forEach((point, index) => {
+        const minuteTimestamp = Math.floor(point.timestamp / 60) * 60;
+        const existing = minuteVolumeMap.get(minuteTimestamp) || 0;
+        minuteVolumeMap.set(minuteTimestamp, existing + (volumeDeltas[index] || 0));
+      });
+
+      const aggregatedVolumes = Array.from(minuteVolumeMap.values()).filter(v => v > 0);
+      if (aggregatedVolumes.length === 0) return [0, 1000];
+      const maxVolume = Math.max(...aggregatedVolumes);
+      return [0, maxVolume * 1.1];
     } else {
+      // For candlestick, OHLC volume is already per-candle
       const { volume } = candlestickData;
-      volumes = volume.filter(v => v > 0);
+      const volumes = volume.filter(v => v > 0);
+      if (volumes.length === 0) return [0, 1000];
+      const maxVolume = Math.max(...volumes);
+      return [0, maxVolume * 1.1];
     }
-    if (volumes.length === 0) return [0, 1000];
-    const maxVolume = Math.max(...volumes);
-    return [0, maxVolume * 1.1];
   };
 
   const calculateBuySellVolumeRange = () => {
@@ -1425,20 +1526,110 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     setSecondaryView(view);
   };
 
+  // ✅ CRITICAL FIX: Calculate time range for a specific timeframe (not using state)
+  // This allows immediate calculation before state updates take effect
+  const calculateTimeRangeForTimeframe = (targetTimeframe: string): [Date, Date] | undefined => {
+    // Get the data to use for time range calculation
+    let dataToUse: { timestamp: number }[] = [];
+    if (ohlcData && ohlcData.length > 0) {
+      dataToUse = ohlcData;
+    } else if (chartType === 'line' && prepareLineChartData.allData && prepareLineChartData.allData.length > 0) {
+      dataToUse = prepareLineChartData.allData;
+    } else if (historicalData && historicalData.length > 0) {
+      dataToUse = historicalData;
+    }
+
+    if (dataToUse.length === 0) return undefined;
+
+    const timestamps = dataToUse.map(d => d.timestamp);
+    const minTimestamp = Math.min(...timestamps);
+    const maxTimestamp = Math.max(...timestamps);
+    const now = new Date(maxTimestamp * 1000);
+    const isHistoricalMode = tradingHours && tradingHours.isActive === false;
+
+    let startTime: Date;
+    let endTime: Date;
+
+    // Special case: 1D = Trading Day (9:15 AM to 3:30 PM)
+    if (targetTimeframe === '1D' || targetTimeframe === '1d') {
+      const referenceDate = isHistoricalMode ? now : new Date();
+      startTime = new Date(referenceDate);
+      startTime.setHours(TRADING_DAY_START_HOUR, TRADING_DAY_START_MINUTE, 0, 0);
+      endTime = new Date(referenceDate);
+      if (isHistoricalMode) {
+        endTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE, 0, 0);
+      } else {
+        endTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE + 15, 0, 0);
+      }
+    } else {
+      // Calculate based on timeframe duration
+      const duration = TIMEFRAME_DURATIONS[targetTimeframe as keyof typeof TIMEFRAME_DURATIONS] || TIMEFRAME_DURATIONS['default'];
+
+      if (targetTimeframe === '6H' || targetTimeframe === '12H') {
+        const referenceTime = isHistoricalMode ? now : new Date();
+        startTime = new Date(referenceTime.getTime() - duration);
+        if (isHistoricalMode) {
+          const marketCloseTime = new Date(now);
+          marketCloseTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE, 0, 0);
+          const calculatedEndTime = new Date(referenceTime.getTime() + FUTURE_BUFFER_MS);
+          endTime = calculatedEndTime > marketCloseTime ? marketCloseTime : calculatedEndTime;
+        } else {
+          endTime = new Date(referenceTime.getTime() + FUTURE_BUFFER_MS);
+        }
+      } else {
+        startTime = new Date(now.getTime() - duration);
+        if (isHistoricalMode) {
+          const marketCloseTime = new Date(now);
+          marketCloseTime.setHours(TRADING_DAY_END_HOUR, TRADING_DAY_END_MINUTE, 0, 0);
+          const calculatedEndTime = new Date(now.getTime() + FUTURE_BUFFER_MS);
+          endTime = calculatedEndTime > marketCloseTime ? marketCloseTime : calculatedEndTime;
+        } else {
+          endTime = new Date(now.getTime() + FUTURE_BUFFER_MS);
+        }
+
+        // Ensure start time is not before earliest data
+        const earliestDataTime = new Date(minTimestamp * 1000);
+        if (startTime < earliestDataTime) {
+          startTime = earliestDataTime;
+        }
+      }
+    }
+
+    // Ensure correct order (start < end)
+    if (startTime.getTime() > endTime.getTime()) {
+      [startTime, endTime] = [endTime, startTime];
+    }
+
+    console.log(`📅 [TimeframeChange] Calculated range for ${targetTimeframe}:`, {
+      startTime: startTime.toLocaleTimeString(),
+      endTime: endTime.toLocaleTimeString(),
+      durationMs: endTime.getTime() - startTime.getTime()
+    });
+
+    return [startTime, endTime];
+  };
+
   const handleTimeframeChange = (timeframe: string) => {
+    console.log(`🔄 [handleTimeframeChange] Changing timeframe to: ${timeframe}`);
+
     // ✅ Reset user interaction tracking on manual timeframe change
     setUserHasInteracted(false);
     setPreservedRange({});
-
-    setSelectedTimeframe(timeframe);
     setPreservedAxisRanges({});
 
-    if (!chartRef.current) return;
+    // ✅ CRITICAL FIX: Calculate time range BEFORE updating state
+    // This ensures we use the NEW timeframe for calculation
+    const newTimeRange = calculateTimeRangeForTimeframe(timeframe);
+
+    // Now update the state
+    setSelectedTimeframe(timeframe);
+
+    if (!chartRef.current || !newTimeRange) return;
     const plotDiv = document.getElementById('plotly-chart');
     if (!plotDiv) return;
 
     try {
-      const newTimeRange = getTimeRange();
+      // Use the pre-calculated time range (already in correct order)
       const newYRange = calculateYAxisRange(newTimeRange);
 
       if (typeof Plotly !== 'undefined' && Plotly.relayout) {
@@ -1553,8 +1744,8 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
   // ✅ ENHANCED: Capture user interactions and preserve state + emit to parent
   const handleRelayout = useCallback((eventData: any) => {
-    // ✅ FIX: Detect reset/autosize events (double-click to reset)
-    // When user double-clicks to reset, Plotly fires autorange: true
+    // ✅ FIX: Detect reset/autosize events (double-click to reset or button clicks)
+    // When user double-clicks to reset or clicks autoscale/reset button, Plotly fires autorange: true
     const isResetEvent =
       eventData['xaxis.autorange'] === true ||
       eventData['yaxis.autorange'] === true ||
@@ -1563,28 +1754,59 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         !eventData['xaxis.range[0]'] && !eventData['yaxis.range[0]']);
 
     if (isResetEvent) {
-      console.log('🔄 [handleRelayout] Reset event detected, clearing user interaction state');
+      console.log('🔄 [handleRelayout] Reset event detected, actively setting correct time range');
       setUserHasInteracted(false);
       setPreservedRange({});
       setPreservedAxisRanges({});
-      return; // Exit early - let the chart recalculate ranges naturally
+
+      // ✅ CRITICAL FIX: Actively calculate and set the correct time range after reset
+      // This prevents Plotly's autorange from potentially reversing the axis
+      setTimeout(() => {
+        const plotDiv = document.getElementById('plotly-chart');
+        if (plotDiv && typeof Plotly !== 'undefined') {
+          // Calculate the correct time range using getTimeRange
+          const timeRange = getTimeRange();
+          if (timeRange) {
+            const [start, end] = ensureTimeRangeOrder(timeRange);
+            console.log('🔄 [handleRelayout] Setting correct time range after reset:', {
+              start: start?.toLocaleTimeString(),
+              end: end?.toLocaleTimeString()
+            });
+
+            Plotly.relayout(plotDiv, {
+              'xaxis.range': [start, end],
+              'xaxis.autorange': false
+            });
+          }
+        }
+      }, 50); // Small delay to let Plotly complete its internal reset first
+
+      return; // Exit early - we've handled the reset
     }
 
     // ✅ Track user zoom/pan (only for actual zoom/pan events, not resets)
+    // ✅ FIX: Ensure time range is always in correct order (start < end)
     if (eventData['xaxis.range[0]'] || eventData['yaxis.range[0]']) {
       setUserHasInteracted(true);
+
+      // Validate and fix x-axis range order if needed
+      let xaxisRange = preservedRange.xaxis;
+      if (eventData['xaxis.range[0]']) {
+        const rawXRange: [any, any] = [eventData['xaxis.range[0]'], eventData['xaxis.range[1]']];
+        xaxisRange = ensureTimeRangeOrder(rawXRange);
+      }
+
       const newRange = {
-        xaxis: eventData['xaxis.range[0]'] ?
-          [eventData['xaxis.range[0]'], eventData['xaxis.range[1]']] : preservedRange.xaxis,
+        xaxis: xaxisRange,
         yaxis: eventData['yaxis.range[0]'] ?
           [eventData['yaxis.range[0]'], eventData['yaxis.range[1]']] : preservedRange.yaxis,
       };
       setPreservedRange(newRange);
 
       // ✅ NEW: Emit X-axis range changes to parent for synchronization
-      if (onXRangeChange && eventData['xaxis.range[0]']) {
-        const startDate = new Date(eventData['xaxis.range[0]']);
-        const endDate = new Date(eventData['xaxis.range[1]']);
+      if (onXRangeChange && xaxisRange) {
+        const startDate = new Date(xaxisRange[0]);
+        const endDate = new Date(xaxisRange[1]);
         console.log('🔄 [PlotlyChart] Emitting range change:', { startDate, endDate });
         onXRangeChange([startDate, endDate]);
       }
@@ -1592,8 +1814,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
     // ✅ CRITICAL: Auto-scale y-axis when x-axis range changes
     if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
-      const startDate = new Date(eventData['xaxis.range[0]']);
-      const endDate = new Date(eventData['xaxis.range[1]']);
+      const rawRange = ensureTimeRangeOrder([eventData['xaxis.range[0]'], eventData['xaxis.range[1]']] as [any, any]);
+      const startDate = new Date(rawRange![0]);
+      const endDate = new Date(rawRange![1]);
       const startTime = startDate.getTime() / 1000;
       const endTime = endDate.getTime() / 1000;
 
@@ -1935,19 +2158,40 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
   };
 
   // 🎯 Helper: Get default market hours range for today
+  // ✅ FIX: Create separate Date objects to avoid mutation issues
   const getDefaultMarketHoursRange = (): [Date, Date] => {
-    const today = new Date();
-    const startTime = new Date(today.setHours(9, 15, 0, 0));
-    const endTime = new Date(today.setHours(15, 30, 0, 0));
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const day = now.getDate();
+
+    // Create new Date objects for start and end times (avoids mutation)
+    const startTime = new Date(year, month, day, 9, 15, 0, 0);  // 9:15 AM
+    const endTime = new Date(year, month, day, 15, 30, 0, 0);   // 3:30 PM
+
     return [startTime, endTime];
   };
 
   // 🔄 Reset Combined View to Default (Market Hours)
   const resetCombinedViewToDefault = useCallback(() => {
     console.log('[Combined View] Resetting to default market hours (9:15 AM - 3:30 PM)');
+    // Clear state first
     setCombinedViewXRange(null); // null = use default
     setCombinedViewY1Range(null);
     setCombinedViewY2Range(null);
+
+    // ✅ CRITICAL FIX: Actively set the correct time range after reset
+    setTimeout(() => {
+      const combinedViewPlot = document.getElementById('combined-view-chart');
+      if (combinedViewPlot && typeof Plotly !== 'undefined') {
+        const defaultRange = getDefaultMarketHoursRange();
+        console.log('[Combined View] Setting correct time range:', defaultRange);
+        Plotly.relayout(combinedViewPlot, {
+          'xaxis.range': defaultRange,
+          'xaxis.autorange': false
+        });
+      }
+    }, 50);
   }, []);
 
   // 📊 Handle Combined View Relayout (Zoom/Pan)
@@ -1967,13 +2211,15 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     }
 
     // Update zoom ranges if user zoomed/panned
+    // ✅ FIX: Ensure time range is always in correct order (start < end)
     if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
-      const newXRange: [Date, Date] = [
+      const rawXRange: [Date, Date] = [
         new Date(eventData['xaxis.range[0]']),
         new Date(eventData['xaxis.range[1]'])
       ];
+      const newXRange = ensureTimeRangeOrder(rawXRange);
       console.log('[Combined View] X-axis zoom:', newXRange);
-      setCombinedViewXRange(newXRange);
+      setCombinedViewXRange(newXRange!);
     }
 
     if (eventData['yaxis.range[0]'] && eventData['yaxis.range[1]']) {
@@ -2495,39 +2741,62 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           // }
         }
 
-        const volumeValues = allData.map(point => point.volume || 0);
-        const volumeColors = [];
-        for (let i = 0; i < allData.length; i++) {
-          if (i === 0) {
-            volumeColors.push(colors.upColor);
-          } else {
-            const currentPrice = priceValues[i];
-            const prevPrice = priceValues[i - 1];
-            volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
-          }
-        }
+        // ✅ CRITICAL FIX: Aggregate volume by 1-minute intervals
+        // Group volumeDeltas by minute and sum them for each bar
+        const volumeDeltas = lineChartData.volumeDeltas || [];
+        const minuteVolumeMap = new Map<number, { volume: number; startPrice: number; endPrice: number }>();
 
-        if (volumeValues.some(v => v > 0)) {
+        allData.forEach((point, index) => {
+          const timestamp = point.timestamp;
+          // Round to minute (floor to start of minute)
+          const minuteTimestamp = Math.floor(timestamp / 60) * 60;
+
+          const existing = minuteVolumeMap.get(minuteTimestamp);
+          const pointVolume = volumeDeltas[index] || 0;
+          const pointPrice = point.ltp;
+
+          if (existing) {
+            // Add to existing minute's volume
+            existing.volume += pointVolume;
+            existing.endPrice = pointPrice; // Update end price to latest
+          } else {
+            // Create new minute entry
+            minuteVolumeMap.set(minuteTimestamp, {
+              volume: pointVolume,
+              startPrice: pointPrice,
+              endPrice: pointPrice
+            });
+          }
+        });
+
+        // Convert to arrays for plotting
+        const sortedMinutes = Array.from(minuteVolumeMap.entries())
+          .sort((a, b) => a[0] - b[0]);
+
+        const minuteTimeValues = sortedMinutes.map(([ts]) => new Date(ts * 1000));
+        const minuteVolumeValues = sortedMinutes.map(([, data]) => data.volume);
+        const minuteVolumeColors = sortedMinutes.map(([, data]) =>
+          data.endPrice >= data.startPrice ? colors.upColor : colors.downColor
+        );
+
+        if (minuteVolumeValues.some(v => v > 0)) {
           plotData.push({
-            x: timeValues,
-            y: volumeValues,
-            type: 'histogram',
-            histfunc: 'sum',
+            x: minuteTimeValues,
+            y: minuteVolumeValues,
+            type: 'bar',
             name: 'Volume',
             marker: {
-              color: volumeColors,
+              color: minuteVolumeColors,
               opacity: 0.9,
               line: {
                 width: 0.5,
                 color: 'rgba(255,255,255,0.1)'
               }
             },
-            xbins: {
-              size: 60000
-            },
+            width: 50000, // ~50 seconds width for each bar (creates wide bars)
             yaxis: 'y3',
             hovertemplate: '<b>%{fullData.name}</b><br>' +
-              'Time: %{x|%H:%M:%S}<br>' +
+              'Time: %{x|%H:%M}<br>' +
               'Volume: %{y:,.0f}<br>' +
               '<extra></extra>',
             showlegend: true
@@ -3499,46 +3768,82 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
   const createVolumeData = () => {
     const colors = getColorTheme();
-    let x: Date[] = [];
-    let volumes: number[] = [];
-    const volumeColors: string[] = [];
 
     if (chartType === 'line') {
-      x = lineChartData.x;
-      volumes = lineChartData.allData.map((point: DataPoint) => point.volume || 0);
+      // ✅ CRITICAL FIX: Aggregate volume by 1-minute intervals for line chart
+      const volumeDeltas = lineChartData.volumeDeltas || [];
+      const allData = lineChartData.allData || [];
+      const minuteVolumeMap = new Map<number, { volume: number; startPrice: number; endPrice: number }>();
 
-      for (let i = 0; i < lineChartData.allData.length; i++) {
-        if (i === 0) {
-          volumeColors.push(colors.upColor);
+      allData.forEach((point, index) => {
+        const timestamp = point.timestamp;
+        const minuteTimestamp = Math.floor(timestamp / 60) * 60;
+
+        const existing = minuteVolumeMap.get(minuteTimestamp);
+        const pointVolume = volumeDeltas[index] || 0;
+        const pointPrice = point.ltp;
+
+        if (existing) {
+          existing.volume += pointVolume;
+          existing.endPrice = pointPrice;
         } else {
-          const currentPrice = lineChartData.allData[i].ltp;
-          const prevPrice = lineChartData.allData[i - 1].ltp;
-          volumeColors.push(currentPrice >= prevPrice ? colors.upColor : colors.downColor);
+          minuteVolumeMap.set(minuteTimestamp, {
+            volume: pointVolume,
+            startPrice: pointPrice,
+            endPrice: pointPrice
+          });
         }
-      }
+      });
+
+      const sortedMinutes = Array.from(minuteVolumeMap.entries())
+        .sort((a, b) => a[0] - b[0]);
+
+      const minuteTimeValues = sortedMinutes.map(([ts]) => new Date(ts * 1000));
+      const minuteVolumeValues = sortedMinutes.map(([, data]) => data.volume);
+      const minuteVolumeColors = sortedMinutes.map(([, data]) =>
+        data.endPrice >= data.startPrice ? colors.upColor : colors.downColor
+      );
+
+      return [{
+        x: minuteTimeValues,
+        y: minuteVolumeValues,
+        type: 'bar',
+        name: 'Volume',
+        marker: {
+          color: minuteVolumeColors,
+          opacity: 0.8
+        },
+        width: 50000,
+        hovertemplate: '<b>%{fullData.name}</b><br>' +
+          'Time: %{x|%H:%M}<br>' +
+          'Volume: %{y:,.0f}<br>' +
+          '<extra></extra>',
+      }];
     } else {
-      x = candlestickData.x;
-      volumes = candlestickData.volume;
+      // ✅ For candlestick, OHLC data already has per-candle volume - just use it
+      const x = candlestickData.x;
+      const volumes = candlestickData.volume;
+      const volumeColors: string[] = [];
 
-      for (let i = 0; i < data.close.length; i++) {
-        volumeColors.push(data.close[i] >= data.open[i] ? colors.upColor : colors.downColor);
+      for (let i = 0; i < candlestickData.close.length; i++) {
+        volumeColors.push(candlestickData.close[i] >= candlestickData.open[i] ? colors.upColor : colors.downColor);
       }
-    }
 
-    return [{
-      x,
-      y: volumes,
-      type: 'bar',
-      name: 'Volume',
-      marker: {
-        color: volumeColors,
-        opacity: 0.8
-      },
-      hovertemplate: '<b>%{fullData.name}</b><br>' +
-        'Time: %{x|%H:%M:%S}<br>' +
-        'Volume: %{y:,.0f}<br>' +
-        '<extra></extra>',
-    }];
+      return [{
+        x,
+        y: volumes,
+        type: 'bar',
+        name: 'Volume',
+        marker: {
+          color: volumeColors,
+          opacity: 0.8
+        },
+        hovertemplate: '<b>%{fullData.name}</b><br>' +
+          'Time: %{x|%H:%M}<br>' +
+          'Volume: %{y:,.0f}<br>' +
+          '<extra></extra>',
+      }];
+    }
   };
 
   const createStdData = () => {
@@ -3643,9 +3948,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     const colors = getColorTheme();
 
     // ✅ CRITICAL: Calculate y-range based on visible x-range
-    const timeRange = preservedAxisRanges.xaxis ?
-      [preservedAxisRanges.xaxis[0], preservedAxisRanges.xaxis[1]] :
+    // ✅ FIX: Ensure time range is always in correct order (start < end)
+    const rawTimeRange = preservedAxisRanges.xaxis ?
+      [preservedAxisRanges.xaxis[0], preservedAxisRanges.xaxis[1]] as [any, any] :
       getTimeRange();
+    const timeRange = ensureTimeRangeOrder(rawTimeRange);
 
     // ✅ Always calculate y-range for visible data (autoscaling)
     const yRange = preservedAxisRanges.yaxis ?
@@ -3689,14 +3996,15 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         type: 'date',
         // ✅ CRITICAL FIX: Priority order - forcedXRange > user interaction > default timeRange
         // This enables X-axis synchronization with ClusterChart
+        // ✅ FIX: Ensure all time ranges are in correct order (start < end) to prevent reversed x-axis
         ...(forcedXRange ? {
-          range: forcedXRange, // 🔥 Highest priority: External synchronization
+          range: ensureTimeRangeOrder(forcedXRange), // 🔥 Highest priority: External synchronization
           autorange: false
         } : userHasInteracted && preservedRange.xaxis ? {
-          range: preservedRange.xaxis,
+          range: ensureTimeRangeOrder(preservedRange.xaxis as [any, any]),
           autorange: false
         } : {
-          range: timeRange,
+          range: timeRange, // Already validated above
           autorange: false
         }),
         gridcolor: colors.grid,
@@ -3755,6 +4063,21 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     };
 
     if (chartType === 'line') {
+      // ✅ Calculate optimal Y-axis range based on max aggregated volume
+      const volumeDeltas = lineChartData.volumeDeltas || [];
+      const allData = lineChartData.allData || [];
+
+      // Aggregate by minute to get max volume per minute
+      const minuteVolumeMap = new Map<number, number>();
+      allData.forEach((point, index) => {
+        const minuteTimestamp = Math.floor(point.timestamp / 60) * 60;
+        const existing = minuteVolumeMap.get(minuteTimestamp) || 0;
+        minuteVolumeMap.set(minuteTimestamp, existing + (volumeDeltas[index] || 0));
+      });
+
+      const maxVolume = Math.max(...Array.from(minuteVolumeMap.values()), 0);
+      const optimalMaxRange = maxVolume > 0 ? maxVolume * 1.1 : 1000; // 10% padding
+
       layout.yaxis3 = {
         title: 'Volume',
         height: 180,
@@ -3762,7 +4085,9 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         tickfont: { color: colors.text },
         domain: volumeDomain,
         showgrid: false,
-        side: 'right'
+        side: 'right',
+        range: [0, optimalMaxRange], // ✅ Optimal scaling based on max volume
+        rangemode: 'tozero'
       };
     }
 
@@ -4162,11 +4487,10 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
                 size="sm"
                 onClick={() => onGttToggle?.(!isGttEnabled)}
                 disabled={!symbol || gttLoading}
-                className={`gap-2 h-8 transition-all duration-300 ${
-                  isGttEnabled 
-                    ? 'border-purple-400 bg-purple-400/20 text-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.25)]' 
-                    : 'border-purple-400 text-purple-400 hover:bg-purple-400/10'
-                }`}
+                className={`gap-2 h-8 transition-all duration-300 ${isGttEnabled
+                  ? 'border-purple-400 bg-purple-400/20 text-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.25)]'
+                  : 'border-purple-400 text-purple-400 hover:bg-purple-400/10'
+                  }`}
                 title={isGttEnabled ? 'Disable GTT Predictions' : 'Enable GTT Predictions'}
               >
                 <Zap className={`h-3.5 w-3.5 ${isGttEnabled ? 'animate-pulse text-purple-300' : 'text-purple-400'}`} />
@@ -4175,7 +4499,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
               {/* Dropdown Menu */}
               {gttMenuOpen && isGttEnabled && (
-                <div 
+                <div
                   className="absolute top-full left-0 mt-1 w-56 bg-zinc-900 border border-purple-500/30 rounded-lg shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 backdrop-blur-md"
                   onMouseEnter={handleGttMouseEnter}
                   onMouseLeave={handleGttMouseLeave}
@@ -4669,6 +4993,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
                   <div className="flex-1 min-h-0 p-4">
                     <Plot
+                      divId="combined-view-chart"
                       data={createCombinedViewData()}
                       layout={{
                         autosize: true,

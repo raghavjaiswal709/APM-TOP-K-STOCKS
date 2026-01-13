@@ -61,6 +61,7 @@ import { transformGttToChartPredictions } from '@/lib/gttTransformers';
 import PredictionTimer from './components/PredictionTimer';
 import PredictionControlPanel from './components/PredictionControlPanel';
 import PredictionOverlay from './components/PredictionOverlay';
+import PredictionAPIService from '@/lib/predictionService';
 
 declare global {
   interface Window {
@@ -142,6 +143,11 @@ const MarketDataPage: React.FC = () => {
   // onst[isGttEnabled, setIsGttEnabled] = useState<boolean>(false);
   const [gttChartType, setGttChartType] = useState<'candlestick' | 'line'>('candlestick');
   const [isGttEnabled, setIsGttEnabled] = useState<boolean>(false);
+
+  // Health check state for prediction services
+  const [predictionServiceHealth, setPredictionServiceHealth] = useState<'checking' | 'available' | 'unavailable'>('checking');
+  const [gttServiceHealth, setGttServiceHealth] = useState<'checking' | 'available' | 'unavailable'>('checking');
+  const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(true);
 
   // Market Data State
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
@@ -883,6 +889,46 @@ const MarketDataPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Health check for prediction services
+  useEffect(() => {
+    if (!isClient) return;
+
+    const checkPredictionServicesHealth = async () => {
+      setIsCheckingHealth(true);
+      
+      // Check regular prediction service health
+      try {
+        const predictionHealth = await PredictionAPIService.checkHealth({ timeout: 5000 });
+        setPredictionServiceHealth(predictionHealth ? 'available' : 'unavailable');
+        console.log('✅ [Health Check] Prediction service:', predictionHealth ? 'available' : 'unavailable');
+      } catch (error) {
+        console.warn('❌ [Health Check] Prediction service unavailable:', error);
+        setPredictionServiceHealth('unavailable');
+      }
+
+      // Check GTT service health
+      try {
+        const gttHealth = await gttService.healthCheck();
+        // GTT is available if either proxy or backend is responding
+        const isGttAvailable = gttHealth.proxy || gttHealth.backend;
+        setGttServiceHealth(isGttAvailable ? 'available' : 'unavailable');
+        console.log('✅ [Health Check] GTT service:', gttHealth);
+      } catch (error) {
+        console.warn('❌ [Health Check] GTT service unavailable:', error);
+        setGttServiceHealth('unavailable');
+      }
+
+      setIsCheckingHealth(false);
+    };
+
+    checkPredictionServicesHealth();
+
+    // Re-check health every 2 minutes
+    const healthCheckInterval = setInterval(checkPredictionServicesHealth, 120000);
+
+    return () => clearInterval(healthCheckInterval);
+  }, [isClient]);
+
   useEffect(() => {
     if (!isClient) return;
 
@@ -1304,15 +1350,78 @@ const MarketDataPage: React.FC = () => {
                     >
                       {isGttEnabled ? '⚡ GTT View ON' : '⚡ GTT View OFF'}
                     </button> */}
-                    <button
-                      onClick={() => setShowPredictions(!showPredictions)}
-                      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${showPredictions
-                        ? 'bg-[#dbeafe] text-blue-600 hover:bg-[#cddcfe]'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
-                    >
-                      {showPredictions ? 'Predictions ON' : 'Predictions OFF'}
-                    </button>
+                    
+                    {/* Regular Prediction Service Status Button */}
+                    {predictionServiceHealth === 'checking' || isCheckingHealth ? (
+                      <div className="px-3 py-1 rounded text-sm font-medium bg-gray-200 text-gray-500 flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
+                        Checking...
+                      </div>
+                    ) : predictionServiceHealth === 'unavailable' ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              disabled
+                              className="px-3 py-1 rounded text-sm font-medium bg-red-100 text-red-600 cursor-not-allowed flex items-center gap-1.5"
+                            >
+                              <AlertCircle className="h-3.5 w-3.5" />
+                              Prediction Unavailable
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white">
+                            <p className="text-xs">Prediction service is not responding. Please check if the server is running.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <button
+                        onClick={() => setShowPredictions(!showPredictions)}
+                        className={`px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${showPredictions
+                          ? 'bg-[#dbeafe] text-blue-600 hover:bg-[#cddcfe]'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          }`}
+                      >
+                        <Activity className="h-3.5 w-3.5" />
+                        {showPredictions ? 'Predictions ON' : 'Predictions OFF'}
+                      </button>
+                    )}
+
+                    {/* GTT Service Status Button */}
+                    {gttServiceHealth === 'checking' || isCheckingHealth ? (
+                      <div className="px-3 py-1 rounded text-sm font-medium bg-gray-200 text-gray-500 flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
+                        GTT...
+                      </div>
+                    ) : gttServiceHealth === 'unavailable' ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              disabled
+                              className="px-3 py-1 rounded text-sm font-medium bg-orange-100 text-orange-600 cursor-not-allowed flex items-center gap-1.5"
+                            >
+                              <Zap className="h-3.5 w-3.5" />
+                              GTT Unavailable
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white">
+                            <p className="text-xs">GTT prediction service is not responding. Please check if the GTT server is running.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <button
+                        onClick={() => setIsGttEnabled(!isGttEnabled)}
+                        className={`px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${isGttEnabled
+                          ? 'bg-purple-600 text-white hover:bg-purple-700'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          }`}
+                      >
+                        <Zap className="h-3.5 w-3.5" />
+                        {isGttEnabled ? 'GTT ON' : 'GTT OFF'}
+                      </button>
+                    )}
                   </div>
                 </div>
 

@@ -78,6 +78,22 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
         return [priceTrace];
     }, [patternData]);
 
+    // ✅ FIX: Ensure synced time range is always in correct order (start < end)
+    const validatedTimeRange = useMemo(() => {
+        if (!syncedTimeRange || syncedTimeRange.length !== 2) return syncedTimeRange;
+        
+        const [first, second] = syncedTimeRange;
+        const firstTime = first.getTime();
+        const secondTime = second.getTime();
+        
+        // If first time is later than second time, swap them
+        if (firstTime > secondTime) {
+            console.warn('⚠️ [ClusterChart TIME RANGE FIX] Correcting reversed time range');
+            return [second, first] as [Date, Date];
+        }
+        return syncedTimeRange;
+    }, [syncedTimeRange]);
+
     const layout = useMemo(
         () => ({
             title: {
@@ -95,8 +111,8 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
                 tickformat: '%H:%M', // ✅ Format as time only
                 tickfont: { color: '#a1a1aa', size: 11 },
                 titlefont: { color: '#d4d4d8', size: 12 },
-                ...(syncedTimeRange ? {
-                    range: syncedTimeRange, // ✅ Apply synchronized range
+                ...(validatedTimeRange ? {
+                    range: validatedTimeRange, // ✅ Apply synchronized range (validated)
                     autorange: false,
                 } : {
                     autorange: true,
@@ -130,7 +146,7 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
                 font: { color: '#e4e4e7' },
             },
         }),
-        [symbol, clusterInfo, height, syncedSelectedTimeframe, syncedTimeRange] // ✅ Added syncedTimeRange
+        [symbol, clusterInfo, height, syncedSelectedTimeframe, validatedTimeRange] // ✅ Updated to use validatedTimeRange
     );
 
     const config = useMemo(
@@ -144,10 +160,29 @@ export const ClusterChart: React.FC<ClusterChartProps> = ({
     );
 
     // ✅ NEW: Handle relayout events and emit range changes
+    // ✅ FIX: Ensure emitted range is in correct order
     const handleRelayout = React.useCallback((eventData: any) => {
+        // ✅ Handle reset/autoscale events
+        const isResetEvent =
+            eventData['xaxis.autorange'] === true ||
+            eventData['yaxis.autorange'] === true ||
+            eventData['autosize'] === true;
+
+        if (isResetEvent) {
+            console.log('🔄 [ClusterChart] Reset event detected');
+            // Let the parent PlotlyChart handle the reset - it will sync the new range back
+            return;
+        }
+
         if (onXRangeChange && eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
-            const startDate = new Date(eventData['xaxis.range[0]']);
-            const endDate = new Date(eventData['xaxis.range[1]']);
+            let startDate = new Date(eventData['xaxis.range[0]']);
+            let endDate = new Date(eventData['xaxis.range[1]']);
+            
+            // Ensure correct order (start < end)
+            if (startDate.getTime() > endDate.getTime()) {
+                [startDate, endDate] = [endDate, startDate];
+            }
+            
             console.log('🔄 [ClusterChart] Emitting range change:', { startDate, endDate });
             onXRangeChange([startDate, endDate]);
         }
