@@ -45,14 +45,14 @@ export const PredictionControlPanel: React.FC<PredictionControlPanelProps> = ({
   }, []);
 
   return (
-    <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
-      <CardHeader className="pb-3">
+    <Card className="border-blue-400/30 bg-gradient-to-br from-blue-500/5 via-card/50 to-blue-600/5 backdrop-blur-sm shadow-lg shadow-blue-500/10">
+      <CardHeader className="pb-3 border-b border-blue-400/10">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-            <Activity className="h-4 w-4" />
+          <CardTitle className="text-sm font-medium text-blue-400 flex items-center gap-2">
+            <Activity className="h-4 w-4 text-blue-400" />
             Control Panel
           </CardTitle>
-          <Badge variant={isPolling ? "default" : "secondary"} className={isPolling ? "bg-green-600 hover:bg-green-700" : ""}>
+          <Badge variant={isPolling ? "default" : "secondary"} className={isPolling ? "bg-green-600 hover:bg-green-700" : "bg-zinc-700/50 border border-zinc-600 text-zinc-400"}>
             {isPolling ? (
               <span className="flex items-center gap-1.5">
                 <span className="relative flex h-2 w-2">
@@ -71,42 +71,42 @@ export const PredictionControlPanel: React.FC<PredictionControlPanelProps> = ({
       <CardContent className="space-y-6">
         {/* Status Grid */}
         <div className="grid grid-cols-3 gap-4">
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">Updates</span>
-            <p className="text-2xl font-bold tracking-tight">{pollCount}</p>
+          <div className="space-y-1 p-2 rounded-md bg-blue-400/5 border border-blue-400/10">
+            <span className="text-xs font-medium text-blue-300/70">Updates</span>
+            <p className="text-2xl font-bold tracking-tight text-blue-400">{pollCount}</p>
           </div>
 
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">Elapsed</span>
-            <p className="text-2xl font-bold tracking-tight font-mono">
+          <div className="space-y-1 p-2 rounded-md bg-blue-400/5 border border-blue-400/10">
+            <span className="text-xs font-medium text-blue-300/70">Elapsed</span>
+            <p className="text-2xl font-bold tracking-tight font-mono text-blue-400">
               {formatTime(elapsedTime)}
             </p>
           </div>
 
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">Remaining</span>
-            <p className="text-2xl font-bold tracking-tight font-mono text-muted-foreground">
+          <div className="space-y-1 p-2 rounded-md bg-blue-400/5 border border-blue-400/10">
+            <span className="text-xs font-medium text-blue-300/70">Remaining</span>
+            <p className="text-2xl font-bold tracking-tight font-mono text-blue-300/70">
               {formatTime(timeRemaining)}
             </p>
           </div>
         </div>
 
-        <Separator />
+        <Separator className="bg-blue-400/20" />
 
         {/* Progress Section */}
         <div className="space-y-2">
           <div className="flex justify-between items-center text-sm">
-            <span className="text-muted-foreground">Collection Progress</span>
-            <span className="font-medium">{Math.round(progressPercentage)}%</span>
+            <span className="text-blue-300/70">Collection Progress</span>
+            <span className="font-medium text-blue-400">{Math.round(progressPercentage)}%</span>
           </div>
-          <Progress value={progressPercentage} className="h-2" />
+          <Progress value={progressPercentage} className="h-2 bg-blue-400/10" />
         </div>
 
         {/* Next Poll Indicator */}
         {nextPollTime && isPolling && (
-          <div className="text-xs text-center text-muted-foreground bg-secondary/50 py-2 rounded-md border border-border/50 flex items-center justify-center gap-2">
-            <Clock className="h-3 w-3" />
-            Next update at <span className="font-medium text-foreground">{nextPollTime.toLocaleTimeString('en-IN')}</span>
+          <div className="text-xs text-center text-blue-300/70 bg-blue-500/10 py-2 rounded-md border border-blue-400/20 flex items-center justify-center gap-2">
+            <Clock className="h-3 w-3 text-blue-400" />
+            Next update at <span className="font-medium text-blue-400">{nextPollTime.toLocaleTimeString('en-IN')}</span>
           </div>
         )}
 
@@ -150,7 +150,7 @@ export const PredictionControlPanel: React.FC<PredictionControlPanelProps> = ({
               onClick={onRefresh}
               disabled={disabled}
               variant="outline"
-              className="flex-1 gap-2"
+              className="flex-1 gap-2 border-blue-400 text-blue-400 hover:bg-blue-400/10"
             >
               <Loader2 className={`h-4 w-4 ${disabled ? 'animate-spin' : ''}`} />
               Refresh
@@ -161,7 +161,7 @@ export const PredictionControlPanel: React.FC<PredictionControlPanelProps> = ({
                 onClick={onDownload}
                 disabled={disabled}
                 variant="outline"
-                className="flex-1 gap-2"
+                className="flex-1 gap-2 border-blue-400 text-blue-400 hover:bg-blue-400/10"
               >
                 <Download className="h-4 w-4" />
                 Export

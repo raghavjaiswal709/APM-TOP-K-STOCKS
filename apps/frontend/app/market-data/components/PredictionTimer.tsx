@@ -64,9 +64,9 @@ export const PredictionTimer: React.FC<PredictionTimerProps> = ({
 
   if (!isPolling) {
     return (
-      <Card className="border-border/50 bg-card/50 backdrop-blur-sm h-full flex items-center justify-center p-4">
-        <div className="text-center text-muted-foreground">
-          <Loader2 className="h-8 w-8 mx-auto mb-2 opacity-20" />
+      <Card className="border-blue-400/20 bg-gradient-to-br from-blue-500/5 via-card/50 to-blue-600/5 backdrop-blur-sm h-full flex items-center justify-center p-4 shadow-lg shadow-blue-500/10">
+        <div className="text-center text-blue-400/60">
+          <Loader2 className="h-8 w-8 mx-auto mb-2 opacity-50 text-blue-400" />
           <p className="text-sm">Timer Paused</p>
         </div>
       </Card>
@@ -74,7 +74,7 @@ export const PredictionTimer: React.FC<PredictionTimerProps> = ({
   }
 
   return (
-    <Card className="relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm h-full flex flex-col items-center justify-center p-6">
+    <Card className="relative overflow-hidden border-blue-400/30 bg-gradient-to-br from-blue-500/5 via-card/50 to-blue-600/5 backdrop-blur-sm h-full flex flex-col items-center justify-center p-6 shadow-lg shadow-blue-500/10">
       <div className="relative w-32 h-32 flex items-center justify-center">
         {/* Background circle */}
         <svg className="w-full h-full transform -rotate-90">
@@ -85,7 +85,7 @@ export const PredictionTimer: React.FC<PredictionTimerProps> = ({
             stroke="currentColor"
             strokeWidth="6"
             fill="none"
-            className="text-muted/20"
+            className="text-blue-400/20"
           />
           {/* Progress circle */}
           <circle
@@ -98,23 +98,23 @@ export const PredictionTimer: React.FC<PredictionTimerProps> = ({
             strokeDasharray={circumference}
             strokeDashoffset={strokeDashoffset}
             strokeLinecap="round"
-            className="text-primary transition-all duration-1000 ease-linear"
+            className="text-blue-400 transition-all duration-1000 ease-linear drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]"
           />
         </svg>
 
         {/* Center content */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-3xl font-bold tracking-tighter tabular-nums">
+          <span className="text-3xl font-bold tracking-tighter tabular-nums text-blue-400">
             {formatTime(timeUntilNextPoll)}
           </span>
-          <span className="text-xs text-muted-foreground font-medium">MINUTES</span>
+          <span className="text-xs text-blue-300/70 font-medium">MINUTES</span>
         </div>
       </div>
 
       {/* Next Poll Time */}
       {nextPollTime && (
-        <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-full">
-          <Zap className="h-3 w-3 text-primary" />
+        <div className="mt-4 flex items-center gap-2 text-xs text-blue-300/70 bg-blue-500/10 px-3 py-1.5 rounded-full border border-blue-400/20">
+          <Zap className="h-3 w-3 text-blue-400" />
           <span>Refresh at {nextPollTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
       )}

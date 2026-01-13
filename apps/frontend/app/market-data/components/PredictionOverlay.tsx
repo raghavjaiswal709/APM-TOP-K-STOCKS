@@ -49,9 +49,9 @@ export const PredictionOverlay: React.FC<PredictionOverlayProps> = ({
 
   if (!predictions || !stats) {
     return (
-      <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
-        <CardContent className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-          <AlertCircle className="h-8 w-8 mb-2 opacity-50" />
+      <Card className="border-blue-400/20 bg-gradient-to-br from-blue-500/5 via-card/50 to-blue-600/5 backdrop-blur-sm">
+        <CardContent className="flex flex-col items-center justify-center py-8 text-blue-400/60">
+          <AlertCircle className="h-8 w-8 mb-2 opacity-50 text-blue-400" />
           <p>No prediction data available</p>
         </CardContent>
       </Card>
@@ -62,18 +62,18 @@ export const PredictionOverlay: React.FC<PredictionOverlayProps> = ({
   const isPositive = priceChange >= 0;
 
   return (
-    <Card className="overflow-hidden border-border/50 bg-card/50 backdrop-blur-md shadow-sm">
-      <CardHeader className="pb-3 space-y-1">
+    <Card className="overflow-hidden border-blue-400/30 bg-gradient-to-br from-blue-500/5 via-card/50 to-blue-600/5 backdrop-blur-md shadow-lg shadow-blue-500/10">
+      <CardHeader className="pb-3 space-y-1 border-b border-blue-400/10">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <CardTitle className="text-xl font-semibold tracking-tight">
+            <CardTitle className="text-xl font-semibold tracking-tight text-blue-400">
               {company} Predictions
             </CardTitle>
-            <CardDescription className="text-xs flex items-center gap-2">
-              <Activity className="h-3 w-3" />
+            <CardDescription className="text-xs flex items-center gap-2 text-blue-300/70">
+              <Activity className="h-3 w-3 text-blue-400" />
               {predictions.count} data points
-              <Separator orientation="vertical" className="h-3" />
-              <Clock className="h-3 w-3" />
+              <Separator orientation="vertical" className="h-3 bg-blue-400/30" />
+              <Clock className="h-3 w-3 text-blue-400" />
               Updated {formatDataAge(dataAge)}
             </CardDescription>
           </div>
@@ -89,15 +89,15 @@ export const PredictionOverlay: React.FC<PredictionOverlayProps> = ({
       <CardContent className="space-y-6">
         {/* Latest Prediction Highlight */}
         {latestPrediction && (
-          <div className="bg-primary/5 rounded-lg p-4 border border-primary/10">
+          <div className="bg-gradient-to-r from-blue-500/10 to-blue-600/5 rounded-lg p-4 border border-blue-400/20 shadow-inner">
             <div className="flex justify-between items-end">
               <div>
-                <p className="text-sm font-medium text-muted-foreground mb-1">Latest Forecast</p>
+                <p className="text-sm font-medium text-blue-300/70 mb-1">Latest Forecast</p>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold tracking-tight text-primary">
+                  <span className="text-3xl font-bold tracking-tight text-blue-400">
                     ₹{latestPrediction.close.toFixed(2)}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-blue-300/60">
                     @ {new Date(latestPrediction.predictedat).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
@@ -118,21 +118,21 @@ export const PredictionOverlay: React.FC<PredictionOverlayProps> = ({
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Average</p>
-            <p className="text-lg font-semibold tabular-nums">₹{stats.avgPrice}</p>
+          <div className="space-y-1 p-2 rounded-md bg-blue-400/5 border border-blue-400/10">
+            <p className="text-xs font-medium text-blue-300/70">Average</p>
+            <p className="text-lg font-semibold tabular-nums text-blue-400">₹{stats.avgPrice}</p>
           </div>
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">High</p>
-            <p className="text-lg font-semibold tabular-nums text-green-500">₹{stats.highPrice}</p>
+          <div className="space-y-1 p-2 rounded-md bg-green-400/5 border border-green-400/10">
+            <p className="text-xs font-medium text-green-300/70">High</p>
+            <p className="text-lg font-semibold tabular-nums text-green-400">₹{stats.highPrice}</p>
           </div>
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Low</p>
-            <p className="text-lg font-semibold tabular-nums text-red-500">₹{stats.lowPrice}</p>
+          <div className="space-y-1 p-2 rounded-md bg-red-400/5 border border-red-400/10">
+            <p className="text-xs font-medium text-red-300/70">Low</p>
+            <p className="text-lg font-semibold tabular-nums text-red-400">₹{stats.lowPrice}</p>
           </div>
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Range</p>
-            <p className="text-lg font-semibold tabular-nums">₹{stats.priceRange}</p>
+          <div className="space-y-1 p-2 rounded-md bg-blue-400/5 border border-blue-400/10">
+            <p className="text-xs font-medium text-blue-300/70">Range</p>
+            <p className="text-lg font-semibold tabular-nums text-blue-400">₹{stats.priceRange}</p>
           </div>
         </div>
       </CardContent>
