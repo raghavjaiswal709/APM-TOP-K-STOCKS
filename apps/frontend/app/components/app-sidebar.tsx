@@ -33,8 +33,8 @@ import {
 } from "@/components/ui/sidebar"
 const data = {
   user: {
-    name: process.env.NEXT_PUBLIC_USER_NAME || "Raghav",
-    email: process.env.NEXT_PUBLIC_USER_EMAIL || "raghavjaiswal0000@gmail.com",
+    name: process.env.NEXT_PUBLIC_INSTANCE_USER_NAME || process.env.NEXT_PUBLIC_USER_NAME || "Raghav",
+    email: process.env.NEXT_PUBLIC_INSTANCE_USER_EMAIL || process.env.NEXT_PUBLIC_USER_EMAIL || "raghavjaiswal0000@gmail.com",
     avatar: process.env.NEXT_PUBLIC_USER_AVATAR || "/avatars/shadcn.jpg",
   },
   navMain: [
