@@ -1,7 +1,19 @@
-# Standalone Instance Configuration
-# Each instance is completely independent with its own database, cache, and services
-# No inter-instance communication or dependencies
-# Copy this file to each instance directory and customize .env file
+# ═══════════════════════════════════════════════════════════════════════════════
+# DAKS TOP-K STOCKS - Multi-Instance Configuration (External PostgreSQL)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# This configuration connects to an EXTERNAL PostgreSQL database running on the
+# server at 100.93.172.21:5432, instead of creating its own PostgreSQL container.
+#
+# Each instance has:
+#   - Its own Frontend (Next.js)
+#   - Its own Backend (NestJS)
+#   - Its own Redis (for caching)
+#   - Its own Fyers services (Python)
+#   - Shared access to external PostgreSQL
+#
+# Copy this file to each instance directory as docker-compose.standalone.yml
+# ═══════════════════════════════════════════════════════════════════════════════
 
 services:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -15,14 +27,23 @@ services:
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:${BACKEND_PORT}
-      - NEXT_PUBLIC_BACKEND_URL=http://localhost:${BACKEND_PORT}
-      - NEXT_PUBLIC_GTT_API_URL=http://backend:5002
+      # Browser-accessible URLs (use server IP)
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+      - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+      - NEXT_PUBLIC_GTT_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_FYERS_SERVICE_5001_URL=${NEXT_PUBLIC_FYERS_SERVICE_5001_URL}
+      - NEXT_PUBLIC_FYERS_SERVICE_5010_URL=${NEXT_PUBLIC_FYERS_SERVICE_5010_URL}
+      - NEXT_PUBLIC_FYERS_SOCKET_URL=${NEXT_PUBLIC_FYERS_SOCKET_URL}
+      - NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=${NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL}
+      # Server-side (internal Docker network)
       - BACKEND_URL=http://backend:5002
-      - NODE_ENV=development
+      - NODE_ENV=${NODE_ENV:-development}
     env_file:
-      - ${DAKS_ENV_TARGET:-.env}
+      - .env
     volumes:
       - ../../apps/frontend:/app
       - frontend-node-modules:/app/node_modules
@@ -37,13 +58,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
     labels:
       - "com.daks.instance=${INSTANCE_ID}"
       - "com.daks.service=frontend"
 
   # ═══════════════════════════════════════════════════════════════════════════
   # BACKEND API (NestJS)
+  # Connects to EXTERNAL PostgreSQL at 100.93.172.21:5432
   # ═══════════════════════════════════════════════════════════════════════════
   backend:
     build:
@@ -53,22 +75,35 @@ services:
     restart: unless-stopped
     ports:
       - "${BACKEND_PORT}:5002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - PORT=5002
-      - NODE_ENV=development
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - NODE_ENV=${NODE_ENV:-development}
+      # Database connection - EXTERNAL PostgreSQL
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_DATABASE=${DB_DATABASE}
+      # Redis - internal Docker
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - REDIS_URL=redis://redis:6379
+      # Fyers credentials
       - FYERS_CLIENT_ID=${FYERS_CLIENT_ID}
       - FYERS_SECRET_ID=${FYERS_SECRET_ID}
       - FYERS_ACCESS_TOKEN=${FYERS_ACCESS_TOKEN}
       - FYERS_REDIRECT_URI=${FYERS_REDIRECT_URI}
+      # External API URLs
+      - SIPR_API_URL=${SIPR_API_URL:-http://100.93.172.21:8510}
+      - PREDICTION_API_URL=${PREDICTION_API_URL:-http://100.93.172.21:5112}
+      - PREMARKET_API_URL=${PREMARKET_API_URL:-http://100.93.172.21:5717}
     env_file:
-      - ${DAKS_ENV_TARGET:-.env}
+      - .env
     volumes:
       - ./data:/app/data
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -77,42 +112,14 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:5002/api/predictions/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 45s
     labels:
       - "com.daks.instance=${INSTANCE_ID}"
       - "com.daks.service=backend"
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # DATABASE (PostgreSQL)
-  # ═══════════════════════════════════════════════════════════════════════════
-  db:
-    image: postgres:15-alpine
-    container_name: ${INSTANCE_ID}-db
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - TZ=Asia/Kolkata
-    ports:
-      - "${POSTGRES_PORT}:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ../../init-db.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - internal
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    labels:
-      - "com.daks.instance=${INSTANCE_ID}"
-      - "com.daks.service=database"
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # CACHE (Redis)
+  # CACHE (Redis) - Internal per instance
   # ═══════════════════════════════════════════════════════════════════════════
   redis:
     image: redis:7-alpine
@@ -146,20 +153,24 @@ services:
     restart: unless-stopped
     ports:
       - "${FYERS_5001_PORT}:5001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - FYERS_CLIENT_ID=${FYERS_CLIENT_ID}
       - FYERS_SECRET_ID=${FYERS_SECRET_ID}
       - FYERS_ACCESS_TOKEN=${FYERS_ACCESS_TOKEN}
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # Database - EXTERNAL PostgreSQL
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_DATABASE=${DB_DATABASE}
     env_file:
-      - ${DAKS_ENV_TARGET:-.env}
+      - .env
     volumes:
       - ./data:/app/data
-    depends_on:
-      db:
-        condition: service_healthy
     networks:
       - internal
     labels:
@@ -178,29 +189,34 @@ services:
     restart: unless-stopped
     ports:
       - "${FYERS_5010_PORT}:5010"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - FYERS_CLIENT_ID=${FYERS_CLIENT_ID}
       - FYERS_SECRET_ID=${FYERS_SECRET_ID}
       - FYERS_ACCESS_TOKEN=${FYERS_ACCESS_TOKEN}
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # Database - EXTERNAL PostgreSQL
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_DATABASE=${DB_DATABASE}
     env_file:
-      - ${DAKS_ENV_TARGET:-.env}
+      - .env
     volumes:
       - ./data:/app/data
-    depends_on:
-      db:
-        condition: service_healthy
     networks:
       - internal
     labels:
       - "com.daks.instance=${INSTANCE_ID}"
       - "com.daks.service=fyers-5010"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# VOLUMES - Only Redis data (PostgreSQL is external)
+# ═══════════════════════════════════════════════════════════════════════════════
 volumes:
-  postgres-data:
-    driver: local
   redis-data:
     driver: local
   frontend-node-modules:
@@ -208,9 +224,10 @@ volumes:
   frontend-next:
     driver: local
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# NETWORKS
+# ═══════════════════════════════════════════════════════════════════════════════
 networks:
   internal:
     name: ${INSTANCE_ID}-network
     driver: bridge
-    driver_opts:
-      com.docker.network.driver.mtu: 9000

@@ -13,6 +13,14 @@ PROJECT_DIR="/Users/raghav/Documents/GitHub/APM-TOP-K-STOCKS"
 MULTI_INSTANCES_DIR="$PROJECT_DIR/multi-instances"
 LOG_DIR="$MULTI_INSTANCES_DIR/logs"
 
+# Default server host (can be overridden by DEV/PROD selection)
+SERVER_HOST="${SERVER_HOST:-100.93.172.21}"
+
+# Environment mode: "dev" or "prod"
+# dev = localhost (for local development)
+# prod = server IP (for production deployment)
+DEPLOY_MODE=""
+
 # COLOR CODES & STYLING
 
 readonly RED='\033[0;31m'
@@ -105,9 +113,17 @@ get_docker_status() {
 
 print_banner() {
     clear
+    local mode_display=""
+    if [ "$DEPLOY_MODE" = "dev" ]; then
+        mode_display="${GREEN}DEV${NC} ${DIM}(localhost)${NC}"
+    elif [ "$DEPLOY_MODE" = "prod" ]; then
+        mode_display="${MAGENTA}PROD${NC} ${DIM}($SERVER_HOST)${NC}"
+    fi
+    
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${BOLD}${WHITE}  🚀 MULTI-INSTANCE MANAGER v2.0${NC}"
     echo -e "${DIM}  Docker Orchestration Made Easy${NC}"
+    echo -e "${DIM}  Mode: ${NC}$mode_display"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
@@ -158,6 +174,55 @@ spinner() {
         printf "\b\b\b\b\b\b"
     done
     printf "    \b\b\b\b"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEV/PROD MODE SELECTION
+# This determines whether to use localhost (dev) or server IP (prod)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+select_deploy_mode() {
+    clear
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}${WHITE}  🚀 DAKS MULTI-INSTANCE MANAGER${NC}"
+    echo -e "${DIM}  Select Deployment Mode${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  ${BOLD}${WHITE}🔧 Choose your deployment environment:${NC}"
+    echo ""
+    echo -e "  ┌────────────────────────────────────────────────────────────────────────┐"
+    echo -e "  │  ${YELLOW}1)${NC} ${GREEN}${BOLD}DEV${NC}  - Local Development                                          │"
+    echo -e "  │        ${DIM}• Uses localhost for all URLs${NC}                                  │"
+    echo -e "  │        ${DIM}• Frontend calls http://localhost:510X${NC}                        │"
+    echo -e "  │        ${DIM}• Perfect for testing on your Mac${NC}                             │"
+    echo -e "  │                                                                        │"
+    echo -e "  │  ${YELLOW}2)${NC} ${MAGENTA}${BOLD}PROD${NC} - Production Server (100.93.172.21)                          │"
+    echo -e "  │        ${DIM}• Uses server IP for all URLs${NC}                                 │"
+    echo -e "  │        ${DIM}• Frontend calls http://100.93.172.21:510X${NC}                    │"
+    echo -e "  │        ${DIM}• For deployment on the Tailscale server${NC}                      │"
+    echo -e "  └────────────────────────────────────────────────────────────────────────┘"
+    echo ""
+    echo -n "  Select mode (1=DEV, 2=PROD) [default: 1]: "
+    read -r mode_choice
+    
+    case "$mode_choice" in
+        2|prod|PROD|p|P)
+            DEPLOY_MODE="prod"
+            SERVER_HOST="100.93.172.21"
+            echo ""
+            echo -e "  ${MAGENTA}${BOLD}✓${NC} ${BOLD}PRODUCTION MODE${NC} selected"
+            echo -e "     ${DIM}All URLs will use: ${CYAN}$SERVER_HOST${NC}"
+            ;;
+        *)
+            DEPLOY_MODE="dev"
+            SERVER_HOST="localhost"
+            echo ""
+            echo -e "  ${GREEN}${BOLD}✓${NC} ${BOLD}DEVELOPMENT MODE${NC} selected"
+            echo -e "     ${DIM}All URLs will use: ${CYAN}localhost${NC}"
+            ;;
+    esac
+    echo ""
+    sleep 1
 }
 
 # ENVIRONMENT MODE SELECTION
@@ -256,17 +321,21 @@ check_and_repair_instances() {
                     
                     # Calculate default ports (Updated Scheme: 3000 + instance_num)
                     local frontend_port=$((3000 + num))
-                    local backend_port=$((5002 + (num - 1) * 100))
+                    local backend_port=$((5100 + num))
                     local base_fyers_5001=$((8001 + (num - 1) * 100))
                     local base_fyers_5010=$((8010 + (num - 1) * 100))
-                    local postgres_port=$((5432 + (num - 1) * 10))
-                    local redis_port=$((6379 + (num - 1) * 10))
+                    local redis_port=$((6380 + num))
+                    
+                    # DB_HOST always points to external PostgreSQL server
+                    # (Database is on server, not local machine)
+                    local db_host="100.93.172.21"
                     
                     # Create .env file
                     cat > "$dir/.env" << EOF
 # ═══════════════════════════════════════════════════════════════════════════
 # DAKS TOP-K STOCKS - Instance $num Configuration
 # Auto-Repaired: $(date)
+# Mode: $DEPLOY_MODE | Host: $SERVER_HOST
 # ═══════════════════════════════════════════════════════════════════════════
 
 # Instance Identification
@@ -279,23 +348,25 @@ FRONTEND_PORT=$frontend_port
 BACKEND_PORT=$backend_port
 FYERS_5001_PORT=$base_fyers_5001
 FYERS_5010_PORT=$base_fyers_5010
-POSTGRES_PORT=$postgres_port
 REDIS_PORT=$redis_port
 
-# Database Configuration
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=daks_secure_password_2025
-POSTGRES_DB=daks_stocks_$instance_name
-DATABASE_URL=postgresql://postgres:daks_secure_password_2025@db:5432/daks_stocks_$instance_name
+# Database Configuration - EXTERNAL PostgreSQL
+DB_HOST=$db_host
+DB_PORT=5432
+DB_USERNAME=readonly_user
+DB_PASSWORD=db_read_5432
+DB_DATABASE=nse_hist_db
 
-# Redis Configuration
+# Redis Configuration - Internal Docker
+REDIS_HOST=redis
+REDIS_PORT_INTERNAL=6379
 REDIS_URL=redis://redis:6379
 REDIS_PASSWORD=
 
 # Fyers API Configuration
 FYERS_CLIENT_ID=YOUR_FYERS_CLIENT_ID_HERE
 FYERS_SECRET_ID=YOUR_FYERS_SECRET_ID_HERE
-FYERS_REDIRECT_URI=http://localhost:$frontend_port/auth/callback
+FYERS_REDIRECT_URI=https://raghavjaiswal709.github.io/DAKSphere_redirect
 FYERS_ACCESS_TOKEN=YOUR_FYERS_ACCESS_TOKEN_HERE
 
 # Environment Configuration
@@ -304,11 +375,25 @@ PYTHONUNBUFFERED=1
 PYTHONDONTWRITEBYTECODE=1
 TZ=Asia/Kolkata
 
-# Service URLs
-NEXT_PUBLIC_API_URL=http://localhost:$backend_port
-BACKEND_URL=http://backend:$backend_port
-FYERS_SERVICE_5001_URL=http://localhost:$base_fyers_5001
-FYERS_SERVICE_5010_URL=http://localhost:$base_fyers_5010
+# Service URLs (Browser-accessible - use SERVER_HOST)
+NEXT_PUBLIC_API_URL=http://$SERVER_HOST:$backend_port
+NEXT_PUBLIC_WS_URL=ws://$SERVER_HOST:$backend_port
+NEXT_PUBLIC_BACKEND_URL=http://$SERVER_HOST:$backend_port
+NEXT_PUBLIC_GTT_API_URL=http://$SERVER_HOST:$backend_port
+NEXT_PUBLIC_FYERS_SERVICE_5001_URL=http://$SERVER_HOST:$base_fyers_5001
+NEXT_PUBLIC_FYERS_SERVICE_5010_URL=http://$SERVER_HOST:$base_fyers_5010
+NEXT_PUBLIC_FYERS_SOCKET_URL=http://$SERVER_HOST:$base_fyers_5001
+NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://$SERVER_HOST:$base_fyers_5010
+
+# Internal Docker Service URLs
+BACKEND_URL=http://backend:5002
+FYERS_SERVICE_5001_URL=http://fyers-5001:5001
+FYERS_SERVICE_5010_URL=http://fyers-5010:5010
+
+# External API URLs (adjust for dev/prod)
+SIPR_API_URL=http://$SERVER_HOST:8510
+PREDICTION_API_URL=http://$SERVER_HOST:5112
+PREMARKET_API_URL=http://$SERVER_HOST:5717
 
 # Logging
 LOG_LEVEL=debug
@@ -318,6 +403,10 @@ LOG_DIR=/app/logs
 MAX_CONNECTIONS=100
 REDIS_MAX_MEMORY=512mb
 WORKER_THREADS=4
+
+# User Information
+NEXT_PUBLIC_INSTANCE_USER_NAME="Instance $num User"
+NEXT_PUBLIC_INSTANCE_USER_EMAIL="user$num@daks.com"
 EOF
                     print_success "Repaired $instance_name successfully"
                     ((repaired++))
@@ -475,12 +564,13 @@ show_detailed_status() {
         if is_instance_running "$instance"; then
             if [ "$has_running" = false ]; then
                 echo -e "  ${BOLD}${WHITE}🔗 Quick Access URLs:${NC}"
+                echo -e "     ${DIM}Server: $SERVER_HOST${NC}"
                 has_running=true
             fi
             local num=$(get_instance_number "$instance")
             local frontend_port=$(get_instance_config "$instance" "FRONTEND_PORT")
             local backend_port=$(get_instance_config "$instance" "BACKEND_PORT")
-            echo -e "     ${CYAN}Instance $num:${NC} http://localhost:$frontend_port ${DIM}(API: :$backend_port)${NC}"
+            echo -e "     ${CYAN}Instance $num:${NC} http://$SERVER_HOST:$frontend_port ${DIM}(API: :$backend_port)${NC}"
         fi
     done
 }
@@ -543,8 +633,8 @@ start_single_instance() {
         rm -f "$log_file"
         
         if [ "$silent" = false ] && [ -n "$frontend_port" ]; then
-            echo -e "     ${DIM}Frontend: http://localhost:$frontend_port${NC}"
-            echo -e "     ${DIM}Backend:  http://localhost:$backend_port${NC}"
+            echo -e "     ${DIM}Frontend: http://$SERVER_HOST:$frontend_port${NC}"
+            echo -e "     ${DIM}Backend:  http://$SERVER_HOST:$backend_port${NC}"
         fi
         return 0
     else
@@ -679,12 +769,12 @@ start_all_instances() {
         print_info "Waiting for services to initialize..."
         sleep 3
         echo ""
-        echo -e "  ${BOLD}${WHITE}🔗 Access URLs:${NC}"
+        echo -e "  ${BOLD}${WHITE}🔗 Access URLs:${NC} ${DIM}(Server: $SERVER_HOST)${NC}"
         for instance in "${instances[@]}"; do
             if is_instance_running "$instance"; then
                 local num=$(get_instance_number "$instance")
                 local port=$(get_instance_config "$instance" "FRONTEND_PORT")
-                echo -e "     ${CYAN}Instance $num:${NC} http://localhost:$port"
+                echo -e "     ${CYAN}Instance $num:${NC} http://$SERVER_HOST:$port"
             fi
         done
     fi
@@ -1045,6 +1135,9 @@ menu_health_check() {
         return
     fi
     
+    echo -e "  ${DIM}Testing against: $SERVER_HOST${NC}"
+    echo ""
+    
     local total_checks=0
     local passed_checks=0
     
@@ -1062,7 +1155,7 @@ menu_health_check() {
         
         # Frontend check
         ((total_checks++))
-        if curl -s --connect-timeout 2 "http://localhost:$FRONTEND_PORT" >/dev/null 2>&1; then
+        if curl -s --connect-timeout 2 "http://$SERVER_HOST:$FRONTEND_PORT" >/dev/null 2>&1; then
             print_success "Frontend (:$FRONTEND_PORT)"
             ((passed_checks++))
         else
@@ -1071,26 +1164,26 @@ menu_health_check() {
         
         # Backend check
         ((total_checks++))
-        if curl -s --connect-timeout 2 "http://localhost:$BACKEND_PORT/health" >/dev/null 2>&1 || \
-           curl -s --connect-timeout 2 "http://localhost:$BACKEND_PORT" >/dev/null 2>&1; then
+        if curl -s --connect-timeout 2 "http://$SERVER_HOST:$BACKEND_PORT/health" >/dev/null 2>&1 || \
+           curl -s --connect-timeout 2 "http://$SERVER_HOST:$BACKEND_PORT" >/dev/null 2>&1; then
             print_success "Backend (:$BACKEND_PORT)"
             ((passed_checks++))
         else
             print_error "Backend (:$BACKEND_PORT)"
         fi
         
-        # Database check
+        # Database check (External PostgreSQL at SERVER_HOST:5432)
         ((total_checks++))
-        if nc -z localhost $POSTGRES_PORT >/dev/null 2>&1; then
-            print_success "Database (:$POSTGRES_PORT)"
+        if nc -z $SERVER_HOST 5432 >/dev/null 2>&1; then
+            print_success "Database ($SERVER_HOST:5432 - external)"
             ((passed_checks++))
         else
-            print_error "Database (:$POSTGRES_PORT)"
+            print_error "Database ($SERVER_HOST:5432 - external)"
         fi
         
         # Redis check
         ((total_checks++))
-        if nc -z localhost $REDIS_PORT >/dev/null 2>&1; then
+        if nc -z $SERVER_HOST $REDIS_PORT >/dev/null 2>&1; then
             print_success "Redis (:$REDIS_PORT)"
             ((passed_checks++))
         else
@@ -1262,17 +1355,17 @@ menu_create_instance() {
     local new_instance="instance$new_num"
     local new_dir="$MULTI_INSTANCES_DIR/$new_instance"
     
-    echo -e "  Creating ${CYAN}Instance $new_num${NC}"
+    echo -e "  Creating ${CYAN}Instance $new_num${NC} in ${BOLD}$DEPLOY_MODE${NC} mode"
     echo ""
     
     # Calculate default ports based on instance number
     # Frontend: 3000 + instance_num (e.g., 3001, 3002, 3003)
+    # Backend: 5100 + instance_num (e.g., 5101, 5102, 5103)
     local base_frontend=$((3000 + new_num))
-    local base_backend=$((5002 + (new_num - 1) * 100))
+    local base_backend=$((5100 + new_num))
     local base_fyers_5001=$((8001 + (new_num - 1) * 100))
     local base_fyers_5010=$((8010 + (new_num - 1) * 100))
-    local base_postgres=$((5432 + (new_num - 1) * 10))
-    local base_redis=$((6379 + (new_num - 1) * 10))
+    local base_redis=$((6380 + new_num))
     
     echo -e "  ${CYAN}Frontend Port ${DIM}(default: $base_frontend)${NC}: \c"
     read -r frontend_port
@@ -1281,10 +1374,6 @@ menu_create_instance() {
     echo -e "  ${CYAN}Backend Port ${DIM}(default: $base_backend)${NC}: \c"
     read -r backend_port
     backend_port=${backend_port:-$base_backend}
-    
-    echo -e "  ${CYAN}PostgreSQL Port ${DIM}(default: $base_postgres)${NC}: \c"
-    read -r postgres_port
-    postgres_port=${postgres_port:-$base_postgres}
     
     echo -e "  ${CYAN}Redis Port ${DIM}(default: $base_redis)${NC}: \c"
     read -r redis_port
@@ -1304,11 +1393,16 @@ menu_create_instance() {
         return 1
     fi
     
-    # Create .env file
+    # DB_HOST always points to external PostgreSQL server
+    # (Database is on server, not local machine)
+    local db_host="100.93.172.21"
+    
+    # Create .env file with external DB configuration
     cat > "$new_dir/.env" << EOF
 # ═══════════════════════════════════════════════════════════════════════════
 # DAKS TOP-K STOCKS - Instance $new_num Configuration
 # Created: $(date)
+# Mode: $DEPLOY_MODE | Host: $SERVER_HOST
 # ═══════════════════════════════════════════════════════════════════════════
 
 # Instance Identification
@@ -1321,23 +1415,27 @@ FRONTEND_PORT=$frontend_port
 BACKEND_PORT=$backend_port
 FYERS_5001_PORT=$base_fyers_5001
 FYERS_5010_PORT=$base_fyers_5010
-POSTGRES_PORT=$postgres_port
 REDIS_PORT=$redis_port
 
-# Database Configuration
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=daks_secure_password_2025
-POSTGRES_DB=daks_stocks_$new_instance
-DATABASE_URL=postgresql://postgres:daks_secure_password_2025@db:5432/daks_stocks_$new_instance
+# Database Configuration - EXTERNAL PostgreSQL
+# In DEV mode: connects to PostgreSQL on host machine via host.docker.internal
+# In PROD mode: connects directly to server IP
+DB_HOST=$db_host
+DB_PORT=5432
+DB_USERNAME=readonly_user
+DB_PASSWORD=db_read_5432
+DB_DATABASE=nse_hist_db
 
-# Redis Configuration
+# Redis Configuration - Internal Docker
+REDIS_HOST=redis
+REDIS_PORT_INTERNAL=6379
 REDIS_URL=redis://redis:6379
 REDIS_PASSWORD=
 
 # Fyers API Configuration
 FYERS_CLIENT_ID=YOUR_FYERS_CLIENT_ID_HERE
 FYERS_SECRET_ID=YOUR_FYERS_SECRET_ID_HERE
-FYERS_REDIRECT_URI=http://localhost:$frontend_port/auth/callback
+FYERS_REDIRECT_URI=https://raghavjaiswal709.github.io/DAKSphere_redirect
 FYERS_ACCESS_TOKEN=YOUR_FYERS_ACCESS_TOKEN_HERE
 
 # Environment Configuration
@@ -1346,11 +1444,27 @@ PYTHONUNBUFFERED=1
 PYTHONDONTWRITEBYTECODE=1
 TZ=Asia/Kolkata
 
-# Service URLs
-NEXT_PUBLIC_API_URL=http://localhost:$backend_port
-BACKEND_URL=http://backend:$backend_port
-FYERS_SERVICE_5001_URL=http://localhost:$base_fyers_5001
-FYERS_SERVICE_5010_URL=http://localhost:$base_fyers_5010
+# Service URLs (Browser-accessible)
+# In DEV: uses localhost so browser can reach the services
+# In PROD: uses server IP
+NEXT_PUBLIC_API_URL=http://$SERVER_HOST:$backend_port
+NEXT_PUBLIC_WS_URL=ws://$SERVER_HOST:$backend_port
+NEXT_PUBLIC_BACKEND_URL=http://$SERVER_HOST:$backend_port
+NEXT_PUBLIC_GTT_API_URL=http://$SERVER_HOST:$backend_port
+NEXT_PUBLIC_FYERS_SERVICE_5001_URL=http://$SERVER_HOST:$base_fyers_5001
+NEXT_PUBLIC_FYERS_SERVICE_5010_URL=http://$SERVER_HOST:$base_fyers_5010
+NEXT_PUBLIC_FYERS_SOCKET_URL=http://$SERVER_HOST:$base_fyers_5001
+NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://$SERVER_HOST:$base_fyers_5010
+
+# Internal Docker Service URLs
+BACKEND_URL=http://backend:5002
+FYERS_SERVICE_5001_URL=http://fyers-5001:5001
+FYERS_SERVICE_5010_URL=http://fyers-5010:5010
+
+# External API URLs (use localhost in dev, server IP in prod)
+SIPR_API_URL=http://$SERVER_HOST:8510
+PREDICTION_API_URL=http://$SERVER_HOST:5112
+PREMARKET_API_URL=http://$SERVER_HOST:5717
 
 # Logging
 LOG_LEVEL=debug
@@ -1360,15 +1474,20 @@ LOG_DIR=/app/logs
 MAX_CONNECTIONS=100
 REDIS_MAX_MEMORY=512mb
 WORKER_THREADS=4
+
+# User Information
+NEXT_PUBLIC_INSTANCE_USER_NAME="Instance $new_num User"
+NEXT_PUBLIC_INSTANCE_USER_EMAIL="user$new_num@daks.com"
 EOF
     
     print_success "Instance $new_num created successfully!"
     echo ""
     echo -e "  ${BOLD}Configuration:${NC}"
+    echo -e "     Mode:       ${BOLD}$DEPLOY_MODE${NC}"
     echo -e "     Directory:  ${DIM}$new_dir${NC}"
-    echo -e "     Frontend:   ${CYAN}:$frontend_port${NC}"
-    echo -e "     Backend:    ${CYAN}:$backend_port${NC}"
-    echo -e "     PostgreSQL: ${CYAN}:$postgres_port${NC}"
+    echo -e "     Frontend:   ${CYAN}http://$SERVER_HOST:$frontend_port${NC}"
+    echo -e "     Backend:    ${CYAN}http://$SERVER_HOST:$backend_port${NC}"
+    echo -e "     Database:   ${CYAN}$db_host:5432${NC}"
     echo -e "     Redis:      ${CYAN}:$redis_port${NC}"
     echo ""
     print_info "Don't forget to update the Fyers API credentials in $new_dir/.env"
@@ -1429,19 +1548,205 @@ menu_delete_instance() {
     print_success "Instance $num deleted permanently"
 }
 
+# Regenerate .env files for all instances based on current DEPLOY_MODE
+regenerate_all_env_files() {
+    print_section "🔄 Regenerating Environment Files"
+    
+    echo -e "  ${BOLD}Current Mode:${NC} $DEPLOY_MODE"
+    echo -e "  ${BOLD}Server Host:${NC} $SERVER_HOST"
+    echo ""
+    
+    local instances=($(get_all_instances))
+    
+    if [ ${#instances[@]} -eq 0 ]; then
+        print_warning "No instances found"
+        return
+    fi
+    
+    echo -e "  ${YELLOW}⚠ This will regenerate .env files for ${#instances[@]} instance(s)${NC}"
+    echo -e "  ${YELLOW}  (Fyers API credentials will be preserved if present)${NC}"
+    echo ""
+    echo -e "  ${CYAN}Continue? (y/N):${NC} \c"
+    read -r confirm
+    
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        print_info "Operation cancelled"
+        return
+    fi
+    
+    echo ""
+    
+    for instance in "${instances[@]}"; do
+        local num=$(get_instance_number "$instance")
+        local instance_dir="$MULTI_INSTANCES_DIR/$instance"
+        
+        # Read existing Fyers credentials if they exist
+        local fyers_client_id="YOUR_FYERS_CLIENT_ID_HERE"
+        local fyers_secret_id="YOUR_FYERS_SECRET_ID_HERE"
+        local fyers_redirect_uri="https://raghavjaiswal709.github.io/DAKSphere_redirect"
+        local fyers_access_token="YOUR_FYERS_ACCESS_TOKEN_HERE"
+        
+        if [ -f "$instance_dir/.env" ]; then
+            local temp=$(grep "^FYERS_CLIENT_ID=" "$instance_dir/.env" 2>/dev/null | cut -d'=' -f2-)
+            [ -n "$temp" ] && [ "$temp" != "YOUR_FYERS_CLIENT_ID_HERE" ] && fyers_client_id="$temp"
+            
+            temp=$(grep "^FYERS_SECRET_ID=" "$instance_dir/.env" 2>/dev/null | cut -d'=' -f2-)
+            [ -n "$temp" ] && [ "$temp" != "YOUR_FYERS_SECRET_ID_HERE" ] && fyers_secret_id="$temp"
+            
+            temp=$(grep "^FYERS_REDIRECT_URI=" "$instance_dir/.env" 2>/dev/null | cut -d'=' -f2-)
+            [ -n "$temp" ] && fyers_redirect_uri="$temp"
+            
+            temp=$(grep "^FYERS_ACCESS_TOKEN=" "$instance_dir/.env" 2>/dev/null | cut -d'=' -f2-)
+            [ -n "$temp" ] && [ "$temp" != "YOUR_FYERS_ACCESS_TOKEN_HERE" ] && fyers_access_token="$temp"
+        fi
+        
+        # Calculate ports
+        local frontend_port=$((3000 + num))
+        local backend_port=$((5100 + num))
+        local base_fyers_5001=$((8001 + (num - 1) * 100))
+        local base_fyers_5010=$((8010 + (num - 1) * 100))
+        local redis_port=$((6380 + num))
+        
+        # DB_HOST always points to external PostgreSQL server
+        # (Database is on server, not local machine)
+        local db_host="100.93.172.21"
+        
+        print_loading "Regenerating Instance $num..."
+        
+        # Create .env file
+        cat > "$instance_dir/.env" << EOF
+# ═══════════════════════════════════════════════════════════════════════════
+# DAKS TOP-K STOCKS - Instance $num Configuration
+# Regenerated: $(date)
+# Mode: $DEPLOY_MODE | Host: $SERVER_HOST
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Instance Identification
+INSTANCE_ID=$instance
+INSTANCE_NAME="DAKS Instance $num"
+INSTANCE_REGION=local
+
+# Port Configuration
+FRONTEND_PORT=$frontend_port
+BACKEND_PORT=$backend_port
+FYERS_5001_PORT=$base_fyers_5001
+FYERS_5010_PORT=$base_fyers_5010
+REDIS_PORT=$redis_port
+
+# Database Configuration - EXTERNAL PostgreSQL
+# In DEV mode: connects via host.docker.internal
+# In PROD mode: connects directly to server IP
+DB_HOST=$db_host
+DB_PORT=5432
+DB_USERNAME=readonly_user
+DB_PASSWORD=db_read_5432
+DB_DATABASE=nse_hist_db
+
+# Redis Configuration - Internal Docker
+REDIS_HOST=redis
+REDIS_PORT_INTERNAL=6379
+REDIS_URL=redis://redis:6379
+REDIS_PASSWORD=
+
+# Fyers API Configuration
+FYERS_CLIENT_ID=$fyers_client_id
+FYERS_SECRET_ID=$fyers_secret_id
+FYERS_REDIRECT_URI=$fyers_redirect_uri
+FYERS_ACCESS_TOKEN=$fyers_access_token
+
+# Environment Configuration
+NODE_ENV=development
+PYTHONUNBUFFERED=1
+PYTHONDONTWRITEBYTECODE=1
+TZ=Asia/Kolkata
+
+# Service URLs (Browser-accessible)
+# In DEV: uses localhost so browser can reach the services
+# In PROD: uses server IP
+NEXT_PUBLIC_API_URL=http://$SERVER_HOST:$backend_port
+NEXT_PUBLIC_WS_URL=ws://$SERVER_HOST:$backend_port
+NEXT_PUBLIC_BACKEND_URL=http://$SERVER_HOST:$backend_port
+NEXT_PUBLIC_GTT_API_URL=http://$SERVER_HOST:$backend_port
+NEXT_PUBLIC_FYERS_SERVICE_5001_URL=http://$SERVER_HOST:$base_fyers_5001
+NEXT_PUBLIC_FYERS_SERVICE_5010_URL=http://$SERVER_HOST:$base_fyers_5010
+NEXT_PUBLIC_FYERS_SOCKET_URL=http://$SERVER_HOST:$base_fyers_5001
+NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://$SERVER_HOST:$base_fyers_5010
+
+# Internal Docker Service URLs
+BACKEND_URL=http://backend:5002
+FYERS_SERVICE_5001_URL=http://fyers-5001:5001
+FYERS_SERVICE_5010_URL=http://fyers-5010:5010
+
+# External API URLs
+SIPR_API_URL=http://$SERVER_HOST:8510
+PREDICTION_API_URL=http://$SERVER_HOST:5112
+PREMARKET_API_URL=http://$SERVER_HOST:5717
+
+# Logging
+LOG_LEVEL=debug
+LOG_DIR=/app/logs
+
+# Performance
+MAX_CONNECTIONS=100
+REDIS_MAX_MEMORY=512mb
+WORKER_THREADS=4
+
+# User Information
+NEXT_PUBLIC_INSTANCE_USER_NAME="Instance $num User"
+NEXT_PUBLIC_INSTANCE_USER_EMAIL="user$num@daks.com"
+EOF
+        print_success "Instance $num regenerated"
+    done
+    
+    echo ""
+    print_success "All .env files regenerated for ${BOLD}$DEPLOY_MODE${NC} mode"
+    echo ""
+    print_warning "You need to restart running instances for changes to take effect!"
+}
+
+menu_switch_mode() {
+    print_section "🔄 Switch DEV/PROD Mode"
+    
+    local current_mode="$DEPLOY_MODE"
+    
+    echo -e "  ${BOLD}Current Mode:${NC} $DEPLOY_MODE ($SERVER_HOST)"
+    echo ""
+    
+    select_deploy_mode
+    
+    if [ "$DEPLOY_MODE" != "$current_mode" ]; then
+        echo ""
+        echo -e "  ${YELLOW}Mode changed from ${NC}${BOLD}$current_mode${NC}${YELLOW} to ${NC}${BOLD}$DEPLOY_MODE${NC}"
+        echo ""
+        echo -e "  ${CYAN}Regenerate .env files for all instances? (y/N):${NC} \c"
+        read -r regen
+        
+        if [[ "$regen" =~ ^[Yy]$ ]]; then
+            regenerate_all_env_files
+        else
+            print_info "Mode changed. Run 'Regenerate Env Files' from menu to update instances."
+        fi
+    fi
+}
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAIN MENU
 # ═══════════════════════════════════════════════════════════════════════════════
-
-check_and_repair_instances
 
 show_main_menu() {
     print_banner
     show_status_summary
     echo ""
     
+    local mode_indicator=""
+    if [ "$DEPLOY_MODE" = "dev" ]; then
+        mode_indicator="${GREEN}[DEV]${NC}"
+    else
+        mode_indicator="${MAGENTA}[PROD]${NC}"
+    fi
+    
     echo -e "${CYAN}┌──────────────────────────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${CYAN}│${NC}  ${BOLD}${WHITE}MAIN MENU${NC}                                                                  ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC}  ${BOLD}${WHITE}MAIN MENU${NC} $mode_indicator                                                       ${CYAN}│${NC}"
     echo -e "${CYAN}├──────────────────────────────────────────────────────────────────────────────┤${NC}"
     echo -e "${CYAN}│${NC}                                                                              ${CYAN}│${NC}"
     echo -e "${CYAN}│${NC}   ${BOLD}INSTANCE CONTROL${NC}                         ${BOLD}MONITORING & LOGS${NC}                ${CYAN}│${NC}"
@@ -1455,6 +1760,9 @@ show_main_menu() {
     echo -e "${CYAN}│${NC}   ${BOLD}INSTANCE MANAGEMENT${NC}                     ${YELLOW}12)${NC} 🖥  Open Shell                  ${CYAN}│${NC}"
     echo -e "${CYAN}│${NC}   ${YELLOW}13)${NC} ➕ Create New Instance            ${YELLOW}14)${NC} 🗑  Delete Instance             ${CYAN}│${NC}"
     echo -e "${CYAN}│${NC}                                                                              ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC}   ${BOLD}CONFIGURATION${NC}                                                              ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC}   ${YELLOW}15)${NC} 🔧 Switch DEV/PROD Mode          ${YELLOW}16)${NC} 📝 Regenerate Env Files        ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC}                                                                              ${CYAN}│${NC}"
     echo -e "${CYAN}│${NC}   ${YELLOW} 0)${NC} ${DIM}Exit${NC}                              ${YELLOW} h)${NC} ${DIM}Help (CLI Commands)${NC}            ${CYAN}│${NC}"
     echo -e "${CYAN}│${NC}                                                                              ${CYAN}│${NC}"
     echo -e "${CYAN}└──────────────────────────────────────────────────────────────────────────────┘${NC}"
@@ -1466,6 +1774,11 @@ show_cli_help() {
     print_section "📖 CLI Commands Reference"
     
     echo -e "  ${BOLD}You can also use this script from command line:${NC}"
+    echo ""
+    echo -e "  ${CYAN}Mode Selection:${NC}"
+    echo -e "     ${DIM}Current Mode:${NC} ${GREEN}$DEPLOY_MODE${NC} (${SERVER_HOST})"
+    echo -e "     ./manager.sh --dev <command>    ${DIM}Run in DEV mode (localhost)${NC}"
+    echo -e "     ./manager.sh --prod <command>   ${DIM}Run in PROD mode (server IP)${NC}"
     echo ""
     echo -e "  ${CYAN}Lifecycle:${NC}"
     echo -e "     ./manager.sh start-all          ${DIM}Start all instances${NC}"
@@ -1480,9 +1793,19 @@ show_cli_help() {
     echo -e "     ./manager.sh logs <num>         ${DIM}View instance logs${NC}"
     echo -e "     ./manager.sh resources          ${DIM}Show resource usage${NC}"
     echo ""
+    echo -e "  ${CYAN}Configuration:${NC}"
+    echo -e "     ./manager.sh regen-env          ${DIM}Regenerate all .env files${NC}"
+    echo ""
     echo -e "  ${CYAN}Database:${NC}"
     echo -e "     ./manager.sh db-shell <num>     ${DIM}Open psql shell${NC}"
     echo -e "     ./manager.sh db-backup <num>    ${DIM}Backup database${NC}"
+    echo ""
+    echo -e "  ${CYAN}Examples:${NC}"
+    echo -e "     ${DIM}# Start instance 2 in dev mode${NC}"
+    echo -e "     ./manager.sh --dev start 2"
+    echo -e ""
+    echo -e "     ${DIM}# Regenerate env files for production${NC}"
+    echo -e "     ./manager.sh --prod regen-env"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1493,6 +1816,21 @@ handle_cli_command() {
     local command=$1
     local arg1=$2
     local arg2=$3
+    
+    # Handle --dev and --prod flags
+    if [ "$command" = "--dev" ] || [ "$command" = "-d" ]; then
+        DEPLOY_MODE="dev"
+        SERVER_HOST="localhost"
+        command=$arg1
+        arg1=$arg2
+        arg2=$3
+    elif [ "$command" = "--prod" ] || [ "$command" = "-p" ]; then
+        DEPLOY_MODE="prod"
+        SERVER_HOST="100.93.172.21"
+        command=$arg1
+        arg1=$arg2
+        arg2=$3
+    fi
     
     case "$command" in
         start-all)
@@ -1547,6 +1885,9 @@ handle_cli_command() {
         resources)
             menu_resource_usage
             ;;
+        regen-env|regenerate)
+            regenerate_all_env_files
+            ;;
         db-shell)
             if [ -z "$arg1" ]; then
                 print_error "Usage: $0 db-shell <instance_number>"
@@ -1588,6 +1929,12 @@ handle_cli_command() {
 main_interactive() {
     # Create log directory
     mkdir -p "$LOG_DIR"
+    
+    # First, select DEV or PROD mode
+    select_deploy_mode
+    
+    # Check and repair any broken instances
+    check_and_repair_instances
     
     while true; do
         show_main_menu
@@ -1649,6 +1996,14 @@ main_interactive() {
                 menu_delete_instance
                 press_enter
                 ;;
+            15)
+                menu_switch_mode
+                press_enter
+                ;;
+            16)
+                regenerate_all_env_files
+                press_enter
+                ;;
             h|H|help)
                 show_cli_help
                 press_enter
@@ -1660,7 +2015,7 @@ main_interactive() {
                 exit 0
                 ;;
             *)
-                print_error "Invalid choice. Please enter 0-14, h for help, or q to quit."
+                print_error "Invalid choice. Please enter 0-16, h for help, or q to quit."
                 sleep 1
                 ;;
         esac
@@ -1676,6 +2031,11 @@ trap 'echo ""; print_info "Returning to menu..."; sleep 0.3' INT
 
 # Check if we have CLI arguments
 if [ $# -gt 0 ]; then
+    # For CLI commands, default to dev mode unless specified
+    if [ -z "$DEPLOY_MODE" ]; then
+        DEPLOY_MODE="dev"
+        SERVER_HOST="localhost"
+    fi
     handle_cli_command "$@"
 else
     main_interactive
