@@ -4,8 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // then fall back to public envs for local/dev host-port access.
 const backendUrl =
   process.env.BACKEND_URL ||
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.BACKEND_URL ||
   'http://localhost:5502';
 
 export async function POST(request: NextRequest) {

@@ -162,14 +162,10 @@ export default function AdminValidatePage() {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname;
       // If accessing from server IP, use server IP for backend
-      if (hostname === '100.93.172.21') {
-        backendUrl = 'http://100.93.172.21:5002';
-      } else {
-        // For localhost or other, use environment variable or default
-        backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5002';
-      }
+      // Use relative URL to go through Next.js proxy
+      backendUrl = '';
     } else {
-      backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5002';
+      backendUrl = '';
     }
     
     // Create SSE connection
@@ -236,13 +232,10 @@ export default function AdminValidatePage() {
       let backendUrl: string;
       if (typeof window !== 'undefined') {
         const hostname = window.location.hostname;
-        if (hostname === '100.93.172.21') {
-          backendUrl = 'http://100.93.172.21:5002';
-        } else {
-          backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5002';
-        }
+      // Use relative URL to go through Next.js proxy
+      backendUrl = '';
       } else {
-        backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5002';
+        backendUrl = '';
       }
 
       // Call stop endpoint

@@ -31,7 +31,7 @@ interface UseWatchlistOptions {
 }
 
 export function useWatchlist(options: UseWatchlistOptions = {}) {
-  const BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+  const BASE_URL = '';
   
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
