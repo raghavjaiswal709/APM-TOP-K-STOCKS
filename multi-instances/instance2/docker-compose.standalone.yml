@@ -110,8 +110,6 @@ services:
       - PREMARKET_API_URL=${PREMARKET_API_URL:-http://100.93.172.21:5717}
     env_file:
       - .env
-    volumes:
-      - ./data:/app/data
     depends_on:
       redis:
         condition: service_healthy
