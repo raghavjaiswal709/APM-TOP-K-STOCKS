@@ -9,7 +9,8 @@
 
 # CONFIGURATION
 
-PROJECT_DIR="/Users/raghav/Documents/GitHub/APM-TOP-K-STOCKS"
+# PROJECT_DIR="/Users/raghav/Documents/GitHub/APM-TOP-K-STOCKS"
+PROJECT_DIR="/nvme1/production/Dashboard/Kuber_Dash/"
 MULTI_INSTANCES_DIR="$PROJECT_DIR/multi-instances"
 LOG_DIR="$MULTI_INSTANCES_DIR/logs"
 
@@ -1548,6 +1549,181 @@ menu_delete_instance() {
     print_success "Instance $num deleted permanently"
 }
 
+# Nuclear reset - wipe everything and start fresh
+menu_nuclear_reset() {
+    print_section "☢️  NUCLEAR RESET - Complete System Wipe"
+    
+    echo -e "  ${RED}${BOLD}⚠️  EXTREME WARNING ⚠️${NC}"
+    echo ""
+    echo -e "  ${RED}This will DESTROY EVERYTHING:${NC}"
+    echo -e "  ${RED}  ✗ Stop all running containers${NC}"
+    echo -e "  ${RED}  ✗ Delete all Docker images${NC}"
+    echo -e "  ${RED}  ✗ Delete all Docker volumes${NC}"
+    echo -e "  ${RED}  ✗ Delete all Docker build cache${NC}"
+    echo -e "  ${RED}  ✗ Delete all instance data/logs/backups${NC}"
+    echo -e "  ${RED}  ✗ Force complete rebuild from scratch${NC}"
+    echo ""
+    echo -e "  ${YELLOW}After reset, you'll need to:${NC}"
+    echo -e "  ${YELLOW}  1. Regenerate .env files${NC}"
+    echo -e "  ${YELLOW}  2. Rebuild all containers${NC}"
+    echo -e "  ${YELLOW}  3. Restart instances${NC}"
+    echo ""
+    echo -e "  ${CYAN}This cannot be undone!${NC}"
+    echo ""
+    echo -e "  ${RED}${BOLD}Type 'NUKE' to confirm complete destruction:${NC} \c"
+    read -r confirm
+    
+    if [ "$confirm" != "NUKE" ]; then
+        print_info "Reset cancelled - your data is safe"
+        return
+    fi
+    
+    echo ""
+    echo -e "  ${RED}${BOLD}FINAL WARNING: Type 'YES DELETE EVERYTHING' to proceed:${NC} \c"
+    read -r final_confirm
+    
+    if [ "$final_confirm" != "YES DELETE EVERYTHING" ]; then
+        print_info "Reset cancelled - your data is safe"
+        return
+    fi
+    
+    echo ""
+    echo -e "  ${MAGENTA}${BOLD}Initiating nuclear reset sequence...${NC}"
+    echo ""
+    sleep 2
+    
+    # Step 1: Stop all running containers
+    print_loading "Step 1/7: Stopping all containers..."
+    local instances=($(get_all_instances))
+    for instance in "${instances[@]}"; do
+        local instance_dir="$MULTI_INSTANCES_DIR/$instance"
+        cd "$instance_dir" 2>/dev/null
+        docker compose -f docker-compose.standalone.yml down >/dev/null 2>&1
+    done
+    print_success "All containers stopped"
+    sleep 1
+    
+    # Step 2: Remove all containers
+    print_loading "Step 2/7: Removing all containers..."
+    docker ps -aq --filter "label=com.daks.instance" | xargs -r docker rm -f >/dev/null 2>&1
+    print_success "All containers removed"
+    sleep 1
+    
+    # Step 3: Remove all images
+    print_loading "Step 3/7: Removing all Docker images..."
+    for instance in "${instances[@]}"; do
+        docker rmi -f "${instance}-frontend" >/dev/null 2>&1
+        docker rmi -f "${instance}-backend" >/dev/null 2>&1
+        docker rmi -f "${instance}-fyers-5001" >/dev/null 2>&1
+        docker rmi -f "${instance}-fyers-5010" >/dev/null 2>&1
+    done
+    print_success "All images removed"
+    sleep 1
+    
+    # Step 4: Remove all volumes
+    print_loading "Step 4/7: Removing all Docker volumes..."
+    for instance in "${instances[@]}"; do
+        local instance_dir="$MULTI_INSTANCES_DIR/$instance"
+        cd "$instance_dir" 2>/dev/null
+        docker compose -f docker-compose.standalone.yml down -v >/dev/null 2>&1
+    done
+    docker volume prune -f >/dev/null 2>&1
+    print_success "All volumes removed"
+    sleep 1
+    
+    # Step 5: Prune Docker system (cache, networks, etc.)
+    print_loading "Step 5/7: Pruning Docker system cache..."
+    docker system prune -af --volumes >/dev/null 2>&1
+    docker builder prune -af >/dev/null 2>&1
+    print_success "Docker cache cleared"
+    sleep 1
+    
+    # Step 6: Clean instance directories
+    print_loading "Step 6/7: Cleaning instance data directories..."
+    for instance in "${instances[@]}"; do
+        local instance_dir="$MULTI_INSTANCES_DIR/$instance"
+        rm -rf "$instance_dir/data/"* 2>/dev/null
+        rm -rf "$instance_dir/logs/"* 2>/dev/null
+        rm -rf "$instance_dir/backups/"* 2>/dev/null
+        mkdir -p "$instance_dir"/{data,logs,backups,config}
+    done
+    print_success "Instance directories cleaned"
+    sleep 1
+    
+    # Step 7: Remove orphan containers
+    print_loading "Step 7/7: Final cleanup..."
+    docker container prune -f >/dev/null 2>&1
+    docker network prune -f >/dev/null 2>&1
+    print_success "Final cleanup complete"
+    sleep 1
+    
+    echo ""
+    echo -e "  ${GREEN}${BOLD}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "  ${GREEN}${BOLD}║                  NUCLEAR RESET COMPLETE                    ║${NC}"
+    echo -e "  ${GREEN}${BOLD}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  ${YELLOW}System is now in pristine state.${NC}"
+    echo ""
+    echo -e "  ${CYAN}Next steps:${NC}"
+    echo -e "  ${CYAN}  1.${NC} Select DEV/PROD mode (will prompt on menu return)"
+    echo -e "  ${CYAN}  2.${NC} Use option 16 to regenerate .env files"
+    echo -e "  ${CYAN}  3.${NC} Use option 4 to start all instances"
+    echo ""
+    echo -e "  ${DIM}Docker cache cleared, all containers/images/volumes removed.${NC}"
+    echo -e "  ${DIM}Next build will take longer but will be completely fresh.${NC}"
+    echo ""
+    
+    # Force mode re-selection on return
+    DEPLOY_MODE=""
+}
+
+# Quick reset - stop all, clear cache, restart
+menu_quick_reset() {
+    print_section "🔄 Quick Reset - Stop, Clear Cache, Ready to Rebuild"
+    
+    echo -e "  ${YELLOW}This will:${NC}"
+    echo -e "  ${YELLOW}  • Stop all running instances${NC}"
+    echo -e "  ${YELLOW}  • Clear Docker build cache${NC}"
+    echo -e "  ${YELLOW}  • Preserve data/logs/backups${NC}"
+    echo -e "  ${YELLOW}  • Keep .env files${NC}"
+    echo ""
+    echo -e "  ${CYAN}Continue? (y/N):${NC} \c"
+    read -r confirm
+    
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        print_info "Reset cancelled"
+        return
+    fi
+    
+    echo ""
+    
+    # Stop all instances
+    print_loading "Stopping all instances..."
+    local instances=($(get_all_instances))
+    for instance in "${instances[@]}"; do
+        local instance_dir="$MULTI_INSTANCES_DIR/$instance"
+        cd "$instance_dir" 2>/dev/null
+        docker compose -f docker-compose.standalone.yml down >/dev/null 2>&1
+    done
+    print_success "All instances stopped"
+    
+    # Clear cache
+    print_loading "Clearing Docker build cache..."
+    docker builder prune -af >/dev/null 2>&1
+    print_success "Cache cleared"
+    
+    # Prune unused resources
+    print_loading "Removing unused containers and networks..."
+    docker container prune -f >/dev/null 2>&1
+    docker network prune -f >/dev/null 2>&1
+    print_success "Cleanup complete"
+    
+    echo ""
+    print_success "Quick reset complete!"
+    echo ""
+    echo -e "  ${CYAN}You can now rebuild and restart instances.${NC}"
+}
+
 # Regenerate .env files for all instances based on current DEPLOY_MODE
 regenerate_all_env_files() {
     print_section "🔄 Regenerating Environment Files"
@@ -1701,7 +1877,127 @@ EOF
     echo ""
     print_success "All .env files regenerated for ${BOLD}$DEPLOY_MODE${NC} mode"
     echo ""
-    print_warning "You need to restart running instances for changes to take effect!"
+    print_warning "You need to REBUILD running instances for changes to take effect!"
+    echo -e "  ${CYAN}Run option 17 (Rebuild Instances) from the main menu${NC}"
+}
+
+# Rebuild frontend for instance(s) with new env vars
+rebuild_instances() {
+    print_section "🔨 Rebuild Instance Frontend"
+    
+    echo -e "  ${BOLD}${WHITE}Select rebuild scope:${NC}"
+    echo ""
+    echo -e "  ${YELLOW}1)${NC} Rebuild specific instance"
+    echo -e "  ${YELLOW}2)${NC} Rebuild ALL instances"
+    echo -e "  ${YELLOW}3)${NC} Cancel"
+    echo ""
+    echo -n "  Select option (1-3): "
+    read -r rebuild_choice
+    
+    case "$rebuild_choice" in
+        1)
+            # Select instance
+            local instance
+            instance=$(select_instance "all" "rebuild")
+            local result=$?
+            
+            if [ $result -eq 2 ]; then
+                print_info "Operation cancelled"
+                return
+            fi
+            
+            if [ $result -ne 0 ] || [ -z "$instance" ]; then
+                print_error "Invalid selection"
+                return
+            fi
+            
+            local num=$(get_instance_number "$instance")
+            local instance_dir="$MULTI_INSTANCES_DIR/$instance"
+            
+            echo ""
+            echo -e "  ${YELLOW}⚠ This will rebuild the frontend for Instance $num${NC}"
+            echo -e "  ${YELLOW}  The container will be temporarily unavailable${NC}"
+            echo ""
+            echo -e "  ${CYAN}Continue? (y/N):${NC} \c"
+            read -r confirm
+            
+            if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+                print_info "Operation cancelled"
+                return
+            fi
+            
+            echo ""
+            print_loading "Rebuilding Instance $num frontend..."
+            
+            cd "$instance_dir"
+            if docker compose -f docker-compose.standalone.yml build --no-cache frontend >/dev/null 2>&1; then
+                print_success "Frontend rebuilt successfully"
+                echo ""
+                print_loading "Restarting frontend..."
+                if docker compose -f docker-compose.standalone.yml up -d frontend >/dev/null 2>&1; then
+                    print_success "Instance $num frontend restarted"
+                else
+                    print_error "Failed to restart frontend"
+                fi
+            else
+                print_error "Failed to rebuild frontend"
+            fi
+            ;;
+            
+        2)
+            # Rebuild all instances
+            local instances=($(get_all_instances))
+            
+            if [ ${#instances[@]} -eq 0 ]; then
+                print_warning "No instances found"
+                return
+            fi
+            
+            echo ""
+            echo -e "  ${YELLOW}⚠ This will rebuild frontends for ${#instances[@]} instance(s)${NC}"
+            echo -e "  ${YELLOW}  This may take several minutes${NC}"
+            echo ""
+            echo -e "  ${CYAN}Continue? (y/N):${NC} \c"
+            read -r confirm
+            
+            if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+                print_info "Operation cancelled"
+                return
+            fi
+            
+            echo ""
+            local rebuilt=0
+            local failed=0
+            
+            for instance in "${instances[@]}"; do
+                local num=$(get_instance_number "$instance")
+                local instance_dir="$MULTI_INSTANCES_DIR/$instance"
+                
+                print_loading "Rebuilding Instance $num frontend..."
+                
+                cd "$instance_dir"
+                if docker compose -f docker-compose.standalone.yml build --no-cache frontend >/dev/null 2>&1; then
+                    if docker compose -f docker-compose.standalone.yml up -d frontend >/dev/null 2>&1; then
+                        print_success "Instance $num rebuilt and restarted"
+                        ((rebuilt++))
+                    else
+                        print_error "Instance $num rebuild succeeded but restart failed"
+                        ((failed++))
+                    fi
+                else
+                    print_error "Instance $num rebuild failed"
+                    ((failed++))
+                fi
+            done
+            
+            echo ""
+            echo -e "  ${BOLD}Summary:${NC} ${GREEN}$rebuilt rebuilt${NC} │ ${RED}$failed failed${NC}"
+            ;;
+            
+        *)
+            print_info "Operation cancelled"
+            ;;
+    esac
 }
 
 menu_switch_mode() {
@@ -1762,6 +2058,10 @@ show_main_menu() {
     echo -e "${CYAN}│${NC}                                                                              ${CYAN}│${NC}"
     echo -e "${CYAN}│${NC}   ${BOLD}CONFIGURATION${NC}                                                              ${CYAN}│${NC}"
     echo -e "${CYAN}│${NC}   ${YELLOW}15)${NC} 🔧 Switch DEV/PROD Mode          ${YELLOW}16)${NC} 📝 Regenerate Env Files        ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC}   ${YELLOW}17)${NC} 🔨 Rebuild Instances                                                 ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC}                                                                              ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC}   ${BOLD}RESET & RECOVERY${NC}                                                           ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC}   ${YELLOW}18)${NC} 🔄 Quick Reset (Cache Only)      ${YELLOW}19)${NC} ☢️  Nuclear Reset (DANGER!)     ${CYAN}│${NC}"
     echo -e "${CYAN}│${NC}                                                                              ${CYAN}│${NC}"
     echo -e "${CYAN}│${NC}   ${YELLOW} 0)${NC} ${DIM}Exit${NC}                              ${YELLOW} h)${NC} ${DIM}Help (CLI Commands)${NC}            ${CYAN}│${NC}"
     echo -e "${CYAN}│${NC}                                                                              ${CYAN}│${NC}"
@@ -1795,6 +2095,12 @@ show_cli_help() {
     echo ""
     echo -e "  ${CYAN}Configuration:${NC}"
     echo -e "     ./manager.sh regen-env          ${DIM}Regenerate all .env files${NC}"
+    echo -e "     ./manager.sh rebuild <num>      ${DIM}Rebuild specific instance frontend${NC}"
+    echo -e "     ./manager.sh rebuild-all        ${DIM}Rebuild all instances frontends${NC}"
+    echo ""
+    echo -e "  ${CYAN}Reset & Recovery:${NC}"
+    echo -e "     ./manager.sh quick-reset        ${DIM}Stop all & clear cache${NC}"
+    echo -e "     ./manager.sh nuclear-reset      ${DIM}Complete system wipe (DANGER!)${NC}"
     echo ""
     echo -e "  ${CYAN}Database:${NC}"
     echo -e "     ./manager.sh db-shell <num>     ${DIM}Open psql shell${NC}"
@@ -1887,6 +2193,40 @@ handle_cli_command() {
             ;;
         regen-env|regenerate)
             regenerate_all_env_files
+            ;;
+        rebuild)
+            if [ -z "$arg1" ]; then
+                print_error "Usage: $0 rebuild <instance_number>"
+                exit 1
+            fi
+            local instance_dir="$MULTI_INSTANCES_DIR/instance$arg1"
+            if [ ! -d "$instance_dir" ]; then
+                print_error "Instance $arg1 not found"
+                exit 1
+            fi
+            print_loading "Rebuilding instance $arg1 frontend..."
+            cd "$instance_dir"
+            docker compose -f docker-compose.standalone.yml build --no-cache frontend
+            docker compose -f docker-compose.standalone.yml up -d frontend
+            print_success "Instance $arg1 rebuilt"
+            ;;
+        rebuild-all)
+            local instances=($(get_all_instances))
+            for instance in "${instances[@]}"; do
+                local num=$(get_instance_number "$instance")
+                local instance_dir="$MULTI_INSTANCES_DIR/$instance"
+                print_loading "Rebuilding instance $num frontend..."
+                cd "$instance_dir"
+                docker compose -f docker-compose.standalone.yml build --no-cache frontend >/dev/null 2>&1
+                docker compose -f docker-compose.standalone.yml up -d frontend >/dev/null 2>&1
+                print_success "Instance $num rebuilt"
+            done
+            ;;
+        quick-reset)
+            menu_quick_reset
+            ;;
+        nuclear-reset|nuke)
+            menu_nuclear_reset
             ;;
         db-shell)
             if [ -z "$arg1" ]; then
@@ -2004,6 +2344,18 @@ main_interactive() {
                 regenerate_all_env_files
                 press_enter
                 ;;
+            17)
+                rebuild_instances
+                press_enter
+                ;;
+            18)
+                menu_quick_reset
+                press_enter
+                ;;
+            19)
+                menu_nuclear_reset
+                press_enter
+                ;;
             h|H|help)
                 show_cli_help
                 press_enter
@@ -2015,7 +2367,7 @@ main_interactive() {
                 exit 0
                 ;;
             *)
-                print_error "Invalid choice. Please enter 0-16, h for help, or q to quit."
+                print_error "Invalid choice. Please enter 0-19, h for help, or q to quit."
                 sleep 1
                 ;;
         esac
