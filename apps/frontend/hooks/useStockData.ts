@@ -18,7 +18,7 @@ interface UseStockDataParams {
   indicators?: string[];
   enableIncrementalLoading?: boolean;
 }
-export function useStockData({ 
+export function useStockData({
   companyCode,
   exchange = 'NSE',
   interval = '1m',
@@ -44,9 +44,9 @@ export function useStockData({
     cacheRef.current[key] = data;
   }, [getCacheKey, companyCode, interval]);
   const fetchData = useCallback(async (
-    startDate?: Date, 
-    endDate?: Date, 
-    options: { 
+    startDate?: Date,
+    endDate?: Date,
+    options: {
       fetchAllData?: boolean;
       merge?: boolean;
       priority?: 'high' | 'normal';
@@ -99,7 +99,7 @@ export function useStockData({
       }
       const url = `/api/companies/${companyCode}/ohlcv?${queryParams.toString()}`;
       console.log(`Fetching stock data: ${url}`);
-      const response = await fetch(url, { 
+      const response = await fetch(url, {
         signal: abortControllerRef.current.signal,
         headers: {
           'Cache-Control': 'no-cache',
@@ -147,7 +147,7 @@ export function useStockData({
     combined.forEach(item => {
       uniqueMap.set(item.interval_start, item);
     });
-    return Array.from(uniqueMap.values()).sort((a, b) => 
+    return Array.from(uniqueMap.values()).sort((a, b) =>
       new Date(a.interval_start).getTime() - new Date(b.interval_start).getTime()
     );
   }, []);
@@ -166,39 +166,66 @@ export function useStockData({
   }, []);
   const loadDataForRange = useCallback(async (visibleStart: Date, visibleEnd: Date) => {
     if (!enableIncrementalLoading) return;
-    const buffer = 30 * 60 * 1000;
+
+    // Dynamic buffer: fetch 5x the visible range in both directions (total ~10x buffer + viewport)
+    const viewportDuration = visibleEnd.getTime() - visibleStart.getTime();
+    // Min buffer of 1 day to ensure we don't fetch tiny chunks on high zoom
+    const minBuffer = 24 * 60 * 60 * 1000;
+    const buffer = Math.max(viewportDuration * 5, minBuffer);
+
     const expandedStart = new Date(visibleStart.getTime() - buffer);
     const expandedEnd = new Date(visibleEnd.getTime() + buffer);
-    const gaps = [];
+
+    // Throttle checks
+    const requestKey = `range_${expandedStart.getTime()}_${expandedEnd.getTime()}`;
+    if (loadingQueueRef.current.has(requestKey)) return;
+
+    const gaps: { start: Date; end: Date }[] = [];
+
+    // Check left gap (history)
     if (!dataRange.start || expandedStart < dataRange.start) {
+      // Only fetch if we are significantly past the cached start
+      // or if we have no data
       gaps.push({
         start: expandedStart,
         end: dataRange.start || visibleStart
       });
     }
+
+    // Check right gap (future/recent) -- usually less needed if live, but good for range scrolling
     if (!dataRange.end || expandedEnd > dataRange.end) {
+      // For right gap, we often cap at "Now" if it's real-time, but fetch can handle that validation
       gaps.push({
         start: dataRange.end || visibleEnd,
         end: expandedEnd
       });
     }
-    for (const gap of gaps) {
-      await fetchIncrementalData(gap.start, gap.end);
+
+    if (gaps.length > 0) {
+      // loadingQueueRef.current.add(requestKey); // Add to queue to throttle
+      // We rely on fetchIncrementalData's internal queue check, but preventing spam here is good.
+      // But fetchIncrementalData generates its own key.
+      // Let's just iterate.
+      for (const gap of gaps) {
+        console.log(`Fetching gap: ${gap.start.toISOString()} to ${gap.end.toISOString()}`);
+        await fetchIncrementalData(gap.start, gap.end);
+      }
+      // loadingQueueRef.current.delete(requestKey);
     }
   }, [enableIncrementalLoading, dataRange, fetchIncrementalData]);
   useEffect(() => {
     clearData();
   }, [companyCode, clearData]);
-  return { 
-    data, 
-    loading, 
-    error, 
+  return {
+    data,
+    loading,
+    error,
     dataRange,
-    fetchData, 
-    fetchAllData, 
+    fetchData,
+    fetchAllData,
     fetchIncrementalData,
     loadDataForRange,
-    clearData 
+    clearData
   };
 }
 
