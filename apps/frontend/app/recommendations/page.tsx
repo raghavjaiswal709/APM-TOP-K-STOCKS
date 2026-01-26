@@ -40,6 +40,7 @@ import {
   type SthitiPrediction
 } from '@/lib/historicalSthitiService';
 import { useWatchlist } from "@/hooks/useWatchlist";
+import { useTheme } from "next-themes";
 
 // Types
 interface MarketData {
@@ -72,8 +73,9 @@ interface OHLCPoint {
 
 const RecommendationListPage: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
+  const { theme } = useTheme();
   // Analysis Visibility State
-  const [isAnalysisVisible, setIsAnalysisVisible] = useState(true);
+  const [isAnalysisVisible, setIsAnalysisVisible] = useState(false);
 
   const [historicalDataPoints, setHistoricalDataPoints] = useState<MarketData[]>([]);
   const [ohlcDataPoints, setOHLCDataPoints] = useState<OHLCPoint[]>([]);
@@ -279,12 +281,16 @@ const RecommendationListPage: React.FC = () => {
         <div className="flex flex-1 min-h-0 overflow-hidden">
 
           {/* LEFT: CHART & ANALYSIS SPLIT */}
-          <div className="flex-1 flex flex-col min-w-0 bg-background relative">
+          <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden">
 
-            {/* Upper: Chart (Grow to take available space, min height) */}
-            <div className="flex-1 relative min-h-[400px] border-b">
+            {/* Upper: Chart */}
+            <div
+              className="relative border-b flex flex-col transition-[flex-basis] duration-300 ease-in-out overflow-hidden"
+              style={{ flex: isAnalysisVisible ? '0 0 55%' : '1 1 auto' }}
+            >
               {selectedCompany ? (
-                <div className="relative w-full h-full">
+                <div className="relative w-full h-full flex flex-col">
+                  {/* StockChart takes full height of this container */}
                   <StockChart
                     companyId={selectedCompany}
                     data={chartData}
@@ -292,6 +298,7 @@ const RecommendationListPage: React.FC = () => {
                     loading={loadingFullData}
                     height="100%"
                     className="w-full h-full"
+                    theme={theme === 'light' ? 'light' : 'dark'}
                   />
                 </div>
               ) : (
@@ -307,43 +314,50 @@ const RecommendationListPage: React.FC = () => {
               )}
             </div>
 
-            {/* Lower: Analysis / Carousel (Collapsible or Tabbed?) */}
+            {/* Toggle Button Bar - Fixed Height */}
             {selectedCompany && (
-              <div className="h-[35%] min-h-[300px] flex flex-col bg-background/50">
-                <Tabs defaultValue="analysis" className="flex-1 flex flex-col">
-                  <div className="border-b px-4 bg-muted/20">
+              <div className="flex-none flex items-center justify-center border-b bg-muted/20 hover:bg-muted/40 transition-colors py-1 cursor-pointer z-10" onClick={() => setIsAnalysisVisible(!isAnalysisVisible)}>
+                <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 opacity-70 hover:opacity-100">
+                  {isAnalysisVisible ? (
+                    <>
+                      <ChevronDown className="h-3 w-3" />
+                      Hide Analysis
+                    </>
+                  ) : (
+                    <>
+                      <ChevronUp className="h-3 w-3" />
+                      Show Analysis
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* Lower: Analysis / Carousel (Collapsible) - Fills Helper */}
+            {selectedCompany && isAnalysisVisible && (
+              <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden animate-in slide-in-from-bottom-5 duration-300 fade-in">
+                <Tabs defaultValue="analysis" className="flex-1 flex flex-col min-h-0">
+                  <div className="border-b px-4 bg-muted/20 shrink-0">
                     <TabsList className="h-9">
                       <TabsTrigger value="analysis" className="text-xs">Sentiment & Prediction</TabsTrigger>
                       <TabsTrigger value="charts" className="text-xs">Historical Charts</TabsTrigger>
                     </TabsList>
                   </div>
                   <div className="flex-1 overflow-hidden relative">
-                    <TabsContent value="analysis" className="h-full m-0 p-0 overflow-hidden">
-                      {/* Reuse AnalysisPanel but adapted for horizontal layout possibly? 
-                                         AnalysisPanel is designed as a sidebar. It works fine here too.
-                                     */}
-                      <div className="h-full overflow-y-auto">
-                        <div className="max-w-4xl mx-auto py-4">
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 px-4">
-                            {/* We can destructure AnalysisPanel content manually or wrap it.
-                                                       For simplicity, let's render the AnalysisPanel which essentially functions as a detail view.
-                                                       However, AnalysisPanel assumes a vertical stack.
-                                                       Let's render it as is for now, it scrolls vertically.
-                                                   */}
-                            <AnalysisPanel
-                              selectedCompany={selectedCompany}
-                              currentData={currentData}
-                              overallSentiment={overallSentiment}
-                              sthitiPrediction={sthitiPrediction}
-                              loadingSthitiPrediction={loadingSthitiPrediction}
-                              sthitiPositiveClusters={sthitiPositiveClusters}
-                              sthitiNegativeClusters={sthitiNegativeClusters}
-                              sthitiNeutralClusters={sthitiNeutralClusters}
-                              loadingSthitiClusters={loadingSthitiClusters}
-                              selectedDate={selectedDate}
-                            />
-                          </div>
-                        </div>
+                    <TabsContent value="analysis" className="h-full m-0 p-0">
+                      <div className="h-full w-full">
+                        <AnalysisPanel
+                          selectedCompany={selectedCompany}
+                          currentData={currentData}
+                          overallSentiment={overallSentiment}
+                          sthitiPrediction={sthitiPrediction}
+                          loadingSthitiPrediction={loadingSthitiPrediction}
+                          sthitiPositiveClusters={sthitiPositiveClusters}
+                          sthitiNegativeClusters={sthitiNegativeClusters}
+                          sthitiNeutralClusters={sthitiNeutralClusters}
+                          loadingSthitiClusters={loadingSthitiClusters}
+                          selectedDate={selectedDate}
+                        />
                       </div>
                     </TabsContent>
                     <TabsContent value="charts" className="h-full m-0 p-4 overflow-y-auto">

@@ -125,6 +125,11 @@ export function LightWeightStockChart({
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [chartTheme, setChartTheme] = useState<'light' | 'dark'>(theme);
 
+    // Sync theme prop with local state
+    useEffect(() => {
+        setChartTheme(theme);
+    }, [theme]);
+
     // Analysis State
     const [showBidAsk, setShowBidAsk] = useState(false);
     const [bidAskMode, setBidAskMode] = useState<'Line' | 'Spread' | 'STD'>('Line');
