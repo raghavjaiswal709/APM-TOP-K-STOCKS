@@ -32,6 +32,8 @@ interface AuthStatus {
   redirect_uri?: string;
   // We don't save access_token in status file, but we return it in API
   access_token?: string;
+  auth_code?: string;
+  timestamp?: string;
 }
 
 interface TokenResponse {
@@ -482,6 +484,8 @@ export class FyersAuthService {
         status.client_id = tokenData?.client_id || this.clientId;
         status.redirect_uri = this.redirectUri;
         status.access_token = tokenData?.access_token || undefined;
+        status.auth_code = tokenData?.auth_code || undefined;
+        status.timestamp = tokenData?.timestamp || undefined;
 
         // Use expiry from token file if available
         if (tokenData?.expires_at) {
@@ -501,7 +505,9 @@ export class FyersAuthService {
           services_notified: [], // Can't know for sure without status file, default empty
           client_id: tokenData.client_id || this.clientId,
           redirect_uri: this.redirectUri,
-          access_token: tokenData.access_token
+          access_token: tokenData.access_token,
+          auth_code: tokenData.auth_code,
+          timestamp: tokenData.timestamp
         };
       }
     } catch (error) {

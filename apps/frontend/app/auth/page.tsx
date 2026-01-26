@@ -53,11 +53,9 @@ interface AuthStatus {
     timestamp?: string;
 }
 
-const CopyField = ({ label, value, sensitive = false }: { label: string, value?: string, sensitive?: boolean }) => {
+const CopyField = ({ label, value, sensitive = false, multiline = false }: { label: string, value?: string, sensitive?: boolean, multiline?: boolean }) => {
     const [copied, setCopied] = useState(false);
     const [show, setShow] = useState(!sensitive);
-
-
 
     const handleCopy = () => {
         if (!value) return;
@@ -69,20 +67,38 @@ const CopyField = ({ label, value, sensitive = false }: { label: string, value?:
     return (
         <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">{label}</label>
-            <div className="flex items-center gap-2">
-                <div className="relative flex-1 bg-muted/50 rounded-md border px-3 py-2 text-sm font-mono overflow-hidden h-9 flex items-center">
-                    <span className={sensitive && !show ? "blur-sm select-none" : "select-all"}>
-                        {value || <span className="text-muted-foreground/40 italic">Not available</span>}
-                    </span>
-                </div>
-                {sensitive && (
-                    <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setShow(!show)} disabled={!value}>
-                        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
+            <div className={`flex gap-2 ${multiline ? 'items-start' : 'items-center'}`}>
+                {multiline ? (
+                    <div className="relative flex-1">
+                        <textarea
+                            readOnly
+                            value={value || "Not available"}
+                            className={`w-full min-h-[100px] bg-muted/50 rounded-md border px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-ring ${sensitive && !show ? "blur-sm select-none" : "select-all"}`}
+                        />
+                        {sensitive && !show && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-transparent pointer-events-none">
+                                <span className="text-muted-foreground text-xs backdrop-blur-md px-2 py-1 rounded">Hidden</span>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="relative flex-1 bg-muted/50 rounded-md border px-3 py-2 text-sm font-mono overflow-hidden h-9 flex items-center">
+                        <span className={`w-full truncate ${sensitive && !show ? "blur-sm select-none" : "select-all"}`}>
+                            {value || <span className="text-muted-foreground/40 italic">Not available</span>}
+                        </span>
+                    </div>
                 )}
-                <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleCopy} disabled={!value}>
-                    {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                </Button>
+
+                <div className={`flex flex-col gap-1 ${multiline ? 'mt-0' : ''}`}>
+                    {sensitive && (
+                        <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setShow(!show)} disabled={!value}>
+                            {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                    )}
+                    <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleCopy} disabled={!value}>
+                        {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                </div>
             </div>
         </div>
     );
@@ -272,7 +288,22 @@ export default function AuthPage() {
                                         Connect your Fyers account to enable real-time market data streaming and trading features.
                                     </CardDescription>
                                 </div>
-                                {getStatusIcon()}
+                                <div className="flex items-center gap-4">
+                                    <Button
+                                        size="default"
+                                        onClick={startAuthFlow}
+                                        disabled={loading}
+                                        className="min-w-[140px]"
+                                    >
+                                        {loading ? (
+                                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <ExternalLink className="mr-2 h-4 w-4" />
+                                        )}
+                                        {authStatus?.authenticated ? 'Re-authenticate' : 'Connect Account'}
+                                    </Button>
+                                    {getStatusIcon()}
+                                </div>
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-6">
@@ -322,11 +353,13 @@ export default function AuthPage() {
                                         label="Authorization Code"
                                         value={authStatus?.auth_code}
                                         sensitive={true}
+                                        multiline={true}
                                     />
                                     <CopyField
                                         label="Auth Token (Access Token)"
                                         value={authStatus?.access_token}
                                         sensitive={true}
+                                        multiline={true}
                                     />
                                     <CopyField
                                         label="Last Updated"
@@ -335,23 +368,10 @@ export default function AuthPage() {
                                 </div>
                             </div>
                         </CardContent>
-                        <CardFooter className="flex flex-col sm:flex-row gap-4 bg-muted/20 pt-6">
-                            <Button
-                                size="lg"
-                                className="w-full sm:w-auto min-w-[200px]"
-                                onClick={startAuthFlow}
-                                disabled={loading}
-                            >
-                                {loading ? (
-                                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                ) : (
-                                    <ExternalLink className="mr-2 h-4 w-4" />
-                                )}
-                                {authStatus?.authenticated ? 'Re-authenticate with Fyers' : 'Connect Fyers Account'}
-                            </Button>
-                            <p className="text-sm text-muted-foreground flex items-center">
+                        <CardFooter className="bg-muted/20 py-4 flex justify-center">
+                            <p className="text-xs text-muted-foreground flex items-center">
                                 <Lock className="w-3 h-3 mr-1" />
-                                You will be redirected to the broker's login page securely.
+                                You will be redirected to the broker's login page securely via OAuth 2.0
                             </p>
                         </CardFooter>
                     </Card>

@@ -190,6 +190,8 @@ const MarketDataPage: React.FC = () => {
     timestamp: number;
   } | null>(null);
   const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
+  const [stoppedSymbols, setStoppedSymbols] = useState<string[]>([]);
+  const [permanentlyStoppedSymbols, setPermanentlyStoppedSymbols] = useState<string[]>([]);
   // Lifted state for date synchronization
   const [currentDate, setCurrentDate] = useState<string | null>(null);
   const [filteredCompanies, setFilteredCompanies] = useState<any[]>([]);
@@ -436,33 +438,97 @@ const MarketDataPage: React.FC = () => {
       console.log(`📤 Sending subscription request for ${companyCodes.length} companies via WebSocket to port 5001`);
 
       // ✅ Convert company codes to Fyers format symbols (NSE:CODE-EQ)
-      const fyersSymbols = companyCodes.map(code => {
-        // Find the company in our list to get exchange and marker
-        const company = companies?.find((c: any) => c.company_code === code);
-        const exchange = company?.exchange || 'NSE';
-        const marker = company?.marker || 'EQ';
-        return `${exchange}:${code}-${marker}`;
-      });
+      // ✅ Filter out STOPPED/invalid companies
+      const fyersSymbols = companyCodes
+        .map(code => {
+          // Find the company in our list to get exchange and marker
+          const company = companies?.find((c: any) => c.company_code === code);
+          const exchange = company?.exchange || 'NSE';
+          const marker = company?.marker || 'EQ';
+          
+          // Skip STOPPED or invalid markers
+          if (!marker || marker.toUpperCase() === 'STOPPED' || marker === '') {
+            console.log(`⏭️ Skipping ${code}: marker is "${marker}"`);
+            return null;
+          }
+          
+          return `${exchange}:${code}-${marker}`;
+        })
+        .filter((s): s is string => s !== null);
+
+      if (fyersSymbols.length === 0) {
+        toast.warning('No valid companies to subscribe (all are STOPPED or invalid)');
+        setIsSubscribing(false);
+        return;
+      }
 
       console.log(`📤 Converted to Fyers symbols:`, fyersSymbols.slice(0, 5), `... (${fyersSymbols.length} total)`);
 
       // ✅ Use socket.emit to send directly to Python fyers_new_5001.py service
-      socketRef.current.emit('subscribe_companies', { 
+      socketRef.current.emit('subscribe_companies', {
         symbols: fyersSymbols,
-        companyCodes: companyCodes 
+        companyCodes: companyCodes
       }, (response: any) => {
         setIsSubscribing(false);
-        
+
         if (response && response.success) {
           console.log('✅ Subscription successful:', response);
-          toast.success(`Successfully subscribed to ${response.count || companyCodes.length} companies`);
-          
+          toast.success(`Successfully subscribed to ${response.count || fyersSymbols.length} companies`);
+
           // Update subscribed set
           fyersSymbols.forEach(s => isSubscribedRef.current.add(s));
+          
+          // Determine which symbols were successfully subscribed
+          const failedSymbols = response.failed || response.invalid_symbols || [];
+          const successfulSymbols = fyersSymbols.filter((s: string) => !failedSymbols.includes(s));
+          
+          // Report successful subscriptions to backend
+          if (successfulSymbols.length > 0) {
+            console.log('💾 Saving successful subscriptions:', successfulSymbols.length);
+            fetch('/api/admin/subscribed-companies', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ symbols: successfulSymbols }),
+            }).catch(err => console.error('Failed to save successful subscriptions:', err));
+          }
+          
+          // Check if there were any failed symbols in the response
+          if (response.failed && response.failed.length > 0) {
+            console.log('⚠️ Some symbols failed:', response.failed);
+            // Report failed symbols to backend
+            fetch('/api/admin/failed-subscriptions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ symbols: response.failed }),
+            }).catch(err => console.error('Failed to report failed symbols:', err));
+            
+            toast.warning(`${response.failed.length} symbol(s) failed to subscribe`);
+          }
         } else {
           const errorMsg = response?.error || response?.message || 'Subscription failed';
           console.error('❌ Subscription failed:', response);
           toast.error(errorMsg);
+          
+          // Check for invalid_symbols in error response
+          const invalidSymbols = response?.invalid_symbols || response?.invalidSymbols || [];
+          if (invalidSymbols.length > 0) {
+            console.log('🚫 Invalid symbols detected:', invalidSymbols);
+            // Report to backend
+            fetch('/api/admin/failed-subscriptions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ symbols: invalidSymbols }),
+            }).catch(err => console.error('Failed to report invalid symbols:', err));
+            
+            setSubscriptionErrors({
+              code: response?.code || -300,
+              message: errorMsg,
+              invalidSymbols: invalidSymbols,
+              timestamp: Date.now()
+            });
+            
+            setFailedSymbols(prev => [...new Set([...prev, ...invalidSymbols])]);
+          }
         }
       });
 
@@ -644,6 +710,17 @@ const MarketDataPage: React.FC = () => {
     }
 
     console.log('🔍 Parsed invalid symbols:', invalidSymbols);
+
+    if (invalidSymbols.length > 0) {
+      // Report to backend
+      fetch('/api/admin/failed-subscriptions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ symbols: invalidSymbols }),
+      }).catch(err => console.error('Failed to report invalid symbols:', err));
+    }
 
     setSubscriptionErrors({
       code: errorData.code || -300,
@@ -895,7 +972,7 @@ const MarketDataPage: React.FC = () => {
 
     const checkPredictionServicesHealth = async () => {
       setIsCheckingHealth(true);
-      
+
       // Check regular prediction service health
       try {
         const predictionHealth = await PredictionAPIService.checkHealth({ timeout: 5000 });
@@ -927,6 +1004,35 @@ const MarketDataPage: React.FC = () => {
     const healthCheckInterval = setInterval(checkPredictionServicesHealth, 120000);
 
     return () => clearInterval(healthCheckInterval);
+  }, [isClient]);
+
+  // Fetch subscription status from JSON files (all categories)
+  useEffect(() => {
+    if (!isClient) return;
+
+    const fetchSubscriptionStatus = async () => {
+      try {
+        const response = await fetch('/api/admin/subscription-status');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data) {
+            // Update the subscription category states from JSON files
+            setFailedSymbols(data.data.failed || []);
+            setStoppedSymbols(data.data.stopped || []);
+            setPermanentlyStoppedSymbols(data.data.permanentlyStopped || []);
+            console.log('📊 Subscription status loaded:', data.counts);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching subscription status:', error);
+      }
+    };
+
+    fetchSubscriptionStatus();
+
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchSubscriptionStatus, 30000);
+    return () => clearInterval(interval);
   }, [isClient]);
 
   useEffect(() => {
@@ -1350,7 +1456,7 @@ const MarketDataPage: React.FC = () => {
                     >
                       {isGttEnabled ? '⚡ GTT View ON' : '⚡ GTT View OFF'}
                     </button> */}
-                    
+
                     {/* Regular Prediction Service Status Button */}
                     {predictionServiceHealth === 'checking' || isCheckingHealth ? (
                       <div className="px-3 py-1 rounded text-sm font-medium bg-gray-200 text-gray-500 flex items-center gap-2">
@@ -1478,137 +1584,230 @@ const MarketDataPage: React.FC = () => {
                       </HoverCardTrigger>
 
                       <HoverCardContent
-                        className="w-[500px] p-0 bg-zinc-900 border-zinc-700"
+                        className="w-[700px] p-0 bg-zinc-900 border-zinc-700"
                         side="left"
                         align="start"
                       >
-                        {/* ✅ Split view: Subscribed (Green) | Failed (Red) */}
-                        <div className="flex">
-                          {/* Left Panel: Subscribed Companies (Green) */}
-                          <div className="flex-1 p-4 border-r border-zinc-700">
-                            <div className="flex items-center justify-between mb-3 pb-2 border-b border-zinc-800">
-                              <div className="flex items-center gap-2">
-                                <Wifi className="h-4 w-4 text-green-500" />
-                                <h3 className="font-semibold text-green-400 text-sm">
+                        {/* ✅ 4-Panel Grid: Subscribed | Failed | Stopped | Permanently Stopped */}
+                        <div className="grid grid-cols-2 gap-0">
+                          {/* Panel 1: Subscribed Companies (Green) */}
+                          <div className="p-3 border-r border-b border-zinc-700">
+                            <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
+                              <div className="flex items-center gap-1.5">
+                                <Wifi className="h-3.5 w-3.5 text-green-500" />
+                                <h3 className="font-semibold text-green-400 text-xs">
                                   Subscribed
                                 </h3>
                               </div>
-                              <span className="text-xs bg-green-900/50 text-green-300 px-2 py-0.5 rounded">
+                              <span className="text-[10px] bg-green-900/50 text-green-300 px-1.5 py-0.5 rounded">
                                 {activeSymbols.length}
                               </span>
                             </div>
-
-                            <ScrollArea className="h-[350px] pr-2">
-                              <div className="space-y-1.5">
+                            <ScrollArea className="h-[180px] pr-1">
+                              <div className="space-y-1">
                                 {activeSymbols.length > 0 ? (
                                   activeSymbols.map((symbol, index) => {
                                     const companyCode = symbol.split(':')[1]?.split('-')[0] || symbol;
                                     const exchange = symbol.split(':')[0] || '';
-
                                     return (
-                                      <div
-                                        key={symbol}
-                                        className="flex items-center gap-2 p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors group"
-                                      >
-                                        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-900/30 flex items-center justify-center">
-                                          <span className="text-[10px] font-bold text-green-400">
-                                            {index + 1}
-                                          </span>
-                                        </div>
+                                      <div key={symbol} className="flex items-center gap-1.5 p-1.5 rounded bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors">
+                                        <span className="text-[9px] font-bold text-green-400 w-4">{index + 1}</span>
                                         <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-medium text-white truncate">
-                                            {companyCode}
-                                          </div>
-                                          <div className="text-[10px] text-zinc-500">
-                                            {exchange}
-                                          </div>
+                                          <div className="text-[10px] font-medium text-white truncate">{companyCode}</div>
+                                          <div className="text-[8px] text-zinc-500">{exchange}</div>
                                         </div>
                                         <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
                                       </div>
                                     );
                                   })
                                 ) : (
-                                  <div className="text-center py-8 text-zinc-500">
-                                    <Wifi className="h-6 w-6 mx-auto mb-2 opacity-30" />
-                                    <p className="text-xs">No active subscriptions</p>
+                                  <div className="text-center py-6 text-zinc-500">
+                                    <Wifi className="h-5 w-5 mx-auto mb-1 opacity-30" />
+                                    <p className="text-[10px]">No active subscriptions</p>
                                   </div>
                                 )}
                               </div>
                             </ScrollArea>
                           </div>
 
-                          {/* Right Panel: Failed Subscriptions (Red) */}
-                          <div className="flex-1 p-4">
-                            <div className="flex items-center justify-between mb-3 pb-2 border-b border-zinc-800">
-                              <div className="flex items-center gap-2">
-                                <WifiOff className="h-4 w-4 text-red-500" />
-                                <h3 className="font-semibold text-red-400 text-sm">
+                          {/* Panel 2: Failed Subscriptions (Red) */}
+                          <div className="p-3 border-b border-zinc-700">
+                            <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
+                              <div className="flex items-center gap-1.5">
+                                <WifiOff className="h-3.5 w-3.5 text-red-500" />
+                                <h3 className="font-semibold text-red-400 text-xs">
                                   Failed
                                 </h3>
                               </div>
-                              <span className="text-xs  text-red-300 px-2 py-0.5 rounded">
+                              <span className="text-[10px] bg-red-900/50 text-red-300 px-1.5 py-0.5 rounded">
                                 {failedSymbols.length}
                               </span>
                             </div>
-
-                            <ScrollArea className="h-[350px] pr-2">
-                              <div className="space-y-1.5">
+                            <ScrollArea className="h-[180px] pr-1">
+                              <div className="space-y-1">
                                 {failedSymbols.length > 0 ? (
                                   failedSymbols.map((symbol, index) => {
-                                    // Parse the symbol - could be "NSE:COMPANY-STOPPED" format
                                     const cleanSymbol = symbol.replace('-STOPPED', '').replace(/'/g, '');
                                     const parts = cleanSymbol.split(':');
                                     const exchange = parts[0] || '';
                                     const companyCode = parts[1]?.split('-')[0] || cleanSymbol;
-
                                     return (
-                                      <div
-                                        key={symbol}
-                                        className="flex items-center gap-2 p-2 rounded-lg bg-red-950/30 hover:bg-red-950/50 transition-colors group"
-                                      >
-                                        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-red-900/30 flex items-center justify-center">
-                                          <span className="text-[10px] font-bold text-red-400">
-                                            {index + 1}
-                                          </span>
-                                        </div>
+                                      <div key={symbol} className="flex items-center gap-1.5 p-1.5 rounded bg-red-950/30 hover:bg-red-950/50 transition-colors">
+                                        <span className="text-[9px] font-bold text-red-400 w-4">{index + 1}</span>
                                         <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-medium text-red-200 truncate">
-                                            {companyCode}
-                                          </div>
-                                          <div className="text-[10px] text-red-400/70">
-                                            {exchange} • Stopped/Invalid
-                                          </div>
+                                          <div className="text-[10px] font-medium text-red-200 truncate">{companyCode}</div>
+                                          <div className="text-[8px] text-red-400/70">{exchange}</div>
                                         </div>
-                                        <AlertCircle className="w-3 h-3 text-red-500" />
+                                        <AlertCircle className="w-2.5 h-2.5 text-red-500" />
                                       </div>
                                     );
                                   })
                                 ) : (
-                                  <div className="text-center py-8 text-zinc-500">
-                                    <div className="w-6 h-6 mx-auto mb-2 rounded-full bg-green-900/20 flex items-center justify-center">
-                                      <Wifi className="h-3 w-3 text-green-500" />
+                                  <div className="text-center py-6 text-zinc-500">
+                                    <div className="w-5 h-5 mx-auto mb-1 rounded-full bg-green-900/20 flex items-center justify-center">
+                                      <Wifi className="h-2.5 w-2.5 text-green-500" />
                                     </div>
-                                    <p className="text-xs text-green-400">All symbols OK</p>
+                                    <p className="text-[10px] text-green-400">All symbols OK</p>
                                   </div>
                                 )}
                               </div>
                             </ScrollArea>
+                          </div>
 
-                            {/* Error Details */}
-                            {subscriptionErrors && (
-                              <div className="mt-2 pt-2 border-t border-zinc-800">
-                                <div className="text-[10px] text-wrap text-red-400/80 space-y-0.5">
-                                  <div>Error Code: {subscriptionErrors.code}</div>
-                                  <div className="truncate text-wrap">{subscriptionErrors.message}</div>
-                                </div>
+                          {/* Panel 3: Stopped Today (Yellow/Orange) - Resets Daily */}
+                          <div className="p-3 border-r border-zinc-700">
+                            <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
+                              <div className="flex items-center gap-1.5">
+                                <AlertCircle className="h-3.5 w-3.5 text-yellow-500" />
+                                <h3 className="font-semibold text-yellow-400 text-xs">
+                                  Stopped Today
+                                </h3>
                               </div>
-                            )}
+                              <span className="text-[10px] bg-yellow-900/50 text-yellow-300 px-1.5 py-0.5 rounded">
+                                {stoppedSymbols.length}
+                              </span>
+                            </div>
+                            <ScrollArea className="h-[180px] pr-1">
+                              <div className="space-y-1">
+                                {stoppedSymbols.length > 0 ? (
+                                  stoppedSymbols.map((symbol, index) => {
+                                    const cleanSymbol = symbol.replace('-STOPPED', '').replace(/'/g, '');
+                                    const parts = cleanSymbol.split(':');
+                                    const exchange = parts[0] || '';
+                                    const companyCode = parts[1]?.split('-')[0] || cleanSymbol;
+                                    return (
+                                      <div key={symbol} className="flex items-center gap-1.5 p-1.5 rounded bg-yellow-950/30 hover:bg-yellow-950/50 transition-colors group">
+                                        <span className="text-[9px] font-bold text-yellow-400 w-4">{index + 1}</span>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-[10px] font-medium text-yellow-200 truncate">{companyCode}</div>
+                                          <div className="text-[8px] text-yellow-400/70">{exchange} • Resets daily</div>
+                                        </div>
+                                        <button
+                                          onClick={async () => {
+                                            try {
+                                              await fetch('/api/admin/permanently-stopped', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ symbols: [symbol] })
+                                              });
+                                              fetchSubscriptionStatus();
+                                            } catch (err) { console.error('Failed to add to permanent:', err); }
+                                          }}
+                                          className="opacity-0 group-hover:opacity-100 text-[8px] text-purple-400 hover:text-purple-300 transition-all"
+                                          title="Move to Permanent"
+                                        >
+                                          →Perm
+                                        </button>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="text-center py-6 text-zinc-500">
+                                    <div className="w-5 h-5 mx-auto mb-1 rounded-full bg-green-900/20 flex items-center justify-center">
+                                      <Wifi className="h-2.5 w-2.5 text-green-500" />
+                                    </div>
+                                    <p className="text-[10px] text-green-400">No stopped symbols</p>
+                                  </div>
+                                )}
+                              </div>
+                            </ScrollArea>
+                          </div>
+
+                          {/* Panel 4: Permanently Stopped (Purple) - Never Resets */}
+                          <div className="p-3">
+                            <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
+                              <div className="flex items-center gap-1.5">
+                                <svg className="h-3.5 w-3.5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                </svg>
+                                <h3 className="font-semibold text-purple-400 text-xs">
+                                  Permanently Blocked
+                                </h3>
+                              </div>
+                              <span className="text-[10px] bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded">
+                                {permanentlyStoppedSymbols.length}
+                              </span>
+                            </div>
+                            <ScrollArea className="h-[180px] pr-1">
+                              <div className="space-y-1">
+                                {permanentlyStoppedSymbols.length > 0 ? (
+                                  permanentlyStoppedSymbols.map((symbol, index) => {
+                                    const cleanSymbol = symbol.replace('-STOPPED', '').replace(/'/g, '');
+                                    const parts = cleanSymbol.split(':');
+                                    const exchange = parts[0] || '';
+                                    const companyCode = parts[1]?.split('-')[0] || cleanSymbol;
+                                    return (
+                                      <div key={symbol} className="flex items-center gap-1.5 p-1.5 rounded bg-purple-950/30 hover:bg-purple-950/50 transition-colors group">
+                                        <span className="text-[9px] font-bold text-purple-400 w-4">{index + 1}</span>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-[10px] font-medium text-purple-200 truncate">{companyCode}</div>
+                                          <div className="text-[8px] text-purple-400/70">{exchange} • Permanent</div>
+                                        </div>
+                                        <button
+                                          onClick={async () => {
+                                            try {
+                                              await fetch('/api/admin/permanently-stopped', {
+                                                method: 'DELETE',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ symbol })
+                                              });
+                                              fetchSubscriptionStatus();
+                                            } catch (err) { console.error('Failed to remove from permanent:', err); }
+                                          }}
+                                          className="opacity-0 group-hover:opacity-100 text-[8px] text-green-400 hover:text-green-300 transition-all"
+                                          title="Unblock Symbol"
+                                        >
+                                          Unblock
+                                        </button>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="text-center py-6 text-zinc-500">
+                                    <div className="w-5 h-5 mx-auto mb-1 rounded-full bg-green-900/20 flex items-center justify-center">
+                                      <Wifi className="h-2.5 w-2.5 text-green-500" />
+                                    </div>
+                                    <p className="text-[10px] text-green-400">No blocked symbols</p>
+                                  </div>
+                                )}
+                              </div>
+                            </ScrollArea>
                           </div>
                         </div>
 
+                        {/* Error Details */}
+                        {subscriptionErrors && (
+                          <div className="px-3 py-2 border-t border-zinc-800 bg-red-950/20">
+                            <div className="text-[10px] text-red-400/80 space-y-0.5">
+                              <div>Error Code: {subscriptionErrors.code}</div>
+                              <div className="truncate">{subscriptionErrors.message}</div>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Footer */}
-                        <div className="px-4 py-2 border-t border-zinc-800 bg-zinc-950/50">
-                          <div className="flex items-center justify-between text-xs text-zinc-500">
+                        <div className="px-3 py-2 border-t border-zinc-800 bg-zinc-950/50">
+                          <div className="flex items-center justify-between text-[10px] text-zinc-500">
                             <span>Last updated: {new Date().toLocaleTimeString()}</span>
                             <div className="flex items-center gap-3">
                               {failedSymbols.length > 0 && (
@@ -1616,9 +1815,15 @@ const MarketDataPage: React.FC = () => {
                                   onClick={clearSubscriptionErrors}
                                   className="text-red-400 hover:text-red-300 transition-colors"
                                 >
-                                  Clear Errors
+                                  Clear Failed
                                 </button>
                               )}
+                              <button
+                                onClick={() => fetchSubscriptionStatus()}
+                                className="text-green-400 hover:text-green-300 transition-colors"
+                              >
+                                Refresh
+                              </button>
                               <button
                                 onClick={() => setIsSubscriptionModalOpen(true)}
                                 className="text-blue-400 hover:text-blue-300 transition-colors"

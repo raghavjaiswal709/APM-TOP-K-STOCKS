@@ -90,6 +90,100 @@ export default function AdminValidatePage() {
   const logContainerRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
+  const [failedSubscriptions, setFailedSubscriptions] = useState<string[]>([]);
+  const [isFixDialogOpen, setIsFixDialogOpen] = useState(false);
+  const [selectedFailedSymbol, setSelectedFailedSymbol] = useState<string | null>(null);
+  const [fixData, setFixData] = useState({ companyCode: '', exchange: 'NSE', marker: 'EQ' });
+  const [isFixing, setIsFixing] = useState(false);
+  const [validateFailedOnly, setValidateFailedOnly] = useState(false);
+
+  // Fetch failed subscriptions on load
+  useEffect(() => {
+    fetchFailedSubscriptions();
+  }, []);
+
+  // Refetch failed subscriptions when validation completes
+  useEffect(() => {
+    if (status === 'completed') {
+      // Delay to allow backend to update the file
+      setTimeout(fetchFailedSubscriptions, 1000);
+    }
+  }, [status]);
+
+  const fetchFailedSubscriptions = async () => {
+    try {
+      const res = await fetch('/api/admin/failed-subscriptions');
+      const data = await res.json();
+      if (data.success) {
+        const failed = data.data || [];
+        setFailedSubscriptions(failed);
+        // Default to failed-only if there are errors
+        if (failed.length > 0) {
+          setValidateFailedOnly(true);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch failed subscriptions:', error);
+    }
+  };
+
+  const clearFailedSubscriptions = async () => {
+    try {
+      const res = await fetch('/api/admin/failed-subscriptions', { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setFailedSubscriptions([]);
+        setValidateFailedOnly(false);
+      }
+    } catch (error) {
+      console.error('Failed to clear failed subscriptions:', error);
+    }
+  };
+
+  const handleFixClick = (symbol: string) => {
+    setSelectedFailedSymbol(symbol);
+    // Try to parse symbol if possible to pre-fill
+    // Format usually: "EXCHANGE:CODE-MARKER" or just "CODE"
+    const parts = symbol.includes(':') ? symbol.split(':')[1].split('-') : [symbol];
+    setFixData({
+      companyCode: parts[0] || symbol,
+      exchange: 'NSE',
+      marker: 'EQ'
+    });
+    setIsFixDialogOpen(true);
+  };
+
+  const handleFixSubmit = async () => {
+    if (!selectedFailedSymbol) return;
+
+    setIsFixing(true);
+    try {
+      const res = await fetch('/api/admin/fix-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          oldSymbol: selectedFailedSymbol,
+          ...fixData
+        })
+      });
+      const result = await res.json();
+
+      if (result.success) {
+        // Remove from local list or refresh
+        setFailedSubscriptions(prev => prev.filter(s => s !== selectedFailedSymbol));
+        setIsFixDialogOpen(false);
+        // Show toast or alert?
+      } else {
+        alert(`Failed to fix: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error fixing subscription:', error);
+      alert('Error fixing subscription');
+    } finally {
+      setIsFixing(false);
+    }
+  };
+
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
     if (logContainerRef.current) {
@@ -97,7 +191,6 @@ export default function AdminValidatePage() {
     }
   }, [logs]);
 
-  // Parse progress from log messages
   const parseProgress = useCallback((message: string) => {
     // Match patterns like "[123/456]" or "Progress: 123/456"
     const progressMatch = message.match(/\[(\d+)\/(\d+)\]/);
@@ -106,7 +199,7 @@ export default function AdminValidatePage() {
       const total = parseInt(progressMatch[2], 10);
       setProgress({ current, total });
     }
-    
+
     // Also match "Processing X NSE companies..."
     const totalMatch = message.match(/Processing (\d+) NSE companies/);
     if (totalMatch) {
@@ -114,22 +207,31 @@ export default function AdminValidatePage() {
     }
   }, []);
 
+  // Wait, I should not delete `parseProgress`.
+  // Steps 83 showed `parseProgress` at line 101.
+  // My previous view in Step 123 showed `failedSubscriptions` state being added around line 383 (duplicate) and line 93 (correct).
+  // The correct location validation logic:
+  // I will just add `validateFailedOnly` state at the top.
+  // And modify `startValidation` later.
+
+
+
   // Calculate percentage and ETA
   const getProgressInfo = useCallback(() => {
     if (progress.total === 0) return { percentage: 0, eta: null };
-    
+
     const percentage = Math.round((progress.current / progress.total) * 100);
-    
+
     if (!startTime || progress.current === 0) return { percentage, eta: null };
-    
+
     const elapsed = (new Date().getTime() - startTime.getTime()) / 1000;
     const avgTimePerItem = elapsed / progress.current;
     const remaining = (progress.total - progress.current) * avgTimePerItem;
-    
+
     const minutes = Math.floor(remaining / 60);
     const seconds = Math.floor(remaining % 60);
     const eta = remaining > 0 ? `${minutes}m ${seconds}s` : null;
-    
+
     return { percentage, eta };
   }, [progress, startTime]);
 
@@ -167,9 +269,10 @@ export default function AdminValidatePage() {
     } else {
       backendUrl = '';
     }
-    
+
     // Create SSE connection
-    const eventSource = new EventSource(`${backendUrl}/api/admin/validate/run`);
+    const query = validateFailedOnly ? '?failedOnly=true' : '';
+    const eventSource = new EventSource(`${backendUrl}/api/admin/validate/run${query}`);
     eventSourceRef.current = eventSource;
 
     // Handler for processing log entries
@@ -177,7 +280,7 @@ export default function AdminValidatePage() {
       try {
         const logEntry: ValidationLogEntry = JSON.parse(event.data);
         setLogs((prevLogs) => [...prevLogs, logEntry]);
-        
+
         // Parse progress from the message
         parseProgress(logEntry.message);
 
@@ -195,7 +298,7 @@ export default function AdminValidatePage() {
 
     // Listen for custom 'validation-log' events from NestJS SSE
     eventSource.addEventListener('validation-log', handleLogEntry);
-    
+
     // Also listen for generic messages (fallback)
     eventSource.onmessage = handleLogEntry;
 
@@ -219,7 +322,7 @@ export default function AdminValidatePage() {
       });
       eventSource.close();
     };
-  }, [parseProgress]);
+  }, [parseProgress, validateFailedOnly]);
 
   const stopValidation = useCallback(async () => {
     try {
@@ -232,8 +335,8 @@ export default function AdminValidatePage() {
       let backendUrl: string;
       if (typeof window !== 'undefined') {
         const hostname = window.location.hostname;
-      // Use relative URL to go through Next.js proxy
-      backendUrl = '';
+        // Use relative URL to go through Next.js proxy
+        backendUrl = '';
       } else {
         backendUrl = '';
       }
@@ -315,6 +418,7 @@ export default function AdminValidatePage() {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
+        {/* ... (Existing Header and Content) ... */}
         <header className="flex h-16 shrink-0 items-center gap-2 w-full border-b border-border/40">
           <div className="flex items-center gap-2 px-4 w-full">
             <SidebarTrigger className="-ml-1" />
@@ -335,8 +439,50 @@ export default function AdminValidatePage() {
         </header>
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-4">
-          {/* Header Card */}
+
+          {/* Failed Subscriptions Section */}
+          {failedSubscriptions.length > 0 && (
+            <Card className="border-red-500/50 bg-red-500/5">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-red-500">
+                      <AlertCircle className="h-5 w-5" />
+                      Failed Subscriptions ({failedSubscriptions.length})
+                    </CardTitle>
+                    <CardDescription>
+                      The following symbols failed to subscribe. Validation required.
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={fetchFailedSubscriptions}>
+                      <RefreshCw className="h-4 w-4 mr-1" />
+                      Refresh
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={clearFailedSubscriptions}>
+                      Clear All
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {failedSubscriptions.map(symbol => (
+                    <div key={symbol} className="flex items-center justify-between p-3 bg-background/50 rounded-lg border border-border/50">
+                      <code className="text-sm font-mono">{symbol}</code>
+                      <Button size="sm" variant="outline" onClick={() => handleFixClick(symbol)}>
+                        Fix
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ... (Existing Validation Card) ... */}
           <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+            {/* ... card content ... */}
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -349,7 +495,7 @@ export default function AdminValidatePage() {
                       Validate NSE stock series (EQ, BE, BZ, etc.) using Fyers API
                     </CardDescription>
                   </div>
-                  
+
                   {/* Big Progress Display */}
                   {status === 'running' && progress.total > 0 && (
                     <div className="hidden md:flex items-center gap-6 ml-8 pl-8 border-l border-border/50">
@@ -362,11 +508,11 @@ export default function AdminValidatePage() {
                           {progress.current} / {progress.total}
                         </div>
                       </div>
-                      
+
                       {/* Progress Bar */}
                       <div className="flex flex-col gap-1 min-w-[200px]">
                         <div className="h-3 bg-muted rounded-full overflow-hidden">
-                          <div 
+                          <div
                             className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all duration-300 ease-out"
                             style={{ width: `${progressInfo.percentage}%` }}
                           />
@@ -400,14 +546,30 @@ export default function AdminValidatePage() {
             <CardContent>
               <div className="flex flex-wrap items-center gap-4">
                 {status === 'idle' && (
-                  <Button
-                    onClick={startValidation}
-                    className="gap-2 bg-green-600 hover:bg-green-700 text-white"
-                    size="lg"
-                  >
-                    <Play className="h-4 w-4" />
-                    Start Validation
-                  </Button>
+                  <div className="flex flex-col items-start gap-2">
+                    {failedSubscriptions.length > 0 && (
+                      <div className="flex items-center space-x-2 mb-2">
+                        <input
+                          type="checkbox"
+                          id="failedOnly"
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          checked={validateFailedOnly}
+                          onChange={(e) => setValidateFailedOnly(e.target.checked)}
+                        />
+                        <label htmlFor="failedOnly" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                          Validate only failed subscriptions ({failedSubscriptions.length})
+                        </label>
+                      </div>
+                    )}
+                    <Button
+                      onClick={startValidation}
+                      className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                      size="lg"
+                    >
+                      <Play className="h-4 w-4" />
+                      Start {validateFailedOnly ? 'Targeted' : 'Full'} Validation
+                    </Button>
+                  </div>
                 )}
 
                 {status === 'running' && (
@@ -460,7 +622,7 @@ export default function AdminValidatePage() {
                     <span className="text-2xl font-bold text-primary">{progressInfo.percentage}%</span>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all duration-300"
                       style={{ width: `${progressInfo.percentage}%` }}
                     />
@@ -634,6 +796,58 @@ export default function AdminValidatePage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Fix Dialog */}
+          {isFixDialogOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+              <Card className="w-[400px]">
+                <CardHeader>
+                  <CardTitle>Fix Subscription</CardTitle>
+                  <CardDescription>Correct the details for {selectedFailedSymbol}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Company Code</label>
+                    <input
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={fixData.companyCode}
+                      onChange={e => setFixData({ ...fixData, companyCode: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Exchange</label>
+                    <select
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={fixData.exchange}
+                      onChange={e => setFixData({ ...fixData, exchange: e.target.value })}
+                    >
+                      <option value="NSE">NSE</option>
+                      <option value="BSE">BSE</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Marker</label>
+                    <select
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={fixData.marker}
+                      onChange={e => setFixData({ ...fixData, marker: e.target.value })}
+                    >
+                      <option value="EQ">EQ</option>
+                      <option value="BE">BE</option>
+                      <option value="BZ">BZ</option>
+                    </select>
+                  </div>
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Button variant="outline" onClick={() => setIsFixDialogOpen(false)}>Cancel</Button>
+                    <Button onClick={handleFixSubmit} disabled={isFixing}>
+                      {isFixing ? 'Saving...' : 'Save & Fix'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
         </div>
       </SidebarInset>
     </SidebarProvider>

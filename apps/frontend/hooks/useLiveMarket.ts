@@ -44,6 +44,7 @@ interface SubscriptionConfirm {
   success: boolean;
   symbols: string[];
   count: number;
+  failed?: string[];
 }
 interface HistoricalData {
   symbol: string;
@@ -139,10 +140,10 @@ export const useLiveMarket = () => {
     socket.on('availableSymbols', (data: AvailableSymbolsData) => {
       console.log('📊 Received available symbols:', data);
       // Filter out invalid symbols from backend
-      const validSymbols = (data.symbols || []).filter(symbol => 
-        symbol && 
-        symbol.company_code && 
-        symbol.company_code !== 'null' && 
+      const validSymbols = (data.symbols || []).filter(symbol =>
+        symbol &&
+        symbol.company_code &&
+        symbol.company_code !== 'null' &&
         symbol.company_code !== null
       );
       setAvailableCompanies(validSymbols);
@@ -205,6 +206,12 @@ export const useLiveMarket = () => {
         }
       });
       setSelectedCompanies(confirmedCompanies);
+
+      // Report failed subscriptions to backend
+      if (data.failed && data.failed.length > 0) {
+        console.warn('⚠️ Subscription failures detected:', data.failed);
+        // Failures are now saved directly by the backend Python service
+      }
     });
     // Handle marketStatus event from backend
     socket.on('marketStatus', (status: MarketStatus) => {
@@ -212,9 +219,9 @@ export const useLiveMarket = () => {
       setMarketStatus(status);
     });
     // Handle heartbeat event from backend
-    socket.on('heartbeat', (data: { 
-      timestamp: number; 
-      trading_active: boolean; 
+    socket.on('heartbeat', (data: {
+      timestamp: number;
+      trading_active: boolean;
       active_subscriptions: number;
       connected_clients: number;
       server_status: string;
@@ -235,8 +242,8 @@ export const useLiveMarket = () => {
       console.log('🔗 Fyers error:', data);
       // Skip subscription errors
       const isSubscriptionError = data && (
-        data.code === -300 || 
-        data.type === 'sub' || 
+        data.code === -300 ||
+        data.type === 'sub' ||
         data.invalid_symbols ||
         (typeof data.message === 'string' && (
           data.message.includes('invalid_symbols') ||
@@ -244,7 +251,7 @@ export const useLiveMarket = () => {
           data.message.includes('STOPPED')
         ))
       );
-      
+
       if (!isSubscriptionError) {
         setError(`Fyers error: ${typeof data.message === 'string' ? data.message.substring(0, 50) : 'Connection issue'}`);
       }
@@ -254,12 +261,12 @@ export const useLiveMarket = () => {
       console.error('❌ Server error:', data);
       // Skip subscription errors
       const message = data.message || '';
-      const isSubscriptionError = 
+      const isSubscriptionError =
         message.includes('invalid_symbols') ||
         message.includes('-300') ||
         message.includes('STOPPED') ||
         message.includes('Please provide a valid symbol');
-      
+
       if (!isSubscriptionError) {
         setError(message.length > 100 ? message.substring(0, 100) + '...' : message);
       }
@@ -315,8 +322,8 @@ export const useLiveMarket = () => {
     }
     subscribedCompanyCodes.current = new Set(companyCodes);
     console.log('📡 Sending subscribe_companies event to backend:', { companyCodes });
-    socketRef.current.emit('subscribe_companies', { 
-      companyCodes: companyCodes 
+    socketRef.current.emit('subscribe_companies', {
+      companyCodes: companyCodes
     });
     return Promise.resolve(true);
   }, [isConnected, maxCompanies]);
@@ -347,8 +354,8 @@ export const useLiveMarket = () => {
     setError(null);
     subscribedCompanyCodes.current = new Set(validCompanyCodes);
     console.log('📡 Sending subscribe_companies event to backend:', { companyCodes: validCompanyCodes });
-    socketRef.current.emit('subscribe_companies', { 
-      companyCodes: validCompanyCodes 
+    socketRef.current.emit('subscribe_companies', {
+      companyCodes: validCompanyCodes
     });
     return Promise.resolve(true);
   }, [isConnected, maxCompanies]);
@@ -403,4 +410,3 @@ export const useLiveMarket = () => {
   };
 };
 export default useLiveMarket;
-

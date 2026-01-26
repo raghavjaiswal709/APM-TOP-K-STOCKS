@@ -10,6 +10,8 @@ interface AuthStatus {
   client_id?: string;
   redirect_uri?: string;
   access_token?: string;
+  auth_code?: string;
+  timestamp?: string;
 }
 
 interface TokenResponse {

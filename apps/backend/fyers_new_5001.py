@@ -63,6 +63,10 @@ running = True
 auth_initialized = False
 main_loop = None
 
+# Subscription tracking with daily reset
+SUBSCRIPTION_DATA_DIR = 'data'
+last_subscription_date = None  # Track date for daily reset
+
 
 # Multi-symbol persistent data storage
 historical_data: Dict[str, deque] = {}
@@ -130,6 +134,189 @@ http_session = create_resilient_session()
 
 # Thread pool for blocking operations
 executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="FyersWorker")
+
+
+# ============================================================================
+# PERMANENT BLACKLIST (does NOT reset daily)
+# ============================================================================
+# This file contains symbols that are permanently stopped/invalid
+# and should never be subscribed to. It does NOT reset with daily reset.
+PERMANENT_BLACKLIST_FILE = os.path.join(SUBSCRIPTION_DATA_DIR, 'permanently_stopped.json')
+
+# Set of permanently stopped symbols (loaded at startup)
+permanently_stopped_symbols: Set[str] = set()
+
+
+def load_permanent_blacklist():
+    """Load the permanent blacklist from file."""
+    global permanently_stopped_symbols
+    
+    if os.path.exists(PERMANENT_BLACKLIST_FILE):
+        try:
+            with open(PERMANENT_BLACKLIST_FILE, 'r') as f:
+                content = f.read().strip()
+                if content:
+                    data = json.loads(content)
+                    permanently_stopped_symbols = set(data)
+                    logger.info(f"📋 Loaded {len(permanently_stopped_symbols)} permanently stopped symbols")
+        except Exception as e:
+            logger.error(f"Error loading permanent blacklist: {e}")
+    else:
+        logger.info("📋 No permanent blacklist file found, starting fresh")
+
+
+def add_to_permanent_blacklist(symbols: list):
+    """Add symbols to the permanent blacklist (persists across restarts and daily resets)."""
+    global permanently_stopped_symbols
+    
+    if not symbols:
+        return
+    
+    # Add to in-memory set
+    for symbol in symbols:
+        permanently_stopped_symbols.add(symbol)
+    
+    # Save to file
+    try:
+        with open(PERMANENT_BLACKLIST_FILE, 'w') as f:
+            json.dump(list(permanently_stopped_symbols), f, indent=2)
+        logger.info(f"📋 Added {len(symbols)} to permanent blacklist (total: {len(permanently_stopped_symbols)})")
+    except Exception as e:
+        logger.error(f"❌ Failed to save permanent blacklist: {e}")
+
+
+def is_permanently_stopped(symbol: str) -> bool:
+    """Check if a symbol is in the permanent blacklist."""
+    # Check exact match
+    if symbol in permanently_stopped_symbols:
+        return True
+    
+    # Extract company code from symbol (e.g., NSE:ACLGATI-EQ -> ACLGATI)
+    try:
+        if ':' in symbol and '-' in symbol:
+            code = symbol.split(':')[1].split('-')[0]
+            # Check if any blacklisted symbol contains this code
+            for stopped in permanently_stopped_symbols:
+                if code in stopped:
+                    return True
+    except:
+        pass
+    
+    return False
+
+
+# ============================================================================
+# SUBSCRIPTION FILE MANAGEMENT (with daily reset)
+# ============================================================================
+
+def get_today_date_str():
+    """Get today's date in IST as string."""
+    return datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
+
+
+def check_and_reset_subscription_files():
+    """
+    Check if date has changed and reset all subscription files if needed.
+    Returns True if files were reset.
+    """
+    global last_subscription_date
+    
+    today = get_today_date_str()
+    
+    # Check if we need to reset
+    date_file = os.path.join(SUBSCRIPTION_DATA_DIR, 'subscription_date.txt')
+    
+    stored_date = None
+    if os.path.exists(date_file):
+        try:
+            with open(date_file, 'r') as f:
+                stored_date = f.read().strip()
+        except:
+            pass
+    
+    if stored_date != today:
+        logger.info(f"📅 New day detected ({stored_date} -> {today}). Resetting subscription files...")
+        
+        # Reset all three files
+        files_to_reset = [
+            'subscribed_companies.json',
+            'failed_subscriptions.json',
+            'stopped_companies.json'
+        ]
+        
+        for filename in files_to_reset:
+            filepath = os.path.join(SUBSCRIPTION_DATA_DIR, filename)
+            try:
+                with open(filepath, 'w') as f:
+                    json.dump([], f)
+                logger.info(f"  ✓ Reset {filename}")
+            except Exception as e:
+                logger.error(f"  ✗ Failed to reset {filename}: {e}")
+        
+        # Update stored date
+        try:
+            with open(date_file, 'w') as f:
+                f.write(today)
+        except Exception as e:
+            logger.error(f"Failed to update date file: {e}")
+        
+        last_subscription_date = today
+        return True
+    
+    last_subscription_date = today
+    return False
+
+
+def save_to_subscription_file(filename: str, symbols: list):
+    """
+    Save symbols to a subscription JSON file, merging with existing and deduplicating.
+    """
+    if not symbols:
+        return
+    
+    filepath = os.path.join(SUBSCRIPTION_DATA_DIR, filename)
+    
+    try:
+        # Read existing
+        existing = []
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, 'r') as f:
+                    content = f.read().strip()
+                    if content:
+                        existing = json.loads(content)
+            except Exception as e:
+                logger.error(f"Error reading {filename}: {e}")
+                existing = []
+        
+        # Merge and deduplicate
+        updated = list(set(existing + symbols))
+        
+        with open(filepath, 'w') as f:
+            json.dump(updated, f, indent=2)
+        
+        logger.info(f"💾 Saved {len(symbols)} to {filename} (total: {len(updated)})")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to save {filename}: {e}")
+
+
+def load_subscription_file(filename: str) -> list:
+    """Load symbols from a subscription JSON file."""
+    filepath = os.path.join(SUBSCRIPTION_DATA_DIR, filename)
+    
+    if not os.path.exists(filepath):
+        return []
+    
+    try:
+        with open(filepath, 'r') as f:
+            content = f.read().strip()
+            if content:
+                return json.loads(content)
+    except Exception as e:
+        logger.error(f"Error loading {filename}: {e}")
+    
+    return []
 
 
 # Helper Functions
@@ -595,7 +782,8 @@ async def subscribe(sid, data):
 async def subscribe_companies(sid, data):
     """
     Batch subscribe to multiple company symbols with robust error handling and rate limiting.
-    This is the CRITICAL endpoint needed for the frontend subscription modal.
+    Handles three categories: subscribed (success), failed, stopped.
+    Implements daily reset of subscription files.
     """
     symbols = data.get('symbols', [])
     
@@ -610,7 +798,45 @@ async def subscribe_companies(sid, data):
     if not auth_initialized:
         return {'success': False, 'error': 'Authentication not initialized', 'count': 0}
     
+    # Check for daily reset of subscription files
+    check_and_reset_subscription_files()
+    
     logger.info(f"📥 Client {sid} subscribing to {len(symbols)} symbols")
+    
+    # Categorize symbols
+    stopped_symbols = []
+    permanently_stopped = []
+    valid_symbols = []
+    
+    for symbol in symbols:
+        # Check permanent blacklist first (highest priority)
+        if is_permanently_stopped(symbol):
+            permanently_stopped.append(symbol)
+            logger.debug(f"⛔ Skipping permanently stopped: {symbol}")
+        # Check if symbol ends with -STOPPED or has STOPPED marker
+        elif '-STOPPED' in symbol.upper() or symbol.upper().endswith('STOPPED'):
+            stopped_symbols.append(symbol)
+        else:
+            valid_symbols.append(symbol)
+    
+    if permanently_stopped:
+        logger.info(f"⛔ Skipping {len(permanently_stopped)} PERMANENTLY STOPPED symbols")
+    
+    if stopped_symbols:
+        logger.info(f"⏭️ Skipping {len(stopped_symbols)} STOPPED symbols")
+        save_to_subscription_file('stopped_companies.json', stopped_symbols)
+    
+    if not valid_symbols:
+        logger.warning("No valid symbols to subscribe after filtering STOPPED")
+        return {
+            'success': True,
+            'count': 0,
+            'failed': [],
+            'stopped': stopped_symbols + permanently_stopped,
+            'permanently_stopped': permanently_stopped,
+            'symbols': [],
+            'message': 'All symbols are STOPPED'
+        }
     
     subscribed_count = 0
     failed_symbols = []
@@ -619,9 +845,9 @@ async def subscribe_companies(sid, data):
         # Rate limiting: Process in batches of 10
         BATCH_SIZE = 10
         
-        for i in range(0, len(symbols), BATCH_SIZE):
-            batch = symbols[i:i + BATCH_SIZE]
-            logger.info(f"Processing batch {i//BATCH_SIZE + 1}/{(len(symbols) + BATCH_SIZE - 1)//BATCH_SIZE}")
+        for i in range(0, len(valid_symbols), BATCH_SIZE):
+            batch = valid_symbols[i:i + BATCH_SIZE]
+            logger.info(f"Processing batch {i//BATCH_SIZE + 1}/{(len(valid_symbols) + BATCH_SIZE - 1)//BATCH_SIZE}")
             
             for symbol in batch:
                 try:
@@ -640,7 +866,7 @@ async def subscribe_companies(sid, data):
                     failed_symbols.append(symbol)
             
             # Small delay between batches to prevent overwhelming the service
-            if i + BATCH_SIZE < len(symbols):
+            if i + BATCH_SIZE < len(valid_symbols):
                 await asyncio.sleep(0.1)
         
         # Batch subscribe to Fyers with timeout
@@ -652,32 +878,47 @@ async def subscribe_companies(sid, data):
                 future = loop.run_in_executor(
                     executor,
                     fyers.subscribe,
-                    symbols,
+                    valid_symbols,
                     "SymbolUpdate"
                 )
                 
                 # 30 second timeout for Fyers subscription
                 await asyncio.wait_for(future, timeout=30.0)
-                logger.info(f"✅ Batch subscribed to {len(symbols)} symbols in Fyers")
+                logger.info(f"✅ Batch subscribed to {len(valid_symbols)} symbols in Fyers")
                 
             except asyncio.TimeoutError:
                 logger.error("❌ Fyers subscription timed out after 30s")
-                # Don't fail the entire request - subscriptions are tracked locally
             except Exception as e:
                 logger.error(f"❌ Error in Fyers batch subscription: {e}")
-                # Continue - local subscriptions are still valid
         
         # Background task for historical data (non-blocking)
-        asyncio.create_task(send_batch_historical_data(sid, symbols))
+        asyncio.create_task(send_batch_historical_data(sid, valid_symbols))
         
-        logger.info(f"✅ Successfully subscribed to {subscribed_count}/{len(symbols)} symbols")
+        logger.info(f"✅ Successfully subscribed to {subscribed_count}/{len(valid_symbols)} symbols")
         
-        return {
+        # Save successful subscriptions
+        successful_symbols = [s for s in valid_symbols if s not in failed_symbols]
+        if successful_symbols:
+            save_to_subscription_file('subscribed_companies.json', successful_symbols)
+        
+        # Note: failed_symbols from WebSocket errors are handled in onerror callback
+        # Local failures are saved here
+        if failed_symbols:
+            save_to_subscription_file('failed_subscriptions.json', failed_symbols)
+
+        response_data = {
             'success': True,
             'count': subscribed_count,
             'failed': failed_symbols,
+            'stopped': stopped_symbols,
+            'symbols': successful_symbols,
             'message': f'Subscribed to {subscribed_count} symbols'
         }
+
+        # Emit confirmation event
+        await sio.emit('subscriptionConfirm', response_data, room=sid)
+
+        return response_data
         
     except Exception as e:
         logger.error(f"❌ Critical error in subscribe_companies: {e}")
@@ -1107,6 +1348,33 @@ def onmessage(message):
 
 def onerror(error):
     logger.error(f"Error: {error}")
+    
+    # Extract and save failed/invalid symbols from Fyers error
+    try:
+        error_data = error if isinstance(error, dict) else {}
+        if isinstance(error, str):
+            # Try to parse if it's a string representation of dict
+            import ast
+            try:
+                error_data = ast.literal_eval(error)
+            except:
+                pass
+        
+        invalid_symbols = error_data.get('invalid_symbols', [])
+        if invalid_symbols:
+            # Check for daily reset before saving
+            check_and_reset_subscription_files()
+            
+            # Save to failed_subscriptions.json using helper
+            save_to_subscription_file('failed_subscriptions.json', invalid_symbols)
+            
+            # Also add to permanent blacklist so they won't be tried again
+            add_to_permanent_blacklist(invalid_symbols)
+            
+            logger.info(f"💾 Saved {len(invalid_symbols)} invalid symbols: {invalid_symbols}")
+    except Exception as e:
+        logger.error(f"Error saving failed subscriptions: {e}")
+    
     if main_loop and main_loop.is_running():
         asyncio.run_coroutine_threadsafe(sio.emit('error', {'message': str(error)}), main_loop)
 
@@ -1157,6 +1425,12 @@ async def startup_tasks():
     
     # Create data directory
     os.makedirs('data', exist_ok=True)
+    
+    # Load permanent blacklist (symbols that should never be subscribed)
+    load_permanent_blacklist()
+    
+    # Check for daily reset of subscription files
+    check_and_reset_subscription_files()
     
     # Try initial authentication
     if initialize_fyers():

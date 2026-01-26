@@ -30,7 +30,7 @@ from fyers_apiv3 import fyersModel
 # Directory paths (absolute)
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR
-TOKEN_FILE = DATA_DIR / "fyers_token.json"
+TOKEN_FILE = DATA_DIR / "fyers_data_auth.json"
 INPUT_CSV = DATA_DIR / "company_master.csv"
 OUTPUT_CSV = DATA_DIR / "company_validated.csv"
 
@@ -104,9 +104,10 @@ def is_token_valid(token_data: Dict) -> bool:
             logger.warning("Token data is missing or invalid")
             return False
         
-        # Check expiry if present
-        if 'expiry' in token_data:
-            expiry_str = token_data['expiry']
+        # Check expiry if present (handle both 'expiry' and 'expires_at' fields)
+        expiry_field = token_data.get('expires_at') or token_data.get('expiry')
+        if expiry_field:
+            expiry_str = expiry_field
             expiry_dt = datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
             current_dt = datetime.now(timezone.utc)
             
@@ -238,7 +239,10 @@ def ensure_valid_token() -> Optional[str]:
     # Check if token is valid
     if token_data and is_token_valid(token_data):
         logger.info("✓ Existing token is valid")
-        access_token = f"{FYERS_CLIENT_ID}:{token_data['access_token']}"
+        access_token = token_data['access_token']
+        # If token already has CLIENT_ID prefix, use as-is; otherwise add prefix
+        if ':' not in access_token:
+            access_token = f"{FYERS_CLIENT_ID}:{access_token}"
         return access_token
     
     # Generate new token
@@ -410,25 +414,42 @@ def save_validated_companies(companies: List[Dict]) -> bool:
 # ============================================================================
 
 def main():
-    """
-    Main execution function.
-    
-    Workflow:
-    1. Generate/validate access token
-    2. Initialize Fyers client
-    3. Load company master CSV
-    4. Validate each NSE company's series
-    5. Save results to output CSV
-    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description="NSE Stock Series Validator")
+    parser.add_argument("--failed-only", action="store_true", help="Validate only failed subscriptions from failed_subscriptions.json")
+    parser.add_argument("--update-master", action="store_true", help="Update company_master.csv in-place")
+    args = parser.parse_args()
+
     start_time = time.time()
     
     logger.info("=" * 60)
     logger.info("NSE STOCK SERIES VALIDATOR")
     logger.info("=" * 60)
-    logger.info(f"Start time: {datetime.now().isoformat()}")
-    logger.info(f"Input file: {INPUT_CSV}")
-    logger.info(f"Output file: {OUTPUT_CSV}")
-    logger.info("=" * 60)
+    
+    # Determine targets
+    failed_codes = set()
+    if args.failed_only:
+        failed_file = DATA_DIR / "failed_subscriptions.json"
+        if failed_file.exists():
+            try:
+                with open(failed_file, 'r') as f:
+                    failed_symbols = json.load(f)
+                    # Parse codes: "NSE:RELIANCE-EQ" -> "RELIANCE"
+                    for s in failed_symbols:
+                        if ':' in s and '-' in s:
+                            failed_codes.add(s.split(':')[1].split('-')[0])
+                        elif '-' in s:
+                             failed_codes.add(s.split('-')[0])
+                        else:
+                             failed_codes.add(s)
+                logger.info(f"Loaded {len(failed_codes)} failed company codes to validate.")
+            except Exception as e:
+                logger.error(f"Error reading failed subscriptions: {e}")
+                sys.exit(1)
+        else:
+             logger.warning("No failed_subscriptions.json found. Validating all.")
+
     
     # STEP 1: Ensure valid access token
     logger.info("\n[STEP 1/5] Token Authentication")
@@ -462,64 +483,144 @@ def main():
     # STEP 4: Validate series
     logger.info("\n[STEP 4/5] Validate Series")
     logger.info("-" * 60)
-    logger.info(f"Processing {len(companies)} NSE companies...")
-    logger.info(f"Series priority: {' > '.join(SERIES_PRIORITY)}")
-    logger.info(f"Rate limit: {RATE_LIMIT_CALLS} calls per {RATE_LIMIT_PERIOD}s")
-    logger.info("-" * 60)
+    
+    # Track updates: company_code -> new Marker value
+    updates = {}
+    
+    target_companies = []
+    if args.failed_only and failed_codes:
+        target_indices = [i for i, c in enumerate(companies) if c.get('company_code') in failed_codes]
+        logger.info(f"Targeting {len(target_indices)} companies out of {len(companies)}")
+    else:
+        target_indices = range(len(companies))
     
     success_count = 0
     failed_count = 0
+    processed_count = 0
     
-    for idx, company in enumerate(companies, 1):
+    # Track ALL validated companies (not just changes)
+    validated_companies = {}
+    
+    for idx in target_indices:
+        company = companies[idx]
+        processed_count += 1
+        
         company_code = company.get('company_code', 'UNKNOWN')
         company_name = company.get('NAME OF COMPANY', 'Unknown')
         
-        logger.info(f"\n[{idx}/{len(companies)}] {company_code} - {company_name}")
+        logger.info(f"\n[{processed_count}/{len(target_indices)}] {company_code} - {company_name}")
         
         validated_series, status = validate_series(fyers_client, company_code)
         
-        # Update the company record
+        # Track ALL validated companies
+        old_marker = company.get('Marker', '')
+        validated_companies[company_code] = {
+            'new_marker': validated_series,
+            'old_marker': old_marker,
+            'changed': validated_series != old_marker
+        }
+        
+        if validated_series != old_marker:
+            updates[company_code] = validated_series
+            logger.info(f"  📝 Update: {company_code} Marker '{old_marker}' -> '{validated_series}'")
+        else:
+            logger.info(f"  ✓ Marker confirmed: {company_code} = '{validated_series}' (no change)")
+        
+        # Update the company record in memory
         company['Marker'] = validated_series
-        company['validation_status'] = status
-        company['validated_at'] = datetime.now(timezone.utc).isoformat()
         
         if status == "SUCCESS":
             success_count += 1
         else:
             failed_count += 1
         
-        # Progress report every 50 companies
-        if idx % 50 == 0:
-            elapsed = time.time() - start_time
-            avg_time = elapsed / idx
-            remaining = (len(companies) - idx) * avg_time
-            logger.info(f"\nProgress: {idx}/{len(companies)} | "
-                       f"Success: {success_count} | Failed: {failed_count} | "
-                       f"ETA: {remaining/60:.1f} min")
-    
+        # Progress report
+        if processed_count % 5 == 0:
+            logger.info(f"Progress: {processed_count}/{len(target_indices)} | Success: {success_count} | Failed: {failed_count}")
+
     # STEP 5: Save results
     logger.info("\n[STEP 5/5] Save Results")
     logger.info("-" * 60)
-    if save_validated_companies(companies):
-        logger.info("✓ Validation complete")
-    else:
-        logger.error("✗ Failed to save results")
-        sys.exit(1)
     
+    if args.failed_only and args.update_master and validated_companies:
+        # Update specific rows in company_master.csv for ALL validated companies
+        logger.info(f"Processing {len(validated_companies)} validated entries in {INPUT_CSV}")
+        
+        try:
+            # Read entire CSV
+            with open(INPUT_CSV, 'r', newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                fieldnames = reader.fieldnames
+                all_rows = list(reader)
+            
+            # Update the rows for validated companies - ONLY NSE rows
+            updated_count = 0
+            changed_count = 0
+            for row in all_rows:
+                code = row.get('company_code', '')
+                exchange = row.get('Exchange', '').upper()
+                
+                # Only update NSE records (we validated NSE symbols)
+                if code in validated_companies and exchange == 'NSE':
+                    new_marker = validated_companies[code]['new_marker']
+                    old_marker = row.get('Marker', '')
+                    row['Marker'] = new_marker
+                    updated_count += 1
+                    if old_marker != new_marker:
+                        changed_count += 1
+                        logger.info(f"  📝 Changed {exchange}:{code}: '{old_marker}' -> '{new_marker}'")
+                    else:
+                        logger.info(f"  ✓ Confirmed {exchange}:{code}: '{new_marker}' (validated, no change)")
+            
+            # Write back
+            with open(INPUT_CSV, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(all_rows)
+            
+            logger.info(f"✓ Processed {updated_count} NSE rows in {INPUT_CSV} ({changed_count} actually changed)")
+            
+        except Exception as e:
+            logger.error(f"✗ Failed to update master CSV: {e}")
+            sys.exit(1)
+    
+    elif not args.failed_only:
+        # Full validation - write to output file
+        output_path = INPUT_CSV if args.update_master else OUTPUT_CSV
+        
+        try:
+            if not companies:
+                logger.warning("No companies to save")
+            else:
+                fieldnames = list(companies[0].keys())
+                with open(output_path, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(companies)
+                logger.info(f"✓ Saved results to {output_path}")
+        except Exception as e:
+            logger.error(f"✗ Failed to save results: {e}")
+            sys.exit(1)
+    else:
+        logger.info("No validated companies to process")
+
     # Final summary
-    elapsed_time = time.time() - start_time
     logger.info("\n" + "=" * 60)
     logger.info("VALIDATION SUMMARY")
     logger.info("=" * 60)
-    logger.info(f"Total companies processed: {len(companies)}")
+    logger.info(f"Total processed: {processed_count}")
     logger.info(f"Success: {success_count}")
     logger.info(f"Failed: {failed_count}")
-    logger.info(f"Success rate: {success_count/len(companies)*100:.2f}%")
-    logger.info(f"Total time: {elapsed_time/60:.2f} minutes")
-    logger.info(f"Average time per company: {elapsed_time/len(companies):.2f} seconds")
-    logger.info(f"Output saved to: {OUTPUT_CSV}")
+    if args.failed_only and args.update_master and validated_companies:
+        changes = len([v for v in validated_companies.values() if v['changed']])
+        logger.info(f"Updated file: {INPUT_CSV}")
+        logger.info(f"  - Validated: {len(validated_companies)} companies")
+        logger.info(f"  - Changed: {changes} markers")
+    elif not args.failed_only:
+        logger.info(f"Output file: {INPUT_CSV if args.update_master else OUTPUT_CSV}")
+    else:
+        logger.info("No file changes made")
     logger.info("=" * 60)
-
 
 if __name__ == "__main__":
     try:
