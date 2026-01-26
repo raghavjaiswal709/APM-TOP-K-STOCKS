@@ -22,7 +22,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import LiveMarketGrid from './components/LiveMarketGrid';
 import { MultiSelectWatchlistSelector } from '../components/controllers/WatchlistSelector/MultiSelectWatchlistSelector';
-import { FyersAuthStatus } from '../components/FyersAuthStatus';
 import { useLiveMarket } from '../../hooks/useLiveMarket';
 import {
   Info,
@@ -32,7 +31,8 @@ import {
   Shield,
   AlertCircle,
   CheckCircle,
-  XCircle
+  XCircle,
+  ExternalLink
 } from 'lucide-react';
 
 interface Company {
@@ -218,13 +218,14 @@ const LiveMarketPage: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-6">
                   {/* Auth Status */}
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50">
-                    <Shield className="w-4 h-4 text-muted-foreground" />
+                  <a href="/auth" className="flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50 hover:bg-muted transition-colors cursor-pointer group">
+                    <Shield className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                     <AuthIcon className={`w-4 h-4 ${authDisplay.color}`} />
                     <span className="text-sm font-medium">
                       Auth: {authDisplay.text}
                     </span>
-                  </div>
+                    <ExternalLink className="w-3 h-3 text-muted-foreground opacity-50 group-hover:opacity-100 transition-opacity" />
+                  </a>
 
                   {/* Connection Status */}
                   <div className="flex items-center gap-2">
@@ -313,11 +314,6 @@ const LiveMarketPage: React.FC = () => {
                     </div>
                   )}
                 </div>
-
-                {/* Sidebar - Auth Status */}
-                <div className="lg:col-span-1">
-                  <FyersAuthStatus />
-                </div>
               </div>
             </CardContent>
           </Card>
@@ -334,16 +330,20 @@ const LiveMarketPage: React.FC = () => {
 
           {/* Auth Required Message */}
           {selectedCompanies.length > 0 && (!authStatus?.authenticated || !authStatus?.token_valid) && (
-            <Card className="w-full">
+            <Card className="w-full border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20">
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <Shield className="h-12 w-12 text-yellow-500 mb-4" />
                 <h3 className="text-lg font-medium mb-2">Authentication Required</h3>
                 <p className="text-sm text-muted-foreground text-center max-w-md mb-6">
                   You have selected {selectedCompanies.length} companies, but Fyers authentication is required to view live market data.
                 </p>
-                <div className="flex gap-3">
-                  <FyersAuthStatus />
-                </div>
+                <Button
+                  onClick={() => window.location.href = '/auth'}
+                  className="bg-yellow-600 hover:bg-yellow-700 text-white"
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Go to Authentication
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -363,7 +363,7 @@ const LiveMarketPage: React.FC = () => {
           )}
         </div>
       </SidebarInset>
-    </SidebarProvider>
+    </SidebarProvider >
   );
 };
 

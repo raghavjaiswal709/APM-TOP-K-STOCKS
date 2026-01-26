@@ -181,6 +181,11 @@ const data = {
       url: "#",
       icon: AlertCircle,
     },
+    {
+      title: "Authentication",
+      url: "/auth",
+      icon: ShieldCheck,
+    },
   ],
   projects: [
   ],
