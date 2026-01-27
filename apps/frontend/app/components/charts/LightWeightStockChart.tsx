@@ -113,6 +113,7 @@ export function LightWeightStockChart({
     error = null,
     height = '100%',
     theme = 'dark',
+    defaultChartType = 'line',
     onThemeChange,
     onIntervalChange,
     onRangeChange,
@@ -120,7 +121,7 @@ export function LightWeightStockChart({
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
-    const [chartType, setChartType] = useState('candlestick');
+    const [chartType, setChartType] = useState(defaultChartType);
     const [selectedInterval, setSelectedInterval] = useState(interval);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [chartTheme, setChartTheme] = useState<'light' | 'dark'>(theme);
@@ -155,13 +156,38 @@ export function LightWeightStockChart({
     // Indicator Series Refs need to be tracked to remove/update
     const indicatorSeriesRefs = useRef<Map<string, ISeriesApi<any>>>(new Map());
 
-    // Data processing helper
+    // Data processing helper with validation
     const processData = useCallback((rawData: StockDataPoint[]) => {
         return rawData
-            .map(d => ({
-                ...d,
-                time: (new Date(d.interval_start).getTime() / 1000) as UTCTimestamp,
-            }))
+            .map(d => {
+                // Validate OHLC values are finite and positive
+                const open = Number(d.open);
+                const high = Number(d.high);
+                const low = Number(d.low);
+                const close = Number(d.close);
+                const volume = Number(d.volume || 0);
+                
+                // Skip invalid data points
+                if (!isFinite(open) || !isFinite(high) || !isFinite(low) || !isFinite(close) ||
+                    open <= 0 || high <= 0 || low <= 0 || close <= 0) {
+                    return null;
+                }
+                
+                // Validate OHLC relationships (high >= low, etc.)
+                const validHigh = Math.max(open, high, low, close);
+                const validLow = Math.min(open, high, low, close);
+                
+                return {
+                    ...d,
+                    open,
+                    high: validHigh,
+                    low: validLow,
+                    close,
+                    volume: Math.max(0, volume),
+                    time: (new Date(d.interval_start).getTime() / 1000) as UTCTimestamp,
+                };
+            })
+            .filter((d): d is NonNullable<typeof d> => d !== null)
             .sort((a, b) => (a.time as number) - (b.time as number));
     }, []);
 
@@ -434,37 +460,102 @@ export function LightWeightStockChart({
         }
 
         let series: ISeriesApi<any>;
-        const commonOptions = { upColor: colors.up, downColor: colors.down, borderColor: colors.text };
+        const candlestickOptions = {
+            upColor: colors.up,
+            downColor: colors.down,
+            borderUpColor: colors.up,
+            borderDownColor: colors.down,
+            wickUpColor: colors.up,
+            wickDownColor: colors.down,
+        };
 
         if (chartType === 'line') {
-            series = mainChart.addSeries(LineSeries, { color: '#2962FF' });
+            // Determine line color based on price movement (first vs last close)
+            const firstClose = processedData[0]?.close || 0;
+            const lastClose = processedData[processedData.length - 1]?.close || 0;
+            const lineColor = lastClose >= firstClose ? colors.up : colors.down;
+            
+            series = mainChart.addSeries(LineSeries, { 
+                color: lineColor,
+                lineWidth: 2,
+                crosshairMarkerVisible: true,
+                crosshairMarkerRadius: 4,
+            });
             series.setData(processedData.map(d => ({ time: d.time, value: d.close })));
         } else if (chartType === 'area') {
-            series = mainChart.addSeries(AreaSeries, { topColor: 'rgba(41, 98, 255, 0.4)', bottomColor: 'rgba(41, 98, 255, 0)' });
+            // Area chart with dynamic color
+            const firstClose = processedData[0]?.close || 0;
+            const lastClose = processedData[processedData.length - 1]?.close || 0;
+            const isPositive = lastClose >= firstClose;
+            
+            series = mainChart.addSeries(AreaSeries, { 
+                topColor: isPositive ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)',
+                bottomColor: isPositive ? 'rgba(38, 166, 154, 0)' : 'rgba(239, 83, 80, 0)',
+                lineColor: isPositive ? colors.up : colors.down,
+                lineWidth: 2,
+            });
             series.setData(processedData.map(d => ({ time: d.time, value: d.close })));
         } else if (chartType === 'heikenAshi') {
-            series = mainChart.addSeries(CandlestickSeries, commonOptions);
+            series = mainChart.addSeries(CandlestickSeries, candlestickOptions);
             const haData = convertToHeikenAshi(data as any);
             const processedHa = processData(haData);
-            series.setData(processedHa);
+            // Format data for candlestick series
+            const candleData = processedHa.map(d => ({
+                time: d.time,
+                open: d.open,
+                high: d.high,
+                low: d.low,
+                close: d.close,
+            }));
+            series.setData(candleData);
         } else {
-            series = mainChart.addSeries(CandlestickSeries, commonOptions);
-            series.setData(processedData);
+            // Default candlestick chart
+            series = mainChart.addSeries(CandlestickSeries, candlestickOptions);
+            // Format data correctly for candlestick series
+            const candleData = processedData.map(d => ({
+                time: d.time,
+                open: d.open,
+                high: d.high,
+                low: d.low,
+                close: d.close,
+            }));
+            console.log(`📊 [CandlestickChart] Setting ${candleData.length} candles. First:`, candleData[0], 'Last:', candleData[candleData.length - 1]);
+            series.setData(candleData);
         }
         mainSeriesRef.current = series;
 
+        // Volume histogram - overlay at bottom of chart with separate scale
         if (!volumeSeriesRef.current) {
             volumeSeriesRef.current = mainChart.addSeries(HistogramSeries, {
                 priceFormat: { type: 'volume' },
-                priceScaleId: '',
-                scaleMargins: { top: 0.8, bottom: 0 },
+                priceScaleId: 'volume_scale',
+            });
+            
+            // Configure the volume scale to be at the bottom portion of the chart
+            mainChart.priceScale('volume_scale').applyOptions({
+                scaleMargins: { top: 0.55, bottom: 0 },
+                visible: false, // Hide the volume scale labels
             });
         }
-        volumeSeriesRef.current?.setData(processedData.map(d => ({
-            time: d.time,
-            value: d.volume,
-            color: d.close >= d.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
-        })));
+        
+        // Validate and filter volume data to prevent display issues
+        const volumeData = processedData
+            .map(d => {
+                // Ensure volume is a valid, finite number
+                const volume = Number(d.volume);
+                if (!isFinite(volume) || volume < 0 || isNaN(volume)) {
+                    return null;
+                }
+                
+                return {
+                    time: d.time,
+                    value: volume,
+                    color: d.close >= d.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
+                };
+            })
+            .filter((v): v is NonNullable<typeof v> => v !== null);
+        
+        volumeSeriesRef.current?.setData(volumeData);
 
 
         // --- Indicators ---

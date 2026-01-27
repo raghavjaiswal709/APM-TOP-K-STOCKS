@@ -14,7 +14,6 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 
-// Add to existing imports at the top
 import {
   HoverCard,
   HoverCardContent,
@@ -35,11 +34,11 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ModeToggle } from "@/app/components/toggleButton";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelector2/WatchlistSelector";
 import { ImageCarousel } from "./components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
-import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity, Calendar as CalendarIcon, Images, ChevronDown, ChevronUp, PanelBottomOpen, PanelBottomClose } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
 import { isMarketOpen } from "@/lib/marketHours";
 import { fetchHistoricalData, detectDataGaps } from "@/lib/historicalDataFetcher";
@@ -53,7 +52,6 @@ import { ListChecks, Settings2 } from 'lucide-react';
 import { gttService, type GttPrediction } from '@/app/services/gttService';
 import { Zap } from 'lucide-react';
 
-
 // Prediction Integration
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
 import { useGttPolling } from '@/hooks/useGttPolling';
@@ -62,6 +60,13 @@ import PredictionTimer from './components/PredictionTimer';
 import PredictionControlPanel from './components/PredictionControlPanel';
 import PredictionOverlay from './components/PredictionOverlay';
 import PredictionAPIService from '@/lib/predictionService';
+import { useTheme } from "next-themes";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 declare global {
   interface Window {
@@ -69,7 +74,8 @@ declare global {
   }
 }
 
-const PlotlyChart = dynamic(() => import('./components/charts/PlotlyChart'), {
+// Use LightWeightStockChart instead of Plotly
+const LightWeightStockChart = dynamic(() => import('@/app/components/charts/LightWeightStockChart').then(mod => ({ default: mod.LightWeightStockChart })), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-zinc-900">
@@ -130,17 +136,29 @@ interface TradingHours {
   isActive: boolean;
 }
 
+interface Company {
+  company_id?: number;
+  company_code: string;
+  name: string;
+  exchange: string;
+  refined?: boolean;
+  marker?: string;
+}
+
 const MarketDataPage: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
+  const { theme } = useTheme();
   const [selectedSymbol, setSelectedSymbol] = useState<string>('');
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [selectedExchange, setSelectedExchange] = useState<string | null>(null);
   const [selectedWatchlist, setSelectedWatchlist] = useState('A');
 
+  // Analysis Panel Visibility
+  const [isAnalysisVisible, setIsAnalysisVisible] = useState(false);
+
   // Prediction Integration State
   const [showPredictions, setShowPredictions] = useState(true);
   const [predictionMode, setPredictionMode] = useState<'overlay' | 'comparison'>('overlay');
-  // onst[isGttEnabled, setIsGttEnabled] = useState<boolean>(false);
   const [gttChartType, setGttChartType] = useState<'candlestick' | 'line'>('candlestick');
   const [isGttEnabled, setIsGttEnabled] = useState<boolean>(false);
 
@@ -171,18 +189,16 @@ const MarketDataPage: React.FC = () => {
   const [backgroundDataPoints, setBackgroundDataPoints] = useState<number>(0);
   const [gradientMode, setGradientMode] = useState<'profit' | 'loss' | 'neutral'>('neutral');
   const [sentimentLoading, setSentimentLoading] = useState(false);
-  // const [usefulnessScore, setUsefulnessScore] = useState<number | null>(null);
-  const [showScoreTooltip, setShowScoreTooltip] = useState(false);
   const [activeTab, setActiveTab] = useState<'live' | 'predictions'>('live');
   const [marketOpen, setMarketOpen] = useState<boolean>(true);
   const [isLoadingHistorical, setIsLoadingHistorical] = useState<boolean>(false);
   const [historicalDataStatus, setHistoricalDataStatus] = useState<string>('');
   const [overallSentiment, setOverallSentiment] = useState<string>('NEUTRAL');
   const [isSentimentFetching, setIsSentimentFetching] = useState<boolean>(false);
+  
   // Subscription Management State
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
-  // Subscription error state for failed symbols
   const [subscriptionErrors, setSubscriptionErrors] = useState<{
     code: number;
     message: string;
@@ -192,15 +208,16 @@ const MarketDataPage: React.FC = () => {
   const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
   const [stoppedSymbols, setStoppedSymbols] = useState<string[]>([]);
   const [permanentlyStoppedSymbols, setPermanentlyStoppedSymbols] = useState<string[]>([]);
-  // Lifted state for date synchronization
+  
+  // Date synchronization
   const [currentDate, setCurrentDate] = useState<string | null>(null);
   const [filteredCompanies, setFilteredCompanies] = useState<any[]>([]);
 
-  // Shared X-Axis state for chart synchronization
-  const [sharedXRange, setSharedXRange] = useState<[Date, Date] | undefined>(undefined);
-
   // Fullscreen mode state for chart section
   const [isChartFullscreen, setIsChartFullscreen] = useState<boolean>(false);
+
+  // Shared X-Axis state for chart synchronization
+  const [sharedXRange, setSharedXRange] = useState<[Date, Date] | undefined>(undefined);
 
   // Handle Escape key to exit fullscreen
   useEffect(() => {
@@ -224,26 +241,22 @@ const MarketDataPage: React.FC = () => {
     companies,
     loading: watchlistLoading,
     error: watchlistError,
-    selectedDate: hookSelectedDate, // Rename to avoid confusion
+    selectedDate: hookSelectedDate,
     availableDates,
   } = useWatchlist({ date: currentDate || undefined });
 
-
   // Date Synchronization Logic
-
-  // Determine the effective date (either user-selected or hook-default)
   const effectiveDate = currentDate || hookSelectedDate;
-  // Calculate the latest available date from the dataset
+  
   const latestAvailableDate = useMemo(() => {
     if (!availableDates || availableDates.length === 0) return null;
     return [...availableDates].sort().reverse()[0];
   }, [availableDates]);
-  // Determine if the currently selected date is the latest one
+  
   const isLatestDate = useMemo(() => {
     if (!effectiveDate || !latestAvailableDate) return true;
     return effectiveDate === latestAvailableDate;
   }, [effectiveDate, latestAvailableDate]);
-  // NOTE: Auto-close effect removed so user can view past data in modal
 
   // Refs
   const updateCountRef = useRef(0);
@@ -251,9 +264,7 @@ const MarketDataPage: React.FC = () => {
   const frequencyIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const socketRef = useRef<any>(null);
   const isSubscribedRef = useRef<Set<string>>(new Set());
-
-
-
+  const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Prediction Polling Integration
   const {
@@ -268,7 +279,7 @@ const MarketDataPage: React.FC = () => {
     error: predictionError,
     lastUpdated: predictionLastUpdated,
     dataAge: predictionDataAge,
-    updateTrigger, // Get update trigger from hook
+    updateTrigger,
     elapsedTime,
     timeRemaining,
     pollCount,
@@ -277,8 +288,8 @@ const MarketDataPage: React.FC = () => {
     timeUntilNextPoll,
   } = usePredictionPolling({
     company: selectedCompany || selectedSymbol.split(':')[1]?.split('-')[0] || '',
-    pollInterval: 5 * 60 * 1000, // 5 minutes
-    totalDuration: 25 * 60 * 1000, // 25 minutes
+    pollInterval: 5 * 60 * 1000,
+    totalDuration: 25 * 60 * 1000,
     enabled: showPredictions && isClient,
     autoStart: true,
     onUpdate: (data) => {
@@ -304,31 +315,29 @@ const MarketDataPage: React.FC = () => {
   } = useGttPolling({
     symbol: selectedSymbol,
     enabled: isGttEnabled && isClient && !!selectedSymbol,
-    pollInterval: 60000 // 1 minute
+    pollInterval: 60000
   });
-  // Transform GTT data for the chart
+  
   const gttChartData = useMemo(() => {
     if (!rawGttPredictions) return null;
     return transformGttToChartPredictions(rawGttPredictions);
   }, [rawGttPredictions]);
+
   const {
     score: desirabilityScore,
     classification: desirabilityClassification,
     loading: desirabilityLoading,
     error: desirabilityError,
-    data: desirabilityData, // <--- Add this line
+    data: desirabilityData,
     refetch: refetchDesirability,
   } = useDesirability(selectedSymbol);
 
-  // Alias for the button
   const isLoadingDesirability = desirabilityLoading;
 
-  // Manual fetch handler
   const handleFetchDesirabilityScore = useCallback(() => {
     refetchDesirability();
   }, [refetchDesirability]);
 
-  // Helper for description text
   const desirabilityDescription = useMemo(() => {
     if (!desirabilityScore) return 'N/A';
     if (desirabilityScore >= 0.7) return 'Highly Desirable';
@@ -337,17 +346,13 @@ const MarketDataPage: React.FC = () => {
     return 'Not Desirable';
   }, [desirabilityScore]);
 
-  // Use updateTrigger directly from hook
   const predictionRevision = useMemo(() => {
     if (!predictions || predictions.count === 0) return 0;
-    // Use updateTrigger as the revision counter
     return updateTrigger;
   }, [predictions, updateTrigger]);
 
-  // Stable callback using refs
   const handleTimerEnd = useCallback(async () => {
     console.log('⏰ [TIMER END] Timer reached 0 - triggering immediate refresh');
-
     try {
       const result = await refetchPredictions();
       console.log('✅ [TIMER END] Refresh completed:', result?.count || 0, 'predictions');
@@ -356,10 +361,8 @@ const MarketDataPage: React.FC = () => {
     }
   }, [refetchPredictions]);
 
-  // Stable callback for manual refresh
   const handleManualRefresh = useCallback(async () => {
     console.log('🔄 [MANUAL REFRESH] Button clicked, fetching predictions...');
-
     try {
       const result = await refetchPredictions();
       console.log('✅ [MANUAL REFRESH] Predictions refreshed:', result?.count || 0, 'predictions');
@@ -370,7 +373,6 @@ const MarketDataPage: React.FC = () => {
 
   // Utility Functions
   const validateAndFormatSymbol = useCallback((companyCode: string, exchange: string, marker?: string): string => {
-    // Preserve valid special chars (e.g., '&' in M&MFIN, '-' in BAJAJ-AUTO) while stripping whitespace
     const normalizedSymbol = companyCode
       .trim()
       .toUpperCase()
@@ -408,23 +410,13 @@ const MarketDataPage: React.FC = () => {
       setSelectedSymbol('');
     }
   }, [validateAndFormatSymbol]);
-  // const getScoreEvaluation = useCallback((score: number) => {
-  //   if (score >= 80) return { text: 'Great', color: 'text-green-400', bgColor: 'bg-green-500/10', borderColor: 'border-green-500/40' };
-  //   if (score >= 60) return { text: 'Good', color: 'text-blue-400', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500/40' };
-  //   if (score >= 40) return { text: 'Average', color: 'text-yellow-400', bgColor: 'bg-yellow-500/10', borderColor: 'border-yellow-500/40' };
-  //   return { text: 'Poor', color: 'text-red-400', bgColor: 'bg-red-500/10', borderColor: 'border-red-500/40' };
+
   const handleDateChange = useCallback((date: string) => {
     console.log(`Date changed to: ${date}`);
     setCurrentDate(date);
   }, []);
 
-
   // Subscription Handlers
-
-  const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // ✅ FIXED: Use WebSocket directly to Python Fyers service (port 5001) instead of HTTP API
-  // This sends subscription requests directly to fyers_new_5001.py which handles unlimited companies
   const handleSubscribeCompanies = useCallback(async (companyCodes: string[]) => {
     if (!companyCodes || companyCodes.length === 0) return;
 
@@ -437,16 +429,12 @@ const MarketDataPage: React.FC = () => {
     try {
       console.log(`📤 Sending subscription request for ${companyCodes.length} companies via WebSocket to port 5001`);
 
-      // ✅ Convert company codes to Fyers format symbols (NSE:CODE-EQ)
-      // ✅ Filter out STOPPED/invalid companies
       const fyersSymbols = companyCodes
         .map(code => {
-          // Find the company in our list to get exchange and marker
           const company = companies?.find((c: any) => c.company_code === code);
           const exchange = company?.exchange || 'NSE';
           const marker = company?.marker || 'EQ';
           
-          // Skip STOPPED or invalid markers
           if (!marker || marker.toUpperCase() === 'STOPPED' || marker === '') {
             console.log(`⏭️ Skipping ${code}: marker is "${marker}"`);
             return null;
@@ -464,7 +452,6 @@ const MarketDataPage: React.FC = () => {
 
       console.log(`📤 Converted to Fyers symbols:`, fyersSymbols.slice(0, 5), `... (${fyersSymbols.length} total)`);
 
-      // ✅ Use socket.emit to send directly to Python fyers_new_5001.py service
       socketRef.current.emit('subscribe_companies', {
         symbols: fyersSymbols,
         companyCodes: companyCodes
@@ -475,14 +462,11 @@ const MarketDataPage: React.FC = () => {
           console.log('✅ Subscription successful:', response);
           toast.success(`Successfully subscribed to ${response.count || fyersSymbols.length} companies`);
 
-          // Update subscribed set
           fyersSymbols.forEach(s => isSubscribedRef.current.add(s));
           
-          // Determine which symbols were successfully subscribed
           const failedSymbols = response.failed || response.invalid_symbols || [];
           const successfulSymbols = fyersSymbols.filter((s: string) => !failedSymbols.includes(s));
           
-          // Report successful subscriptions to backend
           if (successfulSymbols.length > 0) {
             console.log('💾 Saving successful subscriptions:', successfulSymbols.length);
             fetch('/api/admin/subscribed-companies', {
@@ -492,10 +476,8 @@ const MarketDataPage: React.FC = () => {
             }).catch(err => console.error('Failed to save successful subscriptions:', err));
           }
           
-          // Check if there were any failed symbols in the response
           if (response.failed && response.failed.length > 0) {
             console.log('⚠️ Some symbols failed:', response.failed);
-            // Report failed symbols to backend
             fetch('/api/admin/failed-subscriptions', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -509,11 +491,9 @@ const MarketDataPage: React.FC = () => {
           console.error('❌ Subscription failed:', response);
           toast.error(errorMsg);
           
-          // Check for invalid_symbols in error response
           const invalidSymbols = response?.invalid_symbols || response?.invalidSymbols || [];
           if (invalidSymbols.length > 0) {
             console.log('🚫 Invalid symbols detected:', invalidSymbols);
-            // Report to backend
             fetch('/api/admin/failed-subscriptions', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -532,7 +512,6 @@ const MarketDataPage: React.FC = () => {
         }
       });
 
-      // Fallback timeout in case callback doesn't fire
       setTimeout(() => {
         setIsSubscribing(false);
       }, 30000);
@@ -542,9 +521,8 @@ const MarketDataPage: React.FC = () => {
       toast.error(error.message || 'Failed to update subscriptions');
       setIsSubscribing(false);
     }
-  }, [companies]); // ✅ Removed isSubscribing to avoid stale closure issues
+  }, [companies]);
 
-  // Remove date restriction from Subscribe All
   const handleSubscribeAll = useCallback(() => {
     if (isSubscribing) {
       toast.warning("Subscription already in progress");
@@ -556,18 +534,15 @@ const MarketDataPage: React.FC = () => {
       return;
     }
 
-    // ✅ Clear any pending subscription
     if (subscriptionTimeoutRef.current) {
       clearTimeout(subscriptionTimeoutRef.current);
     }
 
     const targetList = filteredCompanies.length > 0 ? filteredCompanies : companies;
-
-    // ✅ FIXED: Send company_code (not formatted symbols) to backend
     const companyCodes = targetList.map((c: any) => c.company_code).filter(Boolean);
 
     handleSubscribeCompanies(companyCodes);
-  }, [companies, handleSubscribeCompanies, isSubscribing, filteredCompanies]); // ✅ Removed validateAndFormatSymbol dependency
+  }, [companies, handleSubscribeCompanies, isSubscribing, filteredCompanies]);
 
   // Event Handlers
   const handleConnect = useCallback(() => {
@@ -623,7 +598,6 @@ const MarketDataPage: React.FC = () => {
   const handleError = useCallback((error: any) => {
     console.error('❌ Socket error:', error);
 
-    // Check if this is a subscription error
     const isSubscriptionError = error && (
       error.code === -300 ||
       error.type === 'sub' ||
@@ -636,10 +610,8 @@ const MarketDataPage: React.FC = () => {
     );
 
     if (isSubscriptionError) {
-      // Don't set socketStatus for subscription errors - they're handled separately
       console.error('🚫 Subscription error detected:', error);
 
-      // Parse invalid_symbols from message if it's a string
       let invalidSymbols = error.invalid_symbols || [];
       if (invalidSymbols.length === 0 && typeof error.message === 'string') {
         const match = error.message.match(/invalid_symbols['":\s]*\[([^\]]+)\]/);
@@ -663,23 +635,19 @@ const MarketDataPage: React.FC = () => {
         return combined;
       });
     } else {
-      // Only set socketStatus for non-subscription errors
       setSocketStatus('Error');
     }
   }, []);
 
-  // Dedicated handler for Fyers subscription errors
   const handleSubscriptionError = useCallback((error: any) => {
     console.error('🚫 Fyers subscription error:', error);
 
-    // Parse the error - handle both direct object and string formats
     let errorData = error;
     let errorMessage = '';
 
     if (typeof error === 'string') {
       errorMessage = error;
       try {
-        // Try to parse if it's JSON
         errorData = JSON.parse(error);
       } catch {
         errorData = { message: error };
@@ -688,17 +656,14 @@ const MarketDataPage: React.FC = () => {
       errorMessage = error.message || JSON.stringify(error);
     }
 
-    // Extract invalid_symbols from various formats
     let invalidSymbols: string[] = [];
 
-    // Try to get from direct property
     if (Array.isArray(errorData.invalid_symbols)) {
       invalidSymbols = errorData.invalid_symbols;
     } else if (Array.isArray(errorData.invalidSymbols)) {
       invalidSymbols = errorData.invalidSymbols;
     }
 
-    // If still empty, try to parse from message string
     if (invalidSymbols.length === 0 && errorMessage) {
       const match = errorMessage.match(/invalid_symbols['":\s]*\[([^\]]+)\]/);
       if (match) {
@@ -712,7 +677,6 @@ const MarketDataPage: React.FC = () => {
     console.log('🔍 Parsed invalid symbols:', invalidSymbols);
 
     if (invalidSymbols.length > 0) {
-      // Report to backend
       fetch('/api/admin/failed-subscriptions', {
         method: 'POST',
         headers: {
@@ -735,7 +699,6 @@ const MarketDataPage: React.FC = () => {
     });
   }, []);
 
-  // Clear subscription errors
   const clearSubscriptionErrors = useCallback(() => {
     setSubscriptionErrors(null);
     setFailedSymbols([]);
@@ -757,7 +720,6 @@ const MarketDataPage: React.FC = () => {
       const symbol = data.symbol;
       const existingHistory = prev[symbol] || [];
 
-      // Use Map for efficient deduplication and merging
       const dataMap = new Map<number, MarketData>();
 
       existingHistory.forEach(point => {
@@ -799,18 +761,14 @@ const MarketDataPage: React.FC = () => {
 
     const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
 
-    // Merge socket historical data with existing data
-    // This preserves the earlier historical data fetched from external API
     setHistoricalData(prev => {
       const existingData = prev[data.symbol] || [];
       const dataMap = new Map<number, MarketData>();
 
-      // Add existing data first (preserves external API data)
       existingData.forEach(point => {
         dataMap.set(point.timestamp, point);
       });
 
-      // Add new socket data (updates/adds new points)
       sortedData.forEach(point => {
         dataMap.set(point.timestamp, point);
       });
@@ -841,7 +799,6 @@ const MarketDataPage: React.FC = () => {
         changePercent: item.changePercent || 0
       }));
 
-      // Also merge chartUpdates instead of replacing
       setChartUpdates(prev => {
         const existingUpdates = prev[data.symbol] || [];
         const updateMap = new Map<number, typeof chartData[0]>();
@@ -866,9 +823,20 @@ const MarketDataPage: React.FC = () => {
   }, []);
 
   const handleOhlcData = useCallback((data: { symbol: string, data: OHLCData[] }) => {
-    if (!data || !data.symbol || !Array.isArray(data.data)) return;
+    if (!data || !data.symbol || !Array.isArray(data.data)) {
+      console.warn(`📊 Invalid OHLC data received:`, data);
+      return;
+    }
 
     console.log(`📊 Received OHLC data for ${data.symbol}: ${data.data.length} candles`);
+    // Debug: Log first and last candle to verify OHLC values
+    if (data.data.length > 0) {
+      const first = data.data[0];
+      const last = data.data[data.data.length - 1];
+      console.log(`📊 First OHLC:`, { ts: first.timestamp, o: first.open, h: first.high, l: first.low, c: first.close, v: first.volume });
+      console.log(`📊 Last OHLC:`, { ts: last.timestamp, o: last.open, h: last.high, l: last.low, c: last.close, v: last.volume });
+    }
+    
     const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
 
     setOhlcData(prev => ({
@@ -910,33 +878,6 @@ const MarketDataPage: React.FC = () => {
     return change >= 0 ? 'text-green-500' : 'text-red-500';
   }, []);
 
-  const getSentimentIndicator = useCallback((mode: 'profit' | 'loss' | 'neutral') => {
-    switch (mode) {
-      case 'profit':
-        return {
-          background: 'bg-gradient-to-r from-green-500/10 to-green-900/10 border-green-500/40',
-          text: 'text-green-400',
-          icon: TrendingUp,
-          label: 'Positive Sentiment'
-        };
-      case 'loss':
-        return {
-          background: 'bg-gradient-to-r from-red-500/10 to-red-900/10 border-red-500/40',
-          text: 'text-red-400',
-          icon: TrendingDown,
-          label: 'Overall Setinemt : Negative'
-        };
-      case 'neutral':
-      default:
-        return {
-          background: 'bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40',
-          text: 'text-zinc-400',
-          icon: Minus,
-          label: 'Neutral Sentiment'
-        };
-    }
-  }, []);
-
   // Effects
   useEffect(() => {
     const interval = setInterval(() => {
@@ -973,7 +914,6 @@ const MarketDataPage: React.FC = () => {
     const checkPredictionServicesHealth = async () => {
       setIsCheckingHealth(true);
 
-      // Check regular prediction service health
       try {
         const predictionHealth = await PredictionAPIService.checkHealth({ timeout: 5000 });
         setPredictionServiceHealth(predictionHealth ? 'available' : 'unavailable');
@@ -983,10 +923,8 @@ const MarketDataPage: React.FC = () => {
         setPredictionServiceHealth('unavailable');
       }
 
-      // Check GTT service health
       try {
         const gttHealth = await gttService.healthCheck();
-        // GTT is available if either proxy or backend is responding
         const isGttAvailable = gttHealth.proxy || gttHealth.backend;
         setGttServiceHealth(isGttAvailable ? 'available' : 'unavailable');
         console.log('✅ [Health Check] GTT service:', gttHealth);
@@ -1000,13 +938,12 @@ const MarketDataPage: React.FC = () => {
 
     checkPredictionServicesHealth();
 
-    // Re-check health every 2 minutes
     const healthCheckInterval = setInterval(checkPredictionServicesHealth, 120000);
 
     return () => clearInterval(healthCheckInterval);
   }, [isClient]);
 
-  // Fetch subscription status from JSON files (all categories)
+  // Fetch subscription status from JSON files
   useEffect(() => {
     if (!isClient) return;
 
@@ -1016,7 +953,6 @@ const MarketDataPage: React.FC = () => {
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.data) {
-            // Update the subscription category states from JSON files
             setFailedSymbols(data.data.failed || []);
             setStoppedSymbols(data.data.stopped || []);
             setPermanentlyStoppedSymbols(data.data.permanentlyStopped || []);
@@ -1030,7 +966,6 @@ const MarketDataPage: React.FC = () => {
 
     fetchSubscriptionStatus();
 
-    // Refresh every 30 seconds
     const interval = setInterval(fetchSubscriptionStatus, 30000);
     return () => clearInterval(interval);
   }, [isClient]);
@@ -1046,8 +981,8 @@ const MarketDataPage: React.FC = () => {
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('error', handleError);
-    socket.on('subscriptionError', handleSubscriptionError); // ✅ NEW: Listen for subscription errors
-    socket.on('fyersError', handleSubscriptionError); // ✅ Also listen for Fyers-specific errors
+    socket.on('subscriptionError', handleSubscriptionError);
+    socket.on('fyersError', handleSubscriptionError);
     socket.on('marketDataUpdate', handleMarketDataUpdate);
     socket.on('chartUpdate', handleChartUpdate);
     socket.on('historicalData', handleHistoricalData);
@@ -1072,8 +1007,8 @@ const MarketDataPage: React.FC = () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('error', handleError);
-      socket.off('subscriptionError', handleSubscriptionError); // ✅ NEW: Cleanup subscription error listener
-      socket.off('fyersError', handleSubscriptionError); // ✅ Cleanup Fyers error listener
+      socket.off('subscriptionError', handleSubscriptionError);
+      socket.off('fyersError', handleSubscriptionError);
       socket.off('marketDataUpdate', handleMarketDataUpdate);
       socket.off('chartUpdate', handleChartUpdate);
       socket.off('historicalData', handleHistoricalData);
@@ -1103,7 +1038,6 @@ const MarketDataPage: React.FC = () => {
       }
     });
 
-    // ✅ NEW: Fetch historical data from external server on symbol change
     const fetchAndBackfillHistoricalData = async () => {
       setIsLoadingHistorical(true);
       setHistoricalDataStatus('Fetching historical data...');
@@ -1132,7 +1066,6 @@ const MarketDataPage: React.FC = () => {
             ask: point.ask_price
           }));
 
-          // ✅ CRITICAL FIX: Use Map for efficient deduplication during merge
           setHistoricalData(prev => {
             const existingData = prev[selectedSymbol] || [];
             const dataMap = new Map<number, MarketData>();
@@ -1207,12 +1140,6 @@ const MarketDataPage: React.FC = () => {
       try {
         const sentiment = await sentimentService.fetchSentiment(selectedSymbol);
         setOverallSentiment(sentiment);
-
-        // Optional: Sync gradient mode if you want the whole UI to react
-        // if (sentiment === 'POSITIVE') setGradientMode('profit');
-        // else if (sentiment === 'NEGATIVE') setGradientMode('loss');
-        // else setGradientMode('neutral');
-
       } catch (error) {
         console.error('Failed to fetch sentiment:', error);
         setOverallSentiment('NEUTRAL');
@@ -1223,16 +1150,7 @@ const MarketDataPage: React.FC = () => {
     fetchSentiment();
   }, [selectedSymbol]);
 
-  // ✨ DEBUG: Log prediction data
-  useEffect(() => {
-    console.log('🔮 Prediction State Changed:', {
-      showPredictions,
-      hasPredictions: !!predictions,
-      predictionsCount: predictions?.count || 0
-    });
-  }, [predictions, showPredictions]);
-
-  // 🔍 Connection Health Monitor
+  // Connection Health Monitor
   useEffect(() => {
     if (!isClient || !socketRef.current || !selectedSymbol) return;
 
@@ -1283,924 +1201,385 @@ const MarketDataPage: React.FC = () => {
 
   const isDataStale = useMemo(() => predictionDataAge > 600, [predictionDataAge]);
 
+  // =====================================================================
+  // CHART DATA PREPARATION
+  // Use OHLC data ONLY for candlesticks - these are proper aggregated candles
+  // The WebSocket sends ohlcData with proper open/high/low/close per minute
+  // =====================================================================
+  
+  const chartData = useMemo(() => {
+    console.log(`📈 [chartData] symbolOhlc: ${symbolOhlc?.length || 0}, symbolHistory: ${symbolHistory?.length || 0}`);
+    
+    // ===== USE OHLC DATA DIRECTLY (this is the correct data for candlesticks) =====
+    if (symbolOhlc && symbolOhlc.length > 0) {
+      // Filter valid candles and sort by timestamp
+      const validCandles = symbolOhlc
+        .filter(candle => 
+          candle.timestamp > 0 &&
+          typeof candle.open === 'number' && !isNaN(candle.open) && candle.open > 0 &&
+          typeof candle.high === 'number' && !isNaN(candle.high) && candle.high > 0 &&
+          typeof candle.low === 'number' && !isNaN(candle.low) && candle.low > 0 &&
+          typeof candle.close === 'number' && !isNaN(candle.close) && candle.close > 0
+        )
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      console.log(`📈 [chartData] Using ${validCandles.length} valid OHLC candles`);
+      
+      if (validCandles.length > 0) {
+        console.log(`📈 First candle:`, validCandles[0]);
+        console.log(`📈 Last candle:`, validCandles[validCandles.length - 1]);
+      }
+
+      return validCandles.map(candle => ({
+        interval_start: new Date(candle.timestamp * 1000).toISOString(),
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: Math.max(0, candle.volume || 0),
+      }));
+    }
+    
+    // ===== FALLBACK: Create candles from historical tick data =====
+    if (symbolHistory && symbolHistory.length > 0) {
+      console.log(`📈 [chartData] Creating candles from historical tick data`);
+      
+      // Group ticks by minute and create proper OHLC candles
+      const minuteCandles = new Map<number, { open: number, high: number, low: number, close: number, volume: number, firstTimestamp: number }>();
+      
+      const sortedHistory = [...symbolHistory]
+        .filter(p => p.ltp > 0 && !isNaN(p.ltp))
+        .sort((a, b) => a.timestamp - b.timestamp);
+      
+      // Track cumulative volume for delta calculation
+      let prevCumulativeVolume = 0;
+      
+      sortedHistory.forEach((p, index) => {
+        const minuteTs = Math.floor(p.timestamp / 60) * 60;
+        const price = p.ltp;
+        
+        // Calculate volume delta
+        const currentCumulativeVolume = p.volume || 0;
+        let deltaVolume = 0;
+        if (index > 0 && currentCumulativeVolume >= prevCumulativeVolume) {
+          deltaVolume = currentCumulativeVolume - prevCumulativeVolume;
+        }
+        prevCumulativeVolume = currentCumulativeVolume;
+        
+        const existing = minuteCandles.get(minuteTs);
+        
+        if (!existing) {
+          // First tick for this minute - create new candle
+          minuteCandles.set(minuteTs, {
+            open: price,
+            high: price,
+            low: price,
+            close: price,
+            volume: deltaVolume,
+            firstTimestamp: p.timestamp,
+          });
+        } else {
+          // Update existing candle with new tick
+          existing.high = Math.max(existing.high, price);
+          existing.low = Math.min(existing.low, price);
+          existing.close = price; // Last price becomes close
+          existing.volume += deltaVolume;
+        }
+      });
+      
+      // Convert to array and sort
+      const result = Array.from(minuteCandles.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([timestamp, candle]) => ({
+          interval_start: new Date(timestamp * 1000).toISOString(),
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: candle.volume,
+        }));
+      
+      console.log(`📈 [chartData] Created ${result.length} minute candles from ${sortedHistory.length} ticks`);
+      if (result.length > 0) {
+        console.log(`📈 First candle:`, result[0]);
+        console.log(`📈 Last candle:`, result[result.length - 1]);
+      }
+      
+      return result;
+    }
+
+    return [];
+  }, [symbolOhlc, symbolHistory]);
+
   // Loading state
   if (!isClient) {
     return (
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
-          <header className="flex h-16 shrink-0 items-center gap-2 w-full">
-            <div className="flex items-center gap-2 px-4">
-              <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-2 h-4" />
-              <Breadcrumb className="flex items-center justify-end gap-2">
-                <BreadcrumbList>
-                  <BreadcrumbItem className="hidden md:block">
-                    <BreadcrumbLink href="#">Home</BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator className="hidden md:block" />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>Market Data</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-                <ModeToggle />
-              </Breadcrumb>
-            </div>
+          <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-background px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <Breadcrumb className="flex-1">
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink href="/dashboard">Home</BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Live Market Data</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+            <ModeToggle />
           </header>
-          <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-            <div className="container mx-auto p-4 bg-zinc-900 text-white flex items-center justify-center h-[80vh]">
-              <div className="text-xl animate-pulse">Loading market data...</div>
-            </div>
+          <div className="flex flex-1 items-center justify-center">
+            <div className="text-xl animate-pulse">Loading market data...</div>
           </div>
         </SidebarInset>
       </SidebarProvider>
     );
   }
 
-  // Main render
+  const pageTitle = selectedCompany ? `${selectedCompany} - Live Market` : "Live Market Data";
+
+  // Main render - using recommendations page layout
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 w-full">
-          <div className="flex items-center gap-2 px-4 w-full">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb className="flex items-center justify-between w-full">
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#">Home</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>Live Market Data</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-              <ModeToggle />
-            </Breadcrumb>
+      <SidebarInset className="overflow-hidden flex flex-col h-screen">
+        
+        {/* HEADER */}
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-background px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          <Breadcrumb className="flex-1">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink href="/dashboard">Home</BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{pageTitle}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+
+          {/* Header Controls */}
+          <div className="flex items-center gap-2">
+            {/* Connection Status */}
+            <div className="flex items-center space-x-2">
+              <span className={`inline-block w-2 h-2 rounded-full ${socketStatus === 'Connected'
+                ? 'bg-green-500 animate-pulse'
+                : isReconnecting
+                  ? 'bg-yellow-500 animate-pulse'
+                  : socketStatus === 'Error' || subscriptionErrors
+                    ? 'bg-orange-500'
+                    : 'bg-red-500'
+                }`}></span>
+              <span className={`text-sm ${socketStatus === 'Connected'
+                ? 'text-green-600 dark:text-green-400'
+                : isReconnecting
+                  ? 'text-yellow-600 dark:text-yellow-400'
+                  : 'text-red-600 dark:text-red-400'
+                }`}>
+                {socketStatus === 'Connected' ? 'Connected' :
+                  socketStatus === 'Error' ? 'Connected' :
+                    isReconnecting ? 'Reconnecting...' :
+                      socketStatus.startsWith('Disconnected') ? 'Disconnected' : socketStatus}
+                {isReconnecting && ' 🔄'}
+              </span>
+            </div>
+
+            {/* Subscription Manager Button */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSubscribeAll}
+                disabled={isSubscribing || !companies.length}
+                className="h-9"
+              >
+                {isSubscribing ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
+                ) : (
+                  <ListChecks className="mr-2 h-4 w-4 text-green-500" />
+                )}
+                Subscribe All
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsSubscriptionModalOpen(true)}
+                disabled={isSubscribing}
+                className="h-9 w-9"
+                title="Manage Subscriptions"
+              >
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Prediction Service Status */}
+            {predictionServiceHealth === 'checking' || isCheckingHealth ? (
+              <div className="px-3 py-1 rounded text-sm font-medium bg-gray-200 text-gray-500 flex items-center gap-2">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
+                Checking...
+              </div>
+            ) : predictionServiceHealth === 'unavailable' ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      disabled
+                      className="px-3 py-1 rounded text-sm font-medium bg-red-100 text-red-600 cursor-not-allowed flex items-center gap-1.5"
+                    >
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      Prediction Unavailable
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white">
+                    <p className="text-xs">Prediction service is not responding. Please check if the server is running.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <button
+                onClick={() => setShowPredictions(!showPredictions)}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${showPredictions
+                  ? 'bg-[#dbeafe] text-blue-600 hover:bg-[#cddcfe]'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+              >
+                <Activity className="h-3.5 w-3.5" />
+                {showPredictions ? 'Predictions ON' : 'Predictions OFF'}
+              </button>
+            )}
+
+            {/* GTT Service Status */}
+            {gttServiceHealth === 'checking' || isCheckingHealth ? (
+              <div className="px-3 py-1 rounded text-sm font-medium bg-gray-200 text-gray-500 flex items-center gap-2">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
+                GTT...
+              </div>
+            ) : gttServiceHealth === 'unavailable' ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      disabled
+                      className="px-3 py-1 rounded text-sm font-medium bg-orange-100 text-orange-600 cursor-not-allowed flex items-center gap-1.5"
+                    >
+                      <Zap className="h-3.5 w-3.5" />
+                      GTT Unavailable
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white">
+                    <p className="text-xs">GTT prediction service is not responding. Please check if the GTT server is running.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <button
+                onClick={() => setIsGttEnabled(!isGttEnabled)}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${isGttEnabled
+                  ? 'bg-purple-600 text-white hover:bg-purple-700'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+              >
+                <Zap className="h-3.5 w-3.5" />
+                {isGttEnabled ? 'GTT ON' : 'GTT OFF'}
+              </button>
+            )}
+
+            <ModeToggle />
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <Card className="w-full">
-            <CardContent className="p-4">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-medium">Live Market</h3>
+        {/* Market Closed Banner */}
+        {!marketOpen && (
+          <div className="border-b">
+            <MarketClosedBanner />
+          </div>
+        )}
 
-                  <div className="flex items-center space-x-4">
-                    {isLoadingHistorical && (
-                      <div className="mt-2 flex items-center gap-2 text-xs text-blue-400">
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-400"></div>
-                        <span>Loading historical data...</span>
-                      </div>
-                    )}
-                    {historicalDataStatus && !isLoadingHistorical && (
-                      <div className="mt-2 text-xs text-green-400">
-                        ✅ {historicalDataStatus}
-                      </div>
-                    )}
-                    <div>
+        {/* MAIN CONTENT ROW */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
 
-                      {/* ✅ NEW: Subscription Error Indicator with Tooltip */}
-                      {(subscriptionErrors || failedSymbols.length > 0) && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="p-2 bg-red-950/50 rounded cursor-default">
-                                <AlertCircle className="h-5 w-5 text-red-500" />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent
-                              side="bottom"
-                              className="max-w-sm bg-zinc-900 border-red-800 text-white p-3"
-                            >
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2 text-red-400 font-medium">
-                                  <AlertCircle className="h-4 w-4" />
-                                  <span>Subscription Error</span>
-                                </div>
-                                {subscriptionErrors && (
-                                  <p className="text-xs text-zinc-400">
-                                    Code: {subscriptionErrors.code} - {subscriptionErrors.message}
-                                  </p>
-                                )}
-                                {failedSymbols.length > 0 && (
-                                  <div className="text-xs text-zinc-300">
-                                    <span className="text-red-400">{failedSymbols.length}</span> symbol(s) failed to subscribe
-                                  </div>
-                                )}
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="flex items-center justify-end gap-2 ml-4 border-l pl-4 h-12">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleSubscribeAll}
-                          disabled={isSubscribing || !companies.length} // ✅ Removed !isLatestDate
-                          className="h-9"
-                        >
-                          {isSubscribing ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
-                          ) : (
-                            <ListChecks className="mr-2 h-4 w-4 text-green-500" />
-                          )}
-                          Subscribe All
-                        </Button>
+          {/* LEFT: CHART & ANALYSIS SPLIT */}
+          <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden">
 
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setIsSubscriptionModalOpen(true)}
-                          disabled={isSubscribing}
-                          className="h-9 w-9"
-                          title="Manage Subscriptions"
-                        >
-                          <Settings2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-
-                      <span className={`inline-block w-2 h-2 rounded-full ${socketStatus === 'Connected'
-                        ? 'bg-green-500 animate-pulse'
-                        : isReconnecting
-                          ? 'bg-yellow-500 animate-pulse'
-                          : socketStatus === 'Error' || subscriptionErrors
-                            ? 'bg-orange-500'
-                            : 'bg-red-500'
-                        }`}></span>
-                      <span className={`text-sm ${socketStatus === 'Connected'
-                        ? 'text-green-600 dark:text-green-400'
-                        : isReconnecting
-                          ? 'text-yellow-600 dark:text-yellow-400'
-                          : 'text-red-600 dark:text-red-400'
-                        }`}>
-                        {/* Only show simple status, not full error message */}
-                        {socketStatus === 'Connected' ? 'Connected' :
-                          socketStatus === 'Error' ? 'Connected' :
-                            isReconnecting ? 'Reconnecting...' :
-                              socketStatus.startsWith('Disconnected') ? 'Disconnected' : socketStatus}
-                        {isReconnecting && ' 🔄'}
-                      </span>
-                    </div>
-                    {/* <button
-                      onClick={() => setIsGttEnabled(!isGttEnabled)}
-                      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${isGttEnabled
-                        ? 'bg-purple-600 text-white hover:bg-purple-700'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
-                    >
-                      {isGttEnabled ? '⚡ GTT View ON' : '⚡ GTT View OFF'}
-                    </button> */}
-
-                    {/* Regular Prediction Service Status Button */}
-                    {predictionServiceHealth === 'checking' || isCheckingHealth ? (
-                      <div className="px-3 py-1 rounded text-sm font-medium bg-gray-200 text-gray-500 flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
-                        Checking...
-                      </div>
-                    ) : predictionServiceHealth === 'unavailable' ? (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              disabled
-                              className="px-3 py-1 rounded text-sm font-medium bg-red-100 text-red-600 cursor-not-allowed flex items-center gap-1.5"
-                            >
-                              <AlertCircle className="h-3.5 w-3.5" />
-                              Prediction Unavailable
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white">
-                            <p className="text-xs">Prediction service is not responding. Please check if the server is running.</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    ) : (
-                      <button
-                        onClick={() => setShowPredictions(!showPredictions)}
-                        className={`px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${showPredictions
-                          ? 'bg-[#dbeafe] text-blue-600 hover:bg-[#cddcfe]'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                          }`}
-                      >
-                        <Activity className="h-3.5 w-3.5" />
-                        {showPredictions ? 'Predictions ON' : 'Predictions OFF'}
-                      </button>
-                    )}
-
-                    {/* GTT Service Status Button */}
-                    {gttServiceHealth === 'checking' || isCheckingHealth ? (
-                      <div className="px-3 py-1 rounded text-sm font-medium bg-gray-200 text-gray-500 flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
-                        GTT...
-                      </div>
-                    ) : gttServiceHealth === 'unavailable' ? (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              disabled
-                              className="px-3 py-1 rounded text-sm font-medium bg-orange-100 text-orange-600 cursor-not-allowed flex items-center gap-1.5"
-                            >
-                              <Zap className="h-3.5 w-3.5" />
-                              GTT Unavailable
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white">
-                            <p className="text-xs">GTT prediction service is not responding. Please check if the GTT server is running.</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    ) : (
-                      <button
-                        onClick={() => setIsGttEnabled(!isGttEnabled)}
-                        className={`px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${isGttEnabled
-                          ? 'bg-purple-600 text-white hover:bg-purple-700'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                          }`}
-                      >
-                        <Zap className="h-3.5 w-3.5" />
-                        {isGttEnabled ? 'GTT ON' : 'GTT OFF'}
-                      </button>
-                    )}
-                  </div>
+            {/* Upper: Chart */}
+            <div
+              className="relative border-b flex flex-col transition-[flex-basis] duration-300 ease-in-out overflow-hidden"
+              style={{ flex: isAnalysisVisible ? '0 0 55%' : '1 1 auto' }}
+            >
+              {selectedCompany && marketOpen ? (
+                <div className="relative w-full h-full flex flex-col">
+                  <LightWeightStockChart
+                    companyId={selectedCompany}
+                    data={chartData}
+                    interval="1m"
+                    loading={isLoadingHistorical}
+                    height="100%"
+                    className="w-full h-full"
+                    theme={theme === 'light' ? 'light' : 'dark'}
+                    defaultChartType="line"
+                  />
                 </div>
-
-                <div className="p-3 border border-opacity-30 rounded-md h-24 flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-4 justify-between mr-4">
-                      <WatchlistSelector
-                        onCompanySelect={handleCompanyChange}
-                        onDateChange={handleDateChange}
-                        onFilteredDataChange={setFilteredCompanies} // <--- Pass the setter
-                        showExchangeFilter={true}
-                        showMarkerFilter={true}
-                      />
-
-
-                    </div>
-
+              ) : !selectedCompany ? (
+                <div className="flex h-full items-center justify-center text-muted-foreground p-8 text-center flex-col gap-4">
+                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+                    <Database size={32} />
                   </div>
-                  <div className="flex items-center justify-end gap-3 text-sm">
-
-
-                    {/* ✅ ENHANCED: Hover Card for Subscribed Companies */}
-                    <HoverCard openDelay={200} closeDelay={100}>
-                      <HoverCardTrigger asChild>
-                        <div className="p-3 bg-zinc-800 rounded w-auto cursor-pointer hover:bg-zinc-700 transition-colors">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <Wifi className="h-4 w-4 text-green-500" />
-                            <span className="text-green-400 font-medium">
-                              Subscribed Companies ({activeSymbols.length})
-                            </span>
-                          </div>
-                          <div className="max-h-20 overflow-y-auto">
-                            {activeSymbols.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {activeSymbols.slice(0, 5).map(symbol => (
-                                  <span
-                                    key={symbol}
-                                    className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded"
-                                  >
-                                    {symbol.split(':')[1]?.split('-')[0] || symbol}
-                                  </span>
-                                ))}
-                                {activeSymbols.length > 5 && (
-                                  <span className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded animate-pulse">
-                                    +{activeSymbols.length - 5} more
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-zinc-500 text-xs">No active symbols</span>
-                            )}
-                          </div>
-                        </div>
-                      </HoverCardTrigger>
-
-                      <HoverCardContent
-                        className="w-[700px] p-0 bg-zinc-900 border-zinc-700"
-                        side="left"
-                        align="start"
-                      >
-                        {/* ✅ 4-Panel Grid: Subscribed | Failed | Stopped | Permanently Stopped */}
-                        <div className="grid grid-cols-2 gap-0">
-                          {/* Panel 1: Subscribed Companies (Green) */}
-                          <div className="p-3 border-r border-b border-zinc-700">
-                            <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
-                              <div className="flex items-center gap-1.5">
-                                <Wifi className="h-3.5 w-3.5 text-green-500" />
-                                <h3 className="font-semibold text-green-400 text-xs">
-                                  Subscribed
-                                </h3>
-                              </div>
-                              <span className="text-[10px] bg-green-900/50 text-green-300 px-1.5 py-0.5 rounded">
-                                {activeSymbols.length}
-                              </span>
-                            </div>
-                            <ScrollArea className="h-[180px] pr-1">
-                              <div className="space-y-1">
-                                {activeSymbols.length > 0 ? (
-                                  activeSymbols.map((symbol, index) => {
-                                    const companyCode = symbol.split(':')[1]?.split('-')[0] || symbol;
-                                    const exchange = symbol.split(':')[0] || '';
-                                    return (
-                                      <div key={symbol} className="flex items-center gap-1.5 p-1.5 rounded bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors">
-                                        <span className="text-[9px] font-bold text-green-400 w-4">{index + 1}</span>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-[10px] font-medium text-white truncate">{companyCode}</div>
-                                          <div className="text-[8px] text-zinc-500">{exchange}</div>
-                                        </div>
-                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                                      </div>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="text-center py-6 text-zinc-500">
-                                    <Wifi className="h-5 w-5 mx-auto mb-1 opacity-30" />
-                                    <p className="text-[10px]">No active subscriptions</p>
-                                  </div>
-                                )}
-                              </div>
-                            </ScrollArea>
-                          </div>
-
-                          {/* Panel 2: Failed Subscriptions (Red) */}
-                          <div className="p-3 border-b border-zinc-700">
-                            <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
-                              <div className="flex items-center gap-1.5">
-                                <WifiOff className="h-3.5 w-3.5 text-red-500" />
-                                <h3 className="font-semibold text-red-400 text-xs">
-                                  Failed
-                                </h3>
-                              </div>
-                              <span className="text-[10px] bg-red-900/50 text-red-300 px-1.5 py-0.5 rounded">
-                                {failedSymbols.length}
-                              </span>
-                            </div>
-                            <ScrollArea className="h-[180px] pr-1">
-                              <div className="space-y-1">
-                                {failedSymbols.length > 0 ? (
-                                  failedSymbols.map((symbol, index) => {
-                                    const cleanSymbol = symbol.replace('-STOPPED', '').replace(/'/g, '');
-                                    const parts = cleanSymbol.split(':');
-                                    const exchange = parts[0] || '';
-                                    const companyCode = parts[1]?.split('-')[0] || cleanSymbol;
-                                    return (
-                                      <div key={symbol} className="flex items-center gap-1.5 p-1.5 rounded bg-red-950/30 hover:bg-red-950/50 transition-colors">
-                                        <span className="text-[9px] font-bold text-red-400 w-4">{index + 1}</span>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-[10px] font-medium text-red-200 truncate">{companyCode}</div>
-                                          <div className="text-[8px] text-red-400/70">{exchange}</div>
-                                        </div>
-                                        <AlertCircle className="w-2.5 h-2.5 text-red-500" />
-                                      </div>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="text-center py-6 text-zinc-500">
-                                    <div className="w-5 h-5 mx-auto mb-1 rounded-full bg-green-900/20 flex items-center justify-center">
-                                      <Wifi className="h-2.5 w-2.5 text-green-500" />
-                                    </div>
-                                    <p className="text-[10px] text-green-400">All symbols OK</p>
-                                  </div>
-                                )}
-                              </div>
-                            </ScrollArea>
-                          </div>
-
-                          {/* Panel 3: Stopped Today (Yellow/Orange) - Resets Daily */}
-                          <div className="p-3 border-r border-zinc-700">
-                            <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
-                              <div className="flex items-center gap-1.5">
-                                <AlertCircle className="h-3.5 w-3.5 text-yellow-500" />
-                                <h3 className="font-semibold text-yellow-400 text-xs">
-                                  Stopped Today
-                                </h3>
-                              </div>
-                              <span className="text-[10px] bg-yellow-900/50 text-yellow-300 px-1.5 py-0.5 rounded">
-                                {stoppedSymbols.length}
-                              </span>
-                            </div>
-                            <ScrollArea className="h-[180px] pr-1">
-                              <div className="space-y-1">
-                                {stoppedSymbols.length > 0 ? (
-                                  stoppedSymbols.map((symbol, index) => {
-                                    const cleanSymbol = symbol.replace('-STOPPED', '').replace(/'/g, '');
-                                    const parts = cleanSymbol.split(':');
-                                    const exchange = parts[0] || '';
-                                    const companyCode = parts[1]?.split('-')[0] || cleanSymbol;
-                                    return (
-                                      <div key={symbol} className="flex items-center gap-1.5 p-1.5 rounded bg-yellow-950/30 hover:bg-yellow-950/50 transition-colors group">
-                                        <span className="text-[9px] font-bold text-yellow-400 w-4">{index + 1}</span>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-[10px] font-medium text-yellow-200 truncate">{companyCode}</div>
-                                          <div className="text-[8px] text-yellow-400/70">{exchange} • Resets daily</div>
-                                        </div>
-                                        <button
-                                          onClick={async () => {
-                                            try {
-                                              await fetch('/api/admin/permanently-stopped', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ symbols: [symbol] })
-                                              });
-                                              fetchSubscriptionStatus();
-                                            } catch (err) { console.error('Failed to add to permanent:', err); }
-                                          }}
-                                          className="opacity-0 group-hover:opacity-100 text-[8px] text-purple-400 hover:text-purple-300 transition-all"
-                                          title="Move to Permanent"
-                                        >
-                                          →Perm
-                                        </button>
-                                      </div>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="text-center py-6 text-zinc-500">
-                                    <div className="w-5 h-5 mx-auto mb-1 rounded-full bg-green-900/20 flex items-center justify-center">
-                                      <Wifi className="h-2.5 w-2.5 text-green-500" />
-                                    </div>
-                                    <p className="text-[10px] text-green-400">No stopped symbols</p>
-                                  </div>
-                                )}
-                              </div>
-                            </ScrollArea>
-                          </div>
-
-                          {/* Panel 4: Permanently Stopped (Purple) - Never Resets */}
-                          <div className="p-3">
-                            <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
-                              <div className="flex items-center gap-1.5">
-                                <svg className="h-3.5 w-3.5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                                </svg>
-                                <h3 className="font-semibold text-purple-400 text-xs">
-                                  Permanently Blocked
-                                </h3>
-                              </div>
-                              <span className="text-[10px] bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded">
-                                {permanentlyStoppedSymbols.length}
-                              </span>
-                            </div>
-                            <ScrollArea className="h-[180px] pr-1">
-                              <div className="space-y-1">
-                                {permanentlyStoppedSymbols.length > 0 ? (
-                                  permanentlyStoppedSymbols.map((symbol, index) => {
-                                    const cleanSymbol = symbol.replace('-STOPPED', '').replace(/'/g, '');
-                                    const parts = cleanSymbol.split(':');
-                                    const exchange = parts[0] || '';
-                                    const companyCode = parts[1]?.split('-')[0] || cleanSymbol;
-                                    return (
-                                      <div key={symbol} className="flex items-center gap-1.5 p-1.5 rounded bg-purple-950/30 hover:bg-purple-950/50 transition-colors group">
-                                        <span className="text-[9px] font-bold text-purple-400 w-4">{index + 1}</span>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-[10px] font-medium text-purple-200 truncate">{companyCode}</div>
-                                          <div className="text-[8px] text-purple-400/70">{exchange} • Permanent</div>
-                                        </div>
-                                        <button
-                                          onClick={async () => {
-                                            try {
-                                              await fetch('/api/admin/permanently-stopped', {
-                                                method: 'DELETE',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ symbol })
-                                              });
-                                              fetchSubscriptionStatus();
-                                            } catch (err) { console.error('Failed to remove from permanent:', err); }
-                                          }}
-                                          className="opacity-0 group-hover:opacity-100 text-[8px] text-green-400 hover:text-green-300 transition-all"
-                                          title="Unblock Symbol"
-                                        >
-                                          Unblock
-                                        </button>
-                                      </div>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="text-center py-6 text-zinc-500">
-                                    <div className="w-5 h-5 mx-auto mb-1 rounded-full bg-green-900/20 flex items-center justify-center">
-                                      <Wifi className="h-2.5 w-2.5 text-green-500" />
-                                    </div>
-                                    <p className="text-[10px] text-green-400">No blocked symbols</p>
-                                  </div>
-                                )}
-                              </div>
-                            </ScrollArea>
-                          </div>
-                        </div>
-
-                        {/* Error Details */}
-                        {subscriptionErrors && (
-                          <div className="px-3 py-2 border-t border-zinc-800 bg-red-950/20">
-                            <div className="text-[10px] text-red-400/80 space-y-0.5">
-                              <div>Error Code: {subscriptionErrors.code}</div>
-                              <div className="truncate">{subscriptionErrors.message}</div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Footer */}
-                        <div className="px-3 py-2 border-t border-zinc-800 bg-zinc-950/50">
-                          <div className="flex items-center justify-between text-[10px] text-zinc-500">
-                            <span>Last updated: {new Date().toLocaleTimeString()}</span>
-                            <div className="flex items-center gap-3">
-                              {failedSymbols.length > 0 && (
-                                <button
-                                  onClick={clearSubscriptionErrors}
-                                  className="text-red-400 hover:text-red-300 transition-colors"
-                                >
-                                  Clear Failed
-                                </button>
-                              )}
-                              <button
-                                onClick={() => fetchSubscriptionStatus()}
-                                className="text-green-400 hover:text-green-300 transition-colors"
-                              >
-                                Refresh
-                              </button>
-                              <button
-                                onClick={() => setIsSubscriptionModalOpen(true)}
-                                className="text-blue-400 hover:text-blue-300 transition-colors"
-                              >
-                                Manage →
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </HoverCardContent>
-                    </HoverCard>
-
-                  </div>
+                  <h2 className="text-xl font-semibold text-foreground">Select a Company</h2>
+                  <p className="max-w-md">
+                    Select a company from the sidebar to view live market data and charts.
+                  </p>
                 </div>
+              ) : (
+                <div className="h-full w-full flex items-center justify-center p-0">
+                  <MarketClosedBanner className="w-full h-full flex items-center justify-center" />
+                </div>
+              )}
+            </div>
 
-                {watchlistError && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
-                    ❌ {watchlistError}
-                  </div>
-                )}
+            {/* Toggle Button Bar - Fixed Height */}
+            {selectedCompany && (
+              <div className="flex-none flex items-center justify-center border-b bg-muted/20 hover:bg-muted/40 transition-colors py-1 cursor-pointer z-10" onClick={() => setIsAnalysisVisible(!isAnalysisVisible)}>
+                <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 opacity-70 hover:opacity-100">
+                  {isAnalysisVisible ? (
+                    <>
+                      <ChevronDown className="h-3 w-3" />
+                      Hide Analysis
+                    </>
+                  ) : (
+                    <>
+                      <ChevronUp className="h-3 w-3" />
+                      Show Analysis
+                    </>
+                  )}
+                </Button>
               </div>
-            </CardContent>
-          </Card>
+            )}
 
-          <div className={`${isChartFullscreen ? 'fixed inset-0 z-50 bg-zinc-900 overflow-auto' : 'min-h-screen bg-zinc-900'} text-zinc-100 rounded-lg transition-all duration-300`}>
-            <div className={`w-full ${isChartFullscreen ? 'min-h-full' : ''} p-4`}>
-              <div className={`flex gap-6 ${isChartFullscreen ? 'min-h-[calc(100vh-2rem)]' : 'mb-6'}`}>
-                {/* ============ MAIN CHART AREA ============ */}
-                <div className={`${isChartFullscreen ? 'w-3/4 min-h-[calc(100vh-2rem)]' : 'w-3/4'}`}>
-                  <div className={`bg-zinc-800 rounded-lg shadow-lg ${isChartFullscreen ? 'h-[calc(100vh-2rem)]' : 'h-[800px]'}`}>
-                    {!marketOpen ? (
-                      <div className="h-full w-full flex items-center justify-center p-0">
-                        <div className="h-full w-full flex items-center justify-center">
-                          <MarketClosedBanner className="w-full h-full flex items-center justify-center" />
-                        </div>
-                      </div>
-                    ) : !selectedSymbol ? (
-                      <div className="h-full flex flex-col items-center justify-center space-y-4">
-                        <div className="text-center space-y-2">
-                          <Database className="h-16 w-16 text-zinc-600 mx-auto mb-4" />
-                          <h3 className="text-xl font-semibold text-zinc-400">No Company Selected</h3>
-                          <p className="text-zinc-500 max-w-md">
-                            Select a date and click on a company from the list above to view live market data and charts
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-zinc-600">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-zinc-600"></div>
-                            <span>Step 1: Choose a date</span>
-                          </div>
-                          <span>→</span>
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-zinc-600"></div>
-                            <span>Step 2: Click a company</span>
-                          </div>
-                        </div>
-                      </div>
-                    ) : symbolHistory.length > 0 || symbolChartUpdates.length > 0 ? (
-                      <div className="w-full h-full">
-                        <PlotlyChart
-                          symbol={selectedSymbol}
-                          data={currentData}
-                          historicalData={symbolHistory}
-                          ohlcData={symbolOhlc}
-                          chartUpdates={symbolChartUpdates}
-                          tradingHours={tradingHours}
-                          updateFrequency={updateFrequency}
-                          predictions={predictions}
-                          showPredictions={showPredictions}
-                          predictionRevision={predictionRevision}
-                          desirabilityScore={desirabilityScore}
-                          gttExternalData={gttChartData}
-                          isGttEnabled={isGttEnabled}
-                          onGttToggle={setIsGttEnabled}
-                          gttLoading={gttLoading}
-                          gttError={gttError}
-                          forcedXRange={sharedXRange}
-                          onXRangeChange={handleXRangeChange}
-                          isFullscreen={isChartFullscreen}
-                          onFullscreenToggle={() => setIsChartFullscreen(!isChartFullscreen)}
-                        />
-
-                      </div>
-                    ) : (
-                      <div className="h-full flex items-center justify-center">
-                        <div className="text-center space-y-2">
-                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-                          <p className="text-zinc-400">Loading data for {selectedSymbol}...</p>
-                        </div>
-                      </div>
-                    )}
+            {/* Lower: Analysis Panel (Collapsible) */}
+            {selectedCompany && isAnalysisVisible && marketOpen && (
+              <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden animate-in slide-in-from-bottom-5 duration-300 fade-in">
+                <Tabs defaultValue="predictions" className="flex-1 flex flex-col min-h-0">
+                  <div className="border-b px-4 bg-muted/20 shrink-0">
+                    <TabsList className="h-9">
+                      <TabsTrigger value="predictions" className="text-xs">AI Predictions & GTT</TabsTrigger>
+                      <TabsTrigger value="charts" className="text-xs">LSTM-AE & SIPR</TabsTrigger>
+                    </TabsList>
                   </div>
-                </div>
-
-                {/* ============ SIDE PANEL: CURRENT DATA + PREDICTIONS ============ */}
-                <div className={`w-1/4 bg-zinc-800 p-4 rounded-lg shadow-lg ${isChartFullscreen ? 'h-[calc(100vh-2rem)] overflow-y-auto' : 'max-h-[800px] overflow-hidden'} flex flex-col`}>
-                  {/* Tab Switcher */}
-                  <div className="flex gap-2 mb-4 bg-zinc-900 p-1 rounded-lg">
-                    <button
-                      onClick={() => setActiveTab('live')}
-                      className={`flex-1 py-2 px-4 rounded-md transition-all duration-200 font-medium ${activeTab === 'live'
-                        ? 'bg-zinc-700 text-white shadow-lg'
-                        : 'text-zinc-400 hover:text-white'
-                        }`}
-                    >
-                      <div className="flex items-center justify-center gap-2">
-                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                        Live Data
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('predictions')}
-                      className={`flex-1 py-2 px-4 rounded-md transition-all duration-300 font-medium ${activeTab === 'predictions'
-                        ? 'bg-gradient-to-r from-blue-500/20 to-blue-600/10 border border-blue-400/50 text-blue-400 shadow-lg shadow-blue-500/20'
-                        : 'text-zinc-400 hover:text-blue-400 hover:bg-blue-400/5'
-                        }`}
-                    >
-                      <div className="flex items-center justify-center gap-2">
-                        <Activity className={`w-4 h-4 ${activeTab === 'predictions' ? 'text-blue-400' : ''}`} />
-                        Predictions
-                      </div>
-                    </button>
-                  </div>
-
-                  {/* Tab Content */}
-                  <div className="flex-1 overflow-y-auto scrollbar-hide">
-                    {!marketOpen ? (
-                      <div className="h-full flex flex-col items-center justify-center text-center space-y-4 p-6">
-                        <div className="inline-flex items-center justify-center w-20 h-20 bg-orange-500/10 rounded-full border-2 border-orange-500/30">
-                          <Clock className="w-10 h-10 text-orange-500" />
-                        </div>
-                        <div className="space-y-2">
-                          <h3 className="text-lg font-semibold text-orange-400">Market is Closed</h3>
-                          <p className="text-sm text-zinc-400 max-w-xs">
-                            Live market data and real-time updates are not available outside trading hours.
-                          </p>
-                          <p className="text-xs text-zinc-500 mt-2">
-                            Trading Hours: 9:15 AM - 3:30 PM IST
-                          </p>
-                        </div>
-                      </div>
-                    ) : !selectedSymbol ? (
-                      <div className="h-full flex flex-col items-center justify-center text-center space-y-4 p-6">
-                        <div className="inline-flex items-center justify-center w-20 h-20 bg-zinc-700/50 rounded-full">
-                          <Building2 className="w-10 h-10 text-zinc-500" />
-                        </div>
-                        <div className="space-y-2">
-                          <h3 className="text-lg font-semibold text-zinc-300">No Company Selected</h3>
-                          <p className="text-sm text-zinc-500 max-w-xs">
-                            Click on a company from the dropdown above to view live market data and AI predictions
-                          </p>
-                        </div>
-                      </div>
-                    ) : currentData ? (
-                      <>
-                        {/* LIVE DATA TAB */}
-                        {activeTab === 'live' && (
-                          <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <h2 className="text-xl font-semibold text-white">{selectedSymbol}</h2>
-                              <div className="text-xs text-green-400 animate-pulse">
-                                LIVE •
-                              </div>
-                            </div>
-
-                            <div className="text-3xl font-bold mb-2 text-white">₹{formatPrice(currentData.ltp)}</div>
-                            <div className={`text-lg ${getChangeClass(currentData.change)}`}>
-                              {formatChange(currentData.change, currentData.changePercent)}
-                            </div>
-
-                            {/* ✅ NEW: Dynamic Sentiment Display */}
-                            {(() => {
-                              if (isSentimentFetching) {
-                                return (
-                                  <div className="mt-3 p-3 rounded-lg border-2 bg-zinc-900/50 border-zinc-800 backdrop-blur-sm">
-                                    <div className="flex items-center gap-2">
-                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-400"></div>
-                                      <span className="text-sm font-medium text-zinc-500">
-                                        Fetching Sentiment...
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              // Map API sentiment to UI styles
-                              let sentimentStyle = {
-                                background: 'bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40',
-                                text: 'text-zinc-400',
-                                label: 'Overall Sentinemt : Neutral'
-                              };
-                              if (overallSentiment === 'POSITIVE') {
-                                sentimentStyle = {
-                                  background: 'bg-gradient-to-r from-green-500/10 to-green-900/10 border-green-500/40',
-                                  text: 'text-green-400',
-                                  label: 'Overall Sentinemt : Positive'
-                                };
-                              } else if (overallSentiment === 'NEGATIVE') {
-                                sentimentStyle = {
-                                  background: 'bg-gradient-to-r from-red-500/10 to-red-900/10 border-red-500/40',
-                                  text: 'text-red-400',
-                                  label: 'Overall Sentinemt : Negative'
-                                };
-                              }
-                              return (
-                                <div className={`mt-3 p-3 rounded-lg border-2 ${sentimentStyle.background} backdrop-blur-sm`}>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-sm font-medium ${sentimentStyle.text}`}>
-                                      {sentimentStyle.label}
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-
-                            <div className="w-full">
-                              {selectedSymbol ? (
-                                <div className="mt-4">
-                                  <DesirabilityPanel
-                                    score={desirabilityScore}
-                                    classification={desirabilityClassification}
-                                    loading={desirabilityLoading}
-                                    onFetch={handleFetchDesirabilityScore}
-                                    data={desirabilityData}
-                                  />
-                                </div>
-                              ) : (
-                                <div className="bg-zinc-800 p-4 rounded-lg shadow-lg h-full flex flex-col items-center justify-center">
-                                  <Building2 className="h-12 w-12 text-zinc-600 mb-4" />
-                                  <p className="text-zinc-500 text-sm text-center">
-                                    Select a symbol to view market desirability score
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4 mt-6">
-                              <div className="bg-zinc-700 p-3 rounded">
-                                <div className="text-xs text-zinc-400">Open</div>
-                                <div className="text-lg">₹{formatPrice(currentData.open)}</div>
-                              </div>
-                              <div className="bg-zinc-700 p-3 rounded">
-                                <div className="text-xs text-zinc-400">Close</div>
-                                <div className="text-lg">₹{formatPrice(currentData.close)}</div>
-                              </div>
-                              <div className="bg-zinc-700 p-3 rounded">
-                                <div className="text-xs text-zinc-400">High</div>
-                                <div className="text-lg">₹{formatPrice(currentData.high)}</div>
-                              </div>
-                              <div className="bg-zinc-700 p-3 rounded">
-                                <div className="text-xs text-zinc-400">Low</div>
-                                <div className="text-lg">₹{formatPrice(currentData.low)}</div>
-                              </div>
-                            </div>
-
-                            <div className="mt-6 border-t border-zinc-700 pt-4">
-                              <div className="grid grid-cols-2 gap-y-2">
-                                <div>
-                                  <div className="text-xs text-zinc-400">Volume</div>
-                                  <div>{currentData.volume?.toLocaleString() || '0'}</div>
-                                </div>
-                                <div>
-                                  <div className="text-xs text-zinc-400">Updated</div>
-                                  <div className="text-green-400">
-                                    {new Date(currentData.timestamp * 1000).toLocaleTimeString()}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {(currentData.sma_20 || currentData.ema_9 || currentData.rsi_14) && (
-                              <div className="mt-6 border-t border-zinc-700 pt-4">
-                                <h3 className="text-sm font-medium mb-2 text-zinc-300">Technical Indicators</h3>
-                                <div className="grid grid-cols-3 gap-2">
-                                  {currentData.sma_20 && (
-                                    <div className="bg-zinc-700 p-2 rounded">
-                                      <div className="text-xs text-orange-500">SMA 20</div>
-                                      <div className="text-sm">₹{formatPrice(currentData.sma_20)}</div>
-                                    </div>
-                                  )}
-                                  {currentData.ema_9 && (
-                                    <div className="bg-zinc-700 p-2 rounded">
-                                      <div className="text-xs text-purple-500">EMA 9</div>
-                                      <div className="text-sm">₹{formatPrice(currentData.ema_9)}</div>
-                                    </div>
-                                  )}
-                                  {currentData.rsi_14 && (
-                                    <div className="bg-zinc-700 p-2 rounded">
-                                      <div className="text-xs text-cyan-500">RSI 14</div>
-                                      <div className="text-sm">{currentData.rsi_14.toFixed(2)}</div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-
-
-                            {/* <div className="mt-4">
-                              {usefulnessScore === null ? (
-                                <button
-                                  onClick={handleFetchUsefulnessScore}
-                                  className="w-full p-3 rounded-lg border-2 bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40 backdrop-blur-sm hover:from-zinc-500/40 hover:to-zinc-600/30 transition-all duration-200"
-                                >
-                                  <div className="flex items-center justify-center gap-2">
-                                    <Award className="h-4 w-4 text-zinc-400" />
-                                    <span className="text-sm font-medium text-zinc-400">
-                                      Fetch Score
-                                    </span>
-                                  </div>
-                                </button>
-                              ) : (
-                                <div
-                                  className="relative"
-                                  onMouseEnter={() => setShowScoreTooltip(true)}
-                                  onMouseLeave={() => setShowScoreTooltip(false)}
-                                >
-                                  {(() => {
-                                    const scoreEval = getScoreEvaluation(usefulnessScore);
-                                    return (
-                                      <div className={`p-3 rounded-lg border-2 bg-gradient-to-r ${scoreEval.bgColor} ${scoreEval.borderColor} backdrop-blur-sm cursor-pointer`}>
-                                        <div className="flex items-center justify-between">
-                                          <div className="flex items-center gap-2">
-                                            <Award className={`h-5 w-5 ${scoreEval.color}`} />
-                                            <div>
-                                              <div className="text-xs text-zinc-400">Score</div>
-                                              <div className={`text-2xl font-bold ${scoreEval.color}`}>
-                                                {usefulnessScore}
-                                              </div>
-                                            </div>
-                                          </div>
-                                          <div className={`text-lg font-semibold ${scoreEval.color}`}>
-                                            {scoreEval.text}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
-                              )}
-                            </div> */}
-                          </div>
-                        )}
-
-                        {/* AI PREDICTIONS TAB */}
-                        {activeTab === 'predictions' && (
-                          <div className="space-y-4 p-3 rounded-lg bg-gradient-to-br from-blue-500/5 via-transparent to-blue-600/5 border border-blue-400/20">
-                            {/* PREDICTION OVERLAY */}
-                            {showPredictions && predictions ? (
-                              <PredictionOverlay
-                                predictions={predictions}
-                                company={selectedCompany || selectedSymbol}
-                                dataAge={predictionDataAge}
-                                isStale={isDataStale}
-                              />
-                            ) : (
-                              <div className="text-center py-12">
-                                <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-full mb-4 border border-blue-400/30 shadow-lg shadow-blue-500/10">
-                                  <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                  </svg>
-                                </div>
-                                <p className="text-blue-400/70 text-sm">Enable predictions to view AI forecasts</p>
-                              </div>
-                            )}
-
-                            {/* PREDICTION TIMER - Circular countdown to next update */}
-                            {showPredictions && (
-                              <PredictionTimer
-                                timeUntilNextPoll={timeUntilNextPoll}
-                                nextPollTime={nextPollTime}
-                                isPolling={isPolling}
-                                onTimerEnd={handleTimerEnd}
-                              />
-                            )}
-
-                            {/* PREDICTION CONTROL PANEL */}
-                            {showPredictions && (
+                  <div className="flex-1 overflow-hidden relative p-4">
+                    <TabsContent value="predictions" className="h-full m-0">
+                      <ScrollArea className="h-full">
+                        <div className="space-y-4">
+                          {/* Prediction Controls */}
+                          {showPredictions && (
+                            <>
                               <PredictionControlPanel
                                 isPolling={isPolling}
                                 elapsedTime={elapsedTime}
@@ -2214,45 +1593,364 @@ const MarketDataPage: React.FC = () => {
                                 onRefresh={handleManualRefresh}
                                 disabled={predictionLoading}
                               />
-                            )}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-center py-8">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-3"></div>
-                        <p className="text-zinc-400 text-sm">Connecting...</p>
+
+                              <PredictionTimer
+                                timeUntilNextPoll={timeUntilNextPoll}
+                                nextPollTime={nextPollTime}
+                                isPolling={isPolling}
+                                onTimerEnd={handleTimerEnd}
+                              />
+
+                              {predictions && (
+                                <PredictionOverlay
+                                  predictions={predictions}
+                                  company={selectedCompany || selectedSymbol}
+                                  dataAge={predictionDataAge}
+                                  isStale={isDataStale}
+                                />
+                              )}
+                            </>
+                          )}
+
+                          {/* GTT Status */}
+                          {isGttEnabled && (
+                            <Card>
+                              <CardHeader>
+                                <CardTitle className="text-sm flex items-center gap-2">
+                                  <Zap className="h-4 w-4 text-purple-500" />
+                                  GTT Engine Status
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                {gttLoading ? (
+                                  <div className="text-sm text-muted-foreground">Loading GTT predictions...</div>
+                                ) : gttError ? (
+                                  <div className="text-sm text-red-500">{gttError}</div>
+                                ) : gttChartData ? (
+                                  <div className="text-sm text-green-500">GTT predictions loaded successfully</div>
+                                ) : (
+                                  <div className="text-sm text-muted-foreground">No GTT data available</div>
+                                )}
+                              </CardContent>
+                            </Card>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </TabsContent>
+                    <TabsContent value="charts" className="h-full m-0 p-0">
+                      <div className="h-full">
+                        <ImageCarousel
+                          companyCode={selectedCompany || ''}
+                          exchange={selectedExchange || ''}
+                          gradientMode={gradientMode}
+                          onGradientModeChange={setGradientMode}
+                          onSentimentLoadingChange={setSentimentLoading}
+                          selectedDate={effectiveDate || undefined}
+                        />
                       </div>
-                    )}
+                    </TabsContent>
+                  </div>
+                </Tabs>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT: SIDEBAR (Live Data & Watchlist Selector) */}
+          <div className="w-72 border-l bg-background flex flex-col shrink-0 transition-all duration-300">
+            <div className="p-4 border-b space-y-3">
+              <h3 className="font-semibold text-sm">Company Selection</h3>
+              <WatchlistSelector
+                onCompanySelect={handleCompanyChange}
+                onDateChange={handleDateChange}
+                onFilteredDataChange={setFilteredCompanies}
+                showExchangeFilter={true}
+                showMarkerFilter={true}
+              />
+
+              {/* Subscription Status Indicator */}
+              <HoverCard openDelay={200} closeDelay={100}>
+                <HoverCardTrigger asChild>
+                  <div className="p-2 bg-zinc-800 rounded cursor-pointer hover:bg-zinc-700 transition-colors">
+                    <div className="flex items-center space-x-2">
+                      <Wifi className="h-3 w-3 text-green-500" />
+                      <span className="text-xs text-green-400">
+                        Subscribed ({activeSymbols.length})
+                      </span>
+                    </div>
+                  </div>
+                </HoverCardTrigger>
+
+                <HoverCardContent
+                  className="w-[600px] p-0 bg-zinc-900 border-zinc-700"
+                  side="left"
+                  align="start"
+                >
+                  <div className="grid grid-cols-2 gap-0">
+                    {/* Subscribed Panel */}
+                    <div className="p-3 border-r border-b border-zinc-700">
+                      <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
+                        <div className="flex items-center gap-1.5">
+                          <Wifi className="h-3.5 w-3.5 text-green-500" />
+                          <h3 className="font-semibold text-green-400 text-xs">Subscribed</h3>
+                        </div>
+                        <span className="text-[10px] bg-green-900/50 text-green-300 px-1.5 py-0.5 rounded">
+                          {activeSymbols.length}
+                        </span>
+                      </div>
+                      <ScrollArea className="h-[180px] pr-1">
+                        <div className="space-y-1">
+                          {activeSymbols.length > 0 ? (
+                            activeSymbols.map((symbol, index) => {
+                              const companyCode = symbol.split(':')[1]?.split('-')[0] || symbol;
+                              const exchange = symbol.split(':')[0] || '';
+                              return (
+                                <div key={symbol} className="flex items-center gap-1.5 p-1.5 rounded bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors">
+                                  <span className="text-[9px] font-bold text-green-400 w-4">{index + 1}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-[10px] font-medium text-white truncate">{companyCode}</div>
+                                    <div className="text-[8px] text-zinc-500">{exchange}</div>
+                                  </div>
+                                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="text-center py-6 text-zinc-500">
+                              <Wifi className="h-5 w-5 mx-auto mb-1 opacity-30" />
+                              <p className="text-[10px]">No active subscriptions</p>
+                            </div>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </div>
+
+                    {/* Failed Panel */}
+                    <div className="p-3 border-b border-zinc-700">
+                      <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
+                        <div className="flex items-center gap-1.5">
+                          <WifiOff className="h-3.5 w-3.5 text-red-500" />
+                          <h3 className="font-semibold text-red-400 text-xs">Failed</h3>
+                        </div>
+                        <span className="text-[10px] bg-red-900/50 text-red-300 px-1.5 py-0.5 rounded">
+                          {failedSymbols.length}
+                        </span>
+                      </div>
+                      <ScrollArea className="h-[180px] pr-1">
+                        <div className="space-y-1">
+                          {failedSymbols.length > 0 ? (
+                            failedSymbols.map((symbol, index) => {
+                              const cleanSymbol = symbol.replace('-STOPPED', '').replace(/'/g, '');
+                              const parts = cleanSymbol.split(':');
+                              const exchange = parts[0] || '';
+                              const companyCode = parts[1]?.split('-')[0] || cleanSymbol;
+                              return (
+                                <div key={symbol} className="flex items-center gap-1.5 p-1.5 rounded bg-red-950/30 hover:bg-red-950/50 transition-colors">
+                                  <span className="text-[9px] font-bold text-red-400 w-4">{index + 1}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-[10px] font-medium text-red-200 truncate">{companyCode}</div>
+                                    <div className="text-[8px] text-red-400/70">{exchange}</div>
+                                  </div>
+                                  <AlertCircle className="w-2.5 h-2.5 text-red-500" />
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="text-center py-6 text-zinc-500">
+                              <div className="w-5 h-5 mx-auto mb-1 rounded-full bg-green-900/20 flex items-center justify-center">
+                                <Wifi className="h-2.5 w-2.5 text-green-500" />
+                              </div>
+                              <p className="text-[10px] text-green-400">All symbols OK</p>
+                            </div>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  </div>
+
+                  <div className="px-3 py-2 border-t border-zinc-800 bg-zinc-950/50">
+                    <div className="flex items-center justify-between text-[10px] text-zinc-500">
+                      <span>Last updated: {new Date().toLocaleTimeString()}</span>
+                      <button
+                        onClick={() => setIsSubscriptionModalOpen(true)}
+                        className="text-blue-400 hover:text-blue-300 transition-colors"
+                      >
+                        Manage →
+                      </button>
+                    </div>
+                  </div>
+                </HoverCardContent>
+              </HoverCard>
+            </div>
+
+            {/* Current Data Display */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {!selectedCompany ? (
+                <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
+                  <div className="inline-flex items-center justify-center w-20 h-20 bg-zinc-700/50 rounded-full">
+                    <Building2 className="w-10 h-10 text-zinc-500" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold text-zinc-300">No Company Selected</h3>
+                    <p className="text-sm text-zinc-500 max-w-xs">
+                      Select a company from the dropdown above to view live market data
+                    </p>
                   </div>
                 </div>
-              </div>
+              ) : currentData ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-semibold text-white">{selectedSymbol}</h2>
+                    <div className="text-xs text-green-400 animate-pulse">LIVE •</div>
+                  </div>
 
-              <div className="mb-8">
-                <ImageCarousel
-                  companyCode={selectedCompany || ''}
-                  exchange={selectedExchange || ''}
-                  gradientMode={gradientMode}
-                  onGradientModeChange={setGradientMode}
-                  onSentimentLoadingChange={setSentimentLoading}
-                  selectedDate={effectiveDate || undefined} // Use effectiveDate
-                />
-              </div>
+                  <div className="text-3xl font-bold mb-2 text-white">₹{formatPrice(currentData.ltp)}</div>
+                  <div className={`text-lg ${getChangeClass(currentData.change)}`}>
+                    {formatChange(currentData.change, currentData.changePercent)}
+                  </div>
+
+                  {/* Sentiment Display */}
+                  {(() => {
+                    if (isSentimentFetching) {
+                      return (
+                        <div className="mt-3 p-3 rounded-lg border-2 bg-zinc-900/50 border-zinc-800 backdrop-blur-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-400"></div>
+                            <span className="text-sm font-medium text-zinc-500">Fetching Sentiment...</span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    let sentimentStyle = {
+                      background: 'bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40',
+                      text: 'text-zinc-400',
+                      label: 'Overall Sentiment: Neutral'
+                    };
+                    
+                    if (overallSentiment === 'POSITIVE') {
+                      sentimentStyle = {
+                        background: 'bg-gradient-to-r from-green-500/10 to-green-900/10 border-green-500/40',
+                        text: 'text-green-400',
+                        label: 'Overall Sentiment: Positive'
+                      };
+                    } else if (overallSentiment === 'NEGATIVE') {
+                      sentimentStyle = {
+                        background: 'bg-gradient-to-r from-red-500/10 to-red-900/10 border-red-500/40',
+                        text: 'text-red-400',
+                        label: 'Overall Sentiment: Negative'
+                      };
+                    }
+                    
+                    return (
+                      <div className={`mt-3 p-3 rounded-lg border-2 ${sentimentStyle.background} backdrop-blur-sm`}>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-medium ${sentimentStyle.text}`}>
+                            {sentimentStyle.label}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Desirability Panel */}
+                  <div className="mt-4">
+                    <DesirabilityPanel
+                      score={desirabilityScore}
+                      classification={desirabilityClassification}
+                      loading={desirabilityLoading}
+                      onFetch={handleFetchDesirabilityScore}
+                      data={desirabilityData}
+                    />
+                  </div>
+
+                  {/* OHLC Data */}
+                  <div className="grid grid-cols-2 gap-4 mt-6">
+                    <div className="bg-zinc-700 p-3 rounded">
+                      <div className="text-xs text-zinc-400">Open</div>
+                      <div className="text-lg">₹{formatPrice(currentData.open)}</div>
+                    </div>
+                    <div className="bg-zinc-700 p-3 rounded">
+                      <div className="text-xs text-zinc-400">Close</div>
+                      <div className="text-lg">₹{formatPrice(currentData.close)}</div>
+                    </div>
+                    <div className="bg-zinc-700 p-3 rounded">
+                      <div className="text-xs text-zinc-400">High</div>
+                      <div className="text-lg">₹{formatPrice(currentData.high)}</div>
+                    </div>
+                    <div className="bg-zinc-700 p-3 rounded">
+                      <div className="text-xs text-zinc-400">Low</div>
+                      <div className="text-lg">₹{formatPrice(currentData.low)}</div>
+                    </div>
+                  </div>
+
+                  {/* Volume & Timestamp */}
+                  <div className="mt-6 border-t border-zinc-700 pt-4">
+                    <div className="grid grid-cols-2 gap-y-2">
+                      <div>
+                        <div className="text-xs text-zinc-400">Volume</div>
+                        <div>{currentData.volume?.toLocaleString() || '0'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-zinc-400">Updated</div>
+                        <div className="text-green-400">
+                          {new Date(currentData.timestamp * 1000).toLocaleTimeString()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Technical Indicators */}
+                  {(currentData.sma_20 || currentData.ema_9 || currentData.rsi_14) && (
+                    <div className="mt-6 border-t border-zinc-700 pt-4">
+                      <h3 className="text-sm font-medium mb-2 text-zinc-300">Technical Indicators</h3>
+                      <div className="grid grid-cols-3 gap-2">
+                        {currentData.sma_20 && (
+                          <div className="bg-zinc-700 p-2 rounded">
+                            <div className="text-xs text-orange-500">SMA 20</div>
+                            <div className="text-sm">₹{formatPrice(currentData.sma_20)}</div>
+                          </div>
+                        )}
+                        {currentData.ema_9 && (
+                          <div className="bg-zinc-700 p-2 rounded">
+                            <div className="text-xs text-purple-500">EMA 9</div>
+                            <div className="text-sm">₹{formatPrice(currentData.ema_9)}</div>
+                          </div>
+                        )}
+                        {currentData.rsi_14 && (
+                          <div className="bg-zinc-700 p-2 rounded">
+                            <div className="text-xs text-cyan-500">RSI 14</div>
+                            <div className="text-sm">{currentData.rsi_14.toFixed(2)}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-3"></div>
+                  <p className="text-zinc-400 text-sm">Connecting...</p>
+                </div>
+              )}
             </div>
           </div>
-          <SubscriptionManagerModal
-            isOpen={isSubscriptionModalOpen}
-            onClose={() => setIsSubscriptionModalOpen(false)}
-            availableCompanies={companies}
-            filteredCompanies={filteredCompanies}
-            currentSubscriptions={Array.from(isSubscribedRef.current)}
-            onConfirm={handleSubscribeCompanies}
-            currentDate={effectiveDate}  // ✅ Pass current date
-            isLatestDate={isLatestDate}  // ✅ Pass latest date flag
-          />
+
         </div>
+
+        {/* Subscription Manager Modal */}
+        <SubscriptionManagerModal
+          isOpen={isSubscriptionModalOpen}
+          onClose={() => setIsSubscriptionModalOpen(false)}
+          availableCompanies={companies}
+          filteredCompanies={filteredCompanies}
+          currentSubscriptions={Array.from(isSubscribedRef.current)}
+          onConfirm={handleSubscribeCompanies}
+          currentDate={effectiveDate}
+          isLatestDate={isLatestDate}
+        />
+
       </SidebarInset>
-    </SidebarProvider >
+    </SidebarProvider>
   );
 };
 

@@ -762,9 +762,22 @@ async def subscribe(sid, data):
 
     if symbol in ohlc_data and ohlc_data[symbol]:
         logger.info(f"Sending {len(ohlc_data[symbol])} OHLC data points for {symbol}")
+        # Clean OHLC data before sending (remove internal tracking fields)
+        clean_ohlc = []
+        for candle in ohlc_data[symbol]:
+            clean_candle = {
+                'timestamp': candle['timestamp'],
+                'open': candle['open'],
+                'high': candle['high'],
+                'low': candle['low'],
+                'close': candle['close'],
+                'volume': candle['volume']
+            }
+            clean_ohlc.append(clean_candle)
+        
         await sio.emit('ohlcData', {
             'symbol': symbol,
-            'data': list(ohlc_data[symbol])
+            'data': clean_ohlc
         }, room=sid)
 
     if symbol in chart_updates and chart_updates[symbol]:
@@ -1172,23 +1185,32 @@ def update_ohlc_data(symbol, data_point):
     price = data_point['ltp']
 
     minute_timestamp = (timestamp // 60) * 60
+    current_cumulative_volume = data_point.get('volume', 0)
 
     if not ohlc_data[symbol] or ohlc_data[symbol][-1]['timestamp'] < minute_timestamp:
+        # New candle for new minute
+        # Store the cumulative volume at the START of this candle
         ohlc_data[symbol].append({
             'timestamp': minute_timestamp,
             'open': price,
             'high': price,
             'low': price,
             'close': price,
-            'volume': data_point.get('volume', 0)
+            'volume': 0,  # Will be calculated as delta when candle closes
+            '_start_cumulative_vol': current_cumulative_volume  # Track starting volume for delta calculation
         })
     else:
         current_candle = ohlc_data[symbol][-1]
         current_candle['high'] = max(current_candle['high'], price)
         current_candle['low'] = min(current_candle['low'], price)
         current_candle['close'] = price
-        # ✅ CRITICAL FIX: Accumulate volume instead of replacing it
-        current_candle['volume'] += data_point.get('volume', 0)
+        # ✅ FIX: Calculate delta volume (current cumulative - starting cumulative for this candle)
+        start_vol = current_candle.get('_start_cumulative_vol', 0)
+        if current_cumulative_volume >= start_vol:
+            current_candle['volume'] = current_cumulative_volume - start_vol
+        else:
+            # Reset happened (new day), use current as-is
+            current_candle['volume'] = current_cumulative_volume
 
 
 def calculate_indicators_optimized(symbol, init=False):
