@@ -9,7 +9,14 @@ import {
     Filter,
     Images,
     X,
-    BarChart3
+    BarChart3,
+    Zap,
+    Target,
+    Star,
+    RefreshCw,
+    Sparkles,
+    Brain,
+    Activity
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -23,6 +30,12 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { FilterModal } from "./controllers/WatchlistSelector/FilterModal";
 import { ImageCarousel } from "./ImageCarousel";
@@ -41,6 +54,16 @@ export interface Company {
     N1_Pattern_count?: number;
 }
 
+// Desirability data for a company
+export interface CompanyDesirabilityData {
+    score: number;
+    classification: string;
+    reoccurrenceProbability: number;
+}
+
+// Sentiment type
+export type SentimentType = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+
 interface CompanyListProps {
     companies: Company[];
     selectedCompanyCode: string | null;
@@ -54,18 +77,27 @@ interface CompanyListProps {
 
     // Chart Range Props
     onChartRangeChange?: (start: Date | undefined, end: Date | undefined) => void;
-    onFetchChartData?: () => void; // Trigger fetch
+    onFetchChartData?: () => void;
     onFetchAllChartData?: () => void;
 
     // Filter Props
     availableExchanges?: string[];
     availableMarkers?: string[];
     totalCompanies?: number;
+    
+    // Show all companies filter (controlled by parent for useWatchlist integration)
+    showAllCompanies?: boolean;
+    onShowAllCompaniesChange?: (value: boolean) => void;
 
-    // Filter/Sort State (managed by parent or local? WatchlistSelector managed it locally mostly, but parent held `companies` filtered by date)
-    // Actually WatchlistSelector did client-side filtering for Exchange/Marker.
-    // We can lift that state to this component or let parent handle it.
-    // Let's implement client-side filtering here for Exchange/Marker to match previous behavior.
+    // NEW: Desirability data map (company_code -> data)
+    desirabilityMap?: Record<string, CompanyDesirabilityData>;
+
+    // NEW: Sentiment map (company_code -> sentiment)
+    sentimentMap?: Record<string, SentimentType>;
+
+    // NEW: Selected company's detailed data (for display)
+    selectedDesirability?: CompanyDesirabilityData | null;
+    selectedSentiment?: SentimentType | null;
 }
 
 export function CompanyList({
@@ -81,7 +113,11 @@ export function CompanyList({
     onFetchAllChartData,
     availableExchanges = [],
     availableMarkers = [],
-    totalCompanies = 0
+    totalCompanies = 0,
+    showAllCompanies: externalShowAllCompanies = false,
+    onShowAllCompaniesChange,
+    desirabilityMap = {},
+    sentimentMap = {},
 }: CompanyListProps) {
     const [searchTerm, setSearchTerm] = React.useState("");
     const [isFilterOpen, setIsFilterOpen] = React.useState(false);
@@ -94,17 +130,154 @@ export function CompanyList({
         exchanges: [],
         markers: [],
         refined: null,
-        showAllCompanies: false
+        showAllCompanies: externalShowAllCompanies
     });
+    
+    // Sync external showAllCompanies prop with internal state
+    React.useEffect(() => {
+        setActiveFilters(prev => ({
+            ...prev,
+            showAllCompanies: externalShowAllCompanies
+        }));
+    }, [externalShowAllCompanies]);
+    
+    // Custom handler that propagates showAllCompanies changes to parent
+    const handleFiltersChange = React.useCallback((newFilters: typeof activeFilters) => {
+        setActiveFilters(newFilters);
+        // Propagate showAllCompanies change to parent
+        if (newFilters.showAllCompanies !== activeFilters.showAllCompanies) {
+            onShowAllCompaniesChange?.(newFilters.showAllCompanies);
+        }
+    }, [activeFilters.showAllCompanies, onShowAllCompaniesChange]);
 
     const [isCarouselOpen, setIsCarouselOpen] = React.useState(false);
 
-    // Calendar State for Chart Range (Local state for the popover inputs)
+    // Prediction availability state
+    const [regularPredictions, setRegularPredictions] = React.useState<Set<string>>(new Set());
+    const [gttPredictions, setGttPredictions] = React.useState<Set<string>>(new Set());
+    const [predictionsLoading, setPredictionsLoading] = React.useState(true);
+
+    // Local state for batch-loaded desirability and sentiment
+    const [localDesirabilityMap, setLocalDesirabilityMap] = React.useState<Record<string, CompanyDesirabilityData>>({});
+    const [localSentimentMap, setLocalSentimentMap] = React.useState<Record<string, SentimentType>>({});
+    const [batchDataLoading, setBatchDataLoading] = React.useState(false);
+    const batchLoadedRef = React.useRef<Set<string>>(new Set());
+
+    // Fetch prediction availability on mount
+    React.useEffect(() => {
+        const fetchPredictionAvailability = async () => {
+            try {
+                const response = await fetch('/api/predictions/availability');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        setRegularPredictions(new Set(data.regular?.available || []));
+                        setGttPredictions(new Set(data.gtt?.available || []));
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch prediction availability:', error);
+            } finally {
+                setPredictionsLoading(false);
+            }
+        };
+
+        fetchPredictionAvailability();
+        // Refresh every 5 minutes
+        const interval = setInterval(fetchPredictionAvailability, 5 * 60 * 1000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Batch fetch desirability and sentiment for ALL companies when companies list changes
+    React.useEffect(() => {
+        if (!companies || companies.length === 0) return;
+
+        // Create a key for this batch of companies
+        const companiesKey = companies.slice(0, 10).map(c => c.company_code).join(',');
+        if (batchLoadedRef.current.has(companiesKey)) {
+            console.log('📊 Batch data already loaded for this watchlist');
+            return; // Already loaded for this set of companies
+        }
+
+        console.log(`📊 Starting batch fetch for ${companies.length} companies...`);
+
+        const fetchBatchData = async () => {
+            setBatchDataLoading(true);
+            const symbols = companies.map(c => c.company_code);
+
+            console.log(`📊 Fetching batch data for symbols:`, symbols.slice(0, 5), '...');
+
+            try {
+                // Fetch both in parallel
+                const [desirabilityRes, sentimentRes] = await Promise.allSettled([
+                    fetch('/api/batch/desirability', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ symbols })
+                    }),
+                    fetch('/api/batch/sentiment', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ symbols })
+                    })
+                ]);
+
+                console.log('📊 Batch fetch responses:', {
+                    desirability: desirabilityRes.status,
+                    sentiment: sentimentRes.status
+                });
+
+                // Process desirability results
+                if (desirabilityRes.status === 'fulfilled' && desirabilityRes.value.ok) {
+                    const data = await desirabilityRes.value.json();
+                    console.log('📊 Desirability response:', data);
+                    if (data.success && data.data) {
+                        setLocalDesirabilityMap(data.data);
+                        console.log(`✅ Loaded desirability for ${data.count || Object.keys(data.data).length} companies`);
+                    }
+                } else {
+                    console.error('❌ Desirability fetch failed:', desirabilityRes);
+                }
+
+                // Process sentiment results
+                if (sentimentRes.status === 'fulfilled' && sentimentRes.value.ok) {
+                    const data = await sentimentRes.value.json();
+                    console.log('📊 Sentiment response:', data);
+                    if (data.success && data.data) {
+                        setLocalSentimentMap(data.data);
+                        console.log(`✅ Loaded sentiment for ${data.count || Object.keys(data.data).length} companies`);
+                    }
+                } else {
+                    console.error('❌ Sentiment fetch failed:', sentimentRes);
+                }
+
+                batchLoadedRef.current.add(companiesKey);
+            } catch (error) {
+                console.error('❌ Failed to batch fetch company data:', error);
+            } finally {
+                setBatchDataLoading(false);
+            }
+        };
+
+        // Delay slightly to ensure component is mounted
+        const timer = setTimeout(fetchBatchData, 500);
+        return () => clearTimeout(timer);
+    }, [companies]);
+
+    // Merge parent-provided maps with locally fetched maps
+    const mergedDesirabilityMap = React.useMemo(() => ({
+        ...localDesirabilityMap,
+        ...desirabilityMap // Parent props take priority
+    }), [localDesirabilityMap, desirabilityMap]);
+
+    const mergedSentimentMap = React.useMemo(() => ({
+        ...localSentimentMap,
+        ...sentimentMap // Parent props take priority
+    }), [localSentimentMap, sentimentMap]);
+
+    // Calendar State for Chart Range
     const [chartStartDate, setChartStartDate] = React.useState<Date | undefined>(undefined);
     const [chartEndDate, setChartEndDate] = React.useState<Date | undefined>(undefined);
-    // We need to keep this state to pass to onChartRangeChange only when user interactions happen?
-    // Or update parent immediately? Usually update immediately or on "Apply".
-    // Previous `CalendarForm` updated parent immediately on change. I'll do the same.
 
     const handleChartStartChange = (date: Date | undefined) => {
         setChartStartDate(date);
@@ -119,6 +292,44 @@ export function CompanyList({
     const handleChartEndChange = (date: Date | undefined) => {
         setChartEndDate(date);
         onChartRangeChange?.(chartStartDate, date);
+    };
+
+    // Helper: Get sentiment background color
+    const getSentimentBgColor = (sentiment: SentimentType | undefined) => {
+        switch (sentiment) {
+            case 'BULLISH': return 'rgba(34, 197, 94, 0.08)'; // green tint
+            case 'BEARISH': return 'rgba(239, 68, 68, 0.08)'; // red tint
+            default: return 'transparent';
+        }
+    };
+
+    // Helper: Get sentiment border color
+    const getSentimentBorderColor = (sentiment: SentimentType | undefined) => {
+        switch (sentiment) {
+            case 'BULLISH': return 'rgba(34, 197, 94, 0.3)';
+            case 'BEARISH': return 'rgba(239, 68, 68, 0.3)';
+            default: return 'transparent';
+        }
+    };
+
+    // Helper: Get desirability color
+    const getDesirabilityColor = (score: number | undefined) => {
+        if (!score) return { bg: 'bg-zinc-500/20', text: 'text-zinc-400', label: 'N/A' };
+        if (score >= 0.7) return { bg: 'bg-emerald-500/20', text: 'text-emerald-400', label: 'High' };
+        if (score >= 0.5) return { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'Medium' };
+        if (score >= 0.3) return { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'Low' };
+        return { bg: 'bg-red-500/20', text: 'text-red-400', label: 'Poor' };
+    };
+
+    // Helper: Check if symbol has prediction available
+    const hasRegularPrediction = (symbol: string) => {
+        const cleanSymbol = symbol.split('-')[0]; // Remove -NSE/-BSE
+        return regularPredictions.has(cleanSymbol) || regularPredictions.has(symbol);
+    };
+
+    const hasGttPrediction = (symbol: string) => {
+        const cleanSymbol = symbol.split('-')[0];
+        return gttPredictions.has(cleanSymbol) || gttPredictions.has(symbol);
     };
 
     // Filter Logic
@@ -293,6 +504,13 @@ export function CompanyList({
                     >
                         <Images size={16} />
                     </Button>
+
+                    {/* Loading indicator for batch data */}
+                    {batchDataLoading && (
+                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                            <RefreshCw className="h-3 w-3 animate-spin" />
+                        </div>
+                    )}
                 </div>
 
                 {/* ACTIVE DATE DISPLAY (Small) */}
@@ -324,48 +542,172 @@ export function CompanyList({
                         {filteredCompanies.map((company, index) => {
                             const uniqueKey = `${company.company_code}-${company.exchange}-${index}`;
                             const isSelected = selectedCompanyCode === company.company_code;
+                            
+                            // Get desirability and sentiment data for this company (use merged maps)
+                            const companyDesirability = mergedDesirabilityMap[company.company_code];
+                            const companySentiment = mergedSentimentMap[company.company_code];
+                            const desirabilityStyle = getDesirabilityColor(companyDesirability?.score);
+                            
+                            // Check prediction availability
+                            const hasPrediction = hasRegularPrediction(company.company_code);
+                            const hasGtt = hasGttPrediction(company.company_code);
 
                             return (
-                                <div
-                                    key={uniqueKey}
-                                    onClick={() => onSelect(company.company_code)}
-                                    className={cn(
-                                        "flex flex-col gap-1 p-3 cursor-pointer hover:bg-accent/50 transition-colors border-b border-border/50 relative",
-                                        isSelected && "bg-accent border-l-4 border-l-primary pl-[8px]"
-                                    )}
-                                >
-                                    <div className="flex items-center justify-between w-full">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <span className={cn("font-bold text-sm", isSelected ? "text-primary" : "text-foreground")}>
-                                                {company.company_code}
-                                            </span>
-                                            {company.exchange && (
-                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
-                                                    {company.exchange}
+                                <TooltipProvider key={uniqueKey} delayDuration={300}>
+                                    <div
+                                        onClick={() => onSelect(company.company_code)}
+                                        className={cn(
+                                            "flex flex-col gap-1.5 p-2.5 cursor-pointer hover:bg-accent/50 transition-all duration-200 border-b border-border/50 relative",
+                                            isSelected && "border-l-4 border-l-primary pl-[6px]"
+                                        )}
+                                        style={{
+                                            backgroundColor: isSelected 
+                                                ? undefined 
+                                                : getSentimentBgColor(companySentiment),
+                                            borderRightColor: getSentimentBorderColor(companySentiment),
+                                            borderRightWidth: companySentiment && companySentiment !== 'NEUTRAL' ? '2px' : '0px'
+                                        }}
+                                    >
+                                        {/* Row 1: Symbol + Exchange + Refined Badge */}
+                                        <div className="flex items-center justify-between w-full">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <span className={cn("font-bold text-sm", isSelected ? "text-primary" : "text-foreground")}>
+                                                    {company.company_code}
                                                 </span>
+                                                {company.exchange && (
+                                                    <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-medium">
+                                                        {company.exchange}
+                                                    </span>
+                                                )}
+                                                {company.refined && (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="top" className="text-xs">
+                                                            Refined List
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Prediction Availability Badges */}
+                                            <div className="flex items-center gap-1">
+                                                {hasPrediction && (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-blue-500/20">
+                                                                <Brain className="h-2.5 w-2.5 text-blue-400" />
+                                                            </div>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="top" className="text-xs">
+                                                            Regular Prediction Available
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                )}
+                                                {hasGtt && (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-purple-500/20">
+                                                                <Zap className="h-2.5 w-2.5 text-purple-400" />
+                                                            </div>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="top" className="text-xs">
+                                                            GTT Prediction Available
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                )}
+                                                {company.N1_Pattern_count !== undefined && company.N1_Pattern_count > 0 && (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <div className="flex items-center gap-0.5 text-[10px] text-green-500 font-medium">
+                                                                <TrendingUp className="h-2.5 w-2.5" />
+                                                                {company.N1_Pattern_count}
+                                                            </div>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="top" className="text-xs">
+                                                            N1 Pattern Count
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Row 2: Company Name (truncated) */}
+                                        <div className="text-[11px] text-muted-foreground truncate w-full">
+                                            {company.name}
+                                        </div>
+
+                                        {/* Row 3: Tags Row - Desirability + Recurrence + Sentiment */}
+                                        <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                                            {/* Desirability Score Badge */}
+                                            {companyDesirability && (
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className={cn(
+                                                            "flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium",
+                                                            desirabilityStyle.bg, desirabilityStyle.text
+                                                        )}>
+                                                            <Target className="h-2.5 w-2.5" />
+                                                            {(companyDesirability.score * 100).toFixed(0)}%
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="bottom" className="text-xs">
+                                                        Desirability: {desirabilityStyle.label} ({companyDesirability.classification})
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            )}
+                                            
+                                            {/* Recurrence Probability Badge */}
+                                            {companyDesirability?.reoccurrenceProbability !== undefined && (
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-cyan-500/20 text-cyan-400">
+                                                            <RefreshCw className="h-2.5 w-2.5" />
+                                                            {(companyDesirability.reoccurrenceProbability * 100).toFixed(0)}%
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="bottom" className="text-xs">
+                                                        Recurrence Probability
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            )}
+                                            
+                                            {/* Sentiment Badge */}
+                                            {companySentiment && companySentiment !== 'NEUTRAL' && (
+                                                <div className={cn(
+                                                    "flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium",
+                                                    companySentiment === 'BULLISH' 
+                                                        ? "bg-green-500/20 text-green-400" 
+                                                        : "bg-red-500/20 text-red-400"
+                                                )}>
+                                                    <Activity className="h-2.5 w-2.5" />
+                                                    {companySentiment}
+                                                </div>
+                                            )}
+                                            
+                                            {/* Marker Badge */}
+                                            {company.marker && (
+                                                <div className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-zinc-500/20 text-zinc-400">
+                                                    {company.marker}
+                                                </div>
                                             )}
                                         </div>
-                                        {company.N1_Pattern_count !== undefined && company.N1_Pattern_count > 0 && (
-                                            <div className="flex items-center gap-1 text-xs text-green-600 font-medium">
-                                                <TrendingUp className="h-3 w-3" />
-                                                {company.N1_Pattern_count}
-                                            </div>
-                                        )}
-                                    </div>
 
-                                    <div className="text-xs text-muted-foreground truncate w-full">
-                                        {company.name}
+                                        {/* Row 4: Stats Row */}
+                                        <div className="flex gap-2 text-[9px] text-muted-foreground/70 mt-0.5">
+                                            {company.total_valid_days !== undefined && (
+                                                <span>{company.total_valid_days}d</span>
+                                            )}
+                                            {company.median_daily_volume !== undefined && (
+                                                <span>Vol: {(company.median_daily_volume / 1000).toFixed(0)}K</span>
+                                            )}
+                                            {company.avg_daily_high_low_range !== undefined && (
+                                                <span>Range: {company.avg_daily_high_low_range.toFixed(1)}%</span>
+                                            )}
+                                        </div>
                                     </div>
-
-                                    <div className="flex gap-3 text-[10px] text-muted-foreground mt-1">
-                                        {company.total_valid_days !== undefined && (
-                                            <span>{company.total_valid_days}d</span>
-                                        )}
-                                        {company.median_daily_volume !== undefined && (
-                                            <span>Vol: {(company.median_daily_volume / 1000).toFixed(0)}K</span>
-                                        )}
-                                    </div>
-                                </div>
+                                </TooltipProvider>
                             );
                         })}
                     </div>
@@ -378,7 +720,7 @@ export function CompanyList({
                 onClose={() => setIsFilterOpen(false)}
                 filterOptions={{ exchanges: availableExchanges, markers: availableMarkers }}
                 activeFilters={activeFilters}
-                onFiltersChange={setActiveFilters}
+                onFiltersChange={handleFiltersChange}
                 totalCompanies={totalCompanies}
                 filteredCount={filteredCompanies.length}
             />

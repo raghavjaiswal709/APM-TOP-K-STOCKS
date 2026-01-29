@@ -46,6 +46,13 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
   const [refinedFilter, setRefinedFilter] = useState<boolean | null>(options.refinedFilter !== undefined ? options.refinedFilter : null);
   
   const activeDate = options.date || selectedDate;
+  
+  // Sync showAllCompanies from options when prop changes
+  useEffect(() => {
+    if (options.showAllCompanies !== undefined) {
+      setShowAllCompanies(options.showAllCompanies);
+    }
+  }, [options.showAllCompanies]);
 
   // Fetch available dates on mount
   useEffect(() => {

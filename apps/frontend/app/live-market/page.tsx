@@ -49,6 +49,9 @@ interface AuthStatus {
   token_valid: boolean;
   expires_at: string | null;
   services_notified: string[];
+  is_expired?: boolean;
+  hours_until_expiry?: number;
+  jwt_expires_at?: string;
 }
 
 const LiveMarketPage: React.FC = () => {
@@ -159,6 +162,10 @@ const LiveMarketPage: React.FC = () => {
     }
     if (!authStatus) {
       return { icon: XCircle, color: 'text-red-500', text: 'Unknown' };
+    }
+    // Check actual expiry status from JWT
+    if (authStatus.is_expired) {
+      return { icon: XCircle, color: 'text-red-500', text: 'Expired' };
     }
     if (authStatus.authenticated && authStatus.token_valid) {
       return { icon: CheckCircle, color: 'text-green-500', text: 'Active' };

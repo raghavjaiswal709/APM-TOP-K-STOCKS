@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { getSocket, onReconnect, isSocketConnected } from '@/lib/socket';
 import dynamic from 'next/dynamic';
 import { AppSidebar } from "@/app/components/app-sidebar";
+import { CompanyList } from "@/app/components/CompanyList";
 
 import {
   Breadcrumb,
@@ -41,7 +42,15 @@ import { useWatchlist } from "@/hooks/useWatchlist";
 import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity, Calendar as CalendarIcon, Images, ChevronDown, ChevronUp, PanelBottomOpen, PanelBottomClose } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
 import { isMarketOpen } from "@/lib/marketHours";
-import { fetchHistoricalData, detectDataGaps } from "@/lib/historicalDataFetcher";
+import { 
+  fetchHistoricalData, 
+  fetchHistoricalDataAsOHLC, 
+  detectDataGaps, 
+  mergeOHLCData, 
+  needsExternalDataBackfill, 
+  getMarketStatus,
+  OHLCCandle 
+} from "@/lib/historicalDataFetcher";
 import { useDesirability } from "@/hooks/useDesirability";
 import { DesirabilityPanel } from "./components/DesirabilityPanel";
 import { sentimentService } from '@/app/services/sentimentService';
@@ -196,6 +205,10 @@ const MarketDataPage: React.FC = () => {
   const [overallSentiment, setOverallSentiment] = useState<string>('NEUTRAL');
   const [isSentimentFetching, setIsSentimentFetching] = useState<boolean>(false);
   
+  // NEW: Maps for company list display
+  const [desirabilityMap, setDesirabilityMap] = useState<Record<string, { score: number; classification: string; reoccurrenceProbability: number }>>({});
+  const [sentimentMap, setSentimentMap] = useState<Record<string, 'BULLISH' | 'BEARISH' | 'NEUTRAL'>>({});
+  
   // Subscription Management State
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
@@ -209,9 +222,15 @@ const MarketDataPage: React.FC = () => {
   const [stoppedSymbols, setStoppedSymbols] = useState<string[]>([]);
   const [permanentlyStoppedSymbols, setPermanentlyStoppedSymbols] = useState<string[]>([]);
   
+  // Track which symbols have been backfilled to avoid duplicate fetches
+  const backfilledSymbolsRef = useRef<Set<string>>(new Set());
+  
   // Date synchronization
   const [currentDate, setCurrentDate] = useState<string | null>(null);
   const [filteredCompanies, setFilteredCompanies] = useState<any[]>([]);
+  
+  // Show all companies filter state (lifted from CompanyList for useWatchlist integration)
+  const [showAllCompanies, setShowAllCompanies] = useState<boolean>(false);
 
   // Fullscreen mode state for chart section
   const [isChartFullscreen, setIsChartFullscreen] = useState<boolean>(false);
@@ -243,7 +262,7 @@ const MarketDataPage: React.FC = () => {
     error: watchlistError,
     selectedDate: hookSelectedDate,
     availableDates,
-  } = useWatchlist({ date: currentDate || undefined });
+  } = useWatchlist({ date: currentDate || undefined, showAllCompanies });
 
   // Date Synchronization Logic
   const effectiveDate = currentDate || hookSelectedDate;
@@ -265,6 +284,10 @@ const MarketDataPage: React.FC = () => {
   const socketRef = useRef<any>(null);
   const isSubscribedRef = useRef<Set<string>>(new Set());
   const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Track cumulative volume per symbol for real-time delta calculation
+  // Format: Map<symbol, Map<minuteTimestamp, cumulativeVolumeAtStartOfMinute>>
+  const cumulativeVolumeRef = useRef<Map<string, Map<number, number>>>(new Map());
 
   // Prediction Polling Integration
   const {
@@ -345,6 +368,30 @@ const MarketDataPage: React.FC = () => {
     if (desirabilityScore >= 0.3) return 'Acceptable';
     return 'Not Desirable';
   }, [desirabilityScore]);
+
+  // Update desirability map when data is fetched for selected company
+  useEffect(() => {
+    if (desirabilityData && selectedSymbol) {
+      const companyCode = selectedSymbol.includes(':') 
+        ? selectedSymbol.split(':')[1]?.split('-')[0] 
+        : selectedSymbol.split('-')[0];
+      if (companyCode && desirabilityData.top_pattern) {
+        setDesirabilityMap(prev => ({
+          ...prev,
+          [companyCode]: {
+            score: desirabilityData.top_pattern.desirability_score,
+            classification: desirabilityData.top_pattern.classification,
+            reoccurrenceProbability: desirabilityData.top_pattern.reoccurrence_probability
+          },
+          [selectedSymbol]: {
+            score: desirabilityData.top_pattern.desirability_score,
+            classification: desirabilityData.top_pattern.classification,
+            reoccurrenceProbability: desirabilityData.top_pattern.reoccurrence_probability
+          }
+        }));
+      }
+    }
+  }, [desirabilityData, selectedSymbol]);
 
   const predictionRevision = useMemo(() => {
     if (!predictions || predictions.count === 0) return 0;
@@ -752,6 +799,72 @@ const MarketDataPage: React.FC = () => {
         [update.symbol]: newUpdates
       };
     });
+    
+    // ===== REAL-TIME OHLC UPDATE =====
+    // Update OHLC candle for the current minute with real-time tick data
+    // This ensures smooth chart updates without waiting for batch OHLC data
+    setOhlcData(prev => {
+      const existingCandles = prev[update.symbol] || [];
+      const minuteTs = Math.floor(update.timestamp / 60) * 60;
+      const price = update.price;
+      const cumulativeVolume = update.volume || 0;  // vol_traded_today (cumulative)
+      
+      // Get or create the symbol's volume tracking map
+      if (!cumulativeVolumeRef.current.has(update.symbol)) {
+        cumulativeVolumeRef.current.set(update.symbol, new Map());
+      }
+      const symbolVolumeMap = cumulativeVolumeRef.current.get(update.symbol)!;
+      
+      // Find or create the current minute's candle
+      const candleMap = new Map<number, OHLCData>();
+      existingCandles.forEach(c => candleMap.set(c.timestamp, c));
+      
+      const existingCandle = candleMap.get(minuteTs);
+      
+      if (existingCandle) {
+        // Update existing candle
+        // Calculate volume delta: current cumulative - cumulative at start of this minute
+        const startOfMinuteVolume = symbolVolumeMap.get(minuteTs) || cumulativeVolume;
+        const volumeDelta = Math.max(0, cumulativeVolume - startOfMinuteVolume);
+        
+        candleMap.set(minuteTs, {
+          ...existingCandle,
+          high: Math.max(existingCandle.high, price),
+          low: Math.min(existingCandle.low, price),
+          close: price,
+          volume: volumeDelta
+        });
+      } else {
+        // Create new candle for this minute
+        // Store the cumulative volume at the START of this new minute
+        // This is used to calculate delta for the entire minute
+        symbolVolumeMap.set(minuteTs, cumulativeVolume);
+        
+        // Clean up old minute entries (keep only last 1000 minutes)
+        const sortedMinutes = Array.from(symbolVolumeMap.keys()).sort((a, b) => a - b);
+        while (sortedMinutes.length > 1000) {
+          const oldMinute = sortedMinutes.shift();
+          if (oldMinute) symbolVolumeMap.delete(oldMinute);
+        }
+        
+        candleMap.set(minuteTs, {
+          timestamp: minuteTs,
+          open: price,
+          high: price,
+          low: price,
+          close: price,
+          volume: 0  // First tick of minute, delta is 0
+        });
+      }
+      
+      const merged = Array.from(candleMap.values())
+        .sort((a, b) => a.timestamp - b.timestamp);
+      
+      return {
+        ...prev,
+        [update.symbol]: merged
+      };
+    });
   }, []);
 
   const handleHistoricalData = useCallback((data: { symbol: string, data: MarketData[] }) => {
@@ -837,12 +950,33 @@ const MarketDataPage: React.FC = () => {
       console.log(`📊 Last OHLC:`, { ts: last.timestamp, o: last.open, h: last.high, l: last.low, c: last.close, v: last.volume });
     }
     
-    const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
-
-    setOhlcData(prev => ({
-      ...prev,
-      [data.symbol]: sortedData
-    }));
+    // IMPORTANT: MERGE incoming candles with existing data (don't replace!)
+    // This preserves historical backfill data while adding real-time updates
+    setOhlcData(prev => {
+      const existingCandles = prev[data.symbol] || [];
+      const candleMap = new Map<number, OHLCData>();
+      
+      // Add existing candles first (historical backfill)
+      existingCandles.forEach(candle => {
+        candleMap.set(candle.timestamp, candle);
+      });
+      
+      // Add/update with new candles (real-time takes priority)
+      data.data.forEach(candle => {
+        candleMap.set(candle.timestamp, candle);
+      });
+      
+      // Convert to sorted array
+      const merged = Array.from(candleMap.values())
+        .sort((a, b) => a.timestamp - b.timestamp);
+      
+      console.log(`📊 [handleOhlcData] Merged: ${existingCandles.length} existing + ${data.data.length} new = ${merged.length} total`);
+      
+      return {
+        ...prev,
+        [data.symbol]: merged
+      };
+    });
   }, []);
 
   const handleHeartbeat = useCallback((data: any) => {
@@ -1038,19 +1172,82 @@ const MarketDataPage: React.FC = () => {
       }
     });
 
+    /**
+     * ROBUST HISTORICAL DATA BACKFILL
+     * 
+     * This function handles three scenarios:
+     * 1. After market hours: Fetch ENTIRE day's data from external server (6969)
+     * 2. Mid-day subscription: Broker only sends data from subscription time,
+     *    so we backfill from 9:15 AM to subscription time from external server
+     * 3. Market open with full data: No backfill needed
+     */
     const fetchAndBackfillHistoricalData = async () => {
+      // Check if we already backfilled this symbol (with date key)
+      const backfillKey = `${selectedSymbol}_${effectiveDate || new Date().toISOString().split('T')[0]}`;
+      if (backfilledSymbolsRef.current.has(backfillKey)) {
+        console.log(`📡 [Backfill] Already backfilled ${backfillKey}, skipping`);
+        return;
+      }
+      
       setIsLoadingHistorical(true);
-      setHistoricalDataStatus('Fetching historical data...');
+      setHistoricalDataStatus('Checking data completeness...');
 
       try {
-        console.log(`📡 Fetching historical data for ${selectedSymbol}...`);
-
-        const result = await fetchHistoricalData(selectedSymbol, effectiveDate || new Date().toISOString().split('T')[0]);
+        const currentDate = effectiveDate || new Date().toISOString().split('T')[0];
+        const marketStatus = isMarketOpen();
+        const isAfterMarket = marketStatus.reason === 'after-market';
+        
+        console.log(`📡 [Backfill] Symbol: ${selectedSymbol}, Date: ${currentDate}, Market: ${marketStatus.isOpen ? 'OPEN' : marketStatus.reason}`);
+        
+        // Always fetch external data to fill any gaps
+        // After market: need full day
+        // During market: fill gaps from 9:15 AM to now
+        setHistoricalDataStatus(`Fetching ${isAfterMarket ? 'full day' : 'historical'} data...`);
+        
+        const result = await fetchHistoricalData(selectedSymbol, currentDate);
 
         if (result.success && result.data.length > 0) {
-          console.log(`✅ Fetched ${result.data.length} historical points from external server`);
-          setHistoricalDataStatus(`Loaded ${result.data.length} historical data points`);
-
+          console.log(`✅ [Backfill] Fetched ${result.data.length} ticks, ${result.ohlc?.length || 0} candles from external server`);
+          
+          // Mark as backfilled
+          backfilledSymbolsRef.current.add(backfillKey);
+          
+          // ===== MERGE EXTERNAL OHLC WITH EXISTING OHLC =====
+          if (result.ohlc && result.ohlc.length > 0) {
+            setOhlcData(prev => {
+              const existingCandles = prev[selectedSymbol] || [];
+              
+              // Convert to OHLCCandle format if needed
+              const externalCandles: OHLCCandle[] = result.ohlc!.map(c => ({
+                timestamp: c.timestamp,
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+                volume: c.volume
+              }));
+              
+              // Merge: external first (fills gaps), then real-time (takes priority)
+              const merged = mergeOHLCData(existingCandles as OHLCCandle[], externalCandles);
+              
+              console.log(`✅ [Backfill] Merged OHLC: ${existingCandles.length} existing + ${externalCandles.length} external = ${merged.length} total`);
+              
+              if (merged.length > 0) {
+                const firstTime = new Date(merged[0].timestamp * 1000).toLocaleTimeString('en-IN');
+                const lastTime = new Date(merged[merged.length - 1].timestamp * 1000).toLocaleTimeString('en-IN');
+                console.log(`✅ [Backfill] Time range: ${firstTime} → ${lastTime}`);
+              }
+              
+              return {
+                ...prev,
+                [selectedSymbol]: merged as OHLCData[]
+              };
+            });
+            
+            setHistoricalDataStatus(`Complete: ${result.ohlc.length} candles loaded`);
+          }
+          
+          // ===== ALSO MERGE TICK DATA FOR HISTORICAL REFERENCE =====
           const externalData: MarketData[] = result.data.map(point => ({
             symbol: selectedSymbol,
             ltp: point.ltp,
@@ -1070,24 +1267,20 @@ const MarketDataPage: React.FC = () => {
             const existingData = prev[selectedSymbol] || [];
             const dataMap = new Map<number, MarketData>();
 
-            existingData.forEach(point => {
+            // External data first (fills gaps)
+            externalData.forEach(point => {
               dataMap.set(point.timestamp, point);
             });
 
-            externalData.forEach(point => {
+            // Existing data overwrites (real-time takes priority)
+            existingData.forEach(point => {
               dataMap.set(point.timestamp, point);
             });
 
             const mergedData = Array.from(dataMap.values())
               .sort((a, b) => a.timestamp - b.timestamp);
 
-            const gapCheck = detectDataGaps(mergedData);
-            if (gapCheck.hasGaps) {
-              console.warn(`⚠️ Data still has ${gapCheck.missingRanges.length} gaps`);
-              setHistoricalDataStatus(`Loaded ${mergedData.length} points (${gapCheck.missingRanges.length} gaps detected)`);
-            } else {
-              setHistoricalDataStatus(`Complete data: ${mergedData.length} points`);
-            }
+            console.log(`✅ [Backfill] Merged ticks: ${existingData.length} existing + ${externalData.length} external = ${mergedData.length} total`);
 
             return {
               ...prev,
@@ -1095,19 +1288,29 @@ const MarketDataPage: React.FC = () => {
             };
           });
 
+          // Update current market data with latest
           if (externalData.length > 0) {
             const latestData = externalData[externalData.length - 1];
-            setMarketData(prev => ({
-              ...prev,
-              [selectedSymbol]: latestData
-            }));
+            setMarketData(prev => {
+              // Only update if we don't have real-time data
+              const existing = prev[selectedSymbol];
+              if (!existing || latestData.timestamp > existing.timestamp) {
+                return {
+                  ...prev,
+                  [selectedSymbol]: latestData
+                };
+              }
+              return prev;
+            });
           }
         } else {
-          console.warn(`⚠️ No historical data available: ${result.error || 'Unknown error'}`);
-          setHistoricalDataStatus('No historical data available');
+          console.warn(`⚠️ [Backfill] No external data available: ${result.error || 'Unknown'}`);
+          setHistoricalDataStatus(isAfterMarket 
+            ? 'After-market: No data available for this date' 
+            : 'Using real-time data only');
         }
       } catch (error) {
-        console.error(`❌ Error fetching historical data:`, error);
+        console.error(`❌ [Backfill] Error:`, error);
         setHistoricalDataStatus('Failed to load historical data');
       } finally {
         setIsLoadingHistorical(false);
@@ -1115,9 +1318,10 @@ const MarketDataPage: React.FC = () => {
       }
     };
 
+    // Delay fetch slightly to allow WebSocket data to arrive first
     const fetchTimer = setTimeout(() => {
       fetchAndBackfillHistoricalData();
-    }, 1000);
+    }, 1500); // Increased delay to 1.5s to let real-time data arrive first
 
     return () => {
       clearTimeout(fetchTimer);
@@ -1140,6 +1344,18 @@ const MarketDataPage: React.FC = () => {
       try {
         const sentiment = await sentimentService.fetchSentiment(selectedSymbol);
         setOverallSentiment(sentiment);
+        
+        // Update sentiment map for company list display
+        const companyCode = selectedSymbol.includes(':') 
+          ? selectedSymbol.split(':')[1]?.split('-')[0] 
+          : selectedSymbol.split('-')[0];
+        if (companyCode) {
+          setSentimentMap(prev => ({
+            ...prev,
+            [companyCode]: sentiment as 'BULLISH' | 'BEARISH' | 'NEUTRAL',
+            [selectedSymbol]: sentiment as 'BULLISH' | 'BEARISH' | 'NEUTRAL'
+          }));
+        }
       } catch (error) {
         console.error('Failed to fetch sentiment:', error);
         setOverallSentiment('NEUTRAL');
@@ -1571,69 +1787,94 @@ const MarketDataPage: React.FC = () => {
                     <TabsList className="h-9">
                       <TabsTrigger value="predictions" className="text-xs">AI Predictions & GTT</TabsTrigger>
                       <TabsTrigger value="charts" className="text-xs">LSTM-AE & SIPR</TabsTrigger>
+                      <TabsTrigger value="livedata" className="text-xs">Live Data</TabsTrigger>
                     </TabsList>
                   </div>
-                  <div className="flex-1 overflow-hidden relative p-4">
+                  <div className="flex-1 overflow-hidden relative">
                     <TabsContent value="predictions" className="h-full m-0">
-                      <ScrollArea className="h-full">
-                        <div className="space-y-4">
-                          {/* Prediction Controls */}
-                          {showPredictions && (
-                            <>
-                              <PredictionControlPanel
-                                isPolling={isPolling}
-                                elapsedTime={elapsedTime}
-                                timeRemaining={timeRemaining}
-                                progressPercentage={progressPercentage}
-                                pollCount={pollCount}
-                                nextPollTime={nextPollTime}
-                                onStart={startPolling}
-                                onPause={pausePolling}
-                                onStop={stopPolling}
-                                onRefresh={handleManualRefresh}
-                                disabled={predictionLoading}
-                              />
+                      <ScrollArea className="h-full w-full">
+                        <div className="p-4">
+                          {/* Horizontal Grid Layout */}
+                          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                            {/* Prediction Controls */}
+                            {showPredictions && (
+                              <>
+                                <Card className="col-span-1">
+                                  <CardHeader>
+                                    <CardTitle className="text-sm">Prediction Controls</CardTitle>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <PredictionControlPanel
+                                      isPolling={isPolling}
+                                      elapsedTime={elapsedTime}
+                                      timeRemaining={timeRemaining}
+                                      progressPercentage={progressPercentage}
+                                      pollCount={pollCount}
+                                      nextPollTime={nextPollTime}
+                                      onStart={startPolling}
+                                      onPause={pausePolling}
+                                      onStop={stopPolling}
+                                      onRefresh={handleManualRefresh}
+                                      disabled={predictionLoading}
+                                    />
+                                  </CardContent>
+                                </Card>
 
-                              <PredictionTimer
-                                timeUntilNextPoll={timeUntilNextPoll}
-                                nextPollTime={nextPollTime}
-                                isPolling={isPolling}
-                                onTimerEnd={handleTimerEnd}
-                              />
+                                <Card className="col-span-1">
+                                  <CardHeader>
+                                    <CardTitle className="text-sm">Next Poll Timer</CardTitle>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <PredictionTimer
+                                      timeUntilNextPoll={timeUntilNextPoll}
+                                      nextPollTime={nextPollTime}
+                                      isPolling={isPolling}
+                                      onTimerEnd={handleTimerEnd}
+                                    />
+                                  </CardContent>
+                                </Card>
 
-                              {predictions && (
-                                <PredictionOverlay
-                                  predictions={predictions}
-                                  company={selectedCompany || selectedSymbol}
-                                  dataAge={predictionDataAge}
-                                  isStale={isDataStale}
-                                />
-                              )}
-                            </>
-                          )}
-
-                          {/* GTT Status */}
-                          {isGttEnabled && (
-                            <Card>
-                              <CardHeader>
-                                <CardTitle className="text-sm flex items-center gap-2">
-                                  <Zap className="h-4 w-4 text-purple-500" />
-                                  GTT Engine Status
-                                </CardTitle>
-                              </CardHeader>
-                              <CardContent>
-                                {gttLoading ? (
-                                  <div className="text-sm text-muted-foreground">Loading GTT predictions...</div>
-                                ) : gttError ? (
-                                  <div className="text-sm text-red-500">{gttError}</div>
-                                ) : gttChartData ? (
-                                  <div className="text-sm text-green-500">GTT predictions loaded successfully</div>
-                                ) : (
-                                  <div className="text-sm text-muted-foreground">No GTT data available</div>
+                                {predictions && (
+                                  <Card className="col-span-1 lg:col-span-2 xl:col-span-1">
+                                    <CardHeader>
+                                      <CardTitle className="text-sm">Prediction Data</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                      <PredictionOverlay
+                                        predictions={predictions}
+                                        company={selectedCompany || selectedSymbol}
+                                        dataAge={predictionDataAge}
+                                        isStale={isDataStale}
+                                      />
+                                    </CardContent>
+                                  </Card>
                                 )}
-                              </CardContent>
-                            </Card>
-                          )}
+                              </>
+                            )}
+
+                            {/* GTT Status */}
+                            {isGttEnabled && (
+                              <Card className="col-span-1">
+                                <CardHeader>
+                                  <CardTitle className="text-sm flex items-center gap-2">
+                                    <Zap className="h-4 w-4 text-purple-500" />
+                                    GTT Engine Status
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  {gttLoading ? (
+                                    <div className="text-sm text-muted-foreground">Loading GTT predictions...</div>
+                                  ) : gttError ? (
+                                    <div className="text-sm text-red-500">{gttError}</div>
+                                  ) : gttChartData ? (
+                                    <div className="text-sm text-green-500">GTT predictions loaded successfully</div>
+                                  ) : (
+                                    <div className="text-sm text-muted-foreground">No GTT data available</div>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            )}
+                          </div>
                         </div>
                       </ScrollArea>
                     </TabsContent>
@@ -1649,289 +1890,190 @@ const MarketDataPage: React.FC = () => {
                         />
                       </div>
                     </TabsContent>
+                    <TabsContent value="livedata" className="h-full m-0">
+                      <ScrollArea className="h-full w-full">
+                        <div className="p-4">
+                          {!selectedCompany ? (
+                            <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
+                              <div className="inline-flex items-center justify-center w-20 h-20 bg-zinc-700/50 rounded-full">
+                                <Building2 className="w-10 h-10 text-zinc-500" />
+                              </div>
+                              <div className="space-y-2">
+                                <h3 className="text-lg font-semibold text-zinc-300">No Company Selected</h3>
+                                <p className="text-sm text-zinc-500 max-w-xs">
+                                  Select a company from the sidebar to view live market data
+                                </p>
+                              </div>
+                            </div>
+                          ) : currentData ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                              {/* Price Display with OHLC and Trading Info */}
+                              <Card className={`col-span-1 md:col-span-2 ${
+                                overallSentiment === 'POSITIVE'
+                                  ? 'bg-gradient-to-br from-green-500/5 to-transparent border-green-500/20'
+                                  : overallSentiment === 'NEGATIVE'
+                                  ? 'bg-gradient-to-br from-red-500/5 to-transparent border-red-500/20'
+                                  : 'bg-gradient-to-br from-zinc-500/5 to-transparent'
+                              }`}>
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-sm flex items-center justify-between">
+                                    <span>{selectedSymbol}</span>
+                                    <div className="flex items-center gap-2">
+                                      {/* Sentiment Badge */}
+                                      {isSentimentFetching ? (
+                                        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-muted">
+                                          <div className="h-3 w-3 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-400"></div>
+                                          <span className="text-xs text-muted-foreground">Loading...</span>
+                                        </div>
+                                      ) : (
+                                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                          overallSentiment === 'POSITIVE'
+                                            ? 'bg-green-500/20 text-green-400 border border-green-500/40'
+                                            : overallSentiment === 'NEGATIVE'
+                                            ? 'bg-red-500/20 text-red-400 border border-red-500/40'
+                                            : 'bg-zinc-500/20 text-zinc-400 border border-zinc-500/40'
+                                        }`}>
+                                          {overallSentiment === 'POSITIVE' ? 'Positive' : overallSentiment === 'NEGATIVE' ? 'Negative' : 'Neutral'}
+                                        </div>
+                                      )}
+                                      <div className="text-xs text-green-400 animate-pulse">LIVE •</div>
+                                    </div>
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                  {/* Current Price */}
+                                  <div>
+                                    <div className="text-2xl font-bold mb-1">₹{formatPrice(currentData.ltp)}</div>
+                                    <div className={`text-sm ${getChangeClass(currentData.change)}`}>
+                                      {formatChange(currentData.change, currentData.changePercent)}
+                                    </div>
+                                  </div>
+
+                                  {/* OHLC Data */}
+                                  <div>
+                                    <div className="text-xs font-semibold text-muted-foreground mb-2">OHLC Data</div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div className="bg-muted p-2 rounded">
+                                        <div className="text-xs text-muted-foreground">Open</div>
+                                        <div className="text-sm font-semibold">₹{formatPrice(currentData.open)}</div>
+                                      </div>
+                                      <div className="bg-muted p-2 rounded">
+                                        <div className="text-xs text-muted-foreground">Close</div>
+                                        <div className="text-sm font-semibold">₹{formatPrice(currentData.close)}</div>
+                                      </div>
+                                      <div className="bg-muted p-2 rounded">
+                                        <div className="text-xs text-muted-foreground">High</div>
+                                        <div className="text-sm font-semibold">₹{formatPrice(currentData.high)}</div>
+                                      </div>
+                                      <div className="bg-muted p-2 rounded">
+                                        <div className="text-xs text-muted-foreground">Low</div>
+                                        <div className="text-sm font-semibold">₹{formatPrice(currentData.low)}</div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Trading Info */}
+                                  <div>
+                                    <div className="text-xs font-semibold text-muted-foreground mb-2">Trading Info</div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div className="bg-muted p-2 rounded">
+                                        <div className="text-xs text-muted-foreground">Volume</div>
+                                        <div className="text-sm font-semibold">{currentData.volume?.toLocaleString() || '0'}</div>
+                                      </div>
+                                      <div className="bg-muted p-2 rounded">
+                                        <div className="text-xs text-muted-foreground">Updated</div>
+                                        <div className="text-sm font-semibold text-green-400">
+                                          {new Date(currentData.timestamp * 1000).toLocaleTimeString()}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+
+                              {/* Desirability Panel */}
+                              <Card className="col-span-1 md:col-span-2">
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-sm">Desirability Score</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <DesirabilityPanel
+                                    score={desirabilityScore}
+                                    classification={desirabilityClassification}
+                                    loading={desirabilityLoading}
+                                    onFetch={handleFetchDesirabilityScore}
+                                    data={desirabilityData}
+                                  />
+                                </CardContent>
+                              </Card>
+
+                              {/* Technical Indicators */}
+                              {(currentData.sma_20 || currentData.ema_9 || currentData.rsi_14) && (
+                                <Card className="col-span-1">
+                                  <CardHeader className="pb-3">
+                                    <CardTitle className="text-sm">Technical Indicators</CardTitle>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <div className="grid grid-cols-3 gap-2">
+                                      {currentData.sma_20 && (
+                                        <div className="bg-muted p-2 rounded">
+                                          <div className="text-xs text-orange-500">SMA 20</div>
+                                          <div className="text-sm font-semibold">₹{formatPrice(currentData.sma_20)}</div>
+                                        </div>
+                                      )}
+                                      {currentData.ema_9 && (
+                                        <div className="bg-muted p-2 rounded">
+                                          <div className="text-xs text-purple-500">EMA 9</div>
+                                          <div className="text-sm font-semibold">₹{formatPrice(currentData.ema_9)}</div>
+                                        </div>
+                                      )}
+                                      {currentData.rsi_14 && (
+                                        <div className="bg-muted p-2 rounded">
+                                          <div className="text-xs text-cyan-500">RSI 14</div>
+                                          <div className="text-sm font-semibold">{currentData.rsi_14.toFixed(2)}</div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8">
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-3"></div>
+                              <p className="text-zinc-400 text-sm">Connecting...</p>
+                            </div>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </TabsContent>
                   </div>
                 </Tabs>
               </div>
             )}
           </div>
 
-          {/* RIGHT: SIDEBAR (Live Data & Watchlist Selector) */}
+          {/* RIGHT: SIDEBAR (Company List) */}
           <div className="w-72 border-l bg-background flex flex-col shrink-0 transition-all duration-300">
-            <div className="p-4 border-b space-y-3">
-              <h3 className="font-semibold text-sm">Company Selection</h3>
-              <WatchlistSelector
-                onCompanySelect={handleCompanyChange}
-                onDateChange={handleDateChange}
-                onFilteredDataChange={setFilteredCompanies}
-                showExchangeFilter={true}
-                showMarkerFilter={true}
+            <div className="flex-1 overflow-hidden">
+              <CompanyList
+                companies={companies || []}
+                selectedCompanyCode={selectedCompany}
+                onSelect={(companyCode: string) => {
+                  const company = companies?.find((c: any) => c.company_code === companyCode);
+                  if (company) {
+                    handleCompanyChange(companyCode, company.exchange, company.marker);
+                  }
+                }}
+                loading={watchlistLoading}
+                selectedWatchlistDate={effectiveDate}
+                onWatchlistDateChange={handleDateChange}
+                availableDates={availableDates}
+                showAllCompanies={showAllCompanies}
+                onShowAllCompaniesChange={setShowAllCompanies}
+                desirabilityMap={desirabilityMap}
+                sentimentMap={sentimentMap}
               />
-
-              {/* Subscription Status Indicator */}
-              <HoverCard openDelay={200} closeDelay={100}>
-                <HoverCardTrigger asChild>
-                  <div className="p-2 bg-zinc-800 rounded cursor-pointer hover:bg-zinc-700 transition-colors">
-                    <div className="flex items-center space-x-2">
-                      <Wifi className="h-3 w-3 text-green-500" />
-                      <span className="text-xs text-green-400">
-                        Subscribed ({activeSymbols.length})
-                      </span>
-                    </div>
-                  </div>
-                </HoverCardTrigger>
-
-                <HoverCardContent
-                  className="w-[600px] p-0 bg-zinc-900 border-zinc-700"
-                  side="left"
-                  align="start"
-                >
-                  <div className="grid grid-cols-2 gap-0">
-                    {/* Subscribed Panel */}
-                    <div className="p-3 border-r border-b border-zinc-700">
-                      <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
-                        <div className="flex items-center gap-1.5">
-                          <Wifi className="h-3.5 w-3.5 text-green-500" />
-                          <h3 className="font-semibold text-green-400 text-xs">Subscribed</h3>
-                        </div>
-                        <span className="text-[10px] bg-green-900/50 text-green-300 px-1.5 py-0.5 rounded">
-                          {activeSymbols.length}
-                        </span>
-                      </div>
-                      <ScrollArea className="h-[180px] pr-1">
-                        <div className="space-y-1">
-                          {activeSymbols.length > 0 ? (
-                            activeSymbols.map((symbol, index) => {
-                              const companyCode = symbol.split(':')[1]?.split('-')[0] || symbol;
-                              const exchange = symbol.split(':')[0] || '';
-                              return (
-                                <div key={symbol} className="flex items-center gap-1.5 p-1.5 rounded bg-zinc-800/50 hover:bg-zinc-700/50 transition-colors">
-                                  <span className="text-[9px] font-bold text-green-400 w-4">{index + 1}</span>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-[10px] font-medium text-white truncate">{companyCode}</div>
-                                    <div className="text-[8px] text-zinc-500">{exchange}</div>
-                                  </div>
-                                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <div className="text-center py-6 text-zinc-500">
-                              <Wifi className="h-5 w-5 mx-auto mb-1 opacity-30" />
-                              <p className="text-[10px]">No active subscriptions</p>
-                            </div>
-                          )}
-                        </div>
-                      </ScrollArea>
-                    </div>
-
-                    {/* Failed Panel */}
-                    <div className="p-3 border-b border-zinc-700">
-                      <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-800">
-                        <div className="flex items-center gap-1.5">
-                          <WifiOff className="h-3.5 w-3.5 text-red-500" />
-                          <h3 className="font-semibold text-red-400 text-xs">Failed</h3>
-                        </div>
-                        <span className="text-[10px] bg-red-900/50 text-red-300 px-1.5 py-0.5 rounded">
-                          {failedSymbols.length}
-                        </span>
-                      </div>
-                      <ScrollArea className="h-[180px] pr-1">
-                        <div className="space-y-1">
-                          {failedSymbols.length > 0 ? (
-                            failedSymbols.map((symbol, index) => {
-                              const cleanSymbol = symbol.replace('-STOPPED', '').replace(/'/g, '');
-                              const parts = cleanSymbol.split(':');
-                              const exchange = parts[0] || '';
-                              const companyCode = parts[1]?.split('-')[0] || cleanSymbol;
-                              return (
-                                <div key={symbol} className="flex items-center gap-1.5 p-1.5 rounded bg-red-950/30 hover:bg-red-950/50 transition-colors">
-                                  <span className="text-[9px] font-bold text-red-400 w-4">{index + 1}</span>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-[10px] font-medium text-red-200 truncate">{companyCode}</div>
-                                    <div className="text-[8px] text-red-400/70">{exchange}</div>
-                                  </div>
-                                  <AlertCircle className="w-2.5 h-2.5 text-red-500" />
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <div className="text-center py-6 text-zinc-500">
-                              <div className="w-5 h-5 mx-auto mb-1 rounded-full bg-green-900/20 flex items-center justify-center">
-                                <Wifi className="h-2.5 w-2.5 text-green-500" />
-                              </div>
-                              <p className="text-[10px] text-green-400">All symbols OK</p>
-                            </div>
-                          )}
-                        </div>
-                      </ScrollArea>
-                    </div>
-                  </div>
-
-                  <div className="px-3 py-2 border-t border-zinc-800 bg-zinc-950/50">
-                    <div className="flex items-center justify-between text-[10px] text-zinc-500">
-                      <span>Last updated: {new Date().toLocaleTimeString()}</span>
-                      <button
-                        onClick={() => setIsSubscriptionModalOpen(true)}
-                        className="text-blue-400 hover:text-blue-300 transition-colors"
-                      >
-                        Manage →
-                      </button>
-                    </div>
-                  </div>
-                </HoverCardContent>
-              </HoverCard>
-            </div>
-
-            {/* Current Data Display */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {!selectedCompany ? (
-                <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
-                  <div className="inline-flex items-center justify-center w-20 h-20 bg-zinc-700/50 rounded-full">
-                    <Building2 className="w-10 h-10 text-zinc-500" />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-semibold text-zinc-300">No Company Selected</h3>
-                    <p className="text-sm text-zinc-500 max-w-xs">
-                      Select a company from the dropdown above to view live market data
-                    </p>
-                  </div>
-                </div>
-              ) : currentData ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-semibold text-white">{selectedSymbol}</h2>
-                    <div className="text-xs text-green-400 animate-pulse">LIVE •</div>
-                  </div>
-
-                  <div className="text-3xl font-bold mb-2 text-white">₹{formatPrice(currentData.ltp)}</div>
-                  <div className={`text-lg ${getChangeClass(currentData.change)}`}>
-                    {formatChange(currentData.change, currentData.changePercent)}
-                  </div>
-
-                  {/* Sentiment Display */}
-                  {(() => {
-                    if (isSentimentFetching) {
-                      return (
-                        <div className="mt-3 p-3 rounded-lg border-2 bg-zinc-900/50 border-zinc-800 backdrop-blur-sm">
-                          <div className="flex items-center gap-2">
-                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-400"></div>
-                            <span className="text-sm font-medium text-zinc-500">Fetching Sentiment...</span>
-                          </div>
-                        </div>
-                      );
-                    }
-                    
-                    let sentimentStyle = {
-                      background: 'bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40',
-                      text: 'text-zinc-400',
-                      label: 'Overall Sentiment: Neutral'
-                    };
-                    
-                    if (overallSentiment === 'POSITIVE') {
-                      sentimentStyle = {
-                        background: 'bg-gradient-to-r from-green-500/10 to-green-900/10 border-green-500/40',
-                        text: 'text-green-400',
-                        label: 'Overall Sentiment: Positive'
-                      };
-                    } else if (overallSentiment === 'NEGATIVE') {
-                      sentimentStyle = {
-                        background: 'bg-gradient-to-r from-red-500/10 to-red-900/10 border-red-500/40',
-                        text: 'text-red-400',
-                        label: 'Overall Sentiment: Negative'
-                      };
-                    }
-                    
-                    return (
-                      <div className={`mt-3 p-3 rounded-lg border-2 ${sentimentStyle.background} backdrop-blur-sm`}>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-sm font-medium ${sentimentStyle.text}`}>
-                            {sentimentStyle.label}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Desirability Panel */}
-                  <div className="mt-4">
-                    <DesirabilityPanel
-                      score={desirabilityScore}
-                      classification={desirabilityClassification}
-                      loading={desirabilityLoading}
-                      onFetch={handleFetchDesirabilityScore}
-                      data={desirabilityData}
-                    />
-                  </div>
-
-                  {/* OHLC Data */}
-                  <div className="grid grid-cols-2 gap-4 mt-6">
-                    <div className="bg-zinc-700 p-3 rounded">
-                      <div className="text-xs text-zinc-400">Open</div>
-                      <div className="text-lg">₹{formatPrice(currentData.open)}</div>
-                    </div>
-                    <div className="bg-zinc-700 p-3 rounded">
-                      <div className="text-xs text-zinc-400">Close</div>
-                      <div className="text-lg">₹{formatPrice(currentData.close)}</div>
-                    </div>
-                    <div className="bg-zinc-700 p-3 rounded">
-                      <div className="text-xs text-zinc-400">High</div>
-                      <div className="text-lg">₹{formatPrice(currentData.high)}</div>
-                    </div>
-                    <div className="bg-zinc-700 p-3 rounded">
-                      <div className="text-xs text-zinc-400">Low</div>
-                      <div className="text-lg">₹{formatPrice(currentData.low)}</div>
-                    </div>
-                  </div>
-
-                  {/* Volume & Timestamp */}
-                  <div className="mt-6 border-t border-zinc-700 pt-4">
-                    <div className="grid grid-cols-2 gap-y-2">
-                      <div>
-                        <div className="text-xs text-zinc-400">Volume</div>
-                        <div>{currentData.volume?.toLocaleString() || '0'}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-zinc-400">Updated</div>
-                        <div className="text-green-400">
-                          {new Date(currentData.timestamp * 1000).toLocaleTimeString()}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Technical Indicators */}
-                  {(currentData.sma_20 || currentData.ema_9 || currentData.rsi_14) && (
-                    <div className="mt-6 border-t border-zinc-700 pt-4">
-                      <h3 className="text-sm font-medium mb-2 text-zinc-300">Technical Indicators</h3>
-                      <div className="grid grid-cols-3 gap-2">
-                        {currentData.sma_20 && (
-                          <div className="bg-zinc-700 p-2 rounded">
-                            <div className="text-xs text-orange-500">SMA 20</div>
-                            <div className="text-sm">₹{formatPrice(currentData.sma_20)}</div>
-                          </div>
-                        )}
-                        {currentData.ema_9 && (
-                          <div className="bg-zinc-700 p-2 rounded">
-                            <div className="text-xs text-purple-500">EMA 9</div>
-                            <div className="text-sm">₹{formatPrice(currentData.ema_9)}</div>
-                          </div>
-                        )}
-                        {currentData.rsi_14 && (
-                          <div className="bg-zinc-700 p-2 rounded">
-                            <div className="text-xs text-cyan-500">RSI 14</div>
-                            <div className="text-sm">{currentData.rsi_14.toFixed(2)}</div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-3"></div>
-                  <p className="text-zinc-400 text-sm">Connecting...</p>
-                </div>
-              )}
             </div>
           </div>
 

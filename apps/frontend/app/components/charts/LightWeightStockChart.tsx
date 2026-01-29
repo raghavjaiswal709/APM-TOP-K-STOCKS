@@ -897,9 +897,26 @@ export function LightWeightStockChart({
             {/* Charts Layout */}
             <div className="flex-1 flex flex-col min-h-0 w-full relative">
                 <div className="flex-1 relative w-full h-full min-h-0" ref={mainChartContainerRef}>
+                    {/* Loading status badge - minimal, non-intrusive */}
                     {loading && (
-                        <div className="absolute inset-0 flex items-center justify-center z-10 bg-background/50">
-                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+                        <div className="absolute top-3 left-3 z-20 pointer-events-none">
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md backdrop-blur-sm" 
+                                 style={{ 
+                                     backgroundColor: chartTheme === 'dark' ? 'rgba(39, 39, 42, 0.9)' : 'rgba(244, 244, 245, 0.9)',
+                                     border: chartTheme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(228, 228, 231, 0.8)'
+                                 }}>
+                                <div className="flex gap-1">
+                                    <div className="w-1.5 h-1.5 rounded-full animate-pulse" 
+                                         style={{ backgroundColor: chartTheme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '0ms' }} />
+                                    <div className="w-1.5 h-1.5 rounded-full animate-pulse" 
+                                         style={{ backgroundColor: chartTheme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '150ms' }} />
+                                    <div className="w-1.5 h-1.5 rounded-full animate-pulse" 
+                                         style={{ backgroundColor: chartTheme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '300ms' }} />
+                                </div>
+                                <span className="text-xs" style={{ color: chartTheme === 'dark' ? '#a1a1aa' : '#71717a' }}>
+                                    Loading historical data
+                                </span>
+                            </div>
                         </div>
                     )}
                 </div>

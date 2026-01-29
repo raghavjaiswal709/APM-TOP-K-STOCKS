@@ -19,6 +19,10 @@ type AuthData = {
   auth_code?: string;
   timestamp?: string;
   service?: string;
+  // New fields for better expiry tracking
+  jwt_expires_at?: string;
+  is_expired?: boolean;
+  hours_until_expiry?: number;
 };
 
 const defaultData: AuthData = {
@@ -32,6 +36,7 @@ const defaultData: AuthData = {
   auth_code: '',
   timestamp: '',
   service: '',
+  is_expired: true,
 };
 
 const normalize = (data: any): Partial<AuthData> => {
@@ -49,6 +54,51 @@ const normalize = (data: any): Partial<AuthData> => {
     service: data.service ?? '',
   };
 };
+
+/**
+ * Decode JWT token and extract expiry information
+ * Returns null if token is invalid or doesn't have expiry
+ */
+function decodeJwtExpiry(accessToken: string): { exp: number; iat: number; isExpired: boolean; expiresAt: Date; hoursRemaining: number } | null {
+  if (!accessToken) return null;
+  
+  try {
+    // Extract JWT part (after client_id:)
+    const jwt = accessToken.includes(':') ? accessToken.split(':')[1] : accessToken;
+    
+    // Get payload (second part of JWT)
+    const parts = jwt.split('.');
+    if (parts.length < 2) return null;
+    
+    // Decode base64 payload
+    let payload = parts[1];
+    // Add padding if needed
+    const padding = 4 - (payload.length % 4);
+    if (padding !== 4) {
+      payload += '='.repeat(padding);
+    }
+    
+    const decoded = JSON.parse(Buffer.from(payload, 'base64').toString('utf8'));
+    
+    if (!decoded.exp) return null;
+    
+    const now = new Date();
+    const expiresAt = new Date(decoded.exp * 1000);
+    const isExpired = now > expiresAt;
+    const hoursRemaining = Math.round((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60) * 10) / 10;
+    
+    return {
+      exp: decoded.exp,
+      iat: decoded.iat || 0,
+      isExpired,
+      expiresAt,
+      hoursRemaining
+    };
+  } catch (error) {
+    console.error('Error decoding JWT:', error);
+    return null;
+  }
+}
 
 function readAuthFile(): { data: Partial<AuthData> | null; path: string | null } {
   const possiblePaths = [
@@ -122,12 +172,27 @@ export async function GET(request: NextRequest) {
     process.env.FYERS_REDIRECT_URI ||
     'https://raghavjaiswal709.github.io/DAKSphere_redirect/';
 
-  mergedData.token_valid = Boolean(mergedData.token_valid || tokenFromSources);
-  mergedData.authenticated = Boolean(
-    mergedData.authenticated ||
-    mergedData.token_valid ||
-    mergedData.auth_code,
-  );
+  // ✅ CRITICAL: Check actual JWT expiry from token payload
+  const jwtInfo = decodeJwtExpiry(tokenFromSources);
+  
+  if (jwtInfo) {
+    // Use JWT expiry as source of truth
+    mergedData.jwt_expires_at = jwtInfo.expiresAt.toISOString();
+    mergedData.is_expired = jwtInfo.isExpired;
+    mergedData.hours_until_expiry = jwtInfo.hoursRemaining;
+    
+    // Override token_valid and authenticated based on actual JWT expiry
+    mergedData.token_valid = !jwtInfo.isExpired;
+    mergedData.authenticated = !jwtInfo.isExpired;
+    
+    console.log(`[Auth Status] JWT expires: ${jwtInfo.expiresAt.toISOString()}, isExpired: ${jwtInfo.isExpired}, hoursRemaining: ${jwtInfo.hoursRemaining}`);
+  } else {
+    // No valid JWT found - mark as expired/unauthenticated
+    mergedData.token_valid = false;
+    mergedData.authenticated = false;
+    mergedData.is_expired = true;
+    console.log('[Auth Status] No valid JWT token found');
+  }
 
   // Derive client_id from token prefix if still missing
   if (!mergedData.client_id && mergedData.access_token?.includes(':')) {
