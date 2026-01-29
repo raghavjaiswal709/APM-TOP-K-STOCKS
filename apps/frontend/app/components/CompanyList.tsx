@@ -126,11 +126,19 @@ export function CompanyList({
         markers: string[];
         refined: boolean | null;
         showAllCompanies: boolean;
+        hasPrediction: boolean | null;
+        hasGtt: boolean | null;
+        sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | null;
+        desirability: 'high' | 'medium' | 'low' | null;
     }>({
         exchanges: [],
         markers: [],
         refined: null,
-        showAllCompanies: externalShowAllCompanies
+        showAllCompanies: externalShowAllCompanies,
+        hasPrediction: null,
+        hasGtt: null,
+        sentiment: null,
+        desirability: null
     });
     
     // Sync external showAllCompanies prop with internal state
@@ -171,7 +179,8 @@ export function CompanyList({
                 if (response.ok) {
                     const data = await response.json();
                     if (data.success) {
-                        setRegularPredictions(new Set(data.regular?.available || []));
+                        // Use todayOnly for brain icon - only show when predictions are for today
+                        setRegularPredictions(new Set(data.regular?.todayOnly || []));
                         setGttPredictions(new Set(data.gtt?.available || []));
                     }
                 }
@@ -352,7 +361,45 @@ export function CompanyList({
             }
         }
 
-        // 2. Search Term
+        // 2. Prediction Filters (always active regardless of showAllCompanies)
+        if (activeFilters.hasPrediction !== null) {
+            result = result.filter(c => {
+                const hasPred = hasRegularPrediction(c.company_code);
+                return activeFilters.hasPrediction ? hasPred : !hasPred;
+            });
+        }
+
+        if (activeFilters.hasGtt !== null) {
+            result = result.filter(c => {
+                const hasGtt = hasGttPrediction(c.company_code);
+                return activeFilters.hasGtt ? hasGtt : !hasGtt;
+            });
+        }
+
+        // 3. Sentiment Filter
+        if (activeFilters.sentiment !== null) {
+            result = result.filter(c => {
+                const sentiment = mergedSentimentMap[c.company_code];
+                return sentiment === activeFilters.sentiment;
+            });
+        }
+
+        // 4. Desirability Filter
+        if (activeFilters.desirability !== null) {
+            result = result.filter(c => {
+                const data = mergedDesirabilityMap[c.company_code];
+                if (!data) return false;
+                const score = data.score;
+                switch (activeFilters.desirability) {
+                    case 'high': return score >= 0.7;
+                    case 'medium': return score >= 0.5 && score < 0.7;
+                    case 'low': return score >= 0.3 && score < 0.5;
+                    default: return true;
+                }
+            });
+        }
+
+        // 5. Search Term
         if (searchTerm) {
             const searchLower = searchTerm.toLowerCase();
             result = result.filter(company => {
@@ -366,7 +413,7 @@ export function CompanyList({
             });
         }
         return result;
-    }, [companies, searchTerm, activeFilters]);
+    }, [companies, searchTerm, activeFilters, regularPredictions, gttPredictions, mergedSentimentMap, mergedDesirabilityMap]);
 
     // Selected company object for ImageCarousel
     const selectedCompanyObj = React.useMemo(() =>
@@ -375,8 +422,16 @@ export function CompanyList({
 
 
     const activeFilterCount = React.useMemo(() => {
-        if (activeFilters.showAllCompanies) return 1;
-        return activeFilters.exchanges.length + activeFilters.markers.length + (activeFilters.refined !== null ? 1 : 0);
+        let count = 0;
+        if (activeFilters.showAllCompanies) count++;
+        if (!activeFilters.showAllCompanies) {
+            count += activeFilters.exchanges.length + activeFilters.markers.length + (activeFilters.refined !== null ? 1 : 0);
+        }
+        if (activeFilters.hasPrediction !== null) count++;
+        if (activeFilters.hasGtt !== null) count++;
+        if (activeFilters.sentiment !== null) count++;
+        if (activeFilters.desirability !== null) count++;
+        return count;
     }, [activeFilters]);
 
     // Convert available dates strings to Date objects for Calendar

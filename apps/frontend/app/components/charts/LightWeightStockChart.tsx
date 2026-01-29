@@ -50,6 +50,21 @@ import { Separator } from "@/components/ui/separator";
 
 // --- Types ---
 
+// Prediction data interface
+interface PredictionData {
+  timestamp: string;
+  close: number;
+  predictedat: string;
+}
+
+interface CompanyPredictions {
+  company?: string;
+  predictions: Record<string, PredictionData>;
+  count?: number;
+  starttime?: string;
+  endtime?: string;
+}
+
 interface StockChartProps {
     companyId: string | null;
     data?: StockDataPoint[];
@@ -67,6 +82,8 @@ interface StockChartProps {
     onIntervalChange?: (interval: string) => void;
     onRangeChange?: (startDate: Date, endDate: Date) => Promise<void>;
     className?: string;
+    predictions?: CompanyPredictions | null;
+    showPredictions?: boolean;
 }
 
 // --- Constants ---
@@ -117,7 +134,9 @@ export function LightWeightStockChart({
     onThemeChange,
     onIntervalChange,
     onRangeChange,
-    className
+    className,
+    predictions = null,
+    showPredictions = false
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -695,6 +714,119 @@ export function LightWeightStockChart({
         }
 
     }, [data, chartType, activeIndicators, processData, colors, showBidAsk, bidAskMode, showBuySell, buySellMode]);
+
+    // --- Prediction Lines ---
+    useEffect(() => {
+        if (!mainChartRef.current) {
+            console.log('⚠️ [PREDICTIONS] No main chart ref');
+            return;
+        }
+
+        if (!showPredictions) {
+            console.log('⚠️ [PREDICTIONS] showPredictions is false');
+            // Remove existing prediction series
+            indicatorSeriesRefs.current.forEach((series, key) => {
+                if (key.startsWith('prediction_')) {
+                    try { mainChartRef.current?.removeSeries(series); } catch (e) { }
+                    indicatorSeriesRefs.current.delete(key);
+                }
+            });
+            return;
+        }
+
+        if (!predictions) {
+            console.log('⚠️ [PREDICTIONS] No predictions data');
+            // Remove existing prediction series
+            indicatorSeriesRefs.current.forEach((series, key) => {
+                if (key.startsWith('prediction_')) {
+                    try { mainChartRef.current?.removeSeries(series); } catch (e) { }
+                    indicatorSeriesRefs.current.delete(key);
+                }
+            });
+            return;
+        }
+
+        console.log('🔍 [PREDICTIONS] Received predictions:', {
+            count: predictions.count,
+            company: predictions.company,
+            hasData: !!predictions.predictions,
+            predictionsKeys: predictions.predictions ? Object.keys(predictions.predictions).length : 0
+        });
+
+        const mainChart = mainChartRef.current;
+        
+        // Remove old prediction series
+        indicatorSeriesRefs.current.forEach((series, key) => {
+            if (key.startsWith('prediction_')) {
+                try { mainChart.removeSeries(series); } catch (e) { }
+                indicatorSeriesRefs.current.delete(key);
+            }
+        });
+
+        // Process predictions data
+        if (predictions && predictions.predictions && (predictions.count || 0) > 0) {
+            try {
+                const predictionEntries = Object.entries(predictions.predictions as Record<string, PredictionData>);
+                console.log(`📊 [PREDICTIONS] Processing ${predictionEntries.length} prediction entries`);
+                
+                // Get today's date in YYYY-MM-DD format
+                const today = new Date().toISOString().split('T')[0];
+                console.log(`📅 [PREDICTIONS] Today's date: ${today}`);
+                
+                // Filter predictions for today
+                const todayPredictions = predictionEntries
+                    .filter(([dateStr]) => {
+                        const matches = dateStr.startsWith(today);
+                        if (!matches) {
+                            console.log(`⏭️ [PREDICTIONS] Skipping ${dateStr} (not today)`);
+                        }
+                        return matches;
+                    })
+                    .map(([dateStr, pred]) => {
+                        const time = (new Date(pred.timestamp).getTime() / 1000) as UTCTimestamp;
+                        console.log(`📍 [PREDICTIONS] Point: ${dateStr} -> time: ${time}, value: ${pred.close}`);
+                        return {
+                            time,
+                            value: pred.close
+                        };
+                    })
+                    .filter(p => {
+                        const valid = !isNaN(p.value) && isFinite(p.value);
+                        if (!valid) {
+                            console.warn(`⚠️ [PREDICTIONS] Invalid value: ${p.value}`);
+                        }
+                        return valid;
+                    })
+                    .sort((a, b) => (a.time as number) - (b.time as number));
+
+                console.log(`✨ [PREDICTIONS] Filtered to ${todayPredictions.length} today's predictions`);
+
+                if (todayPredictions.length > 0) {
+                    // Create prediction line series with orange color
+                    const predictionSeries = mainChart.addSeries(LineSeries, {
+                        color: '#ff9800', // Orange color
+                        lineWidth: 2,
+                        lineStyle: LineStyle.Solid,
+                        crosshairMarkerVisible: true,
+                        lastValueVisible: true,
+                        priceLineVisible: false,
+                        title: 'AI Prediction'
+                    });
+                    
+                    predictionSeries.setData(todayPredictions);
+                    indicatorSeriesRefs.current.set('prediction_line', predictionSeries);
+                    
+                    console.log(`✅ [PREDICTIONS] Added ${todayPredictions.length} prediction points to chart`);
+                } else {
+                    console.warn('⚠️ [PREDICTIONS] No predictions available for today after filtering');
+                }
+            } catch (error) {
+                console.error('❌ [PREDICTIONS] Error adding predictions to chart:', error);
+            }
+        } else {
+            console.warn('⚠️ [PREDICTIONS] No valid prediction data to display');
+        }
+    }, [predictions, showPredictions]);
 
     // Apply Options
     useEffect(() => {

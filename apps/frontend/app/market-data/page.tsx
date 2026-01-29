@@ -39,7 +39,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelector2/WatchlistSelector";
 import { ImageCarousel } from "./components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
-import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity, Calendar as CalendarIcon, Images, ChevronDown, ChevronUp, PanelBottomOpen, PanelBottomClose } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity, Calendar as CalendarIcon, Images, ChevronDown, ChevronUp, PanelBottomOpen, PanelBottomClose, AlertTriangle } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
 import { isMarketOpen } from "@/lib/marketHours";
 import { 
@@ -175,6 +175,7 @@ const MarketDataPage: React.FC = () => {
   const [predictionServiceHealth, setPredictionServiceHealth] = useState<'checking' | 'available' | 'unavailable'>('checking');
   const [gttServiceHealth, setGttServiceHealth] = useState<'checking' | 'available' | 'unavailable'>('checking');
   const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(true);
+  const [predictionsOutdated, setPredictionsOutdated] = useState<boolean>(false);
 
   // Market Data State
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
@@ -345,6 +346,30 @@ const MarketDataPage: React.FC = () => {
     if (!rawGttPredictions) return null;
     return transformGttToChartPredictions(rawGttPredictions);
   }, [rawGttPredictions]);
+
+  // Check if predictions are outdated (not from today)
+  useEffect(() => {
+    if (!predictions || !predictions.predictions) {
+      setPredictionsOutdated(false);
+      return;
+    }
+
+    const predictionKeys = Object.keys(predictions.predictions);
+    if (predictionKeys.length === 0) {
+      setPredictionsOutdated(false);
+      return;
+    }
+
+    // Get today's date in IST
+    const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    
+    // Check if any prediction timestamp is from today
+    const hasToday = predictionKeys.some(key => key.startsWith(todayIST));
+    
+    console.log(`🔍 [PREDICTION CHECK] Today IST: ${todayIST}, Keys sample: ${predictionKeys.slice(0, 3).join(', ')}, Has today: ${hasToday}`);
+    
+    setPredictionsOutdated(!hasToday);
+  }, [predictions]);
 
   const {
     score: desirabilityScore,
@@ -1660,16 +1685,34 @@ const MarketDataPage: React.FC = () => {
                 </Tooltip>
               </TooltipProvider>
             ) : (
-              <button
-                onClick={() => setShowPredictions(!showPredictions)}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${showPredictions
-                  ? 'bg-[#dbeafe] text-blue-600 hover:bg-[#cddcfe]'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-              >
-                <Activity className="h-3.5 w-3.5" />
-                {showPredictions ? 'Predictions ON' : 'Predictions OFF'}
-              </button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setShowPredictions(!showPredictions)}
+                      className={`px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                        showPredictions
+                          ? predictionsOutdated
+                            ? 'bg-red-600 text-white hover:bg-red-700'
+                            : 'bg-[#dbeafe] text-blue-600 hover:bg-[#cddcfe]'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      {predictionsOutdated && showPredictions ? (
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                      ) : (
+                        <Activity className="h-3.5 w-3.5" />
+                      )}
+                      {showPredictions ? 'Predictions ON' : 'Predictions OFF'}
+                    </button>
+                  </TooltipTrigger>
+                  {predictionsOutdated && showPredictions && (
+                    <TooltipContent side="bottom" className="bg-red-900 border-red-700 text-white">
+                      <p className="text-xs">⚠️ Running with outdated prediction data. Predictions are not from today.</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
             )}
 
             {/* GTT Service Status */}
@@ -1725,6 +1768,14 @@ const MarketDataPage: React.FC = () => {
           {/* LEFT: CHART & ANALYSIS SPLIT */}
           <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden">
 
+            {/* Outdated Predictions Warning Banner */}
+            {showPredictions && predictionsOutdated && predictions && predictions.count > 0 && (
+              <div className="bg-red-600 text-white px-4 py-2 flex items-center gap-2 text-sm font-medium">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span>⚠️ Running with outdated prediction data. The predictions displayed are not from today.</span>
+              </div>
+            )}
+
             {/* Upper: Chart */}
             <div
               className="relative border-b flex flex-col transition-[flex-basis] duration-300 ease-in-out overflow-hidden"
@@ -1741,6 +1792,8 @@ const MarketDataPage: React.FC = () => {
                     className="w-full h-full"
                     theme={theme === 'light' ? 'light' : 'dark'}
                     defaultChartType="line"
+                    predictions={predictions}
+                    showPredictions={showPredictions}
                   />
                 </div>
               ) : !selectedCompany ? (
