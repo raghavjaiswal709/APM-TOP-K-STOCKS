@@ -9,12 +9,15 @@ import * as crypto from 'crypto';
 
 interface TokenData {
   access_token: string;
-  expiry: string;
-  auth_code: string;
-  created_at: string;
-  is_valid: boolean;
-  last_validated: string;
-  session_date: string;
+  expires_at: string; // Changed from expiry to expires_at
+  auth_code?: string;
+  created_at?: string;
+  is_valid?: boolean;
+  last_validated?: string;
+  session_date?: string;
+  client_id?: string;
+  timestamp?: string;
+  service?: string;
 }
 
 interface AuthStatus {
@@ -25,6 +28,12 @@ interface AuthStatus {
   session_date?: string;
   auto_refresh_enabled?: boolean;
   next_refresh_check?: string;
+  client_id?: string;
+  redirect_uri?: string;
+  // We don't save access_token in status file, but we return it in API
+  access_token?: string;
+  auth_code?: string;
+  timestamp?: string;
 }
 
 interface TokenResponse {
@@ -52,7 +61,7 @@ export class FyersAuthService {
     this.clientId = process.env.FYERS_CLIENT_ID || '150HUKJSWG-100';
     this.secretKey = process.env.FYERS_SECRET_ID || '18YYNXCAS7';
     this.redirectUri = process.env.FYERS_REDIRECT_URI || 'https://raghavjaiswal709.github.io/DAKSphere_redirect/';
-    
+
     // ✅ FIXED: Use T2 endpoints like your working Python code
     this.BASE_URL = 'https://api-t1.fyers.in/api/v3';
     this.AUTH_URL = `${this.BASE_URL}/generate-authcode`;
@@ -63,13 +72,13 @@ export class FyersAuthService {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
-    
-    this.tokenPath = path.join(dataDir, 'fyers_token.json');
+
+    this.tokenPath = path.join(dataDir, 'fyers_data_auth.json'); // Updated path
     this.authStatusPath = path.join(dataDir, 'auth_status.json');
-    
+
     this.logger.log(`Initialized Fyers Auth Service with redirect URI: ${this.redirectUri}`);
     this.logger.log(`Using T2 API endpoints: ${this.BASE_URL}`);
-    
+
     // Check existing token on startup
     this.validateExistingToken();
   }
@@ -90,12 +99,12 @@ export class FyersAuthService {
     // Fyers tokens expire at 11:59 PM IST
     const expiryDate = new Date(now);
     expiryDate.setHours(23, 59, 0, 0); // Set to 11:59 PM
-    
+
     // If current time is after market hours (after 4 PM), set expiry to next day
     if (now.getHours() >= 16) {
       expiryDate.setDate(expiryDate.getDate() + 1);
     }
-    
+
     return expiryDate;
   }
 
@@ -107,30 +116,31 @@ export class FyersAuthService {
       }
 
       const tokenData: TokenData = JSON.parse(fs.readFileSync(this.tokenPath, 'utf8'));
-      
-      // Check if token is for current trading session
-      const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-      if (tokenData.session_date !== currentDate) {
-        this.logger.log(`Token is for different session. Current: ${currentDate}, Token: ${tokenData.session_date}`);
-        return null;
+
+      // If we have expires_at in the file, use it
+      let expiryDate: Date;
+      if (tokenData.expires_at) {
+        expiryDate = new Date(tokenData.expires_at);
+      } else if ((tokenData as any).expiry) {
+        expiryDate = new Date((tokenData as any).expiry);
+      } else {
+        this.logger.warn('Token file has no expiry date');
+        return null; // or handle appropriately
       }
 
-      // Check if token has expired
-      const expiryDate = new Date(tokenData.expiry);
       const now = new Date();
-      
-      if (expiryDate > now && tokenData.is_valid) {
-        const fullToken = `${this.clientId}:${tokenData.access_token}`;
-        this.logger.log(`Valid token found, expires in ${Math.round((expiryDate.getTime() - now.getTime()) / (1000 * 60))} minutes`);
-        
-        // Update last validated time
-        tokenData.last_validated = new Date().toISOString();
-        this.saveTokenData(tokenData);
-        
-        return fullToken;
+
+      if (expiryDate > now) {
+        // The file might contain "client_id:token" or just "token"
+        // Logic to handle both formats if needed, or assume file is source of truth
+        // Based on fyers_data_auth.json content: "access_token": "150...:eyJ..." (Full token)
+
+        const accessToken = tokenData.access_token;
+        this.logger.log(`Valid token found in fyers_data_auth.json, expires in ${Math.round((expiryDate.getTime() - now.getTime()) / (1000 * 60))} minutes`);
+
+        return accessToken;
       } else {
-        this.logger.warn('Stored token has expired or is invalid');
-        await this.markTokenAsInvalid();
+        this.logger.warn('Stored token has expired');
         return null;
       }
     } catch (error) {
@@ -162,7 +172,7 @@ export class FyersAuthService {
         tokenData.last_validated = new Date().toISOString();
         this.saveTokenData(tokenData);
       }
-      
+
       await this.updateAuthStatus({
         authenticated: false,
         token_valid: false,
@@ -188,156 +198,156 @@ export class FyersAuthService {
 
   // ===== AUTHENTICATION URL GENERATION =====
 
- // In your fyers-auth.service.ts
-async generateAuthUrl(): Promise<string> {
-  try {
-    const encodedRedirectUri = encodeURIComponent(this.redirectUri);
-    const state = Math.random().toString(36).substring(7); // Generate random state
-    
-    // ✅ FIXED: Use the correct Fyers V3 format
-    const authUrl = `https://api-t1.fyers.in/api/v3/generate-authcode?client_id=${this.clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&state=${state}`;
-    
-    this.logger.log('Generated auth URL:', authUrl);
-    
-    // Test the URL accessibility
-    await this.testUrlAccessibility(authUrl);
-    
-    return authUrl;
-  } catch (error) {
-    this.logger.error('Error generating auth URL:', error.message);
-    throw new Error(`Failed to generate auth URL: ${error.message}`);
-  }
-}
+  // In your fyers-auth.service.ts
+  async generateAuthUrl(): Promise<string> {
+    try {
+      const encodedRedirectUri = encodeURIComponent(this.redirectUri);
+      const state = Math.random().toString(36).substring(7); // Generate random state
 
-// Add URL testing method
-private async testUrlAccessibility(url: string): Promise<void> {
-  try {
-    const response = await axios.head(url.split('?')[0], { timeout: 5000 });
-    this.logger.log(`Auth endpoint accessible: ${response.status}`);
-  } catch (error) {
-    this.logger.warn(`Auth endpoint test failed: ${error.message}`);
-    // Don't throw here, just log the warning
+      // ✅ FIXED: Use the correct Fyers V3 format
+      const authUrl = `https://api-t1.fyers.in/api/v3/generate-authcode?client_id=${this.clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&state=${state}`;
+
+      this.logger.log('Generated auth URL:', authUrl);
+
+      // Test the URL accessibility
+      await this.testUrlAccessibility(authUrl);
+
+      return authUrl;
+    } catch (error) {
+      this.logger.error('Error generating auth URL:', error.message);
+      throw new Error(`Failed to generate auth URL: ${error.message}`);
+    }
   }
-}
+
+  // Add URL testing method
+  private async testUrlAccessibility(url: string): Promise<void> {
+    try {
+      const response = await axios.head(url.split('?')[0], { timeout: 5000 });
+      this.logger.log(`Auth endpoint accessible: ${response.status}`);
+    } catch (error) {
+      this.logger.warn(`Auth endpoint test failed: ${error.message}`);
+      // Don't throw here, just log the warning
+    }
+  }
 
 
   // ===== TOKEN GENERATION =====
 
   async generateTokenFromCode(authCode: string): Promise<TokenResponse> {
-  try {
-    // First check if we already have a valid token
-    const existingToken = await this.getValidTokenOrNull();
-    if (existingToken) {
-      this.logger.log('Reusing existing valid token');
-      const tokenData: TokenData = JSON.parse(fs.readFileSync(this.tokenPath, 'utf8'));
-      return {
-        access_token: existingToken,
-        expires_at: tokenData.expiry,
-        reused: true
+    try {
+      // First check if we already have a valid token
+      const existingToken = await this.getValidTokenOrNull();
+      if (existingToken) {
+        this.logger.log('Reusing existing valid token');
+        const tokenData: TokenData = JSON.parse(fs.readFileSync(this.tokenPath, 'utf8'));
+        return {
+          access_token: existingToken,
+          expires_at: tokenData.expires_at,
+          reused: true
+        };
+      }
+
+      this.logger.log('Generating new access token from auth code');
+      this.logger.debug(`Auth code received: ${authCode.substring(0, 20)}...`);
+
+      // ✅ FIXED: Generate proper SHA-256 hash of clientId:secretKey
+      const appIdSecretString = `${this.clientId}:${this.secretKey}`;
+      const appIdHash = crypto.createHash('sha256').update(appIdSecretString).digest('hex');
+
+      this.logger.debug(`Generated appIdHash: ${appIdHash.substring(0, 10)}...`);
+
+      const requestData = {
+        grant_type: 'authorization_code',
+        appIdHash: appIdHash, // ✅ Now using proper SHA-256 hash
+        code: authCode
       };
+
+      this.logger.debug('Making token request to Fyers V3 T2 API');
+      this.logger.debug(`Token URL: ${this.TOKEN_URL}`);
+
+      const response = await axios.post(this.TOKEN_URL, requestData, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'DAKSphere/1.0'
+        },
+        timeout: 30000
+      });
+
+      this.logger.debug('Fyers API response received');
+      this.logger.debug(`Response status: ${response.status}`);
+
+      // Check for API errors
+      if (response.data?.s !== 'ok') {
+        const errorMsg = response.data?.message || response.data?.error || 'Unknown error';
+        this.logger.error('Fyers API returned error:', response.data);
+        throw new Error(`Token generation failed: ${errorMsg}`);
+      }
+
+      const accessToken = response.data.access_token;
+      if (!accessToken) {
+        throw new Error('No access token received from Fyers API');
+      }
+
+      // Save token data
+      const expiryDate = this.calculateTokenExpiry();
+      const currentDate = new Date().toISOString().split('T')[0];
+
+      const tokenData: TokenData = {
+        access_token: accessToken,
+        expires_at: expiryDate.toISOString(),
+        auth_code: authCode,
+        created_at: new Date().toISOString(),
+        is_valid: true,
+        last_validated: new Date().toISOString(),
+        session_date: currentDate
+      };
+
+      this.saveTokenData(tokenData);
+
+      await this.updateAuthStatus({
+        authenticated: true,
+        token_valid: true,
+        expires_at: expiryDate.toISOString(),
+        services_notified: [],
+        session_date: currentDate,
+        auto_refresh_enabled: true,
+        next_refresh_check: new Date(Date.now() + 3600000).toISOString()
+      });
+
+      this.logger.log('New access token generated and saved successfully');
+
+      return {
+        access_token: `${this.clientId}:${accessToken}`,
+        expires_at: expiryDate.toISOString(),
+        reused: false
+      };
+
+    } catch (error) {
+      this.logger.error('Token generation error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        clientId: this.clientId,
+        authCodePreview: authCode?.substring(0, 20) + '...',
+        url: this.TOKEN_URL
+      });
+
+      let errorMessage = 'Failed to generate access token';
+      if (error.response?.data?.message) {
+        errorMessage += `: ${error.response.data.message}`;
+      } else if (error.response?.status === 400) {
+        errorMessage += ': Invalid request format or invalid app id hash';
+      } else if (error.response?.status === 401) {
+        errorMessage += ': Authentication failed - check client credentials';
+      } else if (error.message) {
+        errorMessage += `: ${error.message}`;
+      }
+
+      throw new Error(errorMessage);
     }
-
-    this.logger.log('Generating new access token from auth code');
-    this.logger.debug(`Auth code received: ${authCode.substring(0, 20)}...`);
-    
-    // ✅ FIXED: Generate proper SHA-256 hash of clientId:secretKey
-    const appIdSecretString = `${this.clientId}:${this.secretKey}`;
-    const appIdHash = crypto.createHash('sha256').update(appIdSecretString).digest('hex');
-    
-    this.logger.debug(`Generated appIdHash: ${appIdHash.substring(0, 10)}...`);
-    
-    const requestData = {
-      grant_type: 'authorization_code',
-      appIdHash: appIdHash, // ✅ Now using proper SHA-256 hash
-      code: authCode
-    };
-    
-    this.logger.debug('Making token request to Fyers V3 T2 API');
-    this.logger.debug(`Token URL: ${this.TOKEN_URL}`);
-    
-    const response = await axios.post(this.TOKEN_URL, requestData, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': 'DAKSphere/1.0'
-      },
-      timeout: 30000
-    });
-
-    this.logger.debug('Fyers API response received');
-    this.logger.debug(`Response status: ${response.status}`);
-
-    // Check for API errors
-    if (response.data?.s !== 'ok') {
-      const errorMsg = response.data?.message || response.data?.error || 'Unknown error';
-      this.logger.error('Fyers API returned error:', response.data);
-      throw new Error(`Token generation failed: ${errorMsg}`);
-    }
-
-    const accessToken = response.data.access_token;
-    if (!accessToken) {
-      throw new Error('No access token received from Fyers API');
-    }
-
-    // Save token data
-    const expiryDate = this.calculateTokenExpiry();
-    const currentDate = new Date().toISOString().split('T')[0];
-
-    const tokenData: TokenData = {
-      access_token: accessToken,
-      expiry: expiryDate.toISOString(),
-      auth_code: authCode,
-      created_at: new Date().toISOString(),
-      is_valid: true,
-      last_validated: new Date().toISOString(),
-      session_date: currentDate
-    };
-
-    this.saveTokenData(tokenData);
-    
-    await this.updateAuthStatus({
-      authenticated: true,
-      token_valid: true,
-      expires_at: expiryDate.toISOString(),
-      services_notified: [],
-      session_date: currentDate,
-      auto_refresh_enabled: true,
-      next_refresh_check: new Date(Date.now() + 3600000).toISOString()
-    });
-
-    this.logger.log('New access token generated and saved successfully');
-    
-    return {
-      access_token: `${this.clientId}:${accessToken}`,
-      expires_at: expiryDate.toISOString(),
-      reused: false
-    };
-
-  } catch (error) {
-    this.logger.error('Token generation error details:', {
-      message: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      clientId: this.clientId,
-      authCodePreview: authCode?.substring(0, 20) + '...',
-      url: this.TOKEN_URL
-    });
-    
-    let errorMessage = 'Failed to generate access token';
-    if (error.response?.data?.message) {
-      errorMessage += `: ${error.response.data.message}`;
-    } else if (error.response?.status === 400) {
-      errorMessage += ': Invalid request format or invalid app id hash';
-    } else if (error.response?.status === 401) {
-      errorMessage += ': Authentication failed - check client credentials';
-    } else if (error.message) {
-      errorMessage += `: ${error.message}`;
-    }
-    
-    throw new Error(errorMessage);
   }
-}
 
   // ===== TOKEN ACCESS METHODS =====
 
@@ -350,7 +360,7 @@ private async testUrlAccessibility(url: string): Promise<void> {
   async notifyPythonService(serviceName: string, token: string, authCode: string): Promise<void> {
     try {
       this.logger.log(`Notifying Python service: ${serviceName}`);
-      
+
       // Write auth data to service-specific file
       const serviceAuthPath = path.join(process.cwd(), 'data', `${serviceName}_auth.json`);
       const authData = {
@@ -361,22 +371,22 @@ private async testUrlAccessibility(url: string): Promise<void> {
         service: serviceName,
         expires_at: this.calculateExpiryTime()
       };
-      
+
       fs.writeFileSync(serviceAuthPath, JSON.stringify(authData, null, 2));
       this.logger.debug(`Written auth data to: ${serviceAuthPath}`);
-      
+
       // Try to notify via WebSocket if service is running
       await this.notifyViaWebSocket(serviceName, authData);
-      
+
       // Update auth status
       const currentStatus = await this.getAuthStatus();
       if (!currentStatus.services_notified.includes(serviceName)) {
         currentStatus.services_notified.push(serviceName);
         await this.updateAuthStatus(currentStatus);
       }
-      
+
       this.logger.log(`Successfully notified ${serviceName}`);
-      
+
     } catch (error) {
       this.logger.error(`Failed to notify ${serviceName}:`, error.message);
       throw error;
@@ -387,11 +397,11 @@ private async testUrlAccessibility(url: string): Promise<void> {
     const now = new Date();
     const expiryDate = new Date(now);
     expiryDate.setHours(23, 59, 59, 999);
-    
+
     if (now.getHours() > 15) {
       expiryDate.setDate(expiryDate.getDate() + 1);
     }
-    
+
     return expiryDate.toISOString();
   }
 
@@ -402,43 +412,43 @@ private async testUrlAccessibility(url: string): Promise<void> {
         'multi_company_live_data': 5010,
         'new_fyers': 5010
       };
-      
+
       const port = ports[serviceName];
       if (!port) {
         this.logger.warn(`Unknown service: ${serviceName}`);
         resolve();
         return;
       }
-      
+
       const client = Client(`http://localhost:${port}`, {
         timeout: 15000, // Increased timeout
         reconnection: false,
         forceNew: true
       });
-      
+
       const timeout = setTimeout(() => {
         this.logger.debug(`WebSocket notification timeout for ${serviceName}`);
         client.disconnect();
         resolve();
       }, 15000);
-      
+
       client.on('connect', () => {
         this.logger.log(`Connected to ${serviceName} WebSocket on port ${port}`);
         client.emit('auth_token_ready', authData);
         clearTimeout(timeout);
-        
+
         setTimeout(() => {
           client.disconnect();
           resolve();
         }, 1000);
       });
-      
+
       client.on('connect_error', (error) => {
         this.logger.debug(`Could not connect to ${serviceName} WebSocket: ${error.message}`);
         clearTimeout(timeout);
         resolve();
       });
-      
+
       client.on('error', (error) => {
         this.logger.debug(`WebSocket error for ${serviceName}: ${error.message}`);
         clearTimeout(timeout);
@@ -452,20 +462,58 @@ private async testUrlAccessibility(url: string): Promise<void> {
 
   async getAuthStatus(): Promise<AuthStatus> {
     try {
+      // Prioritize reading from fyers_data_auth.json directly for config details
+      let tokenData: TokenData | null = null;
+      if (fs.existsSync(this.tokenPath)) {
+        try {
+          tokenData = JSON.parse(fs.readFileSync(this.tokenPath, 'utf8'));
+        } catch (e) {
+          this.logger.error('Error parsing token file', e);
+        }
+      }
+
       if (fs.existsSync(this.authStatusPath)) {
         const status = JSON.parse(fs.readFileSync(this.authStatusPath, 'utf8'));
-        
+
         // Validate token is still valid
         const token = await this.getCurrentAccessToken();
         status.token_valid = !!token;
         status.authenticated = !!token;
-        
+
+        // Enrich with config details from token file or defaults
+        status.client_id = tokenData?.client_id || this.clientId;
+        status.redirect_uri = this.redirectUri;
+        status.access_token = tokenData?.access_token || undefined;
+        status.auth_code = tokenData?.auth_code || undefined;
+        status.timestamp = tokenData?.timestamp || undefined;
+
+        // Use expiry from token file if available
+        if (tokenData?.expires_at) {
+          status.expires_at = tokenData.expires_at;
+        }
+
         return status;
+      } else if (tokenData) { // If auth_status doesn't exist but token file does
+        const now = new Date();
+        const expiry = tokenData.expires_at ? new Date(tokenData.expires_at) : null;
+        const isValid = expiry && expiry > now;
+
+        return {
+          authenticated: !!isValid,
+          token_valid: !!isValid,
+          expires_at: tokenData.expires_at || null,
+          services_notified: [], // Can't know for sure without status file, default empty
+          client_id: tokenData.client_id || this.clientId,
+          redirect_uri: this.redirectUri,
+          access_token: tokenData.access_token,
+          auth_code: tokenData.auth_code,
+          timestamp: tokenData.timestamp
+        };
       }
     } catch (error) {
       this.logger.error('Error reading auth status:', error.message);
     }
-    
+
     const currentDate = new Date().toISOString().split('T')[0];
     return {
       authenticated: false,
@@ -474,20 +522,22 @@ private async testUrlAccessibility(url: string): Promise<void> {
       services_notified: [],
       session_date: currentDate,
       auto_refresh_enabled: true,
-      next_refresh_check: new Date(Date.now() + 300000).toISOString()
+      next_refresh_check: new Date(Date.now() + 300000).toISOString(),
+      client_id: this.clientId,
+      redirect_uri: this.redirectUri
     };
   }
 
   async requiresAuthentication(): Promise<{ required: boolean; reason: string; token_status: string }> {
     try {
       const token = await this.getValidTokenOrNull();
-      
+
       if (token) {
         const tokenData: TokenData = JSON.parse(fs.readFileSync(this.tokenPath, 'utf8'));
-        const expiryDate = new Date(tokenData.expiry);
+        const expiryDate = new Date(tokenData.expires_at);
         const now = new Date();
         const hoursRemaining = Math.round((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60));
-        
+
         return {
           required: false,
           reason: `Valid token exists, expires in ${hoursRemaining} hours`,
@@ -515,7 +565,7 @@ private async testUrlAccessibility(url: string): Promise<void> {
     try {
       // Check if authentication is required
       const { required, reason } = await this.requiresAuthentication();
-      
+
       if (!required && !force) {
         this.logger.log(`Skipping authentication: ${reason}`);
         return {
@@ -526,7 +576,7 @@ private async testUrlAccessibility(url: string): Promise<void> {
       }
 
       const authUrl = await this.generateAuthUrl();
-      
+
       // Auto-open browser (optional - can be disabled in production)
       if (process.env.NODE_ENV !== 'production') {
         try {
@@ -537,7 +587,7 @@ private async testUrlAccessibility(url: string): Promise<void> {
           this.logger.warn('Could not auto-open browser:', error.message);
         }
       }
-      
+
       return {
         authUrl,
         message: force ? 'Re-authentication initiated' : undefined,
@@ -603,7 +653,7 @@ private async testUrlAccessibility(url: string): Promise<void> {
   async checkTokenValidity(): Promise<void> {
     try {
       this.logger.debug('Checking token validity (auto-check)');
-      
+
       const isValid = await this.validateExistingToken();
       if (!isValid) {
         this.logger.warn('Token invalid during auto-check');
@@ -619,7 +669,7 @@ private async testUrlAccessibility(url: string): Promise<void> {
     try {
       this.logger.log('Midnight token cleanup - clearing expired tokens');
       await this.markTokenAsInvalid();
-      
+
       // Clear old token files
       if (fs.existsSync(this.tokenPath)) {
         fs.unlinkSync(this.tokenPath);

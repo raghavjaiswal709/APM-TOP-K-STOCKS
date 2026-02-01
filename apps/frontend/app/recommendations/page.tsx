@@ -1,10 +1,7 @@
-// apps/frontend/app/recommendations/page.tsx
-// @ts-nocheck
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import dynamic from 'next/dynamic';
-import { AppSidebar } from "@/app/components/app-sidebar";
+import { AppSidebar } from "../components/app-sidebar";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -19,33 +16,33 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { ModeToggle } from "@/app/components/toggleButton";
-import { Card, CardContent } from "@/components/ui/card";
-import { Database, TrendingUp, TrendingDown } from 'lucide-react';
-import { Badge } from "@/components/ui/badge";
+import { ModeToggle } from "../components/toggleButton";
+import { BarChart2, Database, PanelBottomOpen, PanelBottomClose, ChevronUp, ChevronDown } from 'lucide-react';
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelector2/WatchlistSelector";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+
+// Components
+import { LightWeightStockChart as StockChart } from "../components/charts/LightWeightStockChart";
+import { CompanyList } from "../components/CompanyList";
+import { AnalysisPanel } from "./components/AnalysisPanel";
+import { HistoricalChartCarousel } from "./components/HistoricalChartCarousel";
+
+// Hooks & Services
 import { parseFullHistoricalData, convertToOHLC } from '@/lib/historicalTimeMachine';
 import { useTimeMachine } from '@/hooks/useTimeMachine';
-import { HistoricalChartCarousel } from "./components/HistoricalChartCarousel";
-import { HistoricalMarketNews } from "./components/HistoricalMarketNews";
 import {
   fetchSthitiClusters,
   fetchSthitiPrediction,
   type SthitiCluster,
   type SthitiPrediction
 } from '@/lib/historicalSthitiService';
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { useTheme } from "next-themes";
 
-// Dynamic imports
-const PlotlyChart = dynamic(() => import('../market-data/components/charts/PlotlyChart'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full flex items-center justify-center bg-zinc-900">
-      <div className="animate-pulse text-blue-500">Loading Time Machine...</div>
-    </div>
-  )
-});
-
+// Types
 interface MarketData {
   symbol: string;
   ltp: number;
@@ -68,17 +65,18 @@ interface OHLCPoint {
   low: number;
   close: number;
   volume: number;
-}
-
-interface TradingHours {
-  start: string;
-  end: string;
-  current: string;
-  isActive: boolean;
+  bid?: number;
+  ask?: number;
+  buyVolume?: number;
+  sellVolume?: number;
 }
 
 const RecommendationListPage: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
+  const { theme } = useTheme();
+  // Analysis Visibility State
+  const [isAnalysisVisible, setIsAnalysisVisible] = useState(false);
+
   const [historicalDataPoints, setHistoricalDataPoints] = useState<MarketData[]>([]);
   const [ohlcDataPoints, setOHLCDataPoints] = useState<OHLCPoint[]>([]);
   const [loadingFullData, setLoadingFullData] = useState(false);
@@ -91,6 +89,7 @@ const RecommendationListPage: React.FC = () => {
   const [loadingSthitiClusters, setLoadingSthitiClusters] = useState(false);
   const [loadingSthitiPrediction, setLoadingSthitiPrediction] = useState(false);
 
+  // Use Time Machine Hook
   const {
     availableDates,
     selectedDate,
@@ -104,23 +103,46 @@ const RecommendationListPage: React.FC = () => {
     setSelectedCompany,
   } = useTimeMachine();
 
-  React.useEffect(() => {
+  // Use Watchlist Hook for consistent company list in sidebar
+  const {
+    companies: watchlistCompanies,
+    loading: watchlistLoading
+  } = useWatchlist({ date: selectedDate || undefined });
+
+  // Merge availableCompanies from TimeMachine (strings) with Watchlist (objects)
+  // This ensures we always show the companies available in the file system for that date
+  const companies = useMemo(() => {
+    if (watchlistCompanies && watchlistCompanies.length > 0) {
+      // Filter watchlist companies to only include those available in TimeMachine (if loaded)
+      if (availableCompanies.length > 0) {
+        return watchlistCompanies.filter((c: any) => availableCompanies.includes(c.company_code));
+      }
+      return watchlistCompanies;
+    }
+    // Fallback: Create minimal company objects from availableCompanies string array
+    return availableCompanies.map(code => ({
+      company_code: code,
+      name: code, // Placeholder name
+      exchange: 'NSE', // Default
+      marker: '',
+    }));
+  }, [watchlistCompanies, availableCompanies]);
+
+
+  useEffect(() => {
     setIsClient(true);
   }, []);
 
-  // Handle company selection from WatchlistSelector
-  const handleCompanySelect = React.useCallback((companyCode: string | null) => {
-    console.log(`🔗 [Bridge] WatchlistSelector selected company: ${companyCode}`);
+  // Handlers
+  const handleCompanySelect = useCallback((companyCode: string) => {
     setSelectedCompany(companyCode);
   }, [setSelectedCompany]);
 
-  // Handle date change from WatchlistSelector
-  const handleDateChange = React.useCallback((dateStr: string) => {
-    console.log(`🔗 [Bridge] WatchlistSelector selected date: ${dateStr}`);
+  const handleDateChange = useCallback((dateStr: string) => {
     setSelectedDate(dateStr);
-  }, [setSelectedDate]);
+  }, [setSelectedDate, setSelectedCompany]);
 
-  // Fetch full historical data when company/date changes
+  // Fetch Full Historical Data
   useEffect(() => {
     if (!selectedDate || !selectedCompany) {
       setHistoricalDataPoints([]);
@@ -131,10 +153,7 @@ const RecommendationListPage: React.FC = () => {
     const loadChartData = async () => {
       setLoadingFullData(true);
       try {
-        // Fetch ALL data points from the file
         const points = await parseFullHistoricalData(selectedCompany, selectedDate);
-
-        // Convert to MarketData format
         const formattedPoints: MarketData[] = points.map(point => ({
           symbol: point.symbol,
           ltp: point.ltp,
@@ -151,12 +170,11 @@ const RecommendationListPage: React.FC = () => {
         }));
 
         setHistoricalDataPoints(formattedPoints);
-
-        // Convert to OHLC candles (5-minute intervals)
-        const ohlcCandles = convertToOHLC(points, 5);
+        // User requested "tick by tick" feel. 1-minute candles provide good granularity while maintaining performance.
+        // Raw ticks can be thousands per minute, unsuited for this chart type unless using LineSeries with unique seconds.
+        // 1-minute is a safe, high-resolution default.
+        const ohlcCandles = convertToOHLC(points, 1);
         setOHLCDataPoints(ohlcCandles);
-
-        console.log(`✅ [Time Machine] Loaded ${formattedPoints.length} points, ${ohlcCandles.length} candles`);
       } catch (error) {
         console.error('❌ [Time Machine] Error loading chart data:', error);
         setHistoricalDataPoints([]);
@@ -169,18 +187,13 @@ const RecommendationListPage: React.FC = () => {
     loadChartData();
   }, [selectedDate, selectedCompany]);
 
-  // Fetch Sthiti Intelligence data when company/date changes
+  // Fetch Sthiti Data
   useEffect(() => {
     if (!selectedDate || !selectedCompany) {
-      setSthitiPositiveClusters([]);
-      setSthitiNegativeClusters([]);
-      setSthitiNeutralClusters([]);
-      setSthitiPrediction(null);
+      // Clear logic...
       return;
     }
-
     const loadSthitiData = async () => {
-      // Load clusters
       setLoadingSthitiClusters(true);
       try {
         const [positive, negative, neutral] = await Promise.all([
@@ -191,443 +204,198 @@ const RecommendationListPage: React.FC = () => {
         setSthitiPositiveClusters(positive);
         setSthitiNegativeClusters(negative);
         setSthitiNeutralClusters(neutral);
-        console.log(`✅ [Sthiti Clusters] Loaded: ${positive.length} positive, ${negative.length} negative, ${neutral.length} neutral`);
-      } catch (error) {
-        console.error('❌ [Sthiti Clusters] Error:', error);
-      } finally {
-        setLoadingSthitiClusters(false);
-      }
+      } catch (e) { console.error(e); } finally { setLoadingSthitiClusters(false); }
 
-      // Load prediction
       setLoadingSthitiPrediction(true);
       try {
         const prediction = await fetchSthitiPrediction(selectedCompany, selectedDate);
         setSthitiPrediction(prediction);
-        console.log(`✅ [Sthiti Prediction] Loaded:`, prediction);
-      } catch (error) {
-        console.error('❌ [Sthiti Prediction] Error:', error);
-      } finally {
-        setLoadingSthitiPrediction(false);
-      }
+      } catch (e) { console.error(e); } finally { setLoadingSthitiPrediction(false); }
     };
-
     loadSthitiData();
   }, [selectedDate, selectedCompany]);
 
-  // Convert price data to MarketData format (use last point from historical data)
+
+
+  // Convert for LightWeightStockChart
+  const chartData = useMemo(() => {
+    // Use OHLC data which is already bucketed and deduplicated (unique timestamps)
+    // using historicalDataPoints includes raw ticks which causes "Assertion failed: data must be asc ordered" error due to duplicate timestamps
+    return ohlcDataPoints.map(p => ({
+      interval_start: new Date(p.timestamp * 1000).toISOString(),
+      open: p.open,
+      high: p.high,
+      low: p.low,
+      close: p.close,
+      volume: p.volume,
+      bid: p.bid,
+      ask: p.ask,
+      buyVolume: p.buyVolume,
+      sellVolume: p.sellVolume
+    }));
+  }, [ohlcDataPoints]);
+
   const currentData = useMemo<MarketData | null>(() => {
-    if (historicalDataPoints.length > 0) {
-      return historicalDataPoints[historicalDataPoints.length - 1];
-    }
-    if (!priceData) return null;
+    if (historicalDataPoints.length > 0) return historicalDataPoints[historicalDataPoints.length - 1];
+    return null;
+  }, [historicalDataPoints]);
 
-    return {
-      symbol: priceData.symbol || selectedCompany || '',
-      ltp: priceData.ltp,
-      change: priceData.ltp - priceData.prev_close_price,
-      changePercent: ((priceData.ltp - priceData.prev_close_price) / priceData.prev_close_price) * 100,
-      open: priceData.open_price,
-      high: priceData.high_price,
-      low: priceData.low_price,
-      close: priceData.ltp,
-      volume: priceData.vol_traded_today,
-      bid: priceData.bid_price,
-      ask: priceData.ask_price,
-      timestamp: priceData.timestamp,
-    };
-  }, [priceData, selectedCompany, historicalDataPoints]);
-
-  // Create trading hours object for historical data
-  const tradingHours = useMemo<TradingHours>(() => {
-    if (!selectedDate) {
-      return {
-        start: '09:15',
-        end: '15:30',
-        current: new Date().toISOString(),
-        isActive: false,
-      };
-    }
-
-    return {
-      start: '09:15',
-      end: '15:30',
-      current: selectedDate,
-      isActive: false, // Always false for historical data
-    };
-  }, [selectedDate]);
-
-  // Format helpers
-  const formatPrice = (price?: number) => price?.toFixed(2) || '0.00';
-  const formatChange = (change?: number, percent?: number) => {
-    if ((!change && change !== 0) || (!percent && percent !== 0)) return '-';
-    const sign = change >= 0 ? '+' : '';
-    return `${sign}${change.toFixed(2)} (${sign}${percent.toFixed(2)}%)`;
-  };
-  const getChangeClass = (change?: number) => {
-    if (!change && change !== 0) return '';
-    return change >= 0 ? 'text-green-500' : 'text-red-500';
-  };
-
-  // Overall sentiment calculation
   const overallSentiment = useMemo(() => {
-    if (sthitiPrediction) {
-      return sthitiPrediction.sentiment || 'NEUTRAL';
-    }
-
-    const positiveCount = sthitiPositiveClusters.length;
-    const negativeCount = sthitiNegativeClusters.length;
-
-    if (positiveCount > negativeCount) return 'POSITIVE';
-    if (negativeCount > positiveCount) return 'NEGATIVE';
+    if (sthitiPrediction) return sthitiPrediction.sentiment || 'NEUTRAL';
+    if (sthitiPositiveClusters.length > sthitiNegativeClusters.length) return 'POSITIVE';
+    if (sthitiNegativeClusters.length > sthitiPositiveClusters.length) return 'NEGATIVE';
     return 'NEUTRAL';
   }, [sthitiPrediction, sthitiPositiveClusters, sthitiNegativeClusters]);
 
-  const getSentimentStyle = (sentiment: string) => {
-    switch (sentiment.toUpperCase()) {
-      case 'POSITIVE':
-        return {
-          background: 'bg-gradient-to-r from-green-500/10 to-green-900/10 border-green-500/40',
-          text: 'text-green-400',
-          label: 'Overall Sentiment: Positive',
-        };
-      case 'NEGATIVE':
-        return {
-          background: 'bg-gradient-to-r from-red-500/10 to-red-900/10 border-red-500/40',
-          text: 'text-red-400',
-          label: 'Overall Sentiment: Negative',
-        };
-      default:
-        return {
-          background: 'bg-gradient-to-r from-zinc-500/30 to-zinc-600/20 border-zinc-500/40',
-          text: 'text-zinc-400',
-          label: 'Overall Sentiment: Neutral',
-        };
-    }
-  };
+  const pageTitle = selectedCompany ? `${selectedCompany} Time Machine` : "Historical Data Time Machine";
 
-  if (!isClient) {
-    return (
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <header className="flex h-16 shrink-0 items-center gap-2 w-full">
-            <div className="flex items-center gap-2 px-4">
-              <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-2 h-4" />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>Loading Time Machine...</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
-            </div>
-          </header>
-          <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-            <div className="flex items-center justify-center h-[80vh]">
-              <div className="text-xl animate-pulse">Initializing Time Machine...</div>
-            </div>
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
-    );
-  }
+  if (!isClient) return null;
 
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 w-full">
-          <div className="flex items-center gap-2 px-4 w-full">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb className="flex items-center justify-between w-full">
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#">Home</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>📅 Historical Data Time Machine</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-              <ModeToggle />
-            </Breadcrumb>
+      <SidebarInset className="overflow-hidden flex flex-col h-screen">
+
+        {/* HEADER */}
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-background px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          <Breadcrumb className="flex-1">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink href="/dashboard">Home</BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{pageTitle}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+
+          <div className="flex items-center gap-2">
+            <ModeToggle />
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          {/* ✅ REFACTORED: WatchlistSelector2 UI with Time Machine (Port 6969) backend */}
-          <Card className="w-full">
-            <CardContent className="p-4">
-              <WatchlistSelector
-                onCompanySelect={handleCompanySelect}
-                onDateChange={handleDateChange}
-                showExchangeFilter={false}
-                showMarkerFilter={false}
-                showSentimentFilter={false}
-                showDateSelector={true}
-              />
-            </CardContent>
-          </Card>
+        {/* MAIN CONTENT ROW */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
 
-          {/* Main Content */}
-          <div className="min-h-screen bg-zinc-900 text-zinc-100 rounded-lg">
-            <div className="w-full p-4">
-              <div className="flex gap-6 mb-6">
-                {/* ============ MAIN CHART AREA (75%) ============ */}
-                <div className="w-3/4">
-                  <div className="bg-zinc-800 rounded-lg shadow-lg h-[800px]">
-                    {!selectedCompany ? (
-                      <div className="h-full flex flex-col items-center justify-center space-y-4">
-                        <Database className="h-16 w-16 text-zinc-600 mb-4" />
-                        <h3 className="text-xl font-semibold text-zinc-400">Select Date & Company</h3>
-                        <p className="text-zinc-500 max-w-md text-center">
-                          Choose a date and company from the dropdowns above to view historical market data
-                        </p>
-                      </div>
-                    ) : loadingFullData ? (
-                      <div className="h-full flex items-center justify-center">
-                        <div className="text-center space-y-2">
-                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-                          <p className="text-zinc-400">Loading historical data for {selectedCompany}...</p>
-                        </div>
-                      </div>
-                    ) : historicalDataPoints.length > 0 ? (
-                      <div className="w-full h-full">
-                        <PlotlyChart
-                          symbol={`NSE:${selectedCompany}-EQ`}
-                          data={currentData}
-                          historicalData={historicalDataPoints}
-                          ohlcData={ohlcDataPoints}
-                          chartUpdates={[]}
-                          tradingHours={tradingHours}
-                          updateFrequency={0}
-                          predictions={null}
-                          showPredictions={false}
-                          isGttEnabled={false}
-                          gttExternalData={null}
-                        />
-                      </div>
-                    ) : (
-                      <div className="h-full flex items-center justify-center">
-                        <div className="text-center text-red-400">
-                          <p>No data available for this selection</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+          {/* LEFT: CHART & ANALYSIS SPLIT */}
+          <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden">
 
-                {/* ============ SIDEBAR (25%) ============ */}
-                <div className="w-1/4 bg-zinc-800 p-4 rounded-lg shadow-lg max-h-[800px] overflow-y-auto">
-                  {currentData ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h2 className="text-xl font-semibold text-white">{selectedCompany}</h2>
-                        <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
-                          Historical
-                        </Badge>
-                      </div>
-
-                      <div className="text-3xl font-bold text-white">₹{formatPrice(currentData.ltp)}</div>
-                      <div className={`text-lg ${getChangeClass(currentData.change)}`}>
-                        {formatChange(currentData.change, currentData.changePercent)}
-                      </div>
-
-                      {/* Sentiment Display */}
-                      {(() => {
-                        const style = getSentimentStyle(overallSentiment);
-                        return (
-                          <div className={`mt-3 p-3 rounded-lg border-2 ${style.background} backdrop-blur-sm`}>
-                            <span className={`text-sm font-medium ${style.text}`}>
-                              {style.label}
-                            </span>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Price Stats Grid */}
-                      <div className="grid grid-cols-2 gap-4 mt-6">
-                        <div className="bg-zinc-700 p-3 rounded">
-                          <div className="text-xs text-zinc-400">Open</div>
-                          <div className="text-lg text-white">₹{formatPrice(currentData.open)}</div>
-                        </div>
-                        <div className="bg-zinc-700 p-3 rounded">
-                          <div className="text-xs text-zinc-400">Close</div>
-                          <div className="text-lg text-white">₹{formatPrice(currentData.close)}</div>
-                        </div>
-                        <div className="bg-zinc-700 p-3 rounded">
-                          <div className="text-xs text-zinc-400">High</div>
-                          <div className="text-lg text-green-400">₹{formatPrice(currentData.high)}</div>
-                        </div>
-                        <div className="bg-zinc-700 p-3 rounded">
-                          <div className="text-xs text-zinc-400">Low</div>
-                          <div className="text-lg text-red-400">₹{formatPrice(currentData.low)}</div>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 border-t border-zinc-700 pt-4">
-                        <div className="grid grid-cols-2 gap-y-2">
-                          <div>
-                            <div className="text-xs text-zinc-400">Volume</div>
-                            <div className="text-white">{currentData.volume?.toLocaleString() || '0'}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-zinc-400">Updated</div>
-                            <div className="text-blue-400">
-                              {new Date(currentData.timestamp * 1000).toLocaleTimeString()}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* ============ STHITI INTELLIGENCE WIDGETS ============ */}
-
-                      {/* AI Prediction Widget */}
-                      {loadingSthitiPrediction ? (
-                        <div className="text-center text-zinc-400 text-sm mt-4">Loading predictions...</div>
-                      ) : sthitiPrediction ? (
-                        <Card className="bg-blue-500/5 border-blue-500/20 mt-4">
-                          <CardContent className="p-3">
-                            <h4 className="text-sm font-semibold text-blue-400 mb-2">🤖 AI Prediction</h4>
-                            <div className="space-y-2 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-zinc-400">Sentiment:</span>
-                                <span className={getSentimentStyle(sthitiPrediction.sentiment).text}>
-                                  {sthitiPrediction.sentiment}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-zinc-400">Confidence:</span>
-                                <Badge
-                                  variant="outline"
-                                  className={`text-xs ${sthitiPrediction.confidence === 'HIGH'
-                                      ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                      : sthitiPrediction.confidence === 'MEDIUM'
-                                        ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                                        : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
-                                    }`}
-                                >
-                                  {sthitiPrediction.confidence}
-                                </Badge>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-zinc-400">Score:</span>
-                                <span className="text-white">{sthitiPrediction.score?.toFixed?.(2) ?? sthitiPrediction.score}</span>
-                              </div>
-                              {sthitiPrediction.headlines_analyzed !== undefined && (
-                                <div className="flex justify-between">
-                                  <span className="text-zinc-400">Headlines:</span>
-                                  <span className="text-white">{sthitiPrediction.headlines_analyzed}</span>
-                                </div>
-                              )}
-                              <div className="mt-2 pt-2 border-t border-zinc-700">
-                                <p className="text-xs text-zinc-400">{sthitiPrediction.reasoning}</p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ) : null}
-
-                      {/* Sentiment Clusters */}
-                      {!loadingSthitiClusters && (sthitiPositiveClusters.length > 0 || sthitiNegativeClusters.length > 0 || sthitiNeutralClusters.length > 0) && (
-                        <div className="space-y-2 mt-4">
-                          <h4 className="text-sm font-semibold text-zinc-400">Market Sentiment</h4>
-
-                          {sthitiPositiveClusters.length > 0 && (
-                            <Card className="bg-green-500/5 border-green-500/20">
-                              <CardContent className="p-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <TrendingUp className="h-4 w-4 text-green-400" />
-                                  <span className="text-green-400 font-medium">
-                                    Positive ({sthitiPositiveClusters.length})
-                                  </span>
-                                </div>
-                                <ScrollArea className="h-[100px]">
-                                  {sthitiPositiveClusters.map((cluster, i) => (
-                                    <div key={i} className="text-xs text-zinc-300 mb-1">
-                                      • {cluster.representative_phrases?.[0] || 'No phrase available'}
-                                    </div>
-                                  ))}
-                                </ScrollArea>
-                              </CardContent>
-                            </Card>
-                          )}
-
-                          {sthitiNegativeClusters.length > 0 && (
-                            <Card className="bg-red-500/5 border-red-500/20">
-                              <CardContent className="p-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <TrendingDown className="h-4 w-4 text-red-400" />
-                                  <span className="text-red-400 font-medium">
-                                    Negative ({sthitiNegativeClusters.length})
-                                  </span>
-                                </div>
-                                <ScrollArea className="h-[100px]">
-                                  {sthitiNegativeClusters.map((cluster, i) => (
-                                    <div key={i} className="text-xs text-zinc-300 mb-1">
-                                      • {cluster.representative_phrases?.[0] || 'No phrase available'}
-                                    </div>
-                                  ))}
-                                </ScrollArea>
-                              </CardContent>
-                            </Card>
-                          )}
-
-                          {sthitiNeutralClusters.length > 0 && (
-                            <Card className="bg-zinc-500/5 border-zinc-500/20">
-                              <CardContent className="p-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-zinc-400 font-medium">
-                                    Neutral ({sthitiNeutralClusters.length})
-                                  </span>
-                                </div>
-                                <ScrollArea className="h-[80px]">
-                                  {sthitiNeutralClusters.map((cluster, i) => (
-                                    <div key={i} className="text-xs text-zinc-300 mb-1">
-                                      • {cluster.representative_phrases?.[0] || 'No phrase available'}
-                                    </div>
-                                  ))}
-                                </ScrollArea>
-                              </CardContent>
-                            </Card>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Market News Widget */}
-                      <div className="mt-4">
-                        <HistoricalMarketNews
-                          symbol={selectedCompany}
-                          date={selectedDate}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
-                      <Database className="h-12 w-12 text-zinc-600" />
-                      <p className="text-zinc-500 text-sm">
-                        Select a company to view historical data and analysis
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* ============ HISTORICAL CHART CAROUSEL (BOTTOM) ============ */}
-              {selectedCompany && selectedDate && (
-                <div className="mb-8">
-                  <HistoricalChartCarousel
-                    companyCode={selectedCompany}
-                    selectedDate={selectedDate}
-                    overallSentiment={overallSentiment}
+            {/* Upper: Chart */}
+            <div
+              className="relative border-b flex flex-col transition-[flex-basis] duration-300 ease-in-out overflow-hidden"
+              style={{ flex: isAnalysisVisible ? '0 0 55%' : '1 1 auto' }}
+            >
+              {selectedCompany ? (
+                <div className="relative w-full h-full flex flex-col">
+                  {/* StockChart takes full height of this container */}
+                  <StockChart
+                    companyId={selectedCompany}
+                    data={chartData}
+                    interval="1m"
+                    loading={loadingFullData}
+                    height="100%"
+                    className="w-full h-full"
+                    theme={theme === 'light' ? 'light' : 'dark'}
                   />
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center text-muted-foreground p-8 text-center flex-col gap-4">
+                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+                    <Database size={32} />
+                  </div>
+                  <h2 className="text-xl font-semibold text-foreground">Time Machine Mode</h2>
+                  <p className="max-w-md">
+                    Select a date and company from the sidebar to replay historical market data.
+                  </p>
                 </div>
               )}
             </div>
+
+            {/* Toggle Button Bar - Fixed Height */}
+            {selectedCompany && (
+              <div className="flex-none flex items-center justify-center border-b bg-muted/20 hover:bg-muted/40 transition-colors py-1 cursor-pointer z-10" onClick={() => setIsAnalysisVisible(!isAnalysisVisible)}>
+                <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 opacity-70 hover:opacity-100">
+                  {isAnalysisVisible ? (
+                    <>
+                      <ChevronDown className="h-3 w-3" />
+                      Hide Analysis
+                    </>
+                  ) : (
+                    <>
+                      <ChevronUp className="h-3 w-3" />
+                      Show Analysis
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* Lower: Analysis / Carousel (Collapsible) - Fills Helper */}
+            {selectedCompany && isAnalysisVisible && (
+              <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden animate-in slide-in-from-bottom-5 duration-300 fade-in">
+                <Tabs defaultValue="analysis" className="flex-1 flex flex-col min-h-0">
+                  <div className="border-b px-4 bg-muted/20 shrink-0">
+                    <TabsList className="h-9">
+                      <TabsTrigger value="analysis" className="text-xs">Sentiment & Prediction</TabsTrigger>
+                      <TabsTrigger value="charts" className="text-xs">Historical Charts</TabsTrigger>
+                    </TabsList>
+                  </div>
+                  <div className="flex-1 overflow-hidden relative">
+                    <TabsContent value="analysis" className="h-full m-0 p-0">
+                      <div className="h-full w-full">
+                        <AnalysisPanel
+                          selectedCompany={selectedCompany}
+                          currentData={currentData}
+                          overallSentiment={overallSentiment}
+                          sthitiPrediction={sthitiPrediction}
+                          loadingSthitiPrediction={loadingSthitiPrediction}
+                          sthitiPositiveClusters={sthitiPositiveClusters}
+                          sthitiNegativeClusters={sthitiNegativeClusters}
+                          sthitiNeutralClusters={sthitiNeutralClusters}
+                          loadingSthitiClusters={loadingSthitiClusters}
+                          selectedDate={selectedDate}
+                        />
+                      </div>
+                    </TabsContent>
+                    <TabsContent value="charts" className="h-full m-0 p-4 overflow-y-auto">
+                      <HistoricalChartCarousel
+                        companyCode={selectedCompany}
+                        selectedDate={selectedDate || ''}
+                        overallSentiment={overallSentiment as 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL'}
+                      />
+                    </TabsContent>
+                  </div>
+                </Tabs>
+              </div>
+            )}
           </div>
+
+          {/* RIGHT: SIDEBAR (COMPANY LIST) */}
+          <div className="w-72 border-l bg-background flex flex-col shrink-0 transition-all duration-300">
+            <div className="flex-1 overflow-hidden">
+              <CompanyList
+                companies={companies || []} // Use Watchlist hook companies
+                selectedCompanyCode={selectedCompany}
+                onSelect={handleCompanySelect}
+                loading={watchlistLoading}
+
+                // Date Integration
+                selectedWatchlistDate={selectedDate}
+                onWatchlistDateChange={handleDateChange}
+                availableDates={availableDates}
+
+              // Disable chart range picker since this is Time Machine (single date view)
+              // Or maybe we treat "Range" as "Replay Window"? 
+              // For now, let's hide range picker or ignore it
+              />
+            </div>
+          </div>
+
         </div>
+
       </SidebarInset>
     </SidebarProvider>
   );

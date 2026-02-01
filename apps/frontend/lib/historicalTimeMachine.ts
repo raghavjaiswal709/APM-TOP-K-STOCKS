@@ -155,7 +155,7 @@ export async function fetchCompaniesForDate(isoDate: string): Promise<string[]> 
 
         console.log('🔍 [fetchCompaniesForDate] URL:', fullUrl);
 
-        const response = await fetch(fullUrl, { 
+        const response = await fetch(fullUrl, {
             cache: 'no-cache',
             headers: {
                 'Content-Type': 'application/json',
@@ -220,7 +220,7 @@ export async function fetchSthitiCharts(
 
         console.log(`[fetchSthitiCharts] Fetching from: ${proxyUrl}`);
 
-        const response = await fetch(proxyUrl, { 
+        const response = await fetch(proxyUrl, {
             cache: 'no-cache',
             headers: {
                 'Accept': 'text/html',
@@ -255,7 +255,7 @@ export async function fetchSthitiClusters(
         const proxyUrl = `${STHITI_PROXY}/clusters/${symbol}/${sentiment}/`;
         console.log(`[fetchSthitiClusters] Fetching ${sentiment} clusters from: ${proxyUrl}`);
 
-        const response = await fetch(proxyUrl, { 
+        const response = await fetch(proxyUrl, {
             cache: 'no-cache',
             headers: {
                 'Accept': 'text/html',
@@ -420,15 +420,44 @@ export function convertToOHLC(
         high: number;
         low: number;
         close: number;
-        volume: number;
+        startVolume: number;
+        endVolume: number;
         firstTimestamp: number;
         lastTimestamp: number;
+        // New fields
+        bid: number;
+        ask: number;
+        buyVolume: number;
+        sellVolume: number;
+        prevLtp: number;
     }>();
 
     // Group data points into intervals
+    let prevLtp = dataPoints.length > 0 ? dataPoints[0].ltp : 0;
+
     dataPoints.forEach(point => {
         const bucketTime = Math.floor(point.timestamp * 1000 / intervalMs) * intervalMs;
         const existing = candles.get(bucketTime);
+
+        // Calculate Buy/Sell Volume Ratio based on price movement
+        // If price went up, assume more buying. If down, more selling.
+        // Sensitivity factor 1000 means 0.05% move shifts ratio significantly.
+        const priceChange = prevLtp > 0 ? (point.ltp - prevLtp) / prevLtp : 0;
+        const buyRatio = Math.max(0, Math.min(1, 0.5 + (priceChange * 500)));
+        // Incremental volume for this tick (approximate as change in cum vol, but we only have total)
+        // Wait, for per-tick logic we need 'incremental' volume of the tick.
+        // point.vol_traded_today is cumulative. 
+        // We can't easily get per-tick volume without tracking prev point volume strictly across all points.
+        // We will approximate: we aggregate the *cumulative volume delta* logic at the end, 
+        // but for B/S split we need it NOW.
+        // Let's rely on the candle-level O-C for B/S split to be safer and faster, 
+        // OR just use simple Price-Volume Trend (PVT) approximation at chart level.
+        // Doing per-tick estimation without clean incremental volume is risky.
+        // Let's stick to tracking Bid/Ask (last vals). Use Chart-level heuristic for B/S Vol based on Candle Color/Size.
+
+        // Wait, user wants "B/S". Better to do it in chart component using Candle Data?
+        // Actually, if I can track bid/ask here, that's great.
+        // Let's just track Bid/Ask here.
 
         if (!existing) {
             candles.set(bucketTime, {
@@ -436,29 +465,56 @@ export function convertToOHLC(
                 high: point.ltp,
                 low: point.ltp,
                 close: point.ltp,
-                volume: point.vol_traded_today,
+                startVolume: point.vol_traded_today,
+                endVolume: point.vol_traded_today,
                 firstTimestamp: point.timestamp,
                 lastTimestamp: point.timestamp,
+                bid: point.bid_price || 0,
+                ask: point.ask_price || 0,
+                buyVolume: 0,
+                sellVolume: 0,
+                prevLtp: prevLtp
             });
         } else {
             existing.high = Math.max(existing.high, point.ltp);
             existing.low = Math.min(existing.low, point.ltp);
             existing.close = point.ltp;
-            existing.volume = point.vol_traded_today; // Use latest volume
+            existing.endVolume = point.vol_traded_today;
             existing.lastTimestamp = point.timestamp;
+            // Update last bid/ask
+            existing.bid = point.bid_price || existing.bid;
+            existing.ask = point.ask_price || existing.ask;
         }
+        prevLtp = point.ltp;
     });
 
     // Convert to array and sort
     const result = Array.from(candles.entries())
-        .map(([bucketTime, candle]) => ({
-            timestamp: Math.floor(bucketTime / 1000), // Convert back to seconds
-            open: candle.open,
-            high: candle.high,
-            low: candle.low,
-            close: candle.close,
-            volume: candle.volume,
-        }))
+        .map(([bucketTime, candle]) => {
+            const vol = Math.max(0, candle.endVolume - candle.startVolume);
+
+            // Heuristic Split based on Candle Body
+            // Close > Open => Buy Dominated
+            // Close < Open => Sell Dominated
+            const bodySize = candle.close - candle.open;
+            const totalRange = candle.high - candle.low || 1;
+            const buyRatio = 0.5 + (bodySize / totalRange) * 0.5; // 0 to 1 range approx centering at 0.5
+            const buyVol = vol * Math.max(0, Math.min(1, buyRatio));
+            const sellVol = vol - buyVol;
+
+            return {
+                timestamp: Math.floor(bucketTime / 1000),
+                open: candle.open,
+                high: candle.high,
+                low: candle.low,
+                close: candle.close,
+                volume: vol,
+                bid: candle.bid,
+                ask: candle.ask,
+                buyVolume: buyVol,
+                sellVolume: sellVol
+            };
+        })
         .sort((a, b) => a.timestamp - b.timestamp);
 
     console.log(`✅ [convertToOHLC] Created ${result.length} candles from ${dataPoints.length} points`);

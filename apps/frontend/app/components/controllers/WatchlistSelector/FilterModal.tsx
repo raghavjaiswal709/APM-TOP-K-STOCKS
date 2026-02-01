@@ -1,7 +1,7 @@
 // FilterModal.tsx
 "use client"
 import * as React from "react"
-import { Filter, X, Check } from "lucide-react"
+import { Filter, X, Check, Brain, Zap, TrendingUp, TrendingDown, Minus, Target } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +17,10 @@ interface ActiveFilters {
   markers: string[];
   refined: boolean | null;
   showAllCompanies: boolean;
+  hasPrediction: boolean | null; // null = all, true = with prediction, false = without
+  hasGtt: boolean | null;
+  sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | null;
+  desirability: 'high' | 'medium' | 'low' | null;
 }
 
 interface FilterModalProps {
@@ -90,7 +94,11 @@ export function FilterModal({
       exchanges: [],
       markers: [],
       refined: null,
-      showAllCompanies: false
+      showAllCompanies: false,
+      hasPrediction: null,
+      hasGtt: null,
+      sentiment: null,
+      desirability: null
     };
     setTempFilters(clearedFilters);
     onFiltersChange(clearedFilters);
@@ -115,6 +123,10 @@ export function FilterModal({
       count = tempFilters.exchanges.length + tempFilters.markers.length + (tempFilters.refined !== null ? 1 : 0);
     }
     if (tempFilters.showAllCompanies) count++;
+    if (tempFilters.hasPrediction !== null) count++;
+    if (tempFilters.hasGtt !== null) count++;
+    if (tempFilters.sentiment !== null) count++;
+    if (tempFilters.desirability !== null) count++;
     return count;
   };
 
@@ -295,9 +307,246 @@ export function FilterModal({
                   <span className="text-sm font-medium">Non-Refined</span>
                 </div>
               </div>
-              {/* <div className="text-xs text-muted-foreground px-1">
-                Refined stocks are premium quality selections based on advanced analysis
-              </div> */}
+            </div>
+
+            {/* Prediction Availability Filter */}
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Brain className="h-4 w-4 text-orange-500" />
+                Prediction Available
+              </h4>
+              <div className="grid grid-cols-3 gap-2">
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, hasPrediction: null }))}
+                  className={cn(
+                    "flex items-center justify-center gap-2 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.hasPrediction === null && "bg-accent border-primary"
+                  )}
+                >
+                  <div className={cn(
+                    "h-4 w-4 border rounded flex items-center justify-center",
+                    tempFilters.hasPrediction === null && "bg-primary border-primary"
+                  )}>
+                    {tempFilters.hasPrediction === null && (
+                      <Check className="h-3 w-3 text-primary-foreground" />
+                    )}
+                  </div>
+                  <span className="text-sm font-medium">All</span>
+                </div>
+                
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, hasPrediction: true }))}
+                  className={cn(
+                    "flex items-center justify-center gap-2 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.hasPrediction === true && "bg-orange-500/20 border-orange-500"
+                  )}
+                >
+                  <div className={cn(
+                    "h-4 w-4 border rounded flex items-center justify-center",
+                    tempFilters.hasPrediction === true && "bg-orange-500 border-orange-500"
+                  )}>
+                    {tempFilters.hasPrediction === true && (
+                      <Check className="h-3 w-3 text-white" />
+                    )}
+                  </div>
+                  <span className="text-sm font-medium">With 🧠</span>
+                </div>
+
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, hasPrediction: false }))}
+                  className={cn(
+                    "flex items-center justify-center gap-2 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.hasPrediction === false && "bg-accent border-primary"
+                  )}
+                >
+                  <div className={cn(
+                    "h-4 w-4 border rounded flex items-center justify-center",
+                    tempFilters.hasPrediction === false && "bg-primary border-primary"
+                  )}>
+                    {tempFilters.hasPrediction === false && (
+                      <Check className="h-3 w-3 text-primary-foreground" />
+                    )}
+                  </div>
+                  <span className="text-sm font-medium">Without</span>
+                </div>
+              </div>
+            </div>
+
+            {/* GTT Prediction Filter */}
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Zap className="h-4 w-4 text-purple-500" />
+                GTT Prediction
+              </h4>
+              <div className="grid grid-cols-3 gap-2">
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, hasGtt: null }))}
+                  className={cn(
+                    "flex items-center justify-center gap-2 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.hasGtt === null && "bg-accent border-primary"
+                  )}
+                >
+                  <div className={cn(
+                    "h-4 w-4 border rounded flex items-center justify-center",
+                    tempFilters.hasGtt === null && "bg-primary border-primary"
+                  )}>
+                    {tempFilters.hasGtt === null && (
+                      <Check className="h-3 w-3 text-primary-foreground" />
+                    )}
+                  </div>
+                  <span className="text-sm font-medium">All</span>
+                </div>
+                
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, hasGtt: true }))}
+                  className={cn(
+                    "flex items-center justify-center gap-2 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.hasGtt === true && "bg-purple-500/20 border-purple-500"
+                  )}
+                >
+                  <div className={cn(
+                    "h-4 w-4 border rounded flex items-center justify-center",
+                    tempFilters.hasGtt === true && "bg-purple-500 border-purple-500"
+                  )}>
+                    {tempFilters.hasGtt === true && (
+                      <Check className="h-3 w-3 text-white" />
+                    )}
+                  </div>
+                  <span className="text-sm font-medium">With ⚡</span>
+                </div>
+
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, hasGtt: false }))}
+                  className={cn(
+                    "flex items-center justify-center gap-2 p-3 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.hasGtt === false && "bg-accent border-primary"
+                  )}
+                >
+                  <div className={cn(
+                    "h-4 w-4 border rounded flex items-center justify-center",
+                    tempFilters.hasGtt === false && "bg-primary border-primary"
+                  )}>
+                    {tempFilters.hasGtt === false && (
+                      <Check className="h-3 w-3 text-primary-foreground" />
+                    )}
+                  </div>
+                  <span className="text-sm font-medium">Without</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Sentiment Filter */}
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Target className="h-4 w-4 text-blue-500" />
+                Sentiment
+              </h4>
+              <div className="grid grid-cols-4 gap-2">
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, sentiment: null }))}
+                  className={cn(
+                    "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.sentiment === null && "bg-accent border-primary"
+                  )}
+                >
+                  <div className={cn(
+                    "h-4 w-4 border rounded flex items-center justify-center",
+                    tempFilters.sentiment === null && "bg-primary border-primary"
+                  )}>
+                    {tempFilters.sentiment === null && (
+                      <Check className="h-3 w-3 text-primary-foreground" />
+                    )}
+                  </div>
+                  <span className="text-xs font-medium">All</span>
+                </div>
+                
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, sentiment: 'BULLISH' }))}
+                  className={cn(
+                    "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.sentiment === 'BULLISH' && "bg-green-500/20 border-green-500"
+                  )}
+                >
+                  <TrendingUp className="h-3 w-3 text-green-500" />
+                  <span className="text-xs font-medium">Bullish</span>
+                </div>
+
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, sentiment: 'BEARISH' }))}
+                  className={cn(
+                    "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.sentiment === 'BEARISH' && "bg-red-500/20 border-red-500"
+                  )}
+                >
+                  <TrendingDown className="h-3 w-3 text-red-500" />
+                  <span className="text-xs font-medium">Bearish</span>
+                </div>
+
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, sentiment: 'NEUTRAL' }))}
+                  className={cn(
+                    "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.sentiment === 'NEUTRAL' && "bg-gray-500/20 border-gray-500"
+                  )}
+                >
+                  <Minus className="h-3 w-3 text-gray-500" />
+                  <span className="text-xs font-medium">Neutral</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Desirability Filter */}
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm">Desirability Score</h4>
+              <div className="grid grid-cols-4 gap-2">
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, desirability: null }))}
+                  className={cn(
+                    "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.desirability === null && "bg-accent border-primary"
+                  )}
+                >
+                  <div className={cn(
+                    "h-4 w-4 border rounded flex items-center justify-center",
+                    tempFilters.desirability === null && "bg-primary border-primary"
+                  )}>
+                    {tempFilters.desirability === null && (
+                      <Check className="h-3 w-3 text-primary-foreground" />
+                    )}
+                  </div>
+                  <span className="text-xs font-medium">All</span>
+                </div>
+                
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, desirability: 'high' }))}
+                  className={cn(
+                    "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.desirability === 'high' && "bg-emerald-500/20 border-emerald-500"
+                  )}
+                >
+                  <span className="text-xs font-medium text-emerald-500">High</span>
+                </div>
+
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, desirability: 'medium' }))}
+                  className={cn(
+                    "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.desirability === 'medium' && "bg-blue-500/20 border-blue-500"
+                  )}
+                >
+                  <span className="text-xs font-medium text-blue-500">Medium</span>
+                </div>
+
+                <div
+                  onClick={() => setTempFilters(prev => ({ ...prev, desirability: 'low' }))}
+                  className={cn(
+                    "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                    tempFilters.desirability === 'low' && "bg-amber-500/20 border-amber-500"
+                  )}
+                >
+                  <span className="text-xs font-medium text-amber-500">Low</span>
+                </div>
+              </div>
             </div>
           </CardContent>
 

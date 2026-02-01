@@ -9,8 +9,8 @@
 
 # CONFIGURATION
 
-# PROJECT_DIR="/Users/raghav/Documents/GitHub/APM-TOP-K-STOCKS"
-PROJECT_DIR="/nvme1/production/Dashboard/Kuber_Dash/"
+PROJECT_DIR="/Users/raghav/Documents/GitHub/APM-TOP-K-STOCKS"
+# PROJECT_DIR="/nvme1/production/Dashboard/Kuber_Dash/"
 MULTI_INSTANCES_DIR="$PROJECT_DIR/multi-instances"
 LOG_DIR="$MULTI_INSTANCES_DIR/logs"
 

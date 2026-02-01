@@ -4,7 +4,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Plus, Check, Loader2, AlertCircle, RefreshCw, Clock, Calendar } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { X, Plus, Check, Loader2, AlertCircle, RefreshCw, Clock, Calendar, Wifi, WifiOff, Ban, Undo2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 
@@ -49,6 +50,12 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isFetchingSubscriptions, setIsFetchingSubscriptions] = useState(false);
+    const [activeTab, setActiveTab] = useState("subscribed");
+    
+    // New state for all 4 categories
+    const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
+    const [stoppedSymbols, setStoppedSymbols] = useState<string[]>([]);
+    const [permanentlyStoppedSymbols, setPermanentlyStoppedSymbols] = useState<string[]>([]);
 
     // Effects
 
@@ -65,6 +72,29 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
         setError(null);
 
         try {
+            // Fetch all subscription statuses in one call
+            const statusResponse = await fetch('/api/admin/subscription-status', {
+                method: 'GET',
+                cache: 'no-store',
+            });
+
+            if (statusResponse.ok) {
+                const statusData = await statusResponse.json();
+                if (statusData.success && statusData.data) {
+                    // Update all 4 categories
+                    const subscribedSet = new Set(statusData.data.subscribed || []);
+                    setSelectedSymbols(subscribedSet);
+                    setOriginalSubscriptions(subscribedSet);
+                    setFailedSymbols(statusData.data.failed || []);
+                    setStoppedSymbols(statusData.data.stopped || []);
+                    setPermanentlyStoppedSymbols(statusData.data.permanentlyStopped || []);
+                    setStagedChanges(new Set());
+                    console.log(`✅ Loaded subscription status:`, statusData.counts);
+                    return;
+                }
+            }
+
+            // Fallback to old method
             const response = await fetch('/api/market-data/subscribe', {
                 method: 'GET',
             });
@@ -78,11 +108,10 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
             if (data.success && Array.isArray(data.subscriptions)) {
                 const subscriptionsSet = new Set(data.subscriptions);
                 setSelectedSymbols(subscriptionsSet);
-                setOriginalSubscriptions(subscriptionsSet); // ✅ Store original state
-                setStagedChanges(new Set()); // Clear staged changes
+                setOriginalSubscriptions(subscriptionsSet);
+                setStagedChanges(new Set());
                 console.log(`✅ Loaded ${data.subscriptions.length} active subscriptions`);
             } else {
-                // Fallback to props if API fails
                 const fallbackSet = new Set(currentSubscriptions);
                 setSelectedSymbols(fallbackSet);
                 setOriginalSubscriptions(fallbackSet);
@@ -90,7 +119,6 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
 
         } catch (err: any) {
             console.error('Failed to fetch subscriptions:', err);
-            // Fallback to props
             const fallbackSet = new Set(currentSubscriptions);
             setSelectedSymbols(fallbackSet);
             setOriginalSubscriptions(fallbackSet);
@@ -199,6 +227,43 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
         });
         setSelectedSymbols(new Set());
     }, [subscribedList]);
+
+    // Handler to add symbol to permanently stopped
+    const handleAddToPermanentlyBlocked = useCallback(async (symbol: string) => {
+        try {
+            const response = await fetch('/api/admin/permanently-stopped', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbols: [symbol] })
+            });
+            if (response.ok) {
+                setPermanentlyStoppedSymbols(prev => [...prev, symbol]);
+                setStoppedSymbols(prev => prev.filter(s => s !== symbol));
+                toast.success(`Added ${symbol.split(':')[1]?.split('-')[0] || symbol} to permanently blocked`);
+            }
+        } catch (err) {
+            console.error('Failed to add to permanently blocked:', err);
+            toast.error('Failed to add to permanently blocked');
+        }
+    }, []);
+
+    // Handler to remove symbol from permanently stopped
+    const handleRemoveFromPermanentlyBlocked = useCallback(async (symbol: string) => {
+        try {
+            const response = await fetch('/api/admin/permanently-stopped', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol })
+            });
+            if (response.ok) {
+                setPermanentlyStoppedSymbols(prev => prev.filter(s => s !== symbol));
+                toast.success(`Unblocked ${symbol.split(':')[1]?.split('-')[0] || symbol}`);
+            }
+        } catch (err) {
+            console.error('Failed to remove from permanently blocked:', err);
+            toast.error('Failed to unblock symbol');
+        }
+    }, []);
 
     // Handle confirmation
     const handleConfirm = async () => {
@@ -324,117 +389,269 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
                     </div>
                 ) : (
                     <>
-                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 min-h-0 overflow-hidden py-4">
-                            {/* Subscribed Section */}
-                            <div className="flex flex-col border border-zinc-800 rounded-lg bg-zinc-900/30 min-h-0 overflow-hidden shadow-inner">
-                                <div className="p-3 border-b border-zinc-800 bg-zinc-900/50 flex justify-between items-center">
-                                    <h3 className="font-semibold text-sm flex items-center gap-2 text-green-400">
-                                        <Check className="w-4 h-4" />
-                                        Subscribed ({subscribedList.length})
-                                    </h3>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={handleClearAll}
-                                        className="h-7 text-xs text-zinc-400 hover:text-red-400"
-                                        disabled={subscribedList.length === 0 || isSubmitting}
-                                    >
-                                        Clear All
-                                    </Button>
-                                </div>
+                        {/* Tabs for 4 categories */}
+                        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden py-2">
+                            <TabsList className="grid w-full grid-cols-4 bg-zinc-900/50 p-1 h-auto">
+                                <TabsTrigger 
+                                    value="subscribed" 
+                                    className="data-[state=active]:bg-green-900/30 data-[state=active]:text-green-400 text-xs py-2"
+                                >
+                                    <Wifi className="w-3 h-3 mr-1.5" />
+                                    Subscribed ({subscribedList.length})
+                                </TabsTrigger>
+                                <TabsTrigger 
+                                    value="available" 
+                                    className="data-[state=active]:bg-blue-900/30 data-[state=active]:text-blue-400 text-xs py-2"
+                                >
+                                    <Plus className="w-3 h-3 mr-1.5" />
+                                    Available ({availableList.length})
+                                </TabsTrigger>
+                                <TabsTrigger 
+                                    value="stopped" 
+                                    className="data-[state=active]:bg-yellow-900/30 data-[state=active]:text-yellow-400 text-xs py-2"
+                                >
+                                    <WifiOff className="w-3 h-3 mr-1.5" />
+                                    Stopped ({stoppedSymbols.length + failedSymbols.length})
+                                </TabsTrigger>
+                                <TabsTrigger 
+                                    value="blocked" 
+                                    className="data-[state=active]:bg-purple-900/30 data-[state=active]:text-purple-400 text-xs py-2"
+                                >
+                                    <Ban className="w-3 h-3 mr-1.5" />
+                                    Blocked ({permanentlyStoppedSymbols.length})
+                                </TabsTrigger>
+                            </TabsList>
 
-                                <ScrollArea className="flex-1 p-3">
-                                    <div className="flex flex-wrap gap-2">
-                                        {subscribedList.length === 0 ? (
-                                            <div className="w-full h-32 flex flex-col items-center justify-center text-zinc-500 italic text-sm">
-                                                <div className="w-10 h-10 rounded-full bg-zinc-800/50 flex items-center justify-center mb-2">
-                                                    <Check className="w-5 h-5 opacity-20" />
+                            {/* Subscribed Tab */}
+                            <TabsContent value="subscribed" className="flex-1 mt-4 min-h-0 overflow-hidden">
+                                <div className="flex flex-col border border-zinc-800 rounded-lg bg-zinc-900/30 h-full overflow-hidden shadow-inner">
+                                    <div className="p-3 border-b border-zinc-800 bg-zinc-900/50 flex justify-between items-center">
+                                        <h3 className="font-semibold text-sm flex items-center gap-2 text-green-400">
+                                            <Wifi className="w-4 h-4" />
+                                            Active Subscriptions
+                                        </h3>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={handleClearAll}
+                                            className="h-7 text-xs text-zinc-400 hover:text-red-400"
+                                            disabled={subscribedList.length === 0 || isSubmitting}
+                                        >
+                                            Clear All
+                                        </Button>
+                                    </div>
+                                    <ScrollArea className="flex-1 p-3">
+                                        <div className="flex flex-wrap gap-2">
+                                            {subscribedList.length === 0 ? (
+                                                <div className="w-full h-32 flex flex-col items-center justify-center text-zinc-500 italic text-sm">
+                                                    <Wifi className="w-8 h-8 mb-2 opacity-20" />
+                                                    No active subscriptions
                                                 </div>
-                                                No active subscriptions
-                                            </div>
-                                        ) : (
-                                            subscribedList.map(company => {
-                                                const symbol = formatSymbol(company);
-                                                const isOriginal = originalSubscriptions.has(symbol);
-                                                const isNewAddition = !isOriginal;
-
-                                                return (
-                                                    <Badge
-                                                        key={symbol}
-                                                        variant="outline"
-                                                        className={`cursor-pointer transition-all pl-2.5 pr-1.5 py-1.5 flex items-center gap-1.5 group select-none ${isNewAddition
-                                                            ? 'bg-blue-950/30 border-blue-700/70 text-blue-300 ring-2 ring-blue-500/30'
-                                                            : 'bg-green-950/20 border-green-900/50 text-green-300 hover:bg-red-950/30 hover:text-red-300 hover:border-red-900/50'
+                                            ) : (
+                                                subscribedList.map(company => {
+                                                    const symbol = formatSymbol(company);
+                                                    const isNewAddition = !originalSubscriptions.has(symbol);
+                                                    return (
+                                                        <Badge
+                                                            key={symbol}
+                                                            variant="outline"
+                                                            className={`cursor-pointer transition-all pl-2.5 pr-1.5 py-1.5 flex items-center gap-1.5 group select-none ${isNewAddition
+                                                                ? 'bg-blue-950/30 border-blue-700/70 text-blue-300 ring-2 ring-blue-500/30'
+                                                                : 'bg-green-950/20 border-green-900/50 text-green-300 hover:bg-red-950/30 hover:text-red-300 hover:border-red-900/50'
                                                             }`}
-                                                        onClick={() => !isSubmitting && toggleSubscription(symbol)}
-                                                        title={isNewAddition ? "New addition - will be subscribed" : "Click to remove"}
-                                                    >
-                                                        <span className="font-medium">{company.company_code}</span>
-                                                        {isNewAddition && <Plus className="w-3 h-3" />}
-                                                        <X className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100 transition-opacity" />
-                                                    </Badge>
-                                                );
-                                            })
-                                        )}
-                                    </div>
-                                </ScrollArea>
-                            </div>
-
-                            {/* Available Section */}
-                            <div className="flex flex-col border border-zinc-800 rounded-lg bg-zinc-900/30 min-h-0 overflow-hidden shadow-inner">
-                                <div className="p-3 border-b border-zinc-800 bg-zinc-900/50 flex justify-between items-center">
-                                    <h3 className="font-semibold text-sm flex items-center gap-2 text-blue-400">
-                                        <Plus className="w-4 h-4" />
-                                        Available ({availableList.length})
-                                    </h3>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={handleSelectAll}
-                                        className="h-7 text-xs text-zinc-400 hover:text-blue-400"
-                                        disabled={availableList.length === 0 || isSubmitting}
-                                    >
-                                        Select All
-                                    </Button>
+                                                            onClick={() => !isSubmitting && toggleSubscription(symbol)}
+                                                            title={isNewAddition ? "New addition - will be subscribed" : "Click to remove"}
+                                                        >
+                                                            <span className="font-medium">{company.company_code}</span>
+                                                            {isNewAddition && <Plus className="w-3 h-3" />}
+                                                            <X className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100 transition-opacity" />
+                                                        </Badge>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                    </ScrollArea>
                                 </div>
+                            </TabsContent>
 
-                                <ScrollArea className="flex-1 p-3">
-                                    <div className="flex flex-wrap gap-2">
-                                        {availableList.length === 0 ? (
-                                            <div className="w-full h-32 flex flex-col items-center justify-center text-zinc-500 italic text-sm">
-                                                <Check className="w-8 h-8 mb-2 opacity-20" />
-                                                All companies subscribed
-                                            </div>
-                                        ) : (
-                                            availableList.map(company => {
-                                                const symbol = formatSymbol(company);
-                                                const wasRemoved = originalSubscriptions.has(symbol);
-
-                                                return (
-                                                    <Badge
-                                                        key={symbol}
-                                                        variant="secondary"
-                                                        className={`cursor-pointer transition-all pl-2.5 pr-1.5 py-1.5 flex items-center gap-1.5 group select-none ${wasRemoved
-                                                            ? 'bg-red-950/30 border-red-700/70 text-red-300 ring-2 ring-red-500/30'
-                                                            : 'bg-zinc-800/50 hover:bg-blue-900/20 hover:text-blue-300 hover:border-blue-800/50 border border-transparent'
-                                                            }`}
-                                                        onClick={() => !isSubmitting && toggleSubscription(symbol)}
-                                                        title={wasRemoved ? "Will be unsubscribed" : "Click to subscribe"}
-                                                    >
-                                                        <span className="font-medium">{company.company_code}</span>
-                                                        {wasRemoved ? (
-                                                            <X className="w-3 h-3" />
-                                                        ) : (
-                                                            <Plus className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100 transition-opacity" />
-                                                        )}
-                                                    </Badge>
-                                                );
-                                            })
-                                        )}
+                            {/* Available Tab */}
+                            <TabsContent value="available" className="flex-1 mt-4 min-h-0 overflow-hidden">
+                                <div className="flex flex-col border border-zinc-800 rounded-lg bg-zinc-900/30 h-full overflow-hidden shadow-inner">
+                                    <div className="p-3 border-b border-zinc-800 bg-zinc-900/50 flex justify-between items-center">
+                                        <h3 className="font-semibold text-sm flex items-center gap-2 text-blue-400">
+                                            <Plus className="w-4 h-4" />
+                                            Available Companies
+                                        </h3>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={handleSelectAll}
+                                            className="h-7 text-xs text-zinc-400 hover:text-blue-400"
+                                            disabled={availableList.length === 0 || isSubmitting}
+                                        >
+                                            Select All
+                                        </Button>
                                     </div>
-                                </ScrollArea>
-                            </div>
-                        </div>
+                                    <ScrollArea className="flex-1 p-3">
+                                        <div className="flex flex-wrap gap-2">
+                                            {availableList.length === 0 ? (
+                                                <div className="w-full h-32 flex flex-col items-center justify-center text-zinc-500 italic text-sm">
+                                                    <Check className="w-8 h-8 mb-2 opacity-20" />
+                                                    All companies subscribed
+                                                </div>
+                                            ) : (
+                                                availableList.map(company => {
+                                                    const symbol = formatSymbol(company);
+                                                    const wasRemoved = originalSubscriptions.has(symbol);
+                                                    return (
+                                                        <Badge
+                                                            key={symbol}
+                                                            variant="secondary"
+                                                            className={`cursor-pointer transition-all pl-2.5 pr-1.5 py-1.5 flex items-center gap-1.5 group select-none ${wasRemoved
+                                                                ? 'bg-red-950/30 border-red-700/70 text-red-300 ring-2 ring-red-500/30'
+                                                                : 'bg-zinc-800/50 hover:bg-blue-900/20 hover:text-blue-300 hover:border-blue-800/50 border border-transparent'
+                                                            }`}
+                                                            onClick={() => !isSubmitting && toggleSubscription(symbol)}
+                                                            title={wasRemoved ? "Will be unsubscribed" : "Click to subscribe"}
+                                                        >
+                                                            <span className="font-medium">{company.company_code}</span>
+                                                            {wasRemoved ? <X className="w-3 h-3" /> : <Plus className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100 transition-opacity" />}
+                                                        </Badge>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                    </ScrollArea>
+                                </div>
+                            </TabsContent>
+
+                            {/* Stopped/Failed Tab (Daily Reset) */}
+                            <TabsContent value="stopped" className="flex-1 mt-4 min-h-0 overflow-hidden">
+                                <div className="flex flex-col border border-zinc-800 rounded-lg bg-zinc-900/30 h-full overflow-hidden shadow-inner">
+                                    <div className="p-3 border-b border-zinc-800 bg-zinc-900/50 flex justify-between items-center">
+                                        <h3 className="font-semibold text-sm flex items-center gap-2 text-yellow-400">
+                                            <WifiOff className="w-4 h-4" />
+                                            Stopped Today (Resets Daily)
+                                        </h3>
+                                        <Badge variant="outline" className="text-[10px] bg-yellow-950/30 border-yellow-800/50 text-yellow-300">
+                                            Auto-resets at midnight
+                                        </Badge>
+                                    </div>
+                                    <ScrollArea className="flex-1 p-3">
+                                        <div className="flex flex-wrap gap-2">
+                                            {(stoppedSymbols.length + failedSymbols.length) === 0 ? (
+                                                <div className="w-full h-32 flex flex-col items-center justify-center text-zinc-500 italic text-sm">
+                                                    <Check className="w-8 h-8 mb-2 text-green-500 opacity-50" />
+                                                    <p className="text-green-400">No stopped symbols today</p>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    {/* Failed symbols */}
+                                                    {failedSymbols.map(symbol => {
+                                                        const cleanSymbol = symbol.replace('-STOPPED', '').replace(/'/g, '');
+                                                        const parts = cleanSymbol.split(':');
+                                                        const companyCode = parts[1]?.split('-')[0] || cleanSymbol;
+                                                        return (
+                                                            <Badge
+                                                                key={symbol}
+                                                                variant="outline"
+                                                                className="pl-2.5 pr-1.5 py-1.5 flex items-center gap-1.5 group bg-red-950/30 border-red-800/50 text-red-300"
+                                                            >
+                                                                <span className="font-medium">{companyCode}</span>
+                                                                <span className="text-[9px] text-red-400/70">Failed</span>
+                                                                <button
+                                                                    onClick={() => handleAddToPermanentlyBlocked(symbol)}
+                                                                    className="opacity-50 group-hover:opacity-100 text-purple-400 hover:text-purple-300 ml-1"
+                                                                    title="Move to Permanently Blocked"
+                                                                >
+                                                                    <Ban className="w-3 h-3" />
+                                                                </button>
+                                                            </Badge>
+                                                        );
+                                                    })}
+                                                    {/* Stopped symbols */}
+                                                    {stoppedSymbols.map(symbol => {
+                                                        const cleanSymbol = symbol.replace('-STOPPED', '').replace(/'/g, '');
+                                                        const parts = cleanSymbol.split(':');
+                                                        const companyCode = parts[1]?.split('-')[0] || cleanSymbol;
+                                                        return (
+                                                            <Badge
+                                                                key={symbol}
+                                                                variant="outline"
+                                                                className="pl-2.5 pr-1.5 py-1.5 flex items-center gap-1.5 group bg-yellow-950/30 border-yellow-800/50 text-yellow-300"
+                                                            >
+                                                                <span className="font-medium">{companyCode}</span>
+                                                                <span className="text-[9px] text-yellow-400/70">Stopped</span>
+                                                                <button
+                                                                    onClick={() => handleAddToPermanentlyBlocked(symbol)}
+                                                                    className="opacity-50 group-hover:opacity-100 text-purple-400 hover:text-purple-300 ml-1"
+                                                                    title="Move to Permanently Blocked"
+                                                                >
+                                                                    <Ban className="w-3 h-3" />
+                                                                </button>
+                                                            </Badge>
+                                                        );
+                                                    })}
+                                                </>
+                                            )}
+                                        </div>
+                                    </ScrollArea>
+                                </div>
+                            </TabsContent>
+
+                            {/* Permanently Blocked Tab */}
+                            <TabsContent value="blocked" className="flex-1 mt-4 min-h-0 overflow-hidden">
+                                <div className="flex flex-col border border-zinc-800 rounded-lg bg-zinc-900/30 h-full overflow-hidden shadow-inner">
+                                    <div className="p-3 border-b border-zinc-800 bg-zinc-900/50 flex justify-between items-center">
+                                        <h3 className="font-semibold text-sm flex items-center gap-2 text-purple-400">
+                                            <Ban className="w-4 h-4" />
+                                            Permanently Blocked
+                                        </h3>
+                                        <Badge variant="outline" className="text-[10px] bg-purple-950/30 border-purple-800/50 text-purple-300">
+                                            Never auto-resets
+                                        </Badge>
+                                    </div>
+                                    <ScrollArea className="flex-1 p-3">
+                                        <div className="flex flex-wrap gap-2">
+                                            {permanentlyStoppedSymbols.length === 0 ? (
+                                                <div className="w-full h-32 flex flex-col items-center justify-center text-zinc-500 italic text-sm">
+                                                    <Check className="w-8 h-8 mb-2 text-green-500 opacity-50" />
+                                                    <p className="text-green-400">No blocked symbols</p>
+                                                </div>
+                                            ) : (
+                                                permanentlyStoppedSymbols.map(symbol => {
+                                                    const cleanSymbol = symbol.replace('-STOPPED', '').replace(/'/g, '');
+                                                    const parts = cleanSymbol.split(':');
+                                                    const companyCode = parts[1]?.split('-')[0] || cleanSymbol;
+                                                    return (
+                                                        <Badge
+                                                            key={symbol}
+                                                            variant="outline"
+                                                            className="pl-2.5 pr-1.5 py-1.5 flex items-center gap-1.5 group bg-purple-950/30 border-purple-800/50 text-purple-300"
+                                                        >
+                                                            <span className="font-medium">{companyCode}</span>
+                                                            <button
+                                                                onClick={() => handleRemoveFromPermanentlyBlocked(symbol)}
+                                                                className="opacity-50 group-hover:opacity-100 text-green-400 hover:text-green-300 ml-1"
+                                                                title="Unblock Symbol"
+                                                            >
+                                                                <Undo2 className="w-3 h-3" />
+                                                            </button>
+                                                        </Badge>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                    </ScrollArea>
+                                    <div className="p-3 border-t border-zinc-800 bg-zinc-900/50">
+                                        <p className="text-[10px] text-zinc-500">
+                                            💡 Permanently blocked symbols will never be subscribed, even after daily resets. 
+                                            Use this for symbols that consistently fail (e.g., delisted stocks).
+                                        </p>
+                                    </div>
+                                </div>
+                            </TabsContent>
+                        </Tabs>
 
                         <DialogFooter className="pt-4 border-t border-zinc-800 flex-shrink-0 gap-2">
                             <div className="flex items-center justify-between w-full">

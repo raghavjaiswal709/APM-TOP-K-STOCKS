@@ -1,12 +1,17 @@
 {
   "authenticated": true,
   "token_valid": true,
-  "expires_at": "2026-01-13T18:29:00.000Z",
+  "expires_at": "2026-01-29T18:29:59.999Z",
   "services_notified": [
-    "fyers_data",
-    "multi_company_live_data"
+    "multi_company_live_data",
+    "fyers_data"
   ],
-  "session_date": "2026-01-13",
+  "session_date": "2026-01-29",
   "auto_refresh_enabled": true,
-  "next_refresh_check": "2026-01-13T06:44:48.262Z"
+  "next_refresh_check": "2026-01-29T05:44:17.431Z",
+  "client_id": "150HUKJSWG-100",
+  "redirect_uri": "https://raghavjaiswal709.github.io/DAKSphere_redirect",
+  "access_token": "150HUKJSWG-100:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZDoxIiwiZDoyIiwieDowIiwieDoxIiwieDoyIl0sImF0X2hhc2giOiJnQUFBQUFCcGV1V2haV19vMTN6ZThNdjBsVVRvUC1XSHNiVXcxcXB1RWFyMWlNZ05hejdhTDM3NWRSWklyd29aejZIazZsbFNsUkxfTWpDcFdiaGRCaU9hUF9yWHJxa3plZjhpaVJSanc3N3BkWkhHcEdjV0tLOD0iLCJkaXNwbGF5X25hbWUiOiIiLCJvbXMiOiJLMSIsImhzbV9rZXkiOiJhMWY2OWEzZGY1ZTdmZTg4MjFjZDBkNWFmZTQ3NDhhMmQ2ZjkwNDkyMGRlOTRhZWNlZGYyMTBhYyIsImlzRGRwaUVuYWJsZWQiOiJOIiwiaXNNdGZFbmFibGVkIjoiTiIsImZ5X2lkIjoiRkFBMjQwNjciLCJhcHBUeXBlIjoxMDAsImV4cCI6MTc2OTczMzAwMCwiaWF0IjoxNzY5NjYxODU3LCJpc3MiOiJhcGkuZnllcnMuaW4iLCJuYmYiOjE3Njk2NjE4NTcsInN1YiI6ImFjY2Vzc190b2tlbiJ9.BeSSp-VSwamF4E7jeoqEGuq2ijmKGQQsoIn2yPnCm4U",
+  "auth_code": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBfaWQiOiIxNTBIVUtKU1dHIiwidXVpZCI6IjM1ZTk4ODU1N2JmZTQwMDg4NDE0NDlhYWE3ZjgxODRmIiwiaXBBZGRyIjoiIiwibm9uY2UiOiIiLCJzY29wZSI6IiIsImRpc3BsYXlfbmFtZSI6IkZBQTI0MDY3Iiwib21zIjoiSzEiLCJoc21fa2V5IjoiYTFmNjlhM2RmNWU3ZmU4ODIxY2QwZDVhZmU0NzQ4YTJkNmY5MDQ5MjBkZTk0YWVjZWRmMjEwYWMiLCJpc0RkcGlFbmFibGVkIjoiTiIsImlzTXRmRW5hYmxlZCI6Ik4iLCJhdWQiOiJbXCJkOjFcIixcImQ6MlwiLFwieDowXCIsXCJ4OjFcIixcIng6MlwiXSIsImV4cCI6MTc2OTY5MTg1MSwiaWF0IjoxNzY5NjYxODUxLCJpc3MiOiJhcGkubG9naW4uZnllcnMuaW4iLCJuYmYiOjE3Njk2NjE4NTEsInN1YiI6ImF1dGhfY29kZSJ9.YWoHOqln-Dvbcts0QpdW8u_upTAW60OTaZyEIl2esMQ",
+  "timestamp": "2026-01-29T04:44:17.818Z"
 }

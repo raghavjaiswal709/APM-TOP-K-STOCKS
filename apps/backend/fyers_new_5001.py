@@ -17,6 +17,7 @@ from typing import Dict, Set
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import uvicorn
+import urllib.parse
 
 
 # Logging Configuration
@@ -62,6 +63,10 @@ symbol_to_clients: Dict[str, Set[str]] = {}
 running = True
 auth_initialized = False
 main_loop = None
+
+# Subscription tracking with daily reset
+SUBSCRIPTION_DATA_DIR = 'data'
+last_subscription_date = None  # Track date for daily reset
 
 
 # Multi-symbol persistent data storage
@@ -127,9 +132,195 @@ def create_resilient_session():
 # Global HTTP session for reuse
 http_session = create_resilient_session()
 
+# External Historical Data Server (port 6969)
+EXTERNAL_DATA_SERVER = os.getenv('EXTERNAL_DATA_SERVER', 'http://100.93.172.21:6969')
+
 
 # Thread pool for blocking operations
 executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="FyersWorker")
+
+
+# ============================================================================
+# PERMANENT BLACKLIST (does NOT reset daily)
+# ============================================================================
+# This file contains symbols that are permanently stopped/invalid
+# and should never be subscribed to. It does NOT reset with daily reset.
+PERMANENT_BLACKLIST_FILE = os.path.join(SUBSCRIPTION_DATA_DIR, 'permanently_stopped.json')
+
+# Set of permanently stopped symbols (loaded at startup)
+permanently_stopped_symbols: Set[str] = set()
+
+
+def load_permanent_blacklist():
+    """Load the permanent blacklist from file."""
+    global permanently_stopped_symbols
+    
+    if os.path.exists(PERMANENT_BLACKLIST_FILE):
+        try:
+            with open(PERMANENT_BLACKLIST_FILE, 'r') as f:
+                content = f.read().strip()
+                if content:
+                    data = json.loads(content)
+                    permanently_stopped_symbols = set(data)
+                    logger.info(f"📋 Loaded {len(permanently_stopped_symbols)} permanently stopped symbols")
+        except Exception as e:
+            logger.error(f"Error loading permanent blacklist: {e}")
+    else:
+        logger.info("📋 No permanent blacklist file found, starting fresh")
+
+
+def add_to_permanent_blacklist(symbols: list):
+    """Add symbols to the permanent blacklist (persists across restarts and daily resets)."""
+    global permanently_stopped_symbols
+    
+    if not symbols:
+        return
+    
+    # Add to in-memory set
+    for symbol in symbols:
+        permanently_stopped_symbols.add(symbol)
+    
+    # Save to file
+    try:
+        with open(PERMANENT_BLACKLIST_FILE, 'w') as f:
+            json.dump(list(permanently_stopped_symbols), f, indent=2)
+        logger.info(f"📋 Added {len(symbols)} to permanent blacklist (total: {len(permanently_stopped_symbols)})")
+    except Exception as e:
+        logger.error(f"❌ Failed to save permanent blacklist: {e}")
+
+
+def is_permanently_stopped(symbol: str) -> bool:
+    """Check if a symbol is in the permanent blacklist."""
+    # Check exact match
+    if symbol in permanently_stopped_symbols:
+        return True
+    
+    # Extract company code from symbol (e.g., NSE:ACLGATI-EQ -> ACLGATI)
+    try:
+        if ':' in symbol and '-' in symbol:
+            code = symbol.split(':')[1].split('-')[0]
+            # Check if any blacklisted symbol contains this code
+            for stopped in permanently_stopped_symbols:
+                if code in stopped:
+                    return True
+    except:
+        pass
+    
+    return False
+
+
+# ============================================================================
+# SUBSCRIPTION FILE MANAGEMENT (with daily reset)
+# ============================================================================
+
+def get_today_date_str():
+    """Get today's date in IST as string."""
+    return datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
+
+
+def check_and_reset_subscription_files():
+    """
+    Check if date has changed and reset all subscription files if needed.
+    Returns True if files were reset.
+    """
+    global last_subscription_date
+    
+    today = get_today_date_str()
+    
+    # Check if we need to reset
+    date_file = os.path.join(SUBSCRIPTION_DATA_DIR, 'subscription_date.txt')
+    
+    stored_date = None
+    if os.path.exists(date_file):
+        try:
+            with open(date_file, 'r') as f:
+                stored_date = f.read().strip()
+        except:
+            pass
+    
+    if stored_date != today:
+        logger.info(f"📅 New day detected ({stored_date} -> {today}). Resetting subscription files...")
+        
+        # Reset all three files
+        files_to_reset = [
+            'subscribed_companies.json',
+            'failed_subscriptions.json',
+            'stopped_companies.json'
+        ]
+        
+        for filename in files_to_reset:
+            filepath = os.path.join(SUBSCRIPTION_DATA_DIR, filename)
+            try:
+                with open(filepath, 'w') as f:
+                    json.dump([], f)
+                logger.info(f"  ✓ Reset {filename}")
+            except Exception as e:
+                logger.error(f"  ✗ Failed to reset {filename}: {e}")
+        
+        # Update stored date
+        try:
+            with open(date_file, 'w') as f:
+                f.write(today)
+        except Exception as e:
+            logger.error(f"Failed to update date file: {e}")
+        
+        last_subscription_date = today
+        return True
+    
+    last_subscription_date = today
+    return False
+
+
+def save_to_subscription_file(filename: str, symbols: list):
+    """
+    Save symbols to a subscription JSON file, merging with existing and deduplicating.
+    """
+    if not symbols:
+        return
+    
+    filepath = os.path.join(SUBSCRIPTION_DATA_DIR, filename)
+    
+    try:
+        # Read existing
+        existing = []
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, 'r') as f:
+                    content = f.read().strip()
+                    if content:
+                        existing = json.loads(content)
+            except Exception as e:
+                logger.error(f"Error reading {filename}: {e}")
+                existing = []
+        
+        # Merge and deduplicate
+        updated = list(set(existing + symbols))
+        
+        with open(filepath, 'w') as f:
+            json.dump(updated, f, indent=2)
+        
+        logger.info(f"💾 Saved {len(symbols)} to {filename} (total: {len(updated)})")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to save {filename}: {e}")
+
+
+def load_subscription_file(filename: str) -> list:
+    """Load symbols from a subscription JSON file."""
+    filepath = os.path.join(SUBSCRIPTION_DATA_DIR, filename)
+    
+    if not os.path.exists(filepath):
+        return []
+    
+    try:
+        with open(filepath, 'r') as f:
+            content = f.read().strip()
+            if content:
+                return json.loads(content)
+    except Exception as e:
+        logger.error(f"Error loading {filename}: {e}")
+    
+    return []
 
 
 # Helper Functions
@@ -334,6 +525,164 @@ def is_trading_hours():
     return start_time <= now <= end_time
 
 
+def is_after_market_hours():
+    """Check if we're past market close but still on a trading day"""
+    now = datetime.datetime.now(INDIA_TZ)
+    start_time, end_time = get_trading_hours()
+    
+    # Weekend - no after-market
+    if now.weekday() >= 5:
+        return False
+    
+    # After 3:30 PM but before midnight - after market hours
+    return now > end_time
+
+
+def fetch_external_historical_data(symbol: str, date: str = None) -> list:
+    """
+    Fetch historical data from external server (port 6969) after market closes.
+    This allows viewing full day's data when Fyers WebSocket is not active.
+    
+    Symbol format: NSE:AXISBANK-EQ -> AXISBANK-NSE
+    Date format: YYYY-MM-DD -> DD-MM-YYYY for server
+    """
+    if not date:
+        date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
+    
+    try:
+        # Convert symbol format: NSE:AXISBANK-EQ -> AXISBANK-NSE
+        if ':' in symbol:
+            parts = symbol.split(':')
+            if len(parts) == 2:
+                exchange = parts[0]
+                code_part = parts[1]
+                company_code = code_part.split('-')[0]
+                external_symbol = f"{company_code}-{exchange}"
+            else:
+                external_symbol = symbol
+        else:
+            external_symbol = symbol
+        
+        # Convert date format: YYYY-MM-DD -> DD-MM-YYYY
+        date_parts = date.split('-')
+        if len(date_parts) == 3:
+            formatted_date = f"{date_parts[2]}-{date_parts[1]}-{date_parts[0]}"
+        else:
+            formatted_date = date
+        
+        # Build URL for external server
+        encoded_symbol = urllib.parse.quote(external_symbol)
+        url = f"{EXTERNAL_DATA_SERVER}/Live/LD_{formatted_date}/{encoded_symbol}.json"
+        
+        logger.info(f"📡 Fetching after-market data from: {url}")
+        
+        response = http_session.get(url, timeout=30)
+        
+        if response.status_code != 200:
+            logger.warning(f"External server returned {response.status_code} for {symbol}")
+            return []
+        
+        # Parse line-by-line JSON (NDJSON format)
+        lines = response.text.strip().split('\n')
+        data_points = []
+        
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                point = json.loads(line)
+                
+                timestamp = point.get('timestamp') or point.get('last_traded_time', 0)
+                
+                data_point = {
+                    'symbol': symbol,
+                    'ltp': point.get('ltp', 0),
+                    'open': point.get('open_price', 0),
+                    'high': point.get('high_price', 0),
+                    'low': point.get('low_price', 0),
+                    'close': point.get('ltp', 0),
+                    'volume': point.get('vol_traded_today', 0),
+                    'timestamp': timestamp,
+                    'change': 0,
+                    'changePercent': 0,
+                    'bid': point.get('bid_price', 0),
+                    'ask': point.get('ask_price', 0)
+                }
+                data_points.append(data_point)
+                
+            except json.JSONDecodeError:
+                continue
+        
+        # Sort by timestamp
+        data_points.sort(key=lambda x: x['timestamp'])
+        
+        # Calculate change and changePercent
+        if data_points:
+            prev_close = data_points[0].get('open', data_points[0]['ltp'])
+            for point in data_points:
+                point['change'] = point['ltp'] - prev_close
+                point['changePercent'] = (point['change'] / prev_close * 100) if prev_close else 0
+        
+        logger.info(f"✅ Fetched {len(data_points)} after-market data points for {symbol}")
+        return data_points
+        
+    except requests.exceptions.Timeout:
+        logger.error(f"⏱️ Timeout fetching external data for {symbol}")
+        return []
+    except Exception as e:
+        logger.error(f"❌ Error fetching external historical data for {symbol}: {e}")
+        return []
+
+
+def build_ohlc_from_external_data(symbol: str, data_points: list) -> list:
+    """Build OHLC candles from external tick data"""
+    if not data_points:
+        return []
+    
+    candles_by_minute = {}
+    
+    for point in data_points:
+        timestamp = point['timestamp']
+        minute_ts = (timestamp // 60) * 60
+        
+        if minute_ts not in candles_by_minute:
+            candles_by_minute[minute_ts] = {
+                'timestamp': minute_ts,
+                'open': point['ltp'],
+                'high': point['ltp'],
+                'low': point['ltp'],
+                'close': point['ltp'],
+                'volume': point.get('volume', 0),
+                '_start_vol': point.get('volume', 0)
+            }
+        else:
+            candle = candles_by_minute[minute_ts]
+            candle['high'] = max(candle['high'], point['ltp'])
+            candle['low'] = min(candle['low'], point['ltp'])
+            candle['close'] = point['ltp']
+            # Calculate volume delta
+            curr_vol = point.get('volume', 0)
+            if curr_vol >= candle['_start_vol']:
+                candle['volume'] = curr_vol - candle['_start_vol']
+            else:
+                candle['volume'] = curr_vol
+    
+    # Convert to list and clean up internal fields
+    candles = []
+    for minute_ts in sorted(candles_by_minute.keys()):
+        candle = candles_by_minute[minute_ts]
+        candles.append({
+            'timestamp': candle['timestamp'],
+            'open': candle['open'],
+            'high': candle['high'],
+            'low': candle['low'],
+            'close': candle['close'],
+            'volume': candle['volume']
+        })
+    
+    return candles
+
+
 # Socket.IO Event Handlers
 @sio.event
 async def connect(sid, environ):
@@ -517,10 +866,15 @@ async def subscribe(sid, data):
     if not symbol:
         return {'success': False, 'error': 'No symbol provided'}
     
-    if not auth_initialized:
+    # Check market status
+    is_market_open = is_trading_hours()
+    is_after_market = is_after_market_hours()
+    
+    # If market is closed and no auth, we can still serve data from external server
+    if not auth_initialized and not is_after_market:
         return {'success': False, 'error': 'Authentication not initialized'}
 
-    logger.info(f"Client {sid} subscribing to {symbol}")
+    logger.info(f"Client {sid} subscribing to {symbol} (market_open={is_market_open}, after_market={is_after_market})")
 
     clients[sid]['subscriptions'].add(symbol)
     if symbol not in symbol_to_clients:
@@ -530,23 +884,49 @@ async def subscribe(sid, data):
     symbol_subscriptions[symbol] += 1
     active_symbols.add(symbol)
 
-    # Fetch historical data with timeout in executor
+    # Fetch historical data based on market status
     if symbol not in historical_data or not historical_data[symbol]:
-        logger.info(f"Fetching fresh historical data for {symbol}")
         loop = asyncio.get_event_loop()
         
         try:
-            # Add timeout wrapper
-            hist_data = await asyncio.wait_for(
-                loop.run_in_executor(executor, fetch_historical_intraday_data, symbol, None),
-                timeout=10.0
-            )
+            # After market hours: Fetch from external server (port 6969)
+            if is_after_market or not auth_initialized:
+                logger.info(f"📡 After-market mode: Fetching from external server for {symbol}")
+                
+                external_data = await asyncio.wait_for(
+                    loop.run_in_executor(executor, fetch_external_historical_data, symbol, None),
+                    timeout=30.0
+                )
+                
+                if external_data and len(external_data) > 0:
+                    if symbol not in historical_data:
+                        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                    
+                    for data_point in external_data:
+                        historical_data[symbol].append(data_point)
+                    
+                    # Build OHLC candles
+                    ohlc_candles = build_ohlc_from_external_data(symbol, external_data)
+                    if symbol not in ohlc_data:
+                        ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                    for candle in ohlc_candles:
+                        ohlc_data[symbol].append(candle)
+                    
+                    logger.info(f"✅ Loaded {len(external_data)} points from external server for {symbol}")
+            else:
+                # Market open: Use Fyers API
+                logger.info(f"Fetching fresh historical data from Fyers for {symbol}")
+                
+                hist_data = await asyncio.wait_for(
+                    loop.run_in_executor(executor, fetch_historical_intraday_data, symbol, None),
+                    timeout=10.0
+                )
 
-            if symbol not in historical_data:
-                historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                if symbol not in historical_data:
+                    historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
 
-            for data_point in hist_data:
-                historical_data[symbol].append(data_point)
+                for data_point in hist_data:
+                    historical_data[symbol].append(data_point)
                 
         except asyncio.TimeoutError:
             logger.error(f"⏱️ Timeout fetching historical data for {symbol}")
@@ -555,8 +935,8 @@ async def subscribe(sid, data):
     else:
         logger.info(f"Using cached historical data for {symbol} ({len(historical_data[symbol])} points)")
 
-    # Subscribe to real-time updates
-    if fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
+    # Subscribe to real-time updates (only during market hours with auth)
+    if is_market_open and auth_initialized and fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
         logger.info(f"Subscribing to real-time updates for: {symbol}")
         try:
             loop = asyncio.get_event_loop()
@@ -575,9 +955,22 @@ async def subscribe(sid, data):
 
     if symbol in ohlc_data and ohlc_data[symbol]:
         logger.info(f"Sending {len(ohlc_data[symbol])} OHLC data points for {symbol}")
+        # Clean OHLC data before sending (remove internal tracking fields)
+        clean_ohlc = []
+        for candle in ohlc_data[symbol]:
+            clean_candle = {
+                'timestamp': candle['timestamp'],
+                'open': candle['open'],
+                'high': candle['high'],
+                'low': candle['low'],
+                'close': candle['close'],
+                'volume': candle['volume']
+            }
+            clean_ohlc.append(clean_candle)
+        
         await sio.emit('ohlcData', {
             'symbol': symbol,
-            'data': list(ohlc_data[symbol])
+            'data': clean_ohlc
         }, room=sid)
 
     if symbol in chart_updates and chart_updates[symbol]:
@@ -595,7 +988,10 @@ async def subscribe(sid, data):
 async def subscribe_companies(sid, data):
     """
     Batch subscribe to multiple company symbols with robust error handling and rate limiting.
-    This is the CRITICAL endpoint needed for the frontend subscription modal.
+    Handles three categories: subscribed (success), failed, stopped.
+    Implements daily reset of subscription files.
+    
+    AFTER MARKET HOURS: Fetches data from external server (port 6969) instead of Fyers.
     """
     symbols = data.get('symbols', [])
     
@@ -607,10 +1003,64 @@ async def subscribe_companies(sid, data):
         logger.error(f"Client {sid} not found in clients dict")
         return {'success': False, 'error': 'Client not registered', 'count': 0}
     
-    if not auth_initialized:
-        return {'success': False, 'error': 'Authentication not initialized', 'count': 0}
+    # Check market status
+    is_market_open = is_trading_hours()
+    is_after_market = is_after_market_hours()
     
-    logger.info(f"📥 Client {sid} subscribing to {len(symbols)} symbols")
+    # Allow subscription even without auth if market is closed (will fetch from external server)
+    if not auth_initialized and is_market_open:
+        logger.error(f"❌ Authentication not initialized - auth_initialized={auth_initialized}, fyers={fyers is not None}, fyers_client={fyers_client is not None}")
+        logger.error(f"📁 Check if auth file exists at: {os.path.join('data', 'fyers_data_auth.json')}")
+        
+        # Try to reinitialize
+        logger.info("🔄 Attempting to reinitialize authentication...")
+        if initialize_fyers():
+            logger.info("✅ Authentication reinitialized successfully")
+        else:
+            return {'success': False, 'error': 'Authentication not initialized. Please ensure Fyers auth token is configured in data/fyers_data_auth.json', 'count': 0}
+    
+    if is_after_market:
+        logger.info(f"📴 After-market mode: Will fetch historical data from external server (port 6969)")
+    
+    # Check for daily reset of subscription files
+    check_and_reset_subscription_files()
+    
+    logger.info(f"📥 Client {sid} subscribing to {len(symbols)} symbols (market_open={is_market_open}, after_market={is_after_market})")
+    
+    # Categorize symbols
+    stopped_symbols = []
+    permanently_stopped = []
+    valid_symbols = []
+    
+    for symbol in symbols:
+        # Check permanent blacklist first (highest priority)
+        if is_permanently_stopped(symbol):
+            permanently_stopped.append(symbol)
+            logger.debug(f"⛔ Skipping permanently stopped: {symbol}")
+        # Check if symbol ends with -STOPPED or has STOPPED marker
+        elif '-STOPPED' in symbol.upper() or symbol.upper().endswith('STOPPED'):
+            stopped_symbols.append(symbol)
+        else:
+            valid_symbols.append(symbol)
+    
+    if permanently_stopped:
+        logger.info(f"⛔ Skipping {len(permanently_stopped)} PERMANENTLY STOPPED symbols")
+    
+    if stopped_symbols:
+        logger.info(f"⏭️ Skipping {len(stopped_symbols)} STOPPED symbols")
+        save_to_subscription_file('stopped_companies.json', stopped_symbols)
+    
+    if not valid_symbols:
+        logger.warning("No valid symbols to subscribe after filtering STOPPED")
+        return {
+            'success': True,
+            'count': 0,
+            'failed': [],
+            'stopped': stopped_symbols + permanently_stopped,
+            'permanently_stopped': permanently_stopped,
+            'symbols': [],
+            'message': 'All symbols are STOPPED'
+        }
     
     subscribed_count = 0
     failed_symbols = []
@@ -619,9 +1069,9 @@ async def subscribe_companies(sid, data):
         # Rate limiting: Process in batches of 10
         BATCH_SIZE = 10
         
-        for i in range(0, len(symbols), BATCH_SIZE):
-            batch = symbols[i:i + BATCH_SIZE]
-            logger.info(f"Processing batch {i//BATCH_SIZE + 1}/{(len(symbols) + BATCH_SIZE - 1)//BATCH_SIZE}")
+        for i in range(0, len(valid_symbols), BATCH_SIZE):
+            batch = valid_symbols[i:i + BATCH_SIZE]
+            logger.info(f"Processing batch {i//BATCH_SIZE + 1}/{(len(valid_symbols) + BATCH_SIZE - 1)//BATCH_SIZE}")
             
             for symbol in batch:
                 try:
@@ -640,11 +1090,16 @@ async def subscribe_companies(sid, data):
                     failed_symbols.append(symbol)
             
             # Small delay between batches to prevent overwhelming the service
-            if i + BATCH_SIZE < len(symbols):
+            if i + BATCH_SIZE < len(valid_symbols):
                 await asyncio.sleep(0.1)
         
-        # Batch subscribe to Fyers with timeout
-        if fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
+        # Batch subscribe to Fyers OR fetch from external server
+        if is_after_market or not auth_initialized:
+            # After market hours: Fetch from external server (port 6969)
+            logger.info(f"📡 After-market mode: Fetching historical data from external server for {len(valid_symbols)} symbols")
+            asyncio.create_task(send_batch_external_historical_data(sid, valid_symbols))
+        elif fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
+            # Market open: Use Fyers real-time
             try:
                 loop = asyncio.get_event_loop()
                 
@@ -652,32 +1107,47 @@ async def subscribe_companies(sid, data):
                 future = loop.run_in_executor(
                     executor,
                     fyers.subscribe,
-                    symbols,
+                    valid_symbols,
                     "SymbolUpdate"
                 )
                 
                 # 30 second timeout for Fyers subscription
                 await asyncio.wait_for(future, timeout=30.0)
-                logger.info(f"✅ Batch subscribed to {len(symbols)} symbols in Fyers")
+                logger.info(f"✅ Batch subscribed to {len(valid_symbols)} symbols in Fyers")
                 
             except asyncio.TimeoutError:
                 logger.error("❌ Fyers subscription timed out after 30s")
-                # Don't fail the entire request - subscriptions are tracked locally
             except Exception as e:
                 logger.error(f"❌ Error in Fyers batch subscription: {e}")
-                # Continue - local subscriptions are still valid
+            
+            # Background task for historical data (non-blocking)
+            asyncio.create_task(send_batch_historical_data(sid, valid_symbols))
         
-        # Background task for historical data (non-blocking)
-        asyncio.create_task(send_batch_historical_data(sid, symbols))
+        logger.info(f"✅ Successfully subscribed to {subscribed_count}/{len(valid_symbols)} symbols")
         
-        logger.info(f"✅ Successfully subscribed to {subscribed_count}/{len(symbols)} symbols")
+        # Save successful subscriptions
+        successful_symbols = [s for s in valid_symbols if s not in failed_symbols]
+        if successful_symbols:
+            save_to_subscription_file('subscribed_companies.json', successful_symbols)
         
-        return {
+        # Note: failed_symbols from WebSocket errors are handled in onerror callback
+        # Local failures are saved here
+        if failed_symbols:
+            save_to_subscription_file('failed_subscriptions.json', failed_symbols)
+
+        response_data = {
             'success': True,
             'count': subscribed_count,
             'failed': failed_symbols,
+            'stopped': stopped_symbols,
+            'symbols': successful_symbols,
             'message': f'Subscribed to {subscribed_count} symbols'
         }
+
+        # Emit confirmation event
+        await sio.emit('subscriptionConfirm', response_data, room=sid)
+
+        return response_data
         
     except Exception as e:
         logger.error(f"❌ Critical error in subscribe_companies: {e}")
@@ -692,6 +1162,7 @@ async def subscribe_companies(sid, data):
 async def send_batch_historical_data(sid, symbols):
     """
     Send historical data for symbols in background without blocking main thread.
+    Uses Fyers API during market hours.
     """
     try:
         for symbol in symbols:
@@ -737,6 +1208,83 @@ async def send_batch_historical_data(sid, symbols):
         
     except Exception as e:
         logger.error(f"❌ Critical error in send_batch_historical_data: {e}")
+
+
+# Background sender for after-market hours (fetches from external server port 6969)
+async def send_batch_external_historical_data(sid, symbols):
+    """
+    Send historical data for symbols from external server (port 6969).
+    Used after market closes when Fyers WebSocket is not active.
+    """
+    try:
+        logger.info(f"📡 Starting batch external data fetch for {len(symbols)} symbols (after-market mode)")
+        success_count = 0
+        
+        for symbol in symbols:
+            try:
+                loop = asyncio.get_event_loop()
+                
+                # Fetch from external server
+                external_data = await asyncio.wait_for(
+                    loop.run_in_executor(executor, fetch_external_historical_data, symbol, None),
+                    timeout=15.0
+                )
+                
+                if external_data and len(external_data) > 0:
+                    # Store in memory
+                    if symbol not in historical_data:
+                        historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                    
+                    for data_point in external_data:
+                        historical_data[symbol].append(data_point)
+                    
+                    # Build and store OHLC candles
+                    ohlc_candles = build_ohlc_from_external_data(symbol, external_data)
+                    if symbol not in ohlc_data:
+                        ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+                    for candle in ohlc_candles:
+                        ohlc_data[symbol].append(candle)
+                    
+                    # Emit historical data
+                    await sio.emit('historicalData', {
+                        'symbol': symbol,
+                        'data': external_data,
+                        'source': 'external_server',
+                        'is_after_market': True
+                    }, room=sid)
+                    
+                    # Emit OHLC data
+                    if ohlc_candles:
+                        await sio.emit('ohlcData', {
+                            'symbol': symbol,
+                            'data': ohlc_candles,
+                            'source': 'external_server'
+                        }, room=sid)
+                    
+                    success_count += 1
+                else:
+                    logger.warning(f"⚠️ No external data available for {symbol}")
+                
+                # Small delay between symbols
+                await asyncio.sleep(0.1)
+                
+            except asyncio.TimeoutError:
+                logger.warning(f"⏱️ Timeout fetching external data for {symbol}")
+            except Exception as e:
+                logger.error(f"❌ Error fetching external data for {symbol}: {e}")
+        
+        logger.info(f"✅ After-market data fetch complete: {success_count}/{len(symbols)} symbols loaded from external server")
+        
+        # Emit completion notification
+        await sio.emit('afterMarketDataLoaded', {
+            'success': True,
+            'loaded': success_count,
+            'total': len(symbols),
+            'source': 'external_server'
+        }, room=sid)
+        
+    except Exception as e:
+        logger.error(f"❌ Critical error in send_batch_external_historical_data: {e}")
 
 
 # DEPRECATED but kept for backward compatibility
@@ -897,6 +1445,157 @@ async def get_daily_data(sid, data):
         return {'success': False, 'error': str(e)}
 
 
+@sio.event
+async def get_after_market_data(sid, data):
+    """
+    Fetch historical data from external server (port 6969) after market closes.
+    This endpoint is specifically for viewing full day's data when market is closed.
+    Works even without Fyers authentication.
+    """
+    symbol = data.get('symbol')
+    date = data.get('date')  # Optional: defaults to today
+    
+    if not symbol:
+        return {'success': False, 'error': 'No symbol provided'}
+    
+    try:
+        loop = asyncio.get_event_loop()
+        
+        # Fetch from external server (doesn't need Fyers auth)
+        external_data = await asyncio.wait_for(
+            loop.run_in_executor(executor, fetch_external_historical_data, symbol, date),
+            timeout=30.0
+        )
+        
+        if external_data and len(external_data) > 0:
+            # Build OHLC candles from tick data
+            ohlc_candles = build_ohlc_from_external_data(symbol, external_data)
+            
+            # Store in memory for client use
+            if symbol not in historical_data:
+                historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+            
+            for point in external_data:
+                historical_data[symbol].append(point)
+            
+            if symbol not in ohlc_data:
+                ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
+            
+            for candle in ohlc_candles:
+                ohlc_data[symbol].append(candle)
+            
+            active_symbols.add(symbol)
+            
+            logger.info(f"✅ After-market data loaded for {symbol}: {len(external_data)} ticks, {len(ohlc_candles)} candles")
+            
+            return {
+                'success': True,
+                'symbol': symbol,
+                'source': 'external_server',
+                'is_after_market': True,
+                'tick_count': len(external_data),
+                'candle_count': len(ohlc_candles),
+                'data': external_data,
+                'ohlc': ohlc_candles
+            }
+        else:
+            return {
+                'success': False,
+                'error': f'No after-market data available for {symbol}',
+                'source': 'external_server'
+            }
+            
+    except asyncio.TimeoutError:
+        logger.error(f"⏱️ Timeout fetching after-market data for {symbol}")
+        return {'success': False, 'error': 'Request timeout'}
+    except Exception as e:
+        logger.error(f"❌ Error fetching after-market data for {symbol}: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+@sio.event
+async def get_market_data_smart(sid, data):
+    """
+    Smart endpoint that automatically fetches from the right source:
+    - During market hours: Uses Fyers WebSocket (real-time)
+    - After market closes: Fetches from external server (port 6969)
+    - Before market opens: Fetches previous day's data from external server
+    """
+    symbol = data.get('symbol')
+    date = data.get('date')  # Optional
+    
+    if not symbol:
+        return {'success': False, 'error': 'No symbol provided'}
+    
+    is_market_open = is_trading_hours()
+    is_after_market = is_after_market_hours()
+    
+    logger.info(f"📊 Smart fetch for {symbol} - Market open: {is_market_open}, After market: {is_after_market}")
+    
+    # If market is open and we have Fyers auth, use real-time data
+    if is_market_open and auth_initialized:
+        # Return cached data if available
+        if symbol in historical_data and len(historical_data[symbol]) > 0:
+            return {
+                'success': True,
+                'symbol': symbol,
+                'source': 'fyers_realtime',
+                'is_live': True,
+                'data': list(historical_data[symbol]),
+                'ohlc': list(ohlc_data.get(symbol, []))
+            }
+        else:
+            return {
+                'success': True,
+                'symbol': symbol,
+                'source': 'fyers_realtime',
+                'is_live': True,
+                'data': [],
+                'message': 'Subscribe to symbol to receive live data'
+            }
+    
+    # Market closed or no auth - fetch from external server
+    try:
+        loop = asyncio.get_event_loop()
+        
+        # Use today's date if not specified and it's after market
+        if not date and is_after_market:
+            date = datetime.datetime.now(INDIA_TZ).strftime('%Y-%m-%d')
+        
+        external_data = await asyncio.wait_for(
+            loop.run_in_executor(executor, fetch_external_historical_data, symbol, date),
+            timeout=30.0
+        )
+        
+        if external_data and len(external_data) > 0:
+            ohlc_candles = build_ohlc_from_external_data(symbol, external_data)
+            
+            return {
+                'success': True,
+                'symbol': symbol,
+                'source': 'external_server',
+                'is_live': False,
+                'is_after_market': is_after_market,
+                'tick_count': len(external_data),
+                'candle_count': len(ohlc_candles),
+                'data': external_data,
+                'ohlc': ohlc_candles
+            }
+        else:
+            return {
+                'success': False,
+                'error': f'No data available for {symbol}',
+                'source': 'external_server'
+            }
+            
+    except asyncio.TimeoutError:
+        logger.error(f"⏱️ Timeout in smart fetch for {symbol}")
+        return {'success': False, 'error': 'Request timeout'}
+    except Exception as e:
+        logger.error(f"❌ Error in smart fetch for {symbol}: {e}")
+        return {'success': False, 'error': str(e)}
+
+
 # ============ Data Storage and Processing ============
 def store_historical_data(symbol, data_point):
     """Store data for ALL active symbols"""
@@ -931,23 +1630,32 @@ def update_ohlc_data(symbol, data_point):
     price = data_point['ltp']
 
     minute_timestamp = (timestamp // 60) * 60
+    current_cumulative_volume = data_point.get('volume', 0)
 
     if not ohlc_data[symbol] or ohlc_data[symbol][-1]['timestamp'] < minute_timestamp:
+        # New candle for new minute
+        # Store the cumulative volume at the START of this candle
         ohlc_data[symbol].append({
             'timestamp': minute_timestamp,
             'open': price,
             'high': price,
             'low': price,
             'close': price,
-            'volume': data_point.get('volume', 0)
+            'volume': 0,  # Will be calculated as delta when candle closes
+            '_start_cumulative_vol': current_cumulative_volume  # Track starting volume for delta calculation
         })
     else:
         current_candle = ohlc_data[symbol][-1]
         current_candle['high'] = max(current_candle['high'], price)
         current_candle['low'] = min(current_candle['low'], price)
         current_candle['close'] = price
-        # ✅ CRITICAL FIX: Accumulate volume instead of replacing it
-        current_candle['volume'] += data_point.get('volume', 0)
+        # ✅ FIX: Calculate delta volume (current cumulative - starting cumulative for this candle)
+        start_vol = current_candle.get('_start_cumulative_vol', 0)
+        if current_cumulative_volume >= start_vol:
+            current_candle['volume'] = current_cumulative_volume - start_vol
+        else:
+            # Reset happened (new day), use current as-is
+            current_candle['volume'] = current_cumulative_volume
 
 
 def calculate_indicators_optimized(symbol, init=False):
@@ -1107,6 +1815,33 @@ def onmessage(message):
 
 def onerror(error):
     logger.error(f"Error: {error}")
+    
+    # Extract and save failed/invalid symbols from Fyers error
+    try:
+        error_data = error if isinstance(error, dict) else {}
+        if isinstance(error, str):
+            # Try to parse if it's a string representation of dict
+            import ast
+            try:
+                error_data = ast.literal_eval(error)
+            except:
+                pass
+        
+        invalid_symbols = error_data.get('invalid_symbols', [])
+        if invalid_symbols:
+            # Check for daily reset before saving
+            check_and_reset_subscription_files()
+            
+            # Save to failed_subscriptions.json using helper
+            save_to_subscription_file('failed_subscriptions.json', invalid_symbols)
+            
+            # Also add to permanent blacklist so they won't be tried again
+            add_to_permanent_blacklist(invalid_symbols)
+            
+            logger.info(f"💾 Saved {len(invalid_symbols)} invalid symbols: {invalid_symbols}")
+    except Exception as e:
+        logger.error(f"Error saving failed subscriptions: {e}")
+    
     if main_loop and main_loop.is_running():
         asyncio.run_coroutine_threadsafe(sio.emit('error', {'message': str(error)}), main_loop)
 
@@ -1138,11 +1873,14 @@ async def heartbeat_task():
             await sio.emit('heartbeat', {
                 'timestamp': int(time.time()),
                 'trading_active': is_trading_hours(),
+                'after_market': is_after_market_hours(),
                 'server_time': datetime.datetime.now(INDIA_TZ).isoformat(),
                 'active_symbols': list(active_symbols),
                 'total_cached_points': sum(len(data) for data in historical_data.values()),
                 'background_collection': True,
-                'auth_status': auth_initialized
+                'auth_status': auth_initialized,
+                'external_server': EXTERNAL_DATA_SERVER,
+                'data_source': 'fyers_realtime' if is_trading_hours() and auth_initialized else 'external_server'
             })
             await asyncio.sleep(10)
         except Exception as e:
@@ -1157,6 +1895,12 @@ async def startup_tasks():
     
     # Create data directory
     os.makedirs('data', exist_ok=True)
+    
+    # Load permanent blacklist (symbols that should never be subscribed)
+    load_permanent_blacklist()
+    
+    # Check for daily reset of subscription files
+    check_and_reset_subscription_files()
     
     # Try initial authentication
     if initialize_fyers():
@@ -1202,6 +1946,8 @@ async def main():
         logger.info("🔑 Using auto authentication with JWT token handling")
         logger.info("📊 Features: Background collection, 24h retention, optimized indicators")
         logger.info("⚡ Enhanced: Timeout protection, rate limiting, batch operations")
+        logger.info(f"📡 After-market mode: External server at {EXTERNAL_DATA_SERVER}")
+        logger.info(f"🕐 Current market status: {'OPEN' if is_trading_hours() else ('AFTER-MARKET' if is_after_market_hours() else 'CLOSED')}")
         
         await server.serve()
         

@@ -1,5 +1,6 @@
 "use client"
 import * as React from "react"
+import { useEffect, useState, useCallback } from "react"
 import {
   BookOpen,
   Bot,
@@ -17,6 +18,9 @@ import {
   Star,
   Newspaper,
   ShieldCheck,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
 } from "lucide-react"
 import { NavMain } from "../components/nav-main"
 import { NavProjects } from "..//components/nav-projects"
@@ -31,6 +35,27 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { AuthModal } from "./AuthModal"
+
+interface AuthStatus {
+  authenticated: boolean;
+  token_valid: boolean;
+  expires_at: string | null;
+  is_expired?: boolean;
+  hours_until_expiry?: number;
+  jwt_expires_at?: string;
+}
+
+export interface AuthDisplay {
+  color: string;
+  bgColor: string;
+  icon: React.ComponentType<{ className?: string }>;
+  text: string;
+  showWarning: boolean;
+  hoursRemaining?: number;
+}
 const data = {
   user: {
     name: process.env.NEXT_PUBLIC_INSTANCE_USER_NAME || process.env.NEXT_PUBLIC_USER_NAME || "Raghav",
@@ -103,20 +128,28 @@ const data = {
     },
     {
       title: "Portfolio",
-      url: "#",
+      url: "/portfolio",
       icon: Wallet,
       items: [
         {
+          title: "Dashboard",
+          url: "/portfolio",
+        },
+        {
           title: "Performance",
-          url: "#",
+          url: "/portfolio?tab=overview",
         },
         {
-          title: "Diversification",
-          url: "#",
+          title: "Trade History",
+          url: "/portfolio?tab=trades",
         },
         {
-          title: "Risk Analysis",
-          url: "#",
+          title: "Weekly Reports",
+          url: "/portfolio?tab=weekly",
+        },
+        {
+          title: "Monthly Reports",
+          url: "/portfolio?tab=monthly",
         },
       ],
     },
@@ -185,32 +218,132 @@ const data = {
   projects: [
   ],
 }
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  const fetchAuthStatus = useCallback(async () => {
+    try {
+      const response = await fetch('/api/auth/fyers/status');
+      if (response.ok) {
+        const data = await response.json();
+        setAuthStatus(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch auth status:', error);
+      setAuthStatus(null);
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAuthStatus();
+    // Check every 60 seconds
+    const interval = setInterval(fetchAuthStatus, 60000);
+    return () => clearInterval(interval);
+  }, [fetchAuthStatus]);
+
+  // Determine auth display status
+  const getAuthDisplay = (): AuthDisplay => {
+    if (authLoading) {
+      return { 
+        color: 'text-blue-500', 
+        bgColor: 'bg-blue-500/10',
+        icon: AlertCircle,
+        text: 'Checking...', 
+        showWarning: false 
+      };
+    }
+    
+    if (!authStatus) {
+      return { 
+        color: 'text-red-500', 
+        bgColor: 'bg-red-500/10',
+        icon: XCircle,
+        text: 'Unknown', 
+        showWarning: true 
+      };
+    }
+    
+    // Check if token is valid and not expired
+    if (authStatus.authenticated && authStatus.token_valid && !authStatus.is_expired) {
+      return { 
+        color: 'text-green-500', 
+        bgColor: 'bg-green-500/10',
+        icon: CheckCircle,
+        text: 'Active', 
+        showWarning: false,
+        hoursRemaining: authStatus.hours_until_expiry
+      };
+    }
+    
+    // Token exists but expired
+    if (authStatus.is_expired) {
+      return { 
+        color: 'text-red-500', 
+        bgColor: 'bg-red-500/10',
+        icon: XCircle,
+        text: 'Expired', 
+        showWarning: true 
+      };
+    }
+    
+    // Not authenticated
+    return { 
+      color: 'text-red-500', 
+      bgColor: 'bg-red-500/10',
+      icon: XCircle,
+      text: 'Required', 
+      showWarning: true 
+    };
+  };
+
+  const authDisplay = getAuthDisplay();
+
   return (
-    <Sidebar variant="inset" {...props}>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <a href="#">
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <h1 className="truncate text-xl font-bold">DAKSphere</h1>
-                  <span className="truncate text-xs"></span>
-                </div>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
-        <NavMain items={data.navMain} />
-        <NavProjects projects={data.projects} />
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
-      </SidebarContent>
-      <SidebarFooter>
-        <NavUser user={data.user} />
-      </SidebarFooter>
-    </Sidebar>
+    <>
+      <Sidebar variant="inset" {...props}>
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" asChild>
+                <a href="#">
+                  <div className="flex items-center gap-2 flex-1">
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <h1 className="truncate text-xl font-bold">DAKSphere</h1>
+                      <span className="truncate text-xs text-muted-foreground">Trading Dashboard</span>
+                    </div>
+                  </div>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
+        <SidebarContent>
+          <NavMain items={data.navMain} />
+          <NavProjects projects={data.projects} />
+          <NavSecondary 
+            items={data.navSecondary} 
+            className="mt-auto" 
+            authDisplay={authDisplay}
+            authStatus={authStatus}
+            onAuthClick={() => setIsAuthModalOpen(true)}
+          />
+        </SidebarContent>
+        <SidebarFooter>
+          <NavUser user={data.user} />
+        </SidebarFooter>
+      </Sidebar>
+      
+      {/* Auth Modal */}
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)} 
+      />
+    </>
   )
 }
 

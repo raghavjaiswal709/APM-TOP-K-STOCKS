@@ -38,7 +38,7 @@ company_id,NAME OF COMPANY,company_code,Exchange,Marker
 37,Ace Integrated Solutions Limited,ACEINTEG,NSE,EQ
 38,Archean Chemical Industries Limited,ACI,NSE,EQ
 39,Andhra Cements Limited,ACL,NSE,EQ
-40,Allcargo Gati Limited,ACLGATI,NSE,EQ
+40,Allcargo Gati Limited,ACLGATI,NSE,STOPPED
 41,Acme Solar Holdings Limited,ACMESOLAR,NSE,EQ
 42,Adani Energy Solutions Limited,ADANIENSOL,NSE,EQ
 43,Adani Enterprises Limited,ADANIENT,NSE,EQ
@@ -1529,7 +1529,7 @@ company_id,NAME OF COMPANY,company_code,Exchange,Marker
 1528,Reliable Data Services Limited,RELIABLE,NSE,EQ
 1529,Reliance Industries Limited,RELIANCE,NSE,EQ
 1530,Religare Enterprises Limited,RELIGARE,NSE,EQ
-1531,Reliance Infrastructure Limited,RELINFRA,NSE,EQ
+1531,Reliance Infrastructure Limited,RELINFRA,NSE,STOPPED
 1532,Ravindra Energy Limited,RELTD,NSE,EQ
 1533,Remsons Industries Limited,REMSONSIND,NSE,EQ
 1534,Shree Renuka Sugars Limited,RENUKA,NSE,EQ
