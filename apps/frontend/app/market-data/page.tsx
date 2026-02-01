@@ -57,7 +57,7 @@ import { sentimentService } from '@/app/services/sentimentService';
 import { SubscriptionManagerModal } from "./components/SubscriptionManagerModal";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ListChecks, Settings2 } from 'lucide-react';
+import { ListChecks, Settings2, Briefcase } from 'lucide-react';
 import { gttService, type GttPrediction } from '@/app/services/gttService';
 import { Zap } from 'lucide-react';
 
@@ -76,6 +76,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+
+// Portfolio Mode
+import { PortfolioMode } from "@/app/components/PortfolioMode";
 
 declare global {
   interface Window {
@@ -164,6 +167,9 @@ const MarketDataPage: React.FC = () => {
 
   // Analysis Panel Visibility
   const [isAnalysisVisible, setIsAnalysisVisible] = useState(false);
+
+  // Portfolio Mode State
+  const [portfolioModeEnabled, setPortfolioModeEnabled] = useState(false);
 
   // Prediction Integration State
   const [showPredictions, setShowPredictions] = useState(true);
@@ -1750,6 +1756,18 @@ const MarketDataPage: React.FC = () => {
                 {isGttEnabled ? 'GTT ON' : 'GTT OFF'}
               </button>
             )}
+
+            {/* Portfolio Mode */}
+            <div className="flex items-center gap-2 border-l pl-3 ml-1">
+              <PortfolioMode
+                enabled={portfolioModeEnabled}
+                onToggle={setPortfolioModeEnabled}
+                selectedCompany={selectedCompany}
+                selectedCompanyName={selectedCompany || ''}
+                exchange={selectedSymbol?.includes(':') ? selectedSymbol.split(':')[0] : 'NSE'}
+                currentPrice={marketData[selectedSymbol]?.ltp || 0}
+              />
+            </div>
 
             <ModeToggle />
           </div>

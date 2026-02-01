@@ -46,6 +46,7 @@
     "react-financial-charts": "^2.0.1",
     "react-hook-form": "^7.69.0",
     "react-plotly.js": "^2.6.0",
+    "recharts": "^3.7.0",
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
     "swr": "^2.3.8",

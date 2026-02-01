@@ -128,20 +128,28 @@ const data = {
     },
     {
       title: "Portfolio",
-      url: "#",
+      url: "/portfolio",
       icon: Wallet,
       items: [
         {
+          title: "Dashboard",
+          url: "/portfolio",
+        },
+        {
           title: "Performance",
-          url: "#",
+          url: "/portfolio?tab=overview",
         },
         {
-          title: "Diversification",
-          url: "#",
+          title: "Trade History",
+          url: "/portfolio?tab=trades",
         },
         {
-          title: "Risk Analysis",
-          url: "#",
+          title: "Weekly Reports",
+          url: "/portfolio?tab=weekly",
+        },
+        {
+          title: "Monthly Reports",
+          url: "/portfolio?tab=monthly",
         },
       ],
     },
