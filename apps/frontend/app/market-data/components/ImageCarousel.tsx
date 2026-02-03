@@ -470,8 +470,8 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
   }
 
   return (
-    <Card className={`${getGradientClass(gradientMode)} shadow-lg ${isMaximized ? 'h-full' : 'h-auto'} border border-zinc-700/50`}>
-      <CardHeader className="p-4 border-b border-zinc-700/50">
+    <Card className={`${getGradientClass(gradientMode)} shadow-lg h-full flex flex-col border border-zinc-700/50`}>
+      <CardHeader className="p-4 border-b border-zinc-700/50 flex-shrink-0">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base font-semibold text-white flex items-center gap-2">
             {companyCode} News Feed
@@ -488,8 +488,8 @@ const NewsComponent: React.FC<NewsComponentProps> = ({ companyCode, isMaximized,
           )}
         </div>
       </CardHeader>
-      <CardContent className="p-0">
-        <ScrollArea className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[900px]'} w-full`}>
+      <CardContent className="p-0 flex-1 min-h-0 overflow-hidden">
+        <ScrollArea className="h-full w-full">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
@@ -1420,69 +1420,73 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               <div className="flex-1 flex">
                 {/* Intraday Chart (Left) */}
                 <div className="w-1/2 border-r border-zinc-700/50 p-4">
-                  <div className="relative h-full overflow-hidden rounded-lg">
-                    <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-3 py-1.5 z-10">
+                  <div className="relative h-full rounded-lg overflow-hidden">
+                    <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-3 py-1.5 z-20 pointer-events-none">
                       <p className="text-sm text-zinc-300 font-medium">Intraday Analysis</p>
                     </div>
                     {imageLoading[`intraday-max-${activeIndex}`] && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
+                      <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-20 pointer-events-none">
                         <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
                       </div>
                     )}
-                    {currentNews.imageUrl1 ? (
-                      <img
-                        src={currentNews.imageUrl1}
-                        alt={`${companyCode} Intraday Chart`}
-                        className="w-full h-full object-contain"
-                        onLoadStart={() => handleImageLoadStart(`intraday-max-${activeIndex}`)}
-                        onLoad={() => handleImageLoad(`intraday-max-${activeIndex}`)}
-                        onError={(e) => {
-                          handleImageError(`intraday-max-${activeIndex}`);
-                          (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <div className="text-center">
-                          <TrendingUp className="h-16 w-16 text-zinc-600 mx-auto mb-3" />
-                          <p className="text-zinc-500">Chart Generating...</p>
+                    <div className="w-full h-full overflow-auto">
+                      {currentNews.imageUrl1 ? (
+                        <img
+                          src={currentNews.imageUrl1}
+                          alt={`${companyCode} Intraday Chart`}
+                          className="w-full h-auto min-h-full block"
+                          onLoadStart={() => handleImageLoadStart(`intraday-max-${activeIndex}`)}
+                          onLoad={() => handleImageLoad(`intraday-max-${activeIndex}`)}
+                          onError={(e) => {
+                            handleImageError(`intraday-max-${activeIndex}`);
+                            (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <div className="text-center">
+                            <TrendingUp className="h-16 w-16 text-zinc-600 mx-auto mb-3" />
+                            <p className="text-zinc-500">Chart Generating...</p>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* Interday Chart (Right) */}
                 <div className="w-1/2 p-4">
-                  <div className="relative h-full overflow-hidden rounded-lg">
-                    <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-3 py-1.5 z-10">
+                  <div className="relative h-full rounded-lg overflow-hidden">
+                    <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-3 py-1.5 z-20 pointer-events-none">
                       <p className="text-sm text-zinc-300 font-medium">Interday Analysis</p>
                     </div>
                     {imageLoading[`interday-max-${activeIndex}`] && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
+                      <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-20 pointer-events-none">
                         <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
                       </div>
                     )}
-                    {currentNews.imageUrl2 ? (
-                      <img
-                        src={currentNews.imageUrl2}
-                        alt={`${companyCode} Interday Chart`}
-                        className="w-full h-full object-contain"
-                        onLoadStart={() => handleImageLoadStart(`interday-max-${activeIndex}`)}
-                        onLoad={() => handleImageLoad(`interday-max-${activeIndex}`)}
-                        onError={(e) => {
-                          handleImageError(`interday-max-${activeIndex}`);
-                          (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <div className="text-center">
-                          <TrendingDown className="h-16 w-16 text-zinc-600 mx-auto mb-3" />
-                          <p className="text-zinc-500">Chart Generating...</p>
+                    <div className="w-full h-full overflow-auto">
+                      {currentNews.imageUrl2 ? (
+                        <img
+                          src={currentNews.imageUrl2}
+                          alt={`${companyCode} Interday Chart`}
+                          className="w-full h-auto min-h-full block"
+                          onLoadStart={() => handleImageLoadStart(`interday-max-${activeIndex}`)}
+                          onLoad={() => handleImageLoad(`interday-max-${activeIndex}`)}
+                          onError={(e) => {
+                            handleImageError(`interday-max-${activeIndex}`);
+                            (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzI3MjcyNyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM5OTk5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DaGFydCBHZW5lcmF0aW5nLi4uPC90ZXh0Pjwvc3ZnPg==';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <div className="text-center">
+                            <TrendingDown className="h-16 w-16 text-zinc-600 mx-auto mb-3" />
+                            <p className="text-zinc-500">Chart Generating...</p>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1696,13 +1700,13 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 
   return (
     <>
-      <div className={`flex gap-4 ${isMaximized ? 'fixed inset-4 z-50' : 'w-full'}`}>
+      <div className={`flex gap-4 ${isMaximized ? 'fixed inset-4 z-50' : 'w-full h-full'}`}>
         {/* Main Image Carousel */}
-        <Card className={`shadow-lg border border-zinc-700/50 ${isMaximized
-          ? `${getMaximizedBackgroundClass(currentNews?.sentiment || 'neutral')} w-full`
-          : `${getGradientClass(gradientMode)} w-3/4`
+        <Card className={`shadow-lg border border-zinc-700/50 flex flex-col ${isMaximized
+          ? `${getMaximizedBackgroundClass(currentNews?.sentiment || 'neutral')} w-full h-full`
+          : `${getGradientClass(gradientMode)} w-3/4 h-full`
           }`}>
-          <CardHeader className="flex flex-row items-center justify-between p-1 border-b border-zinc-700/50">
+          <CardHeader className="flex flex-row items-center justify-between p-1 border-b border-zinc-700/50 flex-shrink-0">
             {/* Left side - Title and Counter Navigation */}
             <div className="flex items-center gap-4 mx-2 flex-1">
               <CardTitle className="text-base font-semibold text-white">
@@ -1779,9 +1783,9 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
             </div>
           </CardHeader>
 
-          <CardContent className="p-0 flex flex-col relative overflow-hidden">
+          <CardContent className="p-0 flex-1 relative overflow-hidden flex flex-col">
             {isLoading ? (
-              <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
+              <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">
                   <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-500" />
                   <p className="text-zinc-400 mb-2">Searching for graphs...</p>
@@ -1799,7 +1803,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                   <>
                     {/* ✅ MODIFIED: Quick access buttons ONLY for LSTMAE/SIPR tabs */}
                     {(activeTab === 'LSTMAE' || activeTab === 'SiPR') && (
-                      <div className="border-b border-zinc-700/50 bg-zinc-700/20">
+                      <div className="border-b border-zinc-700/50 bg-zinc-700/20 flex-shrink-0">
                         <div className="p-3">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -1847,7 +1851,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 
                     {/* ✅ MODIFIED: Show dashboard content inline for LSTMAE/SIPR tabs */}
                     {activeTab === null ? (
-                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
+                      <div className="flex-1 flex items-center justify-center">
                         <div className="text-center space-y-4 animate-in fade-in zoom-in duration-300">
                           <div className="bg-zinc-800/50 p-6 rounded-full inline-flex mb-2 border border-zinc-700/50 shadow-xl">
                             <Activity className="h-12 w-12 text-blue-500" />
@@ -1859,11 +1863,11 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                         </div>
                       </div>
                     ) : activeTab === 'LSTMAE' ? (
-                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)] overflow-auto' : 'min-h-fit'}`}>
+                      <div className="flex-1 overflow-hidden">
                         <InlineLSTMAEContent companyCode={companyCode} exchange={exchange} />
                       </div>
                     ) : activeTab === 'SiPR' ? (
-                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)] overflow-auto' : 'min-h-fit'}`}>
+                      <div className="flex-1 overflow-hidden">
                         <InlineSiprContent
                           companyCode={companyCode}
                           exchange={exchange}
@@ -1871,18 +1875,18 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                         />
                       </div>
                     ) : activeTab === 'MSAX' ? (
-                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)] overflow-auto' : 'min-h-fit'}`}>
+                      <div className="flex-1 overflow-hidden">
                         <MsaxDashboard companyCode={companyCode} exchange={exchange} />
                       </div>
                     ) : newsLoading ? (
-                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
+                      <div className="flex-1 flex items-center justify-center">
                         <div className="text-center">
                           <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-3" />
                           <p className="text-zinc-400">Loading market news...</p>
                         </div>
                       </div>
                     ) : newsError || !currentNews ? (
-                      <div className={`${isMaximized ? 'h-[calc(100vh-200px)]' : 'h-[500px]'} flex items-center justify-center`}>
+                      <div className="flex-1 flex items-center justify-center">
                         <div className="text-center space-y-3">
                           <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
                           <p className="text-zinc-400 mb-2">
@@ -1904,51 +1908,51 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                       </div>
                     ) : (
                       <>
-                        {/* ✅ MODIFIED - Single image view with headline at top, sentiment-based background, no empty space */}
-                        <div className={`flex flex-col bg-gradient-to-br ${currentNews.sentiment === 'positive' ? 'from-green-950/30 via-green-900/10 to-zinc-900' :
+                        {/* ✅ MODIFIED - Entire panel scrolls together */}
+                        <ScrollArea className={`flex-1 bg-gradient-to-br ${currentNews.sentiment === 'positive' ? 'from-green-950/30 via-green-900/10 to-zinc-900' :
                           currentNews.sentiment === 'negative' ? 'from-red-950/30 via-red-900/10 to-zinc-900' :
                             'from-zinc-900/30 via-zinc-800/10 to-zinc-900'
                           }`}>
-                          {/* ✅ News headline at top with sentiment-based tinted background - compact padding */}
-                          <div className={`p-3 border-b ${currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
-                            currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
-                              'border-zinc-700/50 bg-zinc-800/50'
-                            }`}>
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1">
-                                <h3 className="text-white font-medium text-sm mb-1.5">{currentNews.headline}</h3>
-                                <div className="flex items-center gap-3 text-xs text-zinc-400">
-                                  <span className={`px-2 py-1 rounded ${currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
-                                    currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
-                                      'bg-zinc-500/20 text-zinc-400'
-                                    }`}>
-                                    {currentNews.sentiment.toUpperCase()}
-                                  </span>
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="h-3 w-3" />
-                                    {formatRelativeTime(currentNews.timestamp)}
-                                  </span>
-                                  {currentNews.price_movement_1hr && (
-                                    <span>1hr: {currentNews.price_movement_1hr.price_change_pct.toFixed(2)}%</span>
-                                  )}
+                          <div className="flex flex-col">
+                            {/* ✅ News headline at top with sentiment-based tinted background */}
+                            <div className={`p-3 border-b ${currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
+                              currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
+                                'border-zinc-700/50 bg-zinc-800/50'
+                              }`}>
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex-1">
+                                  <h3 className="text-white font-medium text-sm mb-1.5">{currentNews.headline}</h3>
+                                  <div className="flex items-center gap-3 text-xs text-zinc-400">
+                                    <span className={`px-2 py-1 rounded ${currentNews.sentiment === 'positive' ? 'bg-green-500/20 text-green-400' :
+                                      currentNews.sentiment === 'negative' ? 'bg-red-500/20 text-red-400' :
+                                        'bg-zinc-500/20 text-zinc-400'
+                                      }`}>
+                                      {currentNews.sentiment.toUpperCase()}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      {formatRelativeTime(currentNews.timestamp)}
+                                    </span>
+                                    {currentNews.price_movement_1hr && (
+                                      <span>1hr: {currentNews.price_movement_1hr.price_change_pct.toFixed(2)}%</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-sm text-zinc-400">
+                                  {activeIndex + 1} / {newsData.length}
                                 </div>
                               </div>
-                              <div className="text-sm text-zinc-400">
-                                {activeIndex + 1} / {newsData.length}
-                              </div>
                             </div>
-                          </div>
 
-                          {/* Image container - takes all available space without padding */}
-                          <div className="flex-1 relative overflow-hidden">
-                            <div className="relative h-full overflow-hidden">
-                              <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-2 py-1 z-10">
+                            {/* Image container */}
+                            <div className="relative">
+                              <div className="absolute top-2 left-2 bg-zinc-900/80 backdrop-blur-sm rounded px-2 py-1 z-20">
                                 <p className="text-xs text-zinc-300 font-medium">
                                   {activeTab === 'intraday' ? 'Intraday Analysis' : 'Interday Analysis'}
                                 </p>
                               </div>
                               {imageLoading[`${activeTab}-${activeIndex}`] && (
-                                <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-10">
+                                <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 z-20">
                                   <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
                                 </div>
                               )}
@@ -1958,7 +1962,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                                   <img
                                     src={currentNews.imageUrl1}
                                     alt={`${companyCode} Intraday Chart`}
-                                    className="w-full h-full object-contain"
+                                    className="w-full h-auto block"
                                     onLoadStart={() => handleImageLoadStart(`intraday-${activeIndex}`)}
                                     onLoad={() => handleImageLoad(`intraday-${activeIndex}`)}
                                     onError={(e) => {
@@ -1967,7 +1971,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                                     }}
                                   />
                                 ) : (
-                                  <div className="w-full h-full flex items-center justify-center">
+                                  <div className="w-full h-[400px] flex items-center justify-center">
                                     <div className="text-center">
                                       <TrendingUp className="h-12 w-12 text-zinc-600 mx-auto mb-2" />
                                       <p className="text-zinc-500">Intraday Chart Generating...</p>
@@ -1980,7 +1984,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                                   <img
                                     src={currentNews.imageUrl2}
                                     alt={`${companyCode} Interday Chart`}
-                                    className="w-full h-full object-contain"
+                                    className="w-full h-auto block"
                                     onLoadStart={() => handleImageLoadStart(`interday-${activeIndex}`)}
                                     onLoad={() => handleImageLoad(`interday-${activeIndex}`)}
                                     onError={(e) => {
@@ -1989,9 +1993,9 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                                     }}
                                   />
                                 ) : (
-                                  <div className="w-full h-full flex items-center justify-center">
+                                  <div className="w-full h-[400px] flex items-center justify-center">
                                     <div className="text-center">
-                                      <TrendingDown className="h-12 w-12 text-zinc-600 mx-auto mb-2" />
+                                      <TrendingDown className="h-16 w-16 text-zinc-600 mx-auto mb-2" />
                                       <p className="text-zinc-500">Interday Chart Generating...</p>
                                     </div>
                                   </div>
@@ -1999,7 +2003,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
                               )}
                             </div>
                           </div>
-                        </div>
+                        </ScrollArea>
                       </>
                     )}
                   </>
@@ -2011,7 +2015,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
 
         {/* News Component - Only show in non-maximized view */}
         {!isMaximized && (
-          <div className="w-1/4 flex-shrink-0">
+          <div className="w-1/4 flex-shrink-0 h-full">
             <NewsComponent
               companyCode={companyCode}
               isMaximized={isMaximized}

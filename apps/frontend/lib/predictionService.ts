@@ -258,7 +258,9 @@ export class PredictionAPIService {
         actualPrices.push(actualData?.[timestamp] ?? null);
 
         // Calculate age in minutes
-        const predictionTime = new Date(prediction.predictedat).getTime();
+        // Use predicted_at, predictedat, or timestamp key as fallback
+        const predTimeStr = prediction.predicted_at || prediction.predictedat || timestamp;
+        const predictionTime = predTimeStr ? new Date(predTimeStr).getTime() : now;
         const ageMinutes = Math.floor((now - predictionTime) / 60000);
         predictionAges.push(ageMinutes);
       });

@@ -181,11 +181,16 @@ interface ChartUpdate {
   changePercent: number;
 }
 
-// ✨ NEW: Prediction data interface (legacy - for regular predictions)
+// ✨ Prediction data interface - matches actual API response structure
+// API returns: { "2026-02-03 09:15": { "close": 415.26, "predicted_at": "2026-02-03 09:15:00" } }
+// The key IS the timestamp, not a property in the value
 interface PredictionData {
-  timestamp: string;
   close: number;
-  predictedat: string;
+  predicted_at?: string;  // When prediction was made
+  prediction_time?: string; // Alternative field name used by some endpoints
+  // Legacy support for old format
+  timestamp?: string;
+  predictedat?: string;
 }
 
 // ✨ GTT Prediction interface matching backend response

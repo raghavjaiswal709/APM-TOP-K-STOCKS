@@ -1,9 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
+// Prediction data interface - matches actual API response structure
+// API returns: { "2026-02-03 09:15": { "close": 415.26, "predicted_at": "2026-02-03 09:15:00" } }
+// The key IS the timestamp for when this price is predicted, not a property in the value
 export interface PredictionData {
-  timestamp: string;
   close: number;
-  predictedat: string;
+  predicted_at?: string;  // When the prediction was made
+  // Legacy support for old format
+  timestamp?: string;
+  predictedat?: string;
 }
 
 export interface CompanyPredictions {

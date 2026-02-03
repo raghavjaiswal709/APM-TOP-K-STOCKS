@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { usePersistentState, useScrollRestoration } from '@/hooks/useStateRestoration';
+import { usePageState, usePersistedPortfolioState } from '@/app/context/PageStateContext';
 import { AppSidebar } from "@/app/components/app-sidebar";
 import {
   SidebarInset,
@@ -96,6 +98,12 @@ import {
 const COLORS = ['#3b82f6', '#22c55e', '#eab308', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899'];
 
 export default function PortfolioPage() {
+  const { updatePortfolioState } = usePageState();
+  const persistedState = usePersistedPortfolioState();
+  
+  // Scroll restoration
+  useScrollRestoration('portfolio-main-scroll');
+
   const {
     portfolio,
     positions,
@@ -114,13 +122,24 @@ export default function PortfolioPage() {
     downloadCSV,
   } = usePortfolio();
 
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = usePersistentState<string>(
+    'portfolio-activeTab',
+    persistedState?.activeTab || 'overview'
+  );
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
     start: subDays(new Date(), 30),
     end: new Date(),
   });
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+
+  // Sync state to context
+  useEffect(() => {
+    updatePortfolioState({
+      activeTab,
+      scrollPosition: window.scrollY,
+    });
+  }, [activeTab, updatePortfolioState]);
 
   // Calculate metrics
   const metrics = useMemo(() => {

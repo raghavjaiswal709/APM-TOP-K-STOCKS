@@ -45,7 +45,7 @@ export const PredictionControlPanel: React.FC<PredictionControlPanelProps> = ({
   }, []);
 
   return (
-    <Card className="border-blue-400/30 bg-gradient-to-br from-blue-500/5 via-card/50 to-blue-600/5 backdrop-blur-sm shadow-lg shadow-blue-500/10">
+    <Card className="h-full border-blue-400/30 bg-gradient-to-br from-blue-500/5 via-card/50 to-blue-600/5 backdrop-blur-sm shadow-lg shadow-blue-500/10">
       <CardHeader className="pb-3 border-b border-blue-400/10">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium text-blue-400 flex items-center gap-2">

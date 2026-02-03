@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { usePersistentState } from './useStateRestoration';
 
 interface MergedCompany {
   company_id?: number;
@@ -32,16 +33,29 @@ interface UseWatchlistOptions {
 
 export function useWatchlist(options: UseWatchlistOptions = {}) {
   const BASE_URL = '';
+  const hasLoadedRef = useRef(false);
   
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [availableDates, setAvailableDates] = useState<string[]>([]);
-  const [companies, setCompanies] = useState<MergedCompany[]>([]);
+  const [availableDates, setAvailableDates] = usePersistentState<string[]>(
+    'watchlist-availableDates',
+    []
+  );
+  const [companies, setCompanies] = usePersistentState<MergedCompany[]>(
+    'watchlist-companies',
+    []
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exists, setExists] = useState(true);
-  const [availableExchanges, setAvailableExchanges] = useState<string[]>([]);
+  const [availableExchanges, setAvailableExchanges] = usePersistentState<string[]>(
+    'watchlist-availableExchanges',
+    []
+  );
   const [totalCompanies, setTotalCompanies] = useState(0);
-  const [availableMarkers, setAvailableMarkers] = useState<string[]>([]);
+  const [availableMarkers, setAvailableMarkers] = usePersistentState<string[]>(
+    'watchlist-availableMarkers',
+    []
+  );
   const [showAllCompanies, setShowAllCompanies] = useState(options.showAllCompanies || false);
   const [refinedFilter, setRefinedFilter] = useState<boolean | null>(options.refinedFilter !== undefined ? options.refinedFilter : null);
   
@@ -56,6 +70,12 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
 
   // Fetch available dates on mount
   useEffect(() => {
+    // Skip if we already have cached dates
+    if (availableDates.length > 0 && hasLoadedRef.current) {
+      console.log('⚡ [useWatchlist] Using cached dates');
+      return;
+    }
+    
     async function fetchAvailableDates() {
       try {
         const response = await fetch(`${BASE_URL}/api/watchlist/dates`);
@@ -67,6 +87,7 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
           if (!selectedDate && data.dates && data.dates.length > 0) {
             setSelectedDate(data.dates[0]);
           }
+          hasLoadedRef.current = true;
         }
       } catch (error) {
         console.error('[useWatchlist] Error fetching available dates:', error);
