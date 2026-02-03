@@ -13,38 +13,68 @@ export interface PollingConfig {
 }
 
 /**
- * Calculate the next sync time based on 5-minute intervals
- * Server generates predictions at: 09:15, 09:20, 09:25, 09:30, etc.
+ * Calculate the next sync time based on configured poll interval
+ * Default behavior syncs with 5-minute server intervals (09:15, 09:20, etc.)
+ * But if pollInterval is less than 5 minutes, use that interval instead
+ * 
+ * IMPORTANT: Adds 20-second buffer to allow server predictions to be ready
+ * e.g., for 12:30 predictions, fetch at 12:30:20
  */
-const getNextSyncTime = (): Date => {
+const FETCH_BUFFER_SECONDS = 20; // Wait 20 seconds after the 5-minute mark
+
+const getNextSyncTime = (pollIntervalMs: number = 5 * 60 * 1000): Date => {
   const now = new Date();
-  const minutes = now.getMinutes();
-  const seconds = now.getSeconds();
-  const milliseconds = now.getMilliseconds();
+  
+  // If poll interval is 5 minutes or more, sync with server times
+  if (pollIntervalMs >= 5 * 60 * 1000) {
+    const minutes = now.getMinutes();
+    const seconds = now.getSeconds();
+    
+    // Calculate next 5-minute interval
+    let nextMinute = Math.ceil((minutes + 1) / 5) * 5;
+    
+    // Check if we're within the current 5-min window but haven't passed the buffer yet
+    // e.g., at 12:30:05, we should still target 12:30:20 (current window + buffer)
+    const currentWindowMinute = Math.floor(minutes / 5) * 5;
+    const isInCurrentWindow = minutes % 5 === 0 && seconds < FETCH_BUFFER_SECONDS;
+    
+    if (isInCurrentWindow) {
+      nextMinute = currentWindowMinute; // Stay in current window
+    }
 
-  // Round up to next 5-minute interval
-  const nextMinute = Math.ceil((minutes + 1) / 5) * 5;
+    const next = new Date(now);
+    next.setMinutes(nextMinute);
+    next.setSeconds(FETCH_BUFFER_SECONDS); // Add 20-second buffer
+    next.setMilliseconds(0);
 
-  const next = new Date(now);
-  next.setMinutes(nextMinute);
-  next.setSeconds(0);
-  next.setMilliseconds(0);
+    // If we've passed into the next hour, adjust
+    if (nextMinute >= 60) {
+      next.setHours(next.getHours() + 1);
+      next.setMinutes(nextMinute % 60);
+    }
+    
+    // If the calculated time is in the past, move to next interval
+    if (next.getTime() <= now.getTime()) {
+      next.setMinutes(next.getMinutes() + 5);
+      if (next.getMinutes() >= 60) {
+        next.setHours(next.getHours() + 1);
+        next.setMinutes(next.getMinutes() % 60);
+      }
+    }
 
-  // If we've passed into the next hour, adjust
-  if (nextMinute >= 60) {
-    next.setHours(next.getHours() + 1);
-    next.setMinutes(nextMinute % 60);
+    return next;
   }
-
-  return next;
+  
+  // For shorter intervals, just add the interval to current time
+  return new Date(now.getTime() + pollIntervalMs);
 };
 
 /**
  * Calculate milliseconds until next sync time
  */
-const getTimeUntilNextSync = (): number => {
+const getTimeUntilNextSync = (pollIntervalMs: number = 5 * 60 * 1000): number => {
   const now = new Date();
-  const next = getNextSyncTime();
+  const next = getNextSyncTime(pollIntervalMs);
   return next.getTime() - now.getTime();
 };
 
@@ -95,13 +125,13 @@ export const usePredictionPolling = (config: PollingConfig) => {
     }
 
     const updateCountdown = () => {
-      const timeLeft = getTimeUntilNextSync();
+      const timeLeft = getTimeUntilNextSync(pollInterval);
       setTimeUntilNextPoll(timeLeft);
     };
 
     updateCountdown(); // Initial update
     countdownIntervalRef.current = setInterval(updateCountdown, 1000);
-  }, []);
+  }, [pollInterval]);
 
   // Use refs to avoid stale closures
   const onUpdateRef = useRef(onUpdate);
@@ -116,7 +146,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
   }, [onUpdate, onError, error]);
 
   /**
-   * Schedule fetch at next 5-minute interval
+   * Schedule fetch at next interval (respects pollInterval)
    */
   const scheduleNextSync = useCallback(() => {
     if (syncTimeoutRef.current) {
@@ -124,12 +154,12 @@ export const usePredictionPolling = (config: PollingConfig) => {
       syncTimeoutRef.current = null; // Explicitly null out
     }
 
-    const timeUntilNext = getTimeUntilNextSync();
-    const nextTime = getNextSyncTime();
+    const timeUntilNext = getTimeUntilNextSync(pollInterval);
+    const nextTime = getNextSyncTime(pollInterval);
 
     setNextPollTime(nextTime);
 
-    console.log(`⏰ [SYNC] Next poll scheduled for: ${nextTime.toLocaleTimeString()} (in ${Math.round(timeUntilNext / 1000)}s)`);
+    console.log(`⏰ [SYNC] Next poll scheduled for: ${nextTime.toLocaleTimeString()} (in ${Math.round(timeUntilNext / 1000)}s, interval: ${pollInterval / 1000}s)`);
 
     syncTimeoutRef.current = setTimeout(() => {
       fetchAtSyncTimeRef.current?.();
@@ -137,7 +167,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
 
     // Start countdown timer
     startCountdown();
-  }, [startCountdown]);
+  }, [startCountdown, pollInterval]);
 
   /**
    * Fetch predictions at synchronized time with stability optimization

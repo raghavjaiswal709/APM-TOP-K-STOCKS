@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { BarChart2 } from "lucide-react";
+import { usePersistentState, useScrollRestoration } from '@/hooks/useStateRestoration';
 import { AppSidebar } from "../components/app-sidebar";
 import {
   Breadcrumb,
@@ -29,15 +30,30 @@ export default function Page() {
   const [isAutoLoading, setIsAutoLoading] = useState(false);
   const [urlParamsProcessed, setUrlParamsProcessed] = useState(false);
 
-  // State for Chart
-  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
-  const [selectedExchange, setSelectedExchange] = useState("NSE");
+  // Scroll restoration for dashboard
+  useScrollRestoration('dashboard-scroll');
+
+  // State for Chart - using persistent state (independent from market-data page)
+  const [selectedCompany, setSelectedCompany] = usePersistentState<string | null>(
+    'dashboard-selectedCompany',
+    null
+  );
+  const [selectedExchange, setSelectedExchange] = usePersistentState<string>(
+    'dashboard-selectedExchange',
+    ""
+  );
   const [selectedMarker, setSelectedMarker] = useState("");
-  const [selectedInterval, setSelectedInterval] = useState("1h");
+  const [selectedInterval, setSelectedInterval] = usePersistentState<string>(
+    'dashboard-selectedInterval',
+    "1h"
+  );
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
   const [selectedStartDate, setSelectedStartDate] = useState<Date | undefined>(undefined);
   const [selectedEndDate, setSelectedEndDate] = useState<Date | undefined>(undefined);
-  const [selectedWatchlist, setSelectedWatchlist] = useState("Nifty 500");
+  const [selectedWatchlist, setSelectedWatchlist] = usePersistentState<string>(
+    'dashboard-selectedWatchlist',
+    ""
+  );
 
   const {
     companies,
@@ -84,15 +100,20 @@ export default function Page() {
     }
   }, [searchParams, urlParamsProcessed]);
 
-  // Trigger Fetch on Company Change (Default All Data)
+  // Trigger Fetch on Company Change (Default All Data) - but only if no data exists
   useEffect(() => {
     if (selectedCompany) {
-      fetchStockData(undefined, undefined, { fetchAllData: true })
-        .then(() => setIsAutoLoading(false));
+      // Only fetch if we don't already have data (prevents reload on page return)
+      if (!stockData || stockData.length === 0) {
+        fetchStockData(undefined, undefined, { fetchAllData: true })
+          .then(() => setIsAutoLoading(false));
+      } else {
+        setIsAutoLoading(false);
+      }
     } else {
       clearData();
     }
-  }, [selectedCompany, selectedExchange, fetchStockData, clearData]);
+  }, [selectedCompany, selectedExchange]);
 
   // Refetch on Interval Change
   useEffect(() => {

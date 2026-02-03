@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { usePersistentState, useScrollRestoration } from '@/hooks/useStateRestoration';
+import { usePageState, usePersistedRecommendationsState } from '@/app/context/PageStateContext';
 import { AppSidebar } from "../components/app-sidebar";
 import {
   Breadcrumb,
@@ -74,8 +76,47 @@ interface OHLCPoint {
 const RecommendationListPage: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
   const { theme } = useTheme();
+  const { updateRecommendationsState } = usePageState();
+  const persistedState = usePersistedRecommendationsState();
+
   // Analysis Visibility State
-  const [isAnalysisVisible, setIsAnalysisVisible] = useState(false);
+  const [isAnalysisVisible, setIsAnalysisVisible] = usePersistentState<boolean>(
+    'recommendations-isAnalysisVisible',
+    persistedState?.isAnalysisVisible || false
+  );
+
+  // Drag-to-resize state
+  const [analysisHeight, setAnalysisHeight] = useState<number>(45); // percentage
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Drag handlers for resizable analysis panel
+  const handleMouseDown = useCallback(() => {
+    setIsDragging(true);
+  }, []);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging || !containerRef.current) return;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const newHeight = ((containerRect.bottom - e.clientY) / containerRect.height) * 100;
+    const clampedHeight = Math.max(20, Math.min(80, newHeight));
+    setAnalysisHeight(clampedHeight);
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   const [historicalDataPoints, setHistoricalDataPoints] = useState<MarketData[]>([]);
   const [ohlcDataPoints, setOHLCDataPoints] = useState<OHLCPoint[]>([]);
@@ -88,6 +129,9 @@ const RecommendationListPage: React.FC = () => {
   const [sthitiPrediction, setSthitiPrediction] = useState<SthitiPrediction | null>(null);
   const [loadingSthitiClusters, setLoadingSthitiClusters] = useState(false);
   const [loadingSthitiPrediction, setLoadingSthitiPrediction] = useState(false);
+
+  // Scroll restoration
+  useScrollRestoration('recommendations-main-scroll');
 
   // Use Time Machine Hook
   const {
@@ -102,6 +146,16 @@ const RecommendationListPage: React.FC = () => {
     setSelectedDate,
     setSelectedCompany,
   } = useTimeMachine();
+
+  // Sync state to context
+  useEffect(() => {
+    updateRecommendationsState({
+      isAnalysisVisible,
+      selectedCompany,
+      selectedDate,
+      scrollPosition: window.scrollY,
+    });
+  }, [isAnalysisVisible, selectedCompany, selectedDate, updateRecommendationsState]);
 
   // Use Watchlist Hook for consistent company list in sidebar
   const {
@@ -281,12 +335,15 @@ const RecommendationListPage: React.FC = () => {
         <div className="flex flex-1 min-h-0 overflow-hidden">
 
           {/* LEFT: CHART & ANALYSIS SPLIT */}
-          <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden">
+          <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden" ref={containerRef}>
 
             {/* Upper: Chart */}
             <div
-              className="relative border-b flex flex-col transition-[flex-basis] duration-300 ease-in-out overflow-hidden"
-              style={{ flex: isAnalysisVisible ? '0 0 55%' : '1 1 auto' }}
+              className="relative border-b flex flex-col overflow-hidden"
+              style={{
+                flex: isAnalysisVisible ? `0 0 ${100 - analysisHeight}%` : '1 1 auto',
+                transition: isDragging ? 'none' : 'flex-basis 300ms ease-in-out'
+              }}
             >
               {selectedCompany ? (
                 <div className="relative w-full h-full flex flex-col">
@@ -299,6 +356,7 @@ const RecommendationListPage: React.FC = () => {
                     height="100%"
                     className="w-full h-full"
                     theme={theme === 'light' ? 'light' : 'dark'}
+                    zoomMode={true}
                   />
                 </div>
               ) : (
@@ -314,62 +372,78 @@ const RecommendationListPage: React.FC = () => {
               )}
             </div>
 
-            {/* Toggle Button Bar - Fixed Height */}
+            {/* Unified Tabs Component */}
             {selectedCompany && (
-              <div className="flex-none flex items-center justify-center border-b bg-muted/20 hover:bg-muted/40 transition-colors py-1 cursor-pointer z-10" onClick={() => setIsAnalysisVisible(!isAnalysisVisible)}>
-                <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 opacity-70 hover:opacity-100">
+              <Tabs defaultValue="analysis" className="flex-1 flex flex-col min-h-0">
+                {/* Toggle Button with TabsList */}
+                <div className="flex-none bg-background z-10">
                   {isAnalysisVisible ? (
-                    <>
-                      <ChevronDown className="h-3 w-3" />
-                      Hide Analysis
-                    </>
-                  ) : (
-                    <>
-                      <ChevronUp className="h-3 w-3" />
-                      Show Analysis
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
-
-            {/* Lower: Analysis / Carousel (Collapsible) - Fills Helper */}
-            {selectedCompany && isAnalysisVisible && (
-              <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden animate-in slide-in-from-bottom-5 duration-300 fade-in">
-                <Tabs defaultValue="analysis" className="flex-1 flex flex-col min-h-0">
-                  <div className="border-b px-4 bg-muted/20 shrink-0">
-                    <TabsList className="h-9">
-                      <TabsTrigger value="analysis" className="text-xs">Sentiment & Prediction</TabsTrigger>
-                      <TabsTrigger value="charts" className="text-xs">Historical Charts</TabsTrigger>
-                    </TabsList>
-                  </div>
-                  <div className="flex-1 overflow-hidden relative">
-                    <TabsContent value="analysis" className="h-full m-0 p-0">
-                      <div className="h-full w-full">
-                        <AnalysisPanel
-                          selectedCompany={selectedCompany}
-                          currentData={currentData}
-                          overallSentiment={overallSentiment}
-                          sthitiPrediction={sthitiPrediction}
-                          loadingSthitiPrediction={loadingSthitiPrediction}
-                          sthitiPositiveClusters={sthitiPositiveClusters}
-                          sthitiNegativeClusters={sthitiNegativeClusters}
-                          sthitiNeutralClusters={sthitiNeutralClusters}
-                          loadingSthitiClusters={loadingSthitiClusters}
-                          selectedDate={selectedDate}
-                        />
+                    <div className="flex items-center justify-between px-4 py-1 border-b bg-muted/20">
+                      {/* Tabs on the left */}
+                      <TabsList className="h-7 bg-muted/50 p-0.5">
+                        <TabsTrigger value="analysis" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Sentiment & Prediction</TabsTrigger>
+                        <TabsTrigger value="charts" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Historical Charts</TabsTrigger>
+                      </TabsList>
+                      {/* Drag handle and hide button on the right */}
+                      <div
+                        className="flex items-center gap-2 cursor-ns-resize group"
+                        onMouseDown={handleMouseDown}
+                        title="Drag to resize analysis panel"
+                      >
+                        <div className="h-0.5 w-6 rounded-full bg-muted-foreground/30 group-hover:bg-primary/50 transition-colors"></div>
+                        <Button variant="ghost" size="sm" className="h-5 text-xs gap-1 opacity-60 hover:opacity-100 pointer-events-auto px-2 py-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsAnalysisVisible(!isAnalysisVisible);
+                          }}
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                          Hide Analysis
+                        </Button>
+                        <div className="h-0.5 w-6 rounded-full bg-muted-foreground/30 group-hover:bg-primary/50 transition-colors"></div>
                       </div>
-                    </TabsContent>
-                    <TabsContent value="charts" className="h-full m-0 p-4 overflow-y-auto">
-                      <HistoricalChartCarousel
-                        companyCode={selectedCompany}
-                        selectedDate={selectedDate || ''}
-                        overallSentiment={overallSentiment as 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL'}
-                      />
-                    </TabsContent>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center bg-muted/20 hover:bg-muted/40 transition-colors py-1 cursor-pointer border-b" onClick={() => setIsAnalysisVisible(!isAnalysisVisible)}>
+                      <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 opacity-70 hover:opacity-100">
+                        <ChevronUp className="h-3 w-3" />
+                        Show Analysis
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Analysis Panel with TabsContent */}
+                {isAnalysisVisible && (
+                  <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden">
+                    <div className="flex-1 overflow-hidden relative">
+                      <TabsContent value="analysis" className="h-full m-0 p-0">
+                        <div className="h-full w-full">
+                          <AnalysisPanel
+                            selectedCompany={selectedCompany}
+                            currentData={currentData}
+                            overallSentiment={overallSentiment}
+                            sthitiPrediction={sthitiPrediction}
+                            loadingSthitiPrediction={loadingSthitiPrediction}
+                            sthitiPositiveClusters={sthitiPositiveClusters}
+                            sthitiNegativeClusters={sthitiNegativeClusters}
+                            sthitiNeutralClusters={sthitiNeutralClusters}
+                            loadingSthitiClusters={loadingSthitiClusters}
+                            selectedDate={selectedDate}
+                          />
+                        </div>
+                      </TabsContent>
+                      <TabsContent value="charts" className="h-full m-0 p-4 overflow-y-auto">
+                        <HistoricalChartCarousel
+                          companyCode={selectedCompany}
+                          selectedDate={selectedDate || ''}
+                          overallSentiment={overallSentiment as 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL'}
+                        />
+                      </TabsContent>
+                    </div>
                   </div>
-                </Tabs>
-              </div>
+                )}
+              </Tabs>
             )}
           </div>
 

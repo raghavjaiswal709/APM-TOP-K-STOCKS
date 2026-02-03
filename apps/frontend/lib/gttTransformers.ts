@@ -26,9 +26,11 @@ export interface GttApiResponse {
 }
 
 export interface PredictionData {
-    timestamp: string;
     close: number;
-    predictedat: string;
+    predicted_at?: string;  // When prediction was made
+    // Legacy support for old format
+    timestamp?: string;
+    predictedat?: string;
 }
 
 export interface GttPredictionItem {

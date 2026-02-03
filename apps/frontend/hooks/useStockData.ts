@@ -1,5 +1,6 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { usePersistentState } from './useStateRestoration';
 interface StockDataPoint {
   interval_start: string;
   open: number;
@@ -25,7 +26,11 @@ export function useStockData({
   indicators = [],
   enableIncrementalLoading = true
 }: UseStockDataParams) {
-  const [data, setData] = useState<StockDataPoint[]>([]);
+  // Use persistent state for data to survive navigation
+  const [data, setData] = usePersistentState<StockDataPoint[]>(
+    `stock-data-${companyCode || 'none'}-${interval}`,
+    []
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dataRange, setDataRange] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });

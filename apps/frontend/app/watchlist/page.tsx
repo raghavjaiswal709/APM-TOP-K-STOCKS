@@ -1,10 +1,12 @@
 'use client'
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { WatchlistSelector } from '@/app/components/controllers/WatchlistSelector';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { usePersistentState, useScrollRestoration } from '@/hooks/useStateRestoration';
+import { usePageState, usePersistedWatchlistState } from '@/app/context/PageStateContext';
 import { AppSidebar } from "@/app/components/app-sidebar";
 import {
   Breadcrumb,
@@ -41,8 +43,29 @@ interface Company {
 
 
 export default function WatchlistPage() {
-  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
-  const [selectedExchange, setSelectedExchange] = useState<string | undefined>(undefined);
+  const { updateWatchlistState } = usePageState();
+  const persistedState = usePersistedWatchlistState();
+  
+  const [selectedCompany, setSelectedCompany] = usePersistentState<string | null>(
+    'watchlist-selectedCompany',
+    persistedState?.selectedCompany || null
+  );
+  const [selectedExchange, setSelectedExchange] = usePersistentState<string | undefined>(
+    'watchlist-selectedExchange',
+    persistedState?.selectedExchange || undefined
+  );
+
+  // Scroll restoration
+  useScrollRestoration('watchlist-main-scroll');
+
+  // Sync state to context
+  useEffect(() => {
+    updateWatchlistState({
+      selectedCompany,
+      selectedExchange,
+      scrollPosition: window.scrollY,
+    });
+  }, [selectedCompany, selectedExchange, updateWatchlistState]);
 
   const {
     companies: rawCompanies,

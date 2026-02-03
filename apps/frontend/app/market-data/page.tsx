@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef, useTransition } from 'react';
 import { getSocket, onReconnect, isSocketConnected } from '@/lib/socket';
 import dynamic from 'next/dynamic';
+import { usePersistentState, useScrollRestoration } from '@/hooks/useStateRestoration';
+import { usePageState } from '@/app/context/PageStateContext';
 import { AppSidebar } from "@/app/components/app-sidebar";
 import { CompanyList } from "@/app/components/CompanyList";
 
@@ -42,14 +44,14 @@ import { useWatchlist } from "@/hooks/useWatchlist";
 import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity, Calendar as CalendarIcon, Images, ChevronDown, ChevronUp, PanelBottomOpen, PanelBottomClose, AlertTriangle } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
 import { isMarketOpen } from "@/lib/marketHours";
-import { 
-  fetchHistoricalData, 
-  fetchHistoricalDataAsOHLC, 
-  detectDataGaps, 
-  mergeOHLCData, 
-  needsExternalDataBackfill, 
+import {
+  fetchHistoricalData,
+  fetchHistoricalDataAsOHLC,
+  detectDataGaps,
+  mergeOHLCData,
+  needsExternalDataBackfill,
   getMarketStatus,
-  OHLCCandle 
+  OHLCCandle
 } from "@/lib/historicalDataFetcher";
 import { useDesirability } from "@/hooks/useDesirability";
 import { DesirabilityPanel } from "./components/DesirabilityPanel";
@@ -65,9 +67,8 @@ import { Zap } from 'lucide-react';
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
 import { useGttPolling } from '@/hooks/useGttPolling';
 import { transformGttToChartPredictions } from '@/lib/gttTransformers';
-import PredictionTimer from './components/PredictionTimer';
-import PredictionControlPanel from './components/PredictionControlPanel';
-import PredictionOverlay from './components/PredictionOverlay';
+import AIPredictionsDashboard from './components/AIPredictionsDashboard';
+import { LiveDataDashboard } from './components/LiveDataDashboard';
 import PredictionAPIService from '@/lib/predictionService';
 import { useTheme } from "next-themes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
@@ -160,33 +161,88 @@ interface Company {
 const MarketDataPage: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
   const { theme } = useTheme();
-  const [selectedSymbol, setSelectedSymbol] = useState<string>('');
-  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
-  const [selectedExchange, setSelectedExchange] = useState<string | null>(null);
-  const [selectedWatchlist, setSelectedWatchlist] = useState('A');
+  const { updateMarketDataState } = usePageState();
 
-  // Analysis Panel Visibility
-  const [isAnalysisVisible, setIsAnalysisVisible] = useState(false);
+  // Use persistent state for key UI state (load directly from localStorage)
+  const [selectedSymbol, setSelectedSymbol] = usePersistentState<string>(
+    'market-data-selectedSymbol',
+    ''
+  );
+  const [selectedCompany, setSelectedCompany] = usePersistentState<string | null>(
+    'market-data-selectedCompany',
+    null
+  );
+  const [selectedExchange, setSelectedExchange] = usePersistentState<string | null>(
+    'market-data-selectedExchange',
+    null
+  );
+  const [selectedWatchlist, setSelectedWatchlist] = usePersistentState<string>(
+    'market-data-selectedWatchlist',
+    ''
+  );
+
+  // UI state preservation
+  const [isAnalysisVisible, setIsAnalysisVisible] = usePersistentState<boolean>(
+    'market-data-isAnalysisVisible',
+    true  // Default to visible so users can see the analysis tab
+  );
 
   // Portfolio Mode State
-  const [portfolioModeEnabled, setPortfolioModeEnabled] = useState(false);
+  const [portfolioModeEnabled, setPortfolioModeEnabled] = usePersistentState<boolean>(
+    'market-data-portfolioModeEnabled',
+    false
+  );
 
   // Prediction Integration State
-  const [showPredictions, setShowPredictions] = useState(true);
-  const [predictionMode, setPredictionMode] = useState<'overlay' | 'comparison'>('overlay');
-  const [gttChartType, setGttChartType] = useState<'candlestick' | 'line'>('candlestick');
-  const [isGttEnabled, setIsGttEnabled] = useState<boolean>(false);
+  const [showPredictions, setShowPredictions] = usePersistentState<boolean>(
+    'market-data-showPredictions',
+    true
+  );
+  const [predictionMode, setPredictionMode] = usePersistentState<'overlay' | 'comparison'>(
+    'market-data-predictionMode',
+    'overlay'
+  );
+  const [gttChartType, setGttChartType] = usePersistentState<'candlestick' | 'line'>(
+    'market-data-gttChartType',
+    'candlestick'
+  );
+  const [isGttEnabled, setIsGttEnabled] = usePersistentState<boolean>(
+    'market-data-isGttEnabled',
+    false
+  );
+
+  // Scroll restoration for main page
+  useScrollRestoration('market-data-main-scroll');
+
+  // Track if we've already loaded data (to prevent re-fetching on navigation)
+  const hasLoadedDataRef = useRef<boolean>(false);
+  const hasInitializedSocketRef = useRef<boolean>(false);
 
   // Health check state for prediction services
-  const [predictionServiceHealth, setPredictionServiceHealth] = useState<'checking' | 'available' | 'unavailable'>('checking');
-  const [gttServiceHealth, setGttServiceHealth] = useState<'checking' | 'available' | 'unavailable'>('checking');
-  const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(true);
+  const [predictionServiceHealth, setPredictionServiceHealth] = usePersistentState<'checking' | 'available' | 'unavailable'>(
+    'market-data-predictionServiceHealth',
+    'checking'
+  );
+  const [gttServiceHealth, setGttServiceHealth] = usePersistentState<'checking' | 'available' | 'unavailable'>(
+    'market-data-gttServiceHealth',
+    'checking'
+  );
+  const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
   const [predictionsOutdated, setPredictionsOutdated] = useState<boolean>(false);
 
-  // Market Data State
-  const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
-  const [historicalData, setHistoricalData] = useState<Record<string, MarketData[]>>({});
-  const [ohlcData, setOhlcData] = useState<Record<string, OHLCData[]>>({});
+  // Market Data State with persistence for seamless navigation
+  const [marketData, setMarketData] = usePersistentState<Record<string, MarketData>>(
+    'market-data-marketData',
+    {}
+  );
+  const [historicalData, setHistoricalData] = usePersistentState<Record<string, MarketData[]>>(
+    'market-data-historicalData',
+    {}
+  );
+  const [ohlcData, setOhlcData] = usePersistentState<Record<string, OHLCData[]>>(
+    'market-data-ohlcData',
+    {}
+  );
   const [chartUpdates, setChartUpdates] = useState<Record<string, ChartUpdate[]>>({});
 
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
@@ -205,17 +261,20 @@ const MarketDataPage: React.FC = () => {
   const [backgroundDataPoints, setBackgroundDataPoints] = useState<number>(0);
   const [gradientMode, setGradientMode] = useState<'profit' | 'loss' | 'neutral'>('neutral');
   const [sentimentLoading, setSentimentLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'live' | 'predictions'>('live');
+  const [activeTab, setActiveTab] = usePersistentState<'live' | 'predictions'>(
+    'market-data-activeTab',
+    'live'
+  );
   const [marketOpen, setMarketOpen] = useState<boolean>(true);
   const [isLoadingHistorical, setIsLoadingHistorical] = useState<boolean>(false);
   const [historicalDataStatus, setHistoricalDataStatus] = useState<string>('');
   const [overallSentiment, setOverallSentiment] = useState<string>('NEUTRAL');
   const [isSentimentFetching, setIsSentimentFetching] = useState<boolean>(false);
-  
+
   // NEW: Maps for company list display
   const [desirabilityMap, setDesirabilityMap] = useState<Record<string, { score: number; classification: string; reoccurrenceProbability: number }>>({});
   const [sentimentMap, setSentimentMap] = useState<Record<string, 'BULLISH' | 'BEARISH' | 'NEUTRAL'>>({});
-  
+
   // Subscription Management State
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
@@ -228,22 +287,108 @@ const MarketDataPage: React.FC = () => {
   const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
   const [stoppedSymbols, setStoppedSymbols] = useState<string[]>([]);
   const [permanentlyStoppedSymbols, setPermanentlyStoppedSymbols] = useState<string[]>([]);
-  
+
   // Track which symbols have been backfilled to avoid duplicate fetches
   const backfilledSymbolsRef = useRef<Set<string>>(new Set());
-  
-  // Date synchronization
-  const [currentDate, setCurrentDate] = useState<string | null>(null);
-  const [filteredCompanies, setFilteredCompanies] = useState<any[]>([]);
-  
-  // Show all companies filter state (lifted from CompanyList for useWatchlist integration)
-  const [showAllCompanies, setShowAllCompanies] = useState<boolean>(false);
 
-  // Fullscreen mode state for chart section
-  const [isChartFullscreen, setIsChartFullscreen] = useState<boolean>(false);
+  // Date synchronization (persistent)
+  const [currentDate, setCurrentDate] = usePersistentState<string | null>(
+    'market-data-currentDate',
+    null
+  );
+  const [filteredCompanies, setFilteredCompanies] = useState<any[]>([]);
+
+  // Show all companies filter state (persistent)
+  const [showAllCompanies, setShowAllCompanies] = usePersistentState<boolean>(
+    'market-data-showAllCompanies',
+    false
+  );
+
+  // Fullscreen mode state for chart section (persistent)
+  const [isChartFullscreen, setIsChartFullscreen] = usePersistentState<boolean>(
+    'market-data-isChartFullscreen',
+    false
+  );
 
   // Shared X-Axis state for chart synchronization
   const [sharedXRange, setSharedXRange] = useState<[Date, Date] | undefined>(undefined);
+
+  // Deferred initialization for heavy operations (smooth page transitions)
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  const [, startTransition] = useTransition();
+
+  // Resizable analysis panel
+  const [analysisHeight, setAnalysisHeight] = useState<number>(45); // percentage
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Drag handler for resizable panel
+  const handleMouseDown = useCallback(() => {
+    setIsDragging(true);
+  }, []);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging || !containerRef.current) return;
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const newHeight = ((containerRect.bottom - e.clientY) / containerRect.height) * 100;
+
+    // Clamp between 20% and 80%
+    const clampedHeight = Math.max(20, Math.min(80, newHeight));
+    setAnalysisHeight(clampedHeight);
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  // Sync state to context on changes (for state persistence across navigation)
+  useEffect(() => {
+    updateMarketDataState({
+      selectedSymbol,
+      selectedCompany,
+      selectedExchange,
+      selectedWatchlist,
+      isAnalysisVisible,
+      portfolioModeEnabled,
+      showPredictions,
+      predictionMode,
+      gttChartType,
+      isGttEnabled,
+      activeTab,
+      showAllCompanies,
+      isChartFullscreen,
+      currentDate,
+      scrollPosition: window.scrollY,
+    });
+  }, [
+    selectedSymbol,
+    selectedCompany,
+    selectedExchange,
+    selectedWatchlist,
+    isAnalysisVisible,
+    portfolioModeEnabled,
+    showPredictions,
+    predictionMode,
+    gttChartType,
+    isGttEnabled,
+    activeTab,
+    showAllCompanies,
+    isChartFullscreen,
+    currentDate,
+    updateMarketDataState,
+  ]);
 
   // Handle Escape key to exit fullscreen
   useEffect(() => {
@@ -273,12 +418,12 @@ const MarketDataPage: React.FC = () => {
 
   // Date Synchronization Logic
   const effectiveDate = currentDate || hookSelectedDate;
-  
+
   const latestAvailableDate = useMemo(() => {
     if (!availableDates || availableDates.length === 0) return null;
     return [...availableDates].sort().reverse()[0];
   }, [availableDates]);
-  
+
   const isLatestDate = useMemo(() => {
     if (!effectiveDate || !latestAvailableDate) return true;
     return effectiveDate === latestAvailableDate;
@@ -291,7 +436,7 @@ const MarketDataPage: React.FC = () => {
   const socketRef = useRef<any>(null);
   const isSubscribedRef = useRef<Set<string>>(new Set());
   const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Track cumulative volume per symbol for real-time delta calculation
   // Format: Map<symbol, Map<minuteTimestamp, cumulativeVolumeAtStartOfMinute>>
   const cumulativeVolumeRef = useRef<Map<string, Map<number, number>>>(new Map());
@@ -318,8 +463,8 @@ const MarketDataPage: React.FC = () => {
     timeUntilNextPoll,
   } = usePredictionPolling({
     company: selectedCompany || selectedSymbol.split(':')[1]?.split('-')[0] || '',
-    pollInterval: 5 * 60 * 1000,
-    totalDuration: 25 * 60 * 1000,
+    pollInterval: 5 * 60 * 1000, // Poll every 5 minutes to sync with server prediction times (9:15, 9:20, etc.)
+    totalDuration: 7 * 60 * 60 * 1000, // Run for entire market day (9:15 AM - 3:30 PM = ~6.25 hours)
     enabled: showPredictions && isClient,
     autoStart: true,
     onUpdate: (data) => {
@@ -347,7 +492,7 @@ const MarketDataPage: React.FC = () => {
     enabled: isGttEnabled && isClient && !!selectedSymbol,
     pollInterval: 60000
   });
-  
+
   const gttChartData = useMemo(() => {
     if (!rawGttPredictions) return null;
     return transformGttToChartPredictions(rawGttPredictions);
@@ -368,12 +513,12 @@ const MarketDataPage: React.FC = () => {
 
     // Get today's date in IST
     const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    
+
     // Check if any prediction timestamp is from today
     const hasToday = predictionKeys.some(key => key.startsWith(todayIST));
-    
+
     console.log(`🔍 [PREDICTION CHECK] Today IST: ${todayIST}, Keys sample: ${predictionKeys.slice(0, 3).join(', ')}, Has today: ${hasToday}`);
-    
+
     setPredictionsOutdated(!hasToday);
   }, [predictions]);
 
@@ -403,8 +548,8 @@ const MarketDataPage: React.FC = () => {
   // Update desirability map when data is fetched for selected company
   useEffect(() => {
     if (desirabilityData && selectedSymbol) {
-      const companyCode = selectedSymbol.includes(':') 
-        ? selectedSymbol.split(':')[1]?.split('-')[0] 
+      const companyCode = selectedSymbol.includes(':')
+        ? selectedSymbol.split(':')[1]?.split('-')[0]
         : selectedSymbol.split('-')[0];
       if (companyCode && desirabilityData.top_pattern) {
         setDesirabilityMap(prev => ({
@@ -512,12 +657,12 @@ const MarketDataPage: React.FC = () => {
           const company = companies?.find((c: any) => c.company_code === code);
           const exchange = company?.exchange || 'NSE';
           const marker = company?.marker || 'EQ';
-          
+
           if (!marker || marker.toUpperCase() === 'STOPPED' || marker === '') {
             console.log(`⏭️ Skipping ${code}: marker is "${marker}"`);
             return null;
           }
-          
+
           return `${exchange}:${code}-${marker}`;
         })
         .filter((s): s is string => s !== null);
@@ -541,10 +686,10 @@ const MarketDataPage: React.FC = () => {
           toast.success(`Successfully subscribed to ${response.count || fyersSymbols.length} companies`);
 
           fyersSymbols.forEach(s => isSubscribedRef.current.add(s));
-          
+
           const failedSymbols = response.failed || response.invalid_symbols || [];
           const successfulSymbols = fyersSymbols.filter((s: string) => !failedSymbols.includes(s));
-          
+
           if (successfulSymbols.length > 0) {
             console.log('💾 Saving successful subscriptions:', successfulSymbols.length);
             fetch('/api/admin/subscribed-companies', {
@@ -553,7 +698,7 @@ const MarketDataPage: React.FC = () => {
               body: JSON.stringify({ symbols: successfulSymbols }),
             }).catch(err => console.error('Failed to save successful subscriptions:', err));
           }
-          
+
           if (response.failed && response.failed.length > 0) {
             console.log('⚠️ Some symbols failed:', response.failed);
             fetch('/api/admin/failed-subscriptions', {
@@ -561,14 +706,14 @@ const MarketDataPage: React.FC = () => {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ symbols: response.failed }),
             }).catch(err => console.error('Failed to report failed symbols:', err));
-            
+
             toast.warning(`${response.failed.length} symbol(s) failed to subscribe`);
           }
         } else {
           const errorMsg = response?.error || response?.message || 'Subscription failed';
           console.error('❌ Subscription failed:', response);
           toast.error(errorMsg);
-          
+
           const invalidSymbols = response?.invalid_symbols || response?.invalidSymbols || [];
           if (invalidSymbols.length > 0) {
             console.log('🚫 Invalid symbols detected:', invalidSymbols);
@@ -577,14 +722,14 @@ const MarketDataPage: React.FC = () => {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ symbols: invalidSymbols }),
             }).catch(err => console.error('Failed to report invalid symbols:', err));
-            
+
             setSubscriptionErrors({
               code: response?.code || -300,
               message: errorMsg,
               invalidSymbols: invalidSymbols,
               timestamp: Date.now()
             });
-            
+
             setFailedSymbols(prev => [...new Set([...prev, ...invalidSymbols])]);
           }
         }
@@ -830,7 +975,7 @@ const MarketDataPage: React.FC = () => {
         [update.symbol]: newUpdates
       };
     });
-    
+
     // ===== REAL-TIME OHLC UPDATE =====
     // Update OHLC candle for the current minute with real-time tick data
     // This ensures smooth chart updates without waiting for batch OHLC data
@@ -839,25 +984,25 @@ const MarketDataPage: React.FC = () => {
       const minuteTs = Math.floor(update.timestamp / 60) * 60;
       const price = update.price;
       const cumulativeVolume = update.volume || 0;  // vol_traded_today (cumulative)
-      
+
       // Get or create the symbol's volume tracking map
       if (!cumulativeVolumeRef.current.has(update.symbol)) {
         cumulativeVolumeRef.current.set(update.symbol, new Map());
       }
       const symbolVolumeMap = cumulativeVolumeRef.current.get(update.symbol)!;
-      
+
       // Find or create the current minute's candle
       const candleMap = new Map<number, OHLCData>();
       existingCandles.forEach(c => candleMap.set(c.timestamp, c));
-      
+
       const existingCandle = candleMap.get(minuteTs);
-      
+
       if (existingCandle) {
         // Update existing candle
         // Calculate volume delta: current cumulative - cumulative at start of this minute
         const startOfMinuteVolume = symbolVolumeMap.get(minuteTs) || cumulativeVolume;
         const volumeDelta = Math.max(0, cumulativeVolume - startOfMinuteVolume);
-        
+
         candleMap.set(minuteTs, {
           ...existingCandle,
           high: Math.max(existingCandle.high, price),
@@ -870,14 +1015,14 @@ const MarketDataPage: React.FC = () => {
         // Store the cumulative volume at the START of this new minute
         // This is used to calculate delta for the entire minute
         symbolVolumeMap.set(minuteTs, cumulativeVolume);
-        
+
         // Clean up old minute entries (keep only last 1000 minutes)
         const sortedMinutes = Array.from(symbolVolumeMap.keys()).sort((a, b) => a - b);
         while (sortedMinutes.length > 1000) {
           const oldMinute = sortedMinutes.shift();
           if (oldMinute) symbolVolumeMap.delete(oldMinute);
         }
-        
+
         candleMap.set(minuteTs, {
           timestamp: minuteTs,
           open: price,
@@ -887,10 +1032,10 @@ const MarketDataPage: React.FC = () => {
           volume: 0  // First tick of minute, delta is 0
         });
       }
-      
+
       const merged = Array.from(candleMap.values())
         .sort((a, b) => a.timestamp - b.timestamp);
-      
+
       return {
         ...prev,
         [update.symbol]: merged
@@ -980,29 +1125,29 @@ const MarketDataPage: React.FC = () => {
       console.log(`📊 First OHLC:`, { ts: first.timestamp, o: first.open, h: first.high, l: first.low, c: first.close, v: first.volume });
       console.log(`📊 Last OHLC:`, { ts: last.timestamp, o: last.open, h: last.high, l: last.low, c: last.close, v: last.volume });
     }
-    
+
     // IMPORTANT: MERGE incoming candles with existing data (don't replace!)
     // This preserves historical backfill data while adding real-time updates
     setOhlcData(prev => {
       const existingCandles = prev[data.symbol] || [];
       const candleMap = new Map<number, OHLCData>();
-      
+
       // Add existing candles first (historical backfill)
       existingCandles.forEach(candle => {
         candleMap.set(candle.timestamp, candle);
       });
-      
+
       // Add/update with new candles (real-time takes priority)
       data.data.forEach(candle => {
         candleMap.set(candle.timestamp, candle);
       });
-      
+
       // Convert to sorted array
       const merged = Array.from(candleMap.values())
         .sort((a, b) => a.timestamp - b.timestamp);
-      
+
       console.log(`📊 [handleOhlcData] Merged: ${existingCandles.length} existing + ${data.data.length} new = ${merged.length} total`);
-      
+
       return {
         ...prev,
         [data.symbol]: merged
@@ -1072,9 +1217,29 @@ const MarketDataPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Health check for prediction services
+  // Trigger deferred initialization on next frame for smooth page transitions
   useEffect(() => {
     if (!isClient) return;
+
+    // Use requestAnimationFrame to defer initialization until after page is interactive
+    const frameId = requestAnimationFrame(() => {
+      startTransition(() => {
+        setIsInitialized(true);
+      });
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [isClient, startTransition]);
+
+  // Health check for prediction services - DEFERRED for smooth page load
+  useEffect(() => {
+    if (!isClient || !isInitialized) return;
+
+    // Skip if health already checked and cached
+    if (predictionServiceHealth !== 'checking' && gttServiceHealth !== 'checking') {
+      console.log('⚡ [Health Check] Using cached health status');
+      return;
+    }
 
     const checkPredictionServicesHealth = async () => {
       setIsCheckingHealth(true);
@@ -1106,11 +1271,18 @@ const MarketDataPage: React.FC = () => {
     const healthCheckInterval = setInterval(checkPredictionServicesHealth, 120000);
 
     return () => clearInterval(healthCheckInterval);
-  }, [isClient]);
+  }, [isClient, isInitialized]);
 
-  // Fetch subscription status from JSON files
+  // Fetch subscription status from JSON files - DEFERRED
   useEffect(() => {
-    if (!isClient) return;
+    if (!isClient || !isInitialized) return;
+
+    // Skip initial fetch if we already have cached data
+    if (hasLoadedDataRef.current &&
+      (failedSymbols.length > 0 || stoppedSymbols.length > 0 || permanentlyStoppedSymbols.length > 0)) {
+      console.log('⚡ [Subscription Status] Using cached data');
+      return;
+    }
 
     const fetchSubscriptionStatus = async () => {
       try {
@@ -1133,12 +1305,20 @@ const MarketDataPage: React.FC = () => {
 
     const interval = setInterval(fetchSubscriptionStatus, 30000);
     return () => clearInterval(interval);
-  }, [isClient]);
+  }, [isClient, isInitialized]);
 
+  // Socket initialization - DEFERRED for smooth page transitions
   useEffect(() => {
-    if (!isClient) return;
+    if (!isClient || !isInitialized) return;
+
+    // Skip socket reinitialization if already done and we have cached data
+    if (hasInitializedSocketRef.current && Object.keys(marketData).length > 0) {
+      console.log('⚡ [Socket] Using existing connection and cached data');
+      return;
+    }
 
     console.log('🚀 Initializing WebSocket connection...');
+    hasInitializedSocketRef.current = true;
 
     const socket = getSocket();
     socketRef.current = socket;
@@ -1181,11 +1361,22 @@ const MarketDataPage: React.FC = () => {
       socket.off('heartbeat', handleHeartbeat);
       unsubscribeReconnect();
     };
-  }, [isClient, selectedSymbol, handleConnect, handleDisconnect, handleError, handleSubscriptionError, handleMarketDataUpdate, handleChartUpdate, handleHistoricalData, handleOhlcData, handleHeartbeat]);
+  }, [isClient, isInitialized, selectedSymbol, handleConnect, handleDisconnect, handleError, handleSubscriptionError, handleMarketDataUpdate, handleChartUpdate, handleHistoricalData, handleOhlcData, handleHeartbeat]);
 
   // Fetch historical data on symbol change
   useEffect(() => {
     if (!isClient || !selectedSymbol || !socketRef.current) return;
+
+    // Skip if we already have cached data for this symbol (prevents reload on navigation)
+    const hasCachedMarketData = marketData[selectedSymbol];
+    const hasCachedHistoricalData = historicalData[selectedSymbol] && historicalData[selectedSymbol].length > 0;
+    const hasCachedOhlcData = ohlcData[selectedSymbol] && ohlcData[selectedSymbol].length > 0;
+
+    if (hasCachedMarketData && hasCachedHistoricalData && hasCachedOhlcData) {
+      console.log(`⚡ [Data] Using cached data for ${selectedSymbol} - skipping subscription and fetch`);
+      hasLoadedDataRef.current = true;
+      return;
+    }
 
     const socket = socketRef.current;
 
@@ -1219,7 +1410,7 @@ const MarketDataPage: React.FC = () => {
         console.log(`📡 [Backfill] Already backfilled ${backfillKey}, skipping`);
         return;
       }
-      
+
       setIsLoadingHistorical(true);
       setHistoricalDataStatus('Checking data completeness...');
 
@@ -1227,27 +1418,27 @@ const MarketDataPage: React.FC = () => {
         const currentDate = effectiveDate || new Date().toISOString().split('T')[0];
         const marketStatus = isMarketOpen();
         const isAfterMarket = marketStatus.reason === 'after-market';
-        
+
         console.log(`📡 [Backfill] Symbol: ${selectedSymbol}, Date: ${currentDate}, Market: ${marketStatus.isOpen ? 'OPEN' : marketStatus.reason}`);
-        
+
         // Always fetch external data to fill any gaps
         // After market: need full day
         // During market: fill gaps from 9:15 AM to now
         setHistoricalDataStatus(`Fetching ${isAfterMarket ? 'full day' : 'historical'} data...`);
-        
+
         const result = await fetchHistoricalData(selectedSymbol, currentDate);
 
         if (result.success && result.data.length > 0) {
           console.log(`✅ [Backfill] Fetched ${result.data.length} ticks, ${result.ohlc?.length || 0} candles from external server`);
-          
+
           // Mark as backfilled
           backfilledSymbolsRef.current.add(backfillKey);
-          
+
           // ===== MERGE EXTERNAL OHLC WITH EXISTING OHLC =====
           if (result.ohlc && result.ohlc.length > 0) {
             setOhlcData(prev => {
               const existingCandles = prev[selectedSymbol] || [];
-              
+
               // Convert to OHLCCandle format if needed
               const externalCandles: OHLCCandle[] = result.ohlc!.map(c => ({
                 timestamp: c.timestamp,
@@ -1257,27 +1448,27 @@ const MarketDataPage: React.FC = () => {
                 close: c.close,
                 volume: c.volume
               }));
-              
+
               // Merge: external first (fills gaps), then real-time (takes priority)
               const merged = mergeOHLCData(existingCandles as OHLCCandle[], externalCandles);
-              
+
               console.log(`✅ [Backfill] Merged OHLC: ${existingCandles.length} existing + ${externalCandles.length} external = ${merged.length} total`);
-              
+
               if (merged.length > 0) {
                 const firstTime = new Date(merged[0].timestamp * 1000).toLocaleTimeString('en-IN');
                 const lastTime = new Date(merged[merged.length - 1].timestamp * 1000).toLocaleTimeString('en-IN');
                 console.log(`✅ [Backfill] Time range: ${firstTime} → ${lastTime}`);
               }
-              
+
               return {
                 ...prev,
                 [selectedSymbol]: merged as OHLCData[]
               };
             });
-            
+
             setHistoricalDataStatus(`Complete: ${result.ohlc.length} candles loaded`);
           }
-          
+
           // ===== ALSO MERGE TICK DATA FOR HISTORICAL REFERENCE =====
           const externalData: MarketData[] = result.data.map(point => ({
             symbol: selectedSymbol,
@@ -1336,8 +1527,8 @@ const MarketDataPage: React.FC = () => {
           }
         } else {
           console.warn(`⚠️ [Backfill] No external data available: ${result.error || 'Unknown'}`);
-          setHistoricalDataStatus(isAfterMarket 
-            ? 'After-market: No data available for this date' 
+          setHistoricalDataStatus(isAfterMarket
+            ? 'After-market: No data available for this date'
             : 'Using real-time data only');
         }
       } catch (error) {
@@ -1375,10 +1566,10 @@ const MarketDataPage: React.FC = () => {
       try {
         const sentiment = await sentimentService.fetchSentiment(selectedSymbol);
         setOverallSentiment(sentiment);
-        
+
         // Update sentiment map for company list display
-        const companyCode = selectedSymbol.includes(':') 
-          ? selectedSymbol.split(':')[1]?.split('-')[0] 
+        const companyCode = selectedSymbol.includes(':')
+          ? selectedSymbol.split(':')[1]?.split('-')[0]
           : selectedSymbol.split('-')[0];
         if (companyCode) {
           setSentimentMap(prev => ({
@@ -1453,15 +1644,15 @@ const MarketDataPage: React.FC = () => {
   // Use OHLC data ONLY for candlesticks - these are proper aggregated candles
   // The WebSocket sends ohlcData with proper open/high/low/close per minute
   // =====================================================================
-  
+
   const chartData = useMemo(() => {
     console.log(`📈 [chartData] symbolOhlc: ${symbolOhlc?.length || 0}, symbolHistory: ${symbolHistory?.length || 0}`);
-    
+
     // ===== USE OHLC DATA DIRECTLY (this is the correct data for candlesticks) =====
     if (symbolOhlc && symbolOhlc.length > 0) {
       // Filter valid candles and sort by timestamp
       const validCandles = symbolOhlc
-        .filter(candle => 
+        .filter(candle =>
           candle.timestamp > 0 &&
           typeof candle.open === 'number' && !isNaN(candle.open) && candle.open > 0 &&
           typeof candle.high === 'number' && !isNaN(candle.high) && candle.high > 0 &&
@@ -1471,7 +1662,7 @@ const MarketDataPage: React.FC = () => {
         .sort((a, b) => a.timestamp - b.timestamp);
 
       console.log(`📈 [chartData] Using ${validCandles.length} valid OHLC candles`);
-      
+
       if (validCandles.length > 0) {
         console.log(`📈 First candle:`, validCandles[0]);
         console.log(`📈 Last candle:`, validCandles[validCandles.length - 1]);
@@ -1486,25 +1677,25 @@ const MarketDataPage: React.FC = () => {
         volume: Math.max(0, candle.volume || 0),
       }));
     }
-    
+
     // ===== FALLBACK: Create candles from historical tick data =====
     if (symbolHistory && symbolHistory.length > 0) {
       console.log(`📈 [chartData] Creating candles from historical tick data`);
-      
+
       // Group ticks by minute and create proper OHLC candles
       const minuteCandles = new Map<number, { open: number, high: number, low: number, close: number, volume: number, firstTimestamp: number }>();
-      
+
       const sortedHistory = [...symbolHistory]
         .filter(p => p.ltp > 0 && !isNaN(p.ltp))
         .sort((a, b) => a.timestamp - b.timestamp);
-      
+
       // Track cumulative volume for delta calculation
       let prevCumulativeVolume = 0;
-      
+
       sortedHistory.forEach((p, index) => {
         const minuteTs = Math.floor(p.timestamp / 60) * 60;
         const price = p.ltp;
-        
+
         // Calculate volume delta
         const currentCumulativeVolume = p.volume || 0;
         let deltaVolume = 0;
@@ -1512,9 +1703,9 @@ const MarketDataPage: React.FC = () => {
           deltaVolume = currentCumulativeVolume - prevCumulativeVolume;
         }
         prevCumulativeVolume = currentCumulativeVolume;
-        
+
         const existing = minuteCandles.get(minuteTs);
-        
+
         if (!existing) {
           // First tick for this minute - create new candle
           minuteCandles.set(minuteTs, {
@@ -1533,7 +1724,7 @@ const MarketDataPage: React.FC = () => {
           existing.volume += deltaVolume;
         }
       });
-      
+
       // Convert to array and sort
       const result = Array.from(minuteCandles.entries())
         .sort((a, b) => a[0] - b[0])
@@ -1545,13 +1736,13 @@ const MarketDataPage: React.FC = () => {
           close: candle.close,
           volume: candle.volume,
         }));
-      
+
       console.log(`📈 [chartData] Created ${result.length} minute candles from ${sortedHistory.length} ticks`);
       if (result.length > 0) {
         console.log(`📈 First candle:`, result[0]);
         console.log(`📈 Last candle:`, result[result.length - 1]);
       }
-      
+
       return result;
     }
 
@@ -1595,7 +1786,7 @@ const MarketDataPage: React.FC = () => {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="overflow-hidden flex flex-col h-screen">
-        
+
         {/* HEADER */}
         <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-background px-4">
           <SidebarTrigger className="-ml-1" />
@@ -1696,13 +1887,12 @@ const MarketDataPage: React.FC = () => {
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => setShowPredictions(!showPredictions)}
-                      className={`px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                        showPredictions
-                          ? predictionsOutdated
-                            ? 'bg-red-600 text-white hover:bg-red-700'
-                            : 'bg-[#dbeafe] text-blue-600 hover:bg-[#cddcfe]'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
+                      className={`px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${showPredictions
+                        ? predictionsOutdated
+                          ? 'bg-red-600 text-white hover:bg-red-700'
+                          : 'bg-[#dbeafe] text-blue-600 hover:bg-[#cddcfe]'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
                     >
                       {predictionsOutdated && showPredictions ? (
                         <AlertTriangle className="h-3.5 w-3.5" />
@@ -1784,7 +1974,7 @@ const MarketDataPage: React.FC = () => {
         <div className="flex flex-1 min-h-0 overflow-hidden">
 
           {/* LEFT: CHART & ANALYSIS SPLIT */}
-          <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden">
+          <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden" ref={containerRef}>
 
             {/* Outdated Predictions Warning Banner */}
             {showPredictions && predictionsOutdated && predictions && predictions.count > 0 && (
@@ -1794,10 +1984,14 @@ const MarketDataPage: React.FC = () => {
               </div>
             )}
 
-            {/* Upper: Chart */}
+            {/* Upper: Chart - takes remaining space */}
             <div
-              className="relative border-b flex flex-col transition-[flex-basis] duration-300 ease-in-out overflow-hidden"
-              style={{ flex: isAnalysisVisible ? '0 0 55%' : '1 1 auto' }}
+              className="relative border-b flex flex-col overflow-hidden flex-1"
+              style={{
+                flex: isAnalysisVisible ? `0 0 ${100 - analysisHeight}%` : '1 1 auto',
+                transition: isDragging ? 'none' : 'flex-basis 300ms ease-in-out',
+                minHeight: '200px'
+              }}
             >
               {selectedCompany && marketOpen ? (
                 <div className="relative w-full h-full flex flex-col">
@@ -1812,6 +2006,7 @@ const MarketDataPage: React.FC = () => {
                     defaultChartType="line"
                     predictions={predictions}
                     showPredictions={showPredictions}
+                    zoomMode={true}
                   />
                 </div>
               ) : !selectedCompany ? (
@@ -1831,297 +2026,124 @@ const MarketDataPage: React.FC = () => {
               )}
             </div>
 
-            {/* Toggle Button Bar - Fixed Height */}
-            {selectedCompany && (
-              <div className="flex-none flex items-center justify-center border-b bg-muted/20 hover:bg-muted/40 transition-colors py-1 cursor-pointer z-10" onClick={() => setIsAnalysisVisible(!isAnalysisVisible)}>
-                <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 opacity-70 hover:opacity-100">
-                  {isAnalysisVisible ? (
-                    <>
-                      <ChevronDown className="h-3 w-3" />
-                      Hide Analysis
-                    </>
-                  ) : (
-                    <>
-                      <ChevronUp className="h-3 w-3" />
-                      Show Analysis
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
-
-            {/* Lower: Analysis Panel (Collapsible) */}
-            {selectedCompany && isAnalysisVisible && marketOpen && (
-              <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden animate-in slide-in-from-bottom-5 duration-300 fade-in">
-                <Tabs defaultValue="predictions" className="flex-1 flex flex-col min-h-0">
-                  <div className="border-b px-4 bg-muted/20 shrink-0">
-                    <TabsList className="h-9">
-                      <TabsTrigger value="predictions" className="text-xs">AI Predictions & GTT</TabsTrigger>
-                      <TabsTrigger value="charts" className="text-xs">LSTM-AE & SIPR</TabsTrigger>
-                      <TabsTrigger value="livedata" className="text-xs">Live Data</TabsTrigger>
+            {/* Analysis Panel - Always visible toggle bar, sticky at bottom */}
+            <Tabs defaultValue="livedata" className="flex flex-col min-h-0" style={{ flex: isAnalysisVisible ? `0 0 ${analysisHeight}%` : '0 0 auto' }}>
+              {/* Toggle Button with TabsList - ALWAYS VISIBLE */}
+              <div className="flex-none bg-background z-20 border-t sticky bottom-0">
+                {isAnalysisVisible ? (
+                  <div className="flex items-center justify-between px-4 py-1.5 border-b bg-muted/30">
+                    {/* Tabs on the left */}
+                    <TabsList className="h-7 bg-muted/50 p-0.5">
+                      <TabsTrigger value="livedata" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Live Data</TabsTrigger>
+                      <TabsTrigger value="predictions" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">AI Predictions & GTT</TabsTrigger>
+                      <TabsTrigger value="charts" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">LSTM-AE & SIPR</TabsTrigger>
                     </TabsList>
+                    {/* Drag handle and hide button on the right */}
+                    <div
+                      className="flex items-center gap-2 cursor-ns-resize group"
+                      onMouseDown={handleMouseDown}
+                      title="Drag to resize analysis panel"
+                    >
+                      <div className="h-0.5 w-6 rounded-full bg-muted-foreground/30 group-hover:bg-primary/50 transition-colors"></div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 text-xs gap-1 opacity-60 hover:opacity-100 pointer-events-auto px-2 py-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsAnalysisVisible(!isAnalysisVisible);
+                        }}
+                      >
+                        <ChevronDown className="h-3 w-3" />
+                        Hide Analysis
+                      </Button>
+                      <div className="h-0.5 w-6 rounded-full bg-muted-foreground/30 group-hover:bg-primary/50 transition-colors"></div>
+                    </div>
                   </div>
+                ) : (
+                  <div 
+                    className="flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors py-2 cursor-pointer border-t shadow-lg" 
+                    onClick={() => setIsAnalysisVisible(!isAnalysisVisible)}
+                  >
+                    <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 opacity-80 hover:opacity-100">
+                      <ChevronUp className="h-3 w-3" />
+                      Show Analysis Panel
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Analysis Panel with TabsContent - Only show when visible AND conditions met */}
+              {isAnalysisVisible && selectedCompany && marketOpen && (
+                <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden">
                   <div className="flex-1 overflow-hidden relative">
                     <TabsContent value="predictions" className="h-full m-0">
                       <ScrollArea className="h-full w-full">
-                        <div className="p-4">
-                          {/* Horizontal Grid Layout */}
-                          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                            {/* Prediction Controls */}
-                            {showPredictions && (
-                              <>
-                                <Card className="col-span-1">
-                                  <CardHeader>
-                                    <CardTitle className="text-sm">Prediction Controls</CardTitle>
-                                  </CardHeader>
-                                  <CardContent>
-                                    <PredictionControlPanel
-                                      isPolling={isPolling}
-                                      elapsedTime={elapsedTime}
-                                      timeRemaining={timeRemaining}
-                                      progressPercentage={progressPercentage}
-                                      pollCount={pollCount}
-                                      nextPollTime={nextPollTime}
-                                      onStart={startPolling}
-                                      onPause={pausePolling}
-                                      onStop={stopPolling}
-                                      onRefresh={handleManualRefresh}
-                                      disabled={predictionLoading}
-                                    />
-                                  </CardContent>
-                                </Card>
-
-                                <Card className="col-span-1">
-                                  <CardHeader>
-                                    <CardTitle className="text-sm">Next Poll Timer</CardTitle>
-                                  </CardHeader>
-                                  <CardContent>
-                                    <PredictionTimer
-                                      timeUntilNextPoll={timeUntilNextPoll}
-                                      nextPollTime={nextPollTime}
-                                      isPolling={isPolling}
-                                      onTimerEnd={handleTimerEnd}
-                                    />
-                                  </CardContent>
-                                </Card>
-
-                                {predictions && (
-                                  <Card className="col-span-1 lg:col-span-2 xl:col-span-1">
-                                    <CardHeader>
-                                      <CardTitle className="text-sm">Prediction Data</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                      <PredictionOverlay
-                                        predictions={predictions}
-                                        company={selectedCompany || selectedSymbol}
-                                        dataAge={predictionDataAge}
-                                        isStale={isDataStale}
-                                      />
-                                    </CardContent>
-                                  </Card>
-                                )}
-                              </>
-                            )}
-
-                            {/* GTT Status */}
-                            {isGttEnabled && (
-                              <Card className="col-span-1">
-                                <CardHeader>
-                                  <CardTitle className="text-sm flex items-center gap-2">
-                                    <Zap className="h-4 w-4 text-purple-500" />
-                                    GTT Engine Status
-                                  </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                  {gttLoading ? (
-                                    <div className="text-sm text-muted-foreground">Loading GTT predictions...</div>
-                                  ) : gttError ? (
-                                    <div className="text-sm text-red-500">{gttError}</div>
-                                  ) : gttChartData ? (
-                                    <div className="text-sm text-green-500">GTT predictions loaded successfully</div>
-                                  ) : (
-                                    <div className="text-sm text-muted-foreground">No GTT data available</div>
-                                  )}
-                                </CardContent>
-                              </Card>
-                            )}
+                        {showPredictions ? (
+                          <AIPredictionsDashboard
+                            isPolling={isPolling}
+                            elapsedTime={elapsedTime}
+                            timeRemaining={timeRemaining}
+                            pollCount={pollCount}
+                            nextPollTime={nextPollTime}
+                            timeUntilNextPoll={timeUntilNextPoll}
+                            onStart={startPolling}
+                            onPause={pausePolling}
+                            onStop={stopPolling}
+                            onRefresh={handleManualRefresh}
+                            predictions={predictions}
+                            company={selectedCompany || selectedSymbol}
+                            dataAge={predictionDataAge}
+                            isStale={isDataStale}
+                            isLoading={predictionLoading}
+                            isGttEnabled={isGttEnabled}
+                            gttLoading={gttLoading}
+                            gttError={gttError}
+                            gttData={gttChartData}
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center h-full py-12 text-muted-foreground">
+                            <div className="text-center">
+                              <Zap className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                              <p className="text-sm">AI Predictions are disabled</p>
+                              <p className="text-xs mt-1">Enable predictions in settings to view this panel</p>
+                            </div>
                           </div>
+                        )}
+                        </ScrollArea>
+                      </TabsContent>
+                      <TabsContent value="charts" className="h-full m-0 p-0">
+                        <div className="h-full">
+                          <ImageCarousel
+                            companyCode={selectedCompany || ''}
+                            exchange={selectedExchange || ''}
+                            gradientMode={gradientMode}
+                            onGradientModeChange={setGradientMode}
+                            onSentimentLoadingChange={setSentimentLoading}
+                            selectedDate={effectiveDate || undefined}
+                          />
                         </div>
-                      </ScrollArea>
-                    </TabsContent>
-                    <TabsContent value="charts" className="h-full m-0 p-0">
-                      <div className="h-full">
-                        <ImageCarousel
-                          companyCode={selectedCompany || ''}
-                          exchange={selectedExchange || ''}
-                          gradientMode={gradientMode}
-                          onGradientModeChange={setGradientMode}
-                          onSentimentLoadingChange={setSentimentLoading}
-                          selectedDate={effectiveDate || undefined}
-                        />
-                      </div>
-                    </TabsContent>
-                    <TabsContent value="livedata" className="h-full m-0">
-                      <ScrollArea className="h-full w-full">
-                        <div className="p-4">
-                          {!selectedCompany ? (
-                            <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
-                              <div className="inline-flex items-center justify-center w-20 h-20 bg-zinc-700/50 rounded-full">
-                                <Building2 className="w-10 h-10 text-zinc-500" />
-                              </div>
-                              <div className="space-y-2">
-                                <h3 className="text-lg font-semibold text-zinc-300">No Company Selected</h3>
-                                <p className="text-sm text-zinc-500 max-w-xs">
-                                  Select a company from the sidebar to view live market data
-                                </p>
-                              </div>
-                            </div>
-                          ) : currentData ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                              {/* Price Display with OHLC and Trading Info */}
-                              <Card className={`col-span-1 md:col-span-2 ${
-                                overallSentiment === 'POSITIVE'
-                                  ? 'bg-gradient-to-br from-green-500/5 to-transparent border-green-500/20'
-                                  : overallSentiment === 'NEGATIVE'
-                                  ? 'bg-gradient-to-br from-red-500/5 to-transparent border-red-500/20'
-                                  : 'bg-gradient-to-br from-zinc-500/5 to-transparent'
-                              }`}>
-                                <CardHeader className="pb-3">
-                                  <CardTitle className="text-sm flex items-center justify-between">
-                                    <span>{selectedSymbol}</span>
-                                    <div className="flex items-center gap-2">
-                                      {/* Sentiment Badge */}
-                                      {isSentimentFetching ? (
-                                        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-muted">
-                                          <div className="h-3 w-3 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-400"></div>
-                                          <span className="text-xs text-muted-foreground">Loading...</span>
-                                        </div>
-                                      ) : (
-                                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                          overallSentiment === 'POSITIVE'
-                                            ? 'bg-green-500/20 text-green-400 border border-green-500/40'
-                                            : overallSentiment === 'NEGATIVE'
-                                            ? 'bg-red-500/20 text-red-400 border border-red-500/40'
-                                            : 'bg-zinc-500/20 text-zinc-400 border border-zinc-500/40'
-                                        }`}>
-                                          {overallSentiment === 'POSITIVE' ? 'Positive' : overallSentiment === 'NEGATIVE' ? 'Negative' : 'Neutral'}
-                                        </div>
-                                      )}
-                                      <div className="text-xs text-green-400 animate-pulse">LIVE •</div>
-                                    </div>
-                                  </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                  {/* Current Price */}
-                                  <div>
-                                    <div className="text-2xl font-bold mb-1">₹{formatPrice(currentData.ltp)}</div>
-                                    <div className={`text-sm ${getChangeClass(currentData.change)}`}>
-                                      {formatChange(currentData.change, currentData.changePercent)}
-                                    </div>
-                                  </div>
-
-                                  {/* OHLC Data */}
-                                  <div>
-                                    <div className="text-xs font-semibold text-muted-foreground mb-2">OHLC Data</div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                      <div className="bg-muted p-2 rounded">
-                                        <div className="text-xs text-muted-foreground">Open</div>
-                                        <div className="text-sm font-semibold">₹{formatPrice(currentData.open)}</div>
-                                      </div>
-                                      <div className="bg-muted p-2 rounded">
-                                        <div className="text-xs text-muted-foreground">Close</div>
-                                        <div className="text-sm font-semibold">₹{formatPrice(currentData.close)}</div>
-                                      </div>
-                                      <div className="bg-muted p-2 rounded">
-                                        <div className="text-xs text-muted-foreground">High</div>
-                                        <div className="text-sm font-semibold">₹{formatPrice(currentData.high)}</div>
-                                      </div>
-                                      <div className="bg-muted p-2 rounded">
-                                        <div className="text-xs text-muted-foreground">Low</div>
-                                        <div className="text-sm font-semibold">₹{formatPrice(currentData.low)}</div>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* Trading Info */}
-                                  <div>
-                                    <div className="text-xs font-semibold text-muted-foreground mb-2">Trading Info</div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                      <div className="bg-muted p-2 rounded">
-                                        <div className="text-xs text-muted-foreground">Volume</div>
-                                        <div className="text-sm font-semibold">{currentData.volume?.toLocaleString() || '0'}</div>
-                                      </div>
-                                      <div className="bg-muted p-2 rounded">
-                                        <div className="text-xs text-muted-foreground">Updated</div>
-                                        <div className="text-sm font-semibold text-green-400">
-                                          {new Date(currentData.timestamp * 1000).toLocaleTimeString()}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-
-                              {/* Desirability Panel */}
-                              <Card className="col-span-1 md:col-span-2">
-                                <CardHeader className="pb-3">
-                                  <CardTitle className="text-sm">Desirability Score</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                  <DesirabilityPanel
-                                    score={desirabilityScore}
-                                    classification={desirabilityClassification}
-                                    loading={desirabilityLoading}
-                                    onFetch={handleFetchDesirabilityScore}
-                                    data={desirabilityData}
-                                  />
-                                </CardContent>
-                              </Card>
-
-                              {/* Technical Indicators */}
-                              {(currentData.sma_20 || currentData.ema_9 || currentData.rsi_14) && (
-                                <Card className="col-span-1">
-                                  <CardHeader className="pb-3">
-                                    <CardTitle className="text-sm">Technical Indicators</CardTitle>
-                                  </CardHeader>
-                                  <CardContent>
-                                    <div className="grid grid-cols-3 gap-2">
-                                      {currentData.sma_20 && (
-                                        <div className="bg-muted p-2 rounded">
-                                          <div className="text-xs text-orange-500">SMA 20</div>
-                                          <div className="text-sm font-semibold">₹{formatPrice(currentData.sma_20)}</div>
-                                        </div>
-                                      )}
-                                      {currentData.ema_9 && (
-                                        <div className="bg-muted p-2 rounded">
-                                          <div className="text-xs text-purple-500">EMA 9</div>
-                                          <div className="text-sm font-semibold">₹{formatPrice(currentData.ema_9)}</div>
-                                        </div>
-                                      )}
-                                      {currentData.rsi_14 && (
-                                        <div className="bg-muted p-2 rounded">
-                                          <div className="text-xs text-cyan-500">RSI 14</div>
-                                          <div className="text-sm font-semibold">{currentData.rsi_14.toFixed(2)}</div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="text-center py-8">
-                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-3"></div>
-                              <p className="text-zinc-400 text-sm">Connecting...</p>
-                            </div>
-                          )}
-                        </div>
-                      </ScrollArea>
-                    </TabsContent>
+                      </TabsContent>
+                      <TabsContent value="livedata" className="h-full m-0">
+                        <ScrollArea className="h-full w-full">
+                          <LiveDataDashboard
+                            company={selectedCompany || ''}
+                            symbol={selectedSymbol}
+                            currentData={currentData}
+                            desirabilityScore={desirabilityScore}
+                            desirabilityClassification={desirabilityClassification}
+                            desirabilityData={desirabilityData}
+                            desirabilityLoading={desirabilityLoading}
+                            onRefreshDesirability={handleFetchDesirabilityScore}
+                            overallSentiment={overallSentiment}
+                            isSentimentFetching={isSentimentFetching}
+                          />
+                        </ScrollArea>
+                      </TabsContent>
+                    </div>
                   </div>
-                </Tabs>
-              </div>
-            )}
+                )}
+              </Tabs>
           </div>
 
           {/* RIGHT: SIDEBAR (Company List) */}

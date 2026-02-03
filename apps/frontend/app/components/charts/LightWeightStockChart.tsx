@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
     createChart,
+    createSeriesMarkers,
     ColorType,
     CrosshairMode,
     LineStyle,
@@ -14,7 +15,8 @@ import {
     LineSeries,
     AreaSeries,
     BarSeries,
-    MouseEventParams
+    MouseEventParams,
+    ISeriesMarkersPluginApi
 } from 'lightweight-charts';
 import {
     Settings,
@@ -47,22 +49,40 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { SeparateViewModal } from './SeparateViewModal';
 
 // --- Types ---
 
-// Prediction data interface
+// Prediction data interface - matches actual API response structure
+// API returns: { "2026-02-03 09:15": { "close": 415.26, "predicted_at": "2026-02-03 09:15:00" } }
+// The key IS the timestamp, not a property in the value
 interface PredictionData {
-  timestamp: string;
-  close: number;
-  predictedat: string;
+    close: number;
+    predicted_at?: string;  // When prediction was made
+    // Legacy support for old format
+    timestamp?: string;
+    predictedat?: string;
 }
 
 interface CompanyPredictions {
-  company?: string;
-  predictions: Record<string, PredictionData>;
-  count?: number;
-  starttime?: string;
-  endtime?: string;
+    company?: string;
+    predictions: Record<string, PredictionData>;
+    count?: number;
+    starttime?: string;
+    endtime?: string;
+}
+
+interface TooltipData {
+    time: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume?: number;
+    prediction?: number;  // Predicted close price at this time
+    x: number;
+    y: number;
+    visible: boolean;
 }
 
 interface StockChartProps {
@@ -84,6 +104,8 @@ interface StockChartProps {
     className?: string;
     predictions?: CompanyPredictions | null;
     showPredictions?: boolean;
+    /** When true, interval buttons control visible range (zoom) instead of triggering data refetch */
+    zoomMode?: boolean;
 }
 
 // --- Constants ---
@@ -136,7 +158,8 @@ export function LightWeightStockChart({
     onRangeChange,
     className,
     predictions = null,
-    showPredictions = false
+    showPredictions = false,
+    zoomMode = false
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -144,6 +167,9 @@ export function LightWeightStockChart({
     const [selectedInterval, setSelectedInterval] = useState(interval);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [chartTheme, setChartTheme] = useState<'light' | 'dark'>(theme);
+
+    // Separate View Modal State
+    const [isSeparatorModalOpen, setIsSeparatorModalOpen] = useState(false);
 
     // Sync theme prop with local state
     useEffect(() => {
@@ -154,7 +180,11 @@ export function LightWeightStockChart({
     const [showBidAsk, setShowBidAsk] = useState(false);
     const [bidAskMode, setBidAskMode] = useState<'Line' | 'Spread' | 'STD'>('Line');
     const [showBuySell, setShowBuySell] = useState(false);
+
     const [buySellMode, setBuySellMode] = useState<'Line' | 'Spread' | 'STD'>('Line');
+
+    // Tooltip State
+    const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
 
     // Refs for Chart Instances
     const mainChartContainerRef = useRef<HTMLDivElement>(null);
@@ -174,6 +204,9 @@ export function LightWeightStockChart({
 
     // Indicator Series Refs need to be tracked to remove/update
     const indicatorSeriesRefs = useRef<Map<string, ISeriesApi<any>>>(new Map());
+    
+    // Prediction markers plugin ref (LightweightCharts v5.x uses createSeriesMarkers)
+    const predictionMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
     // Data processing helper with validation
     const processData = useCallback((rawData: StockDataPoint[]) => {
@@ -185,17 +218,17 @@ export function LightWeightStockChart({
                 const low = Number(d.low);
                 const close = Number(d.close);
                 const volume = Number(d.volume || 0);
-                
+
                 // Skip invalid data points
                 if (!isFinite(open) || !isFinite(high) || !isFinite(low) || !isFinite(close) ||
                     open <= 0 || high <= 0 || low <= 0 || close <= 0) {
                     return null;
                 }
-                
+
                 // Validate OHLC relationships (high >= low, etc.)
                 const validHigh = Math.max(open, high, low, close);
                 const validLow = Math.min(open, high, low, close);
-                
+
                 return {
                     ...d,
                     open,
@@ -222,6 +255,75 @@ export function LightWeightStockChart({
         transparent: 'rgba(0,0,0,0)',
         border: chartTheme === 'dark' ? '#2a2e39' : '#e0e3eb',
     }), [chartTheme]);
+
+    // Zoom Mode Handler - Apply visible range based on selected interval
+    const applyZoom = useCallback((intervalId: string) => {
+        if (!mainChartRef.current || !data || data.length === 0) return;
+        
+        const processedData = processData(data);
+        if (processedData.length === 0) return;
+        
+        const latestDataTime = processedData[processedData.length - 1].time as number;
+        const earliestDataTime = processedData[0].time as number;
+        
+        // Calculate duration based on interval
+        let durationSeconds: number;
+        switch (intervalId) {
+            case '1m':
+                durationSeconds = 1 * 60; // 1 minute
+                break;
+            case '5m':
+                durationSeconds = 5 * 60; // 5 minutes
+                break;
+            case '15m':
+                durationSeconds = 15 * 60; // 15 minutes
+                break;
+            case '30m':
+                durationSeconds = 30 * 60; // 30 minutes
+                break;
+            case '1h':
+                durationSeconds = 60 * 60; // 1 hour
+                break;
+            case '1d':
+            default:
+                // For 1D, show full trading day (9:15 AM to 3:30 PM = 6h 15min)
+                durationSeconds = 6 * 60 * 60 + 15 * 60;
+                break;
+        }
+        
+        // Calculate start time for visible range
+        let startTime = latestDataTime - durationSeconds;
+        
+        // Don't go before earliest data
+        if (startTime < earliestDataTime) {
+            startTime = earliestDataTime;
+        }
+        
+        // Add small buffer at the end for predictions
+        const endTime = latestDataTime + (5 * 60); // 5 min buffer
+        
+        try {
+            mainChartRef.current.timeScale().setVisibleRange({
+                from: startTime as UTCTimestamp,
+                to: endTime as UTCTimestamp
+            });
+            
+            // Sync other charts if they exist
+            [rsiChartRef.current, macdChartRef.current, bidAskChartRef.current, buySellChartRef.current]
+                .forEach(chart => {
+                    if (chart) {
+                        chart.timeScale().setVisibleRange({
+                            from: startTime as UTCTimestamp,
+                            to: endTime as UTCTimestamp
+                        });
+                    }
+                });
+                
+            console.log(`🔍 [ZOOM] Applied ${intervalId} view: showing last ${durationSeconds / 60} minutes`);
+        } catch (e) {
+            console.warn('[ZOOM] Failed to set visible range:', e);
+        }
+    }, [data, processData]);
 
     // Sync Handler
     const syncCharts = useCallback((source: IChartApi, others: (IChartApi | null)[]) => {
@@ -312,6 +414,13 @@ export function LightWeightStockChart({
             },
             crosshair: {
                 mode: CrosshairMode.Normal,
+                vertLine: {
+                    labelVisible: false,
+                },
+                horzLine: {
+                    labelVisible: false,
+                    visible: false,
+                },
             },
             localization: {
                 locale: 'en-IN',
@@ -368,6 +477,103 @@ export function LightWeightStockChart({
             indicatorSeriesRefs.current.clear();
         };
     }, []);
+
+    // Subscribe to Crosshair Move
+    useEffect(() => {
+        if (!mainChartRef.current) return;
+
+        const handleCrosshairMove = (param: MouseEventParams) => {
+            if (
+                param.point === undefined ||
+                !param.time ||
+                param.point.x < 0 ||
+                param.point.x > (mainChartContainerRef.current?.clientWidth || 0) ||
+                param.point.y < 0 ||
+                param.point.y > (mainChartContainerRef.current?.clientHeight || 0)
+            ) {
+                setTooltipData(null);
+                return;
+            }
+
+            const seriesData = param.seriesData;
+            if (!seriesData) return;
+
+            // Get main series data (OHLC or Line)
+            let open = 0, high = 0, low = 0, close = 0;
+            if (mainSeriesRef.current) {
+                const data = seriesData.get(mainSeriesRef.current);
+                if (data) {
+                    if ('open' in data) {
+                        // Candlestick data
+                        const candle = data as any;
+                        open = candle.open;
+                        high = candle.high;
+                        low = candle.low;
+                        close = candle.close;
+                    } else if ('value' in data) {
+                        // Line/Area data - approximate OHLC logic or just show value
+                        const val = (data as any).value;
+                        open = val;
+                        high = val;
+                        low = val;
+                        close = val;
+                    }
+                }
+            }
+
+            // Get volume data
+            let volume = undefined;
+            if (volumeSeriesRef.current) {
+                const volData = seriesData.get(volumeSeriesRef.current);
+                if (volData) {
+                    volume = (volData as any).value;
+                }
+            }
+
+            // Get prediction data
+            let prediction = undefined;
+            const predictionSeries = indicatorSeriesRefs.current.get('prediction_line');
+            if (predictionSeries) {
+                const predData = seriesData.get(predictionSeries);
+                if (predData && 'value' in predData) {
+                    prediction = (predData as any).value;
+                }
+            }
+
+            // Format Data
+            const timeStr = typeof param.time === 'number'
+                ? new Date(param.time * 1000).toLocaleString('en-IN', {
+                    day: 'numeric', month: 'short', year: '2-digit',
+                    hour: '2-digit', minute: '2-digit', hour12: false
+                })
+                : '';
+
+            setTooltipData({
+                time: timeStr,
+                open,
+                high,
+                low,
+                close,
+                volume,
+                prediction,
+                x: param.point.x,
+                y: param.point.y,
+                visible: true
+            });
+        };
+
+        mainChartRef.current.subscribeCrosshairMove(handleCrosshairMove);
+
+        return () => {
+            if (mainChartRef.current) {
+                try {
+                    mainChartRef.current.unsubscribeCrosshairMove(handleCrosshairMove);
+                } catch (e) {
+                    // ignore cleanup errors on unmount
+                }
+            }
+        };
+    }, [mainSeriesRef.current, volumeSeriesRef.current]); // Re-bind if series changes
 
     // onRangeChange Subscription
     useEffect(() => {
@@ -472,6 +678,11 @@ export function LightWeightStockChart({
         const processedData = processData(data);
         const mainChart = mainChartRef.current as any;
 
+        console.log(`📊 [DATA UPDATE] Processing ${processedData.length} data points for chart type: ${chartType}`);
+        if (processedData.length > 0) {
+            console.log(`📊 [DATA UPDATE] First point time: ${new Date(processedData[0].time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}, Last: ${new Date(processedData[processedData.length - 1].time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+        }
+
         // --- Main Chart Data ---
         if (mainSeriesRef.current) {
             try { mainChart.removeSeries(mainSeriesRef.current); } catch (e) { }
@@ -493,8 +704,8 @@ export function LightWeightStockChart({
             const firstClose = processedData[0]?.close || 0;
             const lastClose = processedData[processedData.length - 1]?.close || 0;
             const lineColor = lastClose >= firstClose ? colors.up : colors.down;
-            
-            series = mainChart.addSeries(LineSeries, { 
+
+            series = mainChart.addSeries(LineSeries, {
                 color: lineColor,
                 lineWidth: 2,
                 crosshairMarkerVisible: true,
@@ -506,8 +717,8 @@ export function LightWeightStockChart({
             const firstClose = processedData[0]?.close || 0;
             const lastClose = processedData[processedData.length - 1]?.close || 0;
             const isPositive = lastClose >= firstClose;
-            
-            series = mainChart.addSeries(AreaSeries, { 
+
+            series = mainChart.addSeries(AreaSeries, {
                 topColor: isPositive ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)',
                 bottomColor: isPositive ? 'rgba(38, 166, 154, 0)' : 'rgba(239, 83, 80, 0)',
                 lineColor: isPositive ? colors.up : colors.down,
@@ -549,14 +760,14 @@ export function LightWeightStockChart({
                 priceFormat: { type: 'volume' },
                 priceScaleId: 'volume_scale',
             });
-            
+
             // Configure the volume scale to be at the bottom portion of the chart
             mainChart.priceScale('volume_scale').applyOptions({
                 scaleMargins: { top: 0.55, bottom: 0 },
                 visible: false, // Hide the volume scale labels
             });
         }
-        
+
         // Validate and filter volume data to prevent display issues
         const volumeData = processedData
             .map(d => {
@@ -565,7 +776,7 @@ export function LightWeightStockChart({
                 if (!isFinite(volume) || volume < 0 || isNaN(volume)) {
                     return null;
                 }
-                
+
                 return {
                     time: d.time,
                     value: volume,
@@ -573,7 +784,7 @@ export function LightWeightStockChart({
                 };
             })
             .filter((v): v is NonNullable<typeof v> => v !== null);
-        
+
         volumeSeriesRef.current?.setData(volumeData);
 
 
@@ -754,7 +965,7 @@ export function LightWeightStockChart({
         });
 
         const mainChart = mainChartRef.current;
-        
+
         // Remove old prediction series
         indicatorSeriesRefs.current.forEach((series, key) => {
             if (key.startsWith('prediction_')) {
@@ -768,34 +979,47 @@ export function LightWeightStockChart({
             try {
                 const predictionEntries = Object.entries(predictions.predictions as Record<string, PredictionData>);
                 console.log(`📊 [PREDICTIONS] Processing ${predictionEntries.length} prediction entries`);
-                
-                // Get today's date in YYYY-MM-DD format
-                const today = new Date().toISOString().split('T')[0];
-                console.log(`📅 [PREDICTIONS] Today's date: ${today}`);
-                
+
+                // Get today's date in IST timezone (YYYY-MM-DD format)
+                // This matches the prediction server's date format which uses IST
+                const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+                console.log(`📅 [PREDICTIONS] Today's date (IST): ${todayIST}`);
+
                 // Filter predictions for today
                 const todayPredictions = predictionEntries
                     .filter(([dateStr]) => {
-                        const matches = dateStr.startsWith(today);
+                        const matches = dateStr.startsWith(todayIST);
                         if (!matches) {
-                            console.log(`⏭️ [PREDICTIONS] Skipping ${dateStr} (not today)`);
+                            console.log(`⏭️ [PREDICTIONS] Skipping ${dateStr} (not today IST: ${todayIST})`);
                         }
                         return matches;
                     })
                     .map(([dateStr, pred]) => {
-                        const time = (new Date(pred.timestamp).getTime() / 1000) as UTCTimestamp;
-                        console.log(`📍 [PREDICTIONS] Point: ${dateStr} -> time: ${time}, value: ${pred.close}`);
+                        // The dateStr IS the timestamp (format: "2026-02-03 09:15") in IST
+                        // Parse it as IST by appending the timezone
+                        const normalizedDateStr = dateStr.includes(':') && dateStr.split(':').length === 2
+                            ? `${dateStr}:00` // Add seconds if only HH:MM
+                            : dateStr;
+                        // Convert to ISO format and append IST offset (+05:30)
+                        const isoWithTz = normalizedDateStr.replace(' ', 'T') + '+05:30';
+                        const parsedDate = new Date(isoWithTz);
+                        const time = (parsedDate.getTime() / 1000) as UTCTimestamp;
+                        console.log(`📍 [PREDICTIONS] Point: ${dateStr} -> IST parsed: ${parsedDate.toISOString()} -> time: ${time}, value: ${pred.close}`);
                         return {
                             time,
                             value: pred.close
                         };
                     })
                     .filter(p => {
-                        const valid = !isNaN(p.value) && isFinite(p.value);
-                        if (!valid) {
+                        const validTime = !isNaN(p.time as number) && isFinite(p.time as number);
+                        const validValue = !isNaN(p.value) && isFinite(p.value);
+                        if (!validTime) {
+                            console.warn(`⚠️ [PREDICTIONS] Invalid time: ${p.time}`);
+                        }
+                        if (!validValue) {
                             console.warn(`⚠️ [PREDICTIONS] Invalid value: ${p.value}`);
                         }
-                        return valid;
+                        return validTime && validValue;
                     })
                     .sort((a, b) => (a.time as number) - (b.time as number));
 
@@ -812,11 +1036,44 @@ export function LightWeightStockChart({
                         priceLineVisible: false,
                         title: 'AI Prediction'
                     });
-                    
+
                     predictionSeries.setData(todayPredictions);
-                    indicatorSeriesRefs.current.set('prediction_line', predictionSeries);
                     
-                    console.log(`✅ [PREDICTIONS] Added ${todayPredictions.length} prediction points to chart`);
+                    // Clean up previous markers plugin if exists
+                    if (predictionMarkersRef.current) {
+                        try {
+                            predictionMarkersRef.current.detach();
+                        } catch (e) {
+                            // Ignore cleanup errors
+                        }
+                        predictionMarkersRef.current = null;
+                    }
+                    
+                    // Add diamond markers on each prediction point using createSeriesMarkers (v5.x API)
+                    const markers = todayPredictions.map((p) => ({
+                        time: p.time,
+                        position: 'inBar' as const,
+                        color: '#ff9800',
+                        shape: 'circle' as const, // LightweightCharts uses 'circle', 'square', 'arrowUp', 'arrowDown'
+                        size: 1, // Size for markers (1 = normal, 2 = larger)
+                    }));
+                    
+                    // Use createSeriesMarkers plugin (LightweightCharts v5.x)
+                    const markersPlugin = createSeriesMarkers(predictionSeries, markers);
+                    predictionMarkersRef.current = markersPlugin;
+                    
+                    indicatorSeriesRefs.current.set('prediction_line', predictionSeries);
+
+                    console.log(`✅ [PREDICTIONS] Added ${todayPredictions.length} prediction points with markers to chart`);
+                    console.log(`📊 [PREDICTIONS] First point: ${new Date((todayPredictions[0].time as number) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+                    console.log(`📊 [PREDICTIONS] Last point: ${new Date((todayPredictions[todayPredictions.length - 1].time as number) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+                    
+                    // Use fitContent to show all data from all series (market data + predictions)
+                    // This will auto-adjust the visible range to include everything
+                    const timeScale = mainChart.timeScale();
+                    timeScale.fitContent();
+                    
+                    console.log(`📏 [PREDICTIONS] Applied fitContent to show all prediction and market data`);
                 } else {
                     console.warn('⚠️ [PREDICTIONS] No predictions available for today after filtering');
                 }
@@ -865,7 +1122,16 @@ export function LightWeightStockChart({
                     {TIME_INTERVALS.map(int => (
                         <button
                             key={int.id}
-                            onClick={() => { setSelectedInterval(int.id); onIntervalChange?.(int.id); }}
+                            onClick={() => { 
+                                setSelectedInterval(int.id); 
+                                if (zoomMode) {
+                                    // In zoom mode, apply visible range instead of refetching data
+                                    applyZoom(int.id);
+                                } else {
+                                    // Normal mode - trigger data refetch with new interval
+                                    onIntervalChange?.(int.id); 
+                                }
+                            }}
                             className={`px-2 py-1 text-xs rounded transition-colors hover:bg-muted/50 ${selectedInterval === int.id ? 'bg-background shadow-sm text-primary font-medium' : 'text-muted-foreground'}`}
                         >
                             {int.name}
@@ -1021,6 +1287,18 @@ export function LightWeightStockChart({
                     {chartTheme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
                 </Button>
 
+                {/* Separate View Button - Always visible, shows appropriate message when no data */}
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-2 border-blue-500 text-blue-500 hover:bg-blue-500/20 hover:border-blue-400 transition-all duration-300 font-medium"
+                    onClick={() => setIsSeparatorModalOpen(true)}
+                    title="Open Separate View - Comparative Analysis"
+                >
+                    <Maximize2 className="h-3.5 w-3.5" />
+                    Separate View
+                </Button>
+
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsFullscreen(!isFullscreen)} title="Fullscreen">
                     {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                 </Button>
@@ -1032,18 +1310,18 @@ export function LightWeightStockChart({
                     {/* Loading status badge - minimal, non-intrusive */}
                     {loading && (
                         <div className="absolute top-3 left-3 z-20 pointer-events-none">
-                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md backdrop-blur-sm" 
-                                 style={{ 
-                                     backgroundColor: chartTheme === 'dark' ? 'rgba(39, 39, 42, 0.9)' : 'rgba(244, 244, 245, 0.9)',
-                                     border: chartTheme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(228, 228, 231, 0.8)'
-                                 }}>
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md backdrop-blur-sm"
+                                style={{
+                                    backgroundColor: chartTheme === 'dark' ? 'rgba(39, 39, 42, 0.9)' : 'rgba(244, 244, 245, 0.9)',
+                                    border: chartTheme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(228, 228, 231, 0.8)'
+                                }}>
                                 <div className="flex gap-1">
-                                    <div className="w-1.5 h-1.5 rounded-full animate-pulse" 
-                                         style={{ backgroundColor: chartTheme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '0ms' }} />
-                                    <div className="w-1.5 h-1.5 rounded-full animate-pulse" 
-                                         style={{ backgroundColor: chartTheme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '150ms' }} />
-                                    <div className="w-1.5 h-1.5 rounded-full animate-pulse" 
-                                         style={{ backgroundColor: chartTheme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '300ms' }} />
+                                    <div className="w-1.5 h-1.5 rounded-full animate-pulse"
+                                        style={{ backgroundColor: chartTheme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '0ms' }} />
+                                    <div className="w-1.5 h-1.5 rounded-full animate-pulse"
+                                        style={{ backgroundColor: chartTheme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '150ms' }} />
+                                    <div className="w-1.5 h-1.5 rounded-full animate-pulse"
+                                        style={{ backgroundColor: chartTheme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '300ms' }} />
                                 </div>
                                 <span className="text-xs" style={{ color: chartTheme === 'dark' ? '#a1a1aa' : '#71717a' }}>
                                     Loading historical data
@@ -1066,6 +1344,105 @@ export function LightWeightStockChart({
                     <div className="h-[20%] w-full border-t relative min-h-[100px]" style={{ borderColor: colors.border }} ref={buySellChartContainerRef}></div>
                 )}
             </div>
+
+            {/* HOVER TOOLTIP */}
+            {tooltipData && tooltipData.visible && (
+                <div
+                    className="absolute pointer-events-none z-50 rounded-lg border shadow-xl backdrop-blur-md"
+                    style={{
+                        left: 12,
+                        top: 50,
+                        backgroundColor: chartTheme === 'dark' ? 'rgba(20, 20, 25, 0.85)' : 'rgba(255, 255, 255, 0.85)',
+                        borderColor: chartTheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                        padding: '8px 12px',
+                        minWidth: '200px'
+                    }}
+                >
+                    <div className="flex items-center justify-between mb-2 pb-1 border-b border-gray-500/20">
+                        <span className="text-xs font-semibold opacity-70">
+                            {tooltipData.time}
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        {/* OPEN */}
+                        <div className="flex justify-between">
+                            <span className="opacity-60">Open</span>
+                            <span className={`font-mono font-medium ${tooltipData.close >= tooltipData.open ? 'text-green-500' : 'text-red-500'
+                                }`}>
+                                {tooltipData.open.toFixed(2)}
+                            </span>
+                        </div>
+
+                        {/* HIGH */}
+                        <div className="flex justify-between">
+                            <span className="opacity-60">High</span>
+                            <span className="font-mono font-medium">
+                                {tooltipData.high.toFixed(2)}
+                            </span>
+                        </div>
+
+                        {/* LOW */}
+                        <div className="flex justify-between">
+                            <span className="opacity-60">Low</span>
+                            <span className="font-mono font-medium">
+                                {tooltipData.low.toFixed(2)}
+                            </span>
+                        </div>
+
+                        {/* CLOSE */}
+                        <div className="flex justify-between">
+                            <span className="opacity-60">Close</span>
+                            <span className={`font-mono font-medium ${tooltipData.close >= tooltipData.open ? 'text-green-500' : 'text-red-500'
+                                }`}>
+                                {tooltipData.close.toFixed(2)}
+                            </span>
+                        </div>
+
+                        {/* VOLUME */}
+                        {tooltipData.volume !== undefined && (
+                            <div className="col-span-2 flex justify-between mt-1 pt-1 border-t border-gray-500/20">
+                                <span className="opacity-60">Vol</span>
+                                <span className="font-mono font-medium text-blue-400">
+                                    {tooltipData.volume.toLocaleString()}
+                                </span>
+                            </div>
+                        )}
+
+                        {/* AI PREDICTION */}
+                        {tooltipData.prediction !== undefined && (
+                            <div className="col-span-2 flex justify-between mt-1 pt-1 border-t border-orange-500/30">
+                                <span className="opacity-60 flex items-center gap-1">
+                                    <span className="text-orange-500">◆</span> AI Prediction
+                                </span>
+                                <span className="font-mono font-medium text-orange-500">
+                                    {tooltipData.prediction.toFixed(2)}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Separate View Modal - Reusable Component */}
+            <SeparateViewModal
+                isOpen={isSeparatorModalOpen}
+                onClose={() => setIsSeparatorModalOpen(false)}
+                symbol={companyId || 'Unknown'}
+                chartType={chartType as any}
+                predictions={predictions}
+                LiveChartComponent={LightWeightStockChart}
+                liveChartProps={{
+                    companyId,
+                    data,
+                    interval,
+                    loading,
+                    height: '100%',
+                    theme: chartTheme,
+                    defaultChartType: chartType,
+                }}
+                chartMode="lightweight"
+            />
         </div>
     );
 }
