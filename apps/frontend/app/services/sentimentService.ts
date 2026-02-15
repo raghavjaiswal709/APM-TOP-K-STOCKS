@@ -11,7 +11,7 @@ export interface SentimentResponse {
 }
 
 export const sentimentService = {
-    // Fetch sentiment for a stock ticker (returns POSITIVE/NEGATIVE/NEUTRAL)
+    // Fetch sentiment for a stock ticker (returns BULLISH/BEARISH/NEUTRAL)
     fetchSentiment: async (ticker: string): Promise<string> => {
         if (!ticker) return 'NEUTRAL';
 
@@ -23,7 +23,16 @@ export const sentimentService = {
             const response = await axios.get<SentimentResponse>(`${API_BASE_URL}/${encodeURIComponent(cleanTicker)}`);
 
             if (response.data && response.data.sentiment) {
-                return response.data.sentiment.toUpperCase();
+                const rawSentiment = response.data.sentiment.toUpperCase();
+                
+                // Transform API sentiment values to UI terminology
+                if (rawSentiment === 'POSITIVE' || rawSentiment === 'BULLISH') {
+                    return 'BULLISH';
+                } else if (rawSentiment === 'NEGATIVE' || rawSentiment === 'BEARISH') {
+                    return 'BEARISH';
+                } else {
+                    return 'NEUTRAL';
+                }
             }
 
             return 'NEUTRAL';

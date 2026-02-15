@@ -240,7 +240,7 @@ export function FilterModal({
             {/* Sentiment Filter */}
             <div className="space-y-3">
               <h4 className="font-medium text-sm">Sentiment</h4>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {filterOptions.sentiments.map(sentiment => (
                   <div
                     key={sentiment}
@@ -259,12 +259,12 @@ export function FilterModal({
                         <Check className="h-3 w-3 text-primary-foreground" />
                       )}
                     </div>
-                    <span className="text-sm capitalize">{sentiment}</span>
+                    <span className="text-sm font-medium">{sentiment}</span>
                     <div className={cn(
                       "ml-auto w-2 h-2 rounded-full",
-                      sentiment === 'positive' && "bg-green-500",
-                      sentiment === 'negative' && "bg-red-500",
-                      sentiment === 'neutral' && "bg-gray-500"
+                      sentiment === 'BULLISH' && "bg-green-500",
+                      sentiment === 'BEARISH' && "bg-red-500",
+                      sentiment === 'NEUTRAL' && "bg-gray-500"
                     )} />
                   </div>
                 ))}
