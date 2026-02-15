@@ -291,6 +291,9 @@ const MarketDataPage: React.FC = () => {
   // Track which symbols have been backfilled to avoid duplicate fetches
   const backfilledSymbolsRef = useRef<Set<string>>(new Set());
 
+  // AbortController for cancelling in-flight historical data fetches on company switch
+  const historicalFetchAbortRef = useRef<AbortController | null>(null);
+
   // Date synchronization (persistent)
   const [currentDate, setCurrentDate] = usePersistentState<string | null>(
     'market-data-currentDate',
@@ -622,22 +625,90 @@ const MarketDataPage: React.FC = () => {
   const handleCompanyChange = useCallback((companyCode: string | null, exchange?: string, marker?: string) => {
     console.log(`🏢 [handleCompanyChange] Full arguments:`, { companyCode, exchange, marker });
 
+    // ✅ Cancel any in-flight historical data fetch for the previous company
+    if (historicalFetchAbortRef.current) {
+      historicalFetchAbortRef.current.abort();
+      historicalFetchAbortRef.current = null;
+    }
+
+    // ✅ Clear stale data for the NEW company so the chart starts fresh
+    // This prevents cross-date data accumulation and visual gaps
+    const newSymbol = (companyCode && exchange)
+      ? validateAndFormatSymbol(companyCode, exchange, marker)
+      : '';
+
+    if (newSymbol && newSymbol !== selectedSymbol) {
+      console.log(`🧹 [handleCompanyChange] Clearing stale data for new symbol: ${newSymbol}`);
+      setOhlcData(prev => {
+        const updated = { ...prev };
+        delete updated[newSymbol];
+        return updated;
+      });
+      setHistoricalData(prev => {
+        const updated = { ...prev };
+        delete updated[newSymbol];
+        return updated;
+      });
+      setMarketData(prev => {
+        const updated = { ...prev };
+        delete updated[newSymbol];
+        return updated;
+      });
+      // Clear backfill tracking so the new company always gets fresh data
+      backfilledSymbolsRef.current.forEach(key => {
+        if (key.startsWith(newSymbol)) {
+          backfilledSymbolsRef.current.delete(key);
+        }
+      });
+      // Reset loading states
+      setIsLoadingHistorical(true);
+      setHistoricalDataStatus('Loading data...');
+    }
+
     setSelectedCompany(companyCode);
     setSelectedExchange(exchange || null);
 
     if (companyCode && exchange) {
-      const formattedSymbol = validateAndFormatSymbol(companyCode, exchange, marker);
-      console.log(`✅ [handleCompanyChange] Formatted symbol: ${formattedSymbol}`);
-      setSelectedSymbol(formattedSymbol);
+      console.log(`✅ [handleCompanyChange] Formatted symbol: ${newSymbol}`);
+      setSelectedSymbol(newSymbol);
     } else {
       setSelectedSymbol('');
     }
-  }, [validateAndFormatSymbol]);
+  }, [validateAndFormatSymbol, selectedSymbol]);
 
   const handleDateChange = useCallback((date: string) => {
-    console.log(`Date changed to: ${date}`);
+    console.log(`📅 Date changed to: ${date}`);
+
+    // ✅ Cancel any in-flight fetch for the old date
+    if (historicalFetchAbortRef.current) {
+      historicalFetchAbortRef.current.abort();
+      historicalFetchAbortRef.current = null;
+    }
+
+    // ✅ Clear cached data for the current symbol so it re-fetches for the new date
+    if (selectedSymbol) {
+      setOhlcData(prev => {
+        const updated = { ...prev };
+        delete updated[selectedSymbol];
+        return updated;
+      });
+      setHistoricalData(prev => {
+        const updated = { ...prev };
+        delete updated[selectedSymbol];
+        return updated;
+      });
+      // Clear backfill tracking so data is re-fetched for the new date
+      backfilledSymbolsRef.current.forEach(key => {
+        if (key.startsWith(selectedSymbol)) {
+          backfilledSymbolsRef.current.delete(key);
+        }
+      });
+      setIsLoadingHistorical(true);
+      setHistoricalDataStatus('Loading data...');
+    }
+
     setCurrentDate(date);
-  }, []);
+  }, [selectedSymbol]);
 
   // Subscription Handlers
   const handleSubscribeCompanies = useCallback(async (companyCodes: string[]) => {
@@ -1367,14 +1438,28 @@ const MarketDataPage: React.FC = () => {
   useEffect(() => {
     if (!isClient || !selectedSymbol || !socketRef.current) return;
 
-    // Skip if we already have cached data for this symbol (prevents reload on navigation)
-    const hasCachedMarketData = marketData[selectedSymbol];
-    const hasCachedHistoricalData = historicalData[selectedSymbol] && historicalData[selectedSymbol].length > 0;
+    // Check if we already have data that's valid for the CURRENT date
+    // Only use cache if data is from TODAY (prevents stale cross-date data)
+    const todayDate = effectiveDate || new Date().toISOString().split('T')[0];
     const hasCachedOhlcData = ohlcData[selectedSymbol] && ohlcData[selectedSymbol].length > 0;
+    const cacheIsFromToday = hasCachedOhlcData && (() => {
+      const firstCandle = ohlcData[selectedSymbol][0];
+      const candleDate = new Date(firstCandle.timestamp * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      return candleDate === todayDate;
+    })();
 
-    if (hasCachedMarketData && hasCachedHistoricalData && hasCachedOhlcData) {
-      console.log(`⚡ [Data] Using cached data for ${selectedSymbol} - skipping subscription and fetch`);
+    if (cacheIsFromToday && marketData[selectedSymbol]) {
+      console.log(`⚡ [Data] Using valid same-date cached data for ${selectedSymbol} on ${todayDate}`);
       hasLoadedDataRef.current = true;
+      // Still subscribe to get real-time updates
+      if (!isSubscribedRef.current.has(selectedSymbol)) {
+        const socket = socketRef.current;
+        socket.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
+          if (response && response.success) {
+            isSubscribedRef.current.add(selectedSymbol);
+          }
+        });
+      }
       return;
     }
 
@@ -1403,13 +1488,16 @@ const MarketDataPage: React.FC = () => {
      *    so we backfill from 9:15 AM to subscription time from external server
      * 3. Market open with full data: No backfill needed
      */
-    const fetchAndBackfillHistoricalData = async () => {
+    const fetchAndBackfillHistoricalData = async (signal: AbortSignal) => {
       // Check if we already backfilled this symbol (with date key)
       const backfillKey = `${selectedSymbol}_${effectiveDate || new Date().toISOString().split('T')[0]}`;
       if (backfilledSymbolsRef.current.has(backfillKey)) {
         console.log(`📡 [Backfill] Already backfilled ${backfillKey}, skipping`);
         return;
       }
+
+      // Check if cancelled before starting
+      if (signal.aborted) return;
 
       setIsLoadingHistorical(true);
       setHistoricalDataStatus('Checking data completeness...');
@@ -1427,6 +1515,12 @@ const MarketDataPage: React.FC = () => {
         setHistoricalDataStatus(`Fetching ${isAfterMarket ? 'full day' : 'historical'} data...`);
 
         const result = await fetchHistoricalData(selectedSymbol, currentDate);
+
+        // Bail out if company changed while we were fetching
+        if (signal.aborted) {
+          console.log(`🛑 [Backfill] Aborted for ${selectedSymbol} - company changed`);
+          return;
+        }
 
         if (result.success && result.data.length > 0) {
           console.log(`✅ [Backfill] Fetched ${result.data.length} ticks, ${result.ohlc?.length || 0} candles from external server`);
@@ -1532,21 +1626,32 @@ const MarketDataPage: React.FC = () => {
             : 'Using real-time data only');
         }
       } catch (error) {
+        // Don't show errors for aborted requests (company changed mid-fetch)
+        if (signal.aborted) return;
         console.error(`❌ [Backfill] Error:`, error);
         setHistoricalDataStatus('Failed to load historical data');
       } finally {
-        setIsLoadingHistorical(false);
-        setTimeout(() => setHistoricalDataStatus(''), 5000);
+        // Don't reset loading state if aborted (new company's fetch will handle it)
+        if (!signal.aborted) {
+          setIsLoadingHistorical(false);
+          setTimeout(() => setHistoricalDataStatus(''), 5000);
+        }
       }
     };
 
+    // ✅ Create AbortController for this fetch cycle
+    const abortController = new AbortController();
+    historicalFetchAbortRef.current = abortController;
+
     // Delay fetch slightly to allow WebSocket data to arrive first
     const fetchTimer = setTimeout(() => {
-      fetchAndBackfillHistoricalData();
-    }, 1500); // Increased delay to 1.5s to let real-time data arrive first
+      fetchAndBackfillHistoricalData(abortController.signal);
+    }, 500); // Reduced from 1.5s to 0.5s for faster loading
 
     return () => {
       clearTimeout(fetchTimer);
+      // ✅ Cancel any in-flight fetch when effect re-runs (company/date changed)
+      abortController.abort();
 
       if (isSubscribedRef.current.has(selectedSymbol)) {
         console.log('🛑 Unsubscribing from:', selectedSymbol);
@@ -1648,17 +1753,29 @@ const MarketDataPage: React.FC = () => {
   const chartData = useMemo(() => {
     console.log(`📈 [chartData] symbolOhlc: ${symbolOhlc?.length || 0}, symbolHistory: ${symbolHistory?.length || 0}`);
 
+    // ✅ CRITICAL: Determine the target date to filter data
+    // This prevents showing data from different dates with gaps in between
+    const targetDate = effectiveDate || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
     // ===== USE OHLC DATA DIRECTLY (this is the correct data for candlesticks) =====
     if (symbolOhlc && symbolOhlc.length > 0) {
       // Filter valid candles and sort by timestamp
+      // ✅ Also filter to only include candles from the target date
       const validCandles = symbolOhlc
-        .filter(candle =>
-          candle.timestamp > 0 &&
-          typeof candle.open === 'number' && !isNaN(candle.open) && candle.open > 0 &&
-          typeof candle.high === 'number' && !isNaN(candle.high) && candle.high > 0 &&
-          typeof candle.low === 'number' && !isNaN(candle.low) && candle.low > 0 &&
-          typeof candle.close === 'number' && !isNaN(candle.close) && candle.close > 0
-        )
+        .filter(candle => {
+          if (
+            candle.timestamp <= 0 ||
+            typeof candle.open !== 'number' || isNaN(candle.open) || candle.open <= 0 ||
+            typeof candle.high !== 'number' || isNaN(candle.high) || candle.high <= 0 ||
+            typeof candle.low !== 'number' || isNaN(candle.low) || candle.low <= 0 ||
+            typeof candle.close !== 'number' || isNaN(candle.close) || candle.close <= 0
+          ) {
+            return false;
+          }
+          // ✅ Filter to current date only - prevents cross-date gaps
+          const candleDate = new Date(candle.timestamp * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+          return candleDate === targetDate;
+        })
         .sort((a, b) => a.timestamp - b.timestamp);
 
       console.log(`📈 [chartData] Using ${validCandles.length} valid OHLC candles`);
@@ -1686,7 +1803,12 @@ const MarketDataPage: React.FC = () => {
       const minuteCandles = new Map<number, { open: number, high: number, low: number, close: number, volume: number, firstTimestamp: number }>();
 
       const sortedHistory = [...symbolHistory]
-        .filter(p => p.ltp > 0 && !isNaN(p.ltp))
+        .filter(p => {
+          if (p.ltp <= 0 || isNaN(p.ltp)) return false;
+          // ✅ Filter to current date only
+          const tickDate = new Date(p.timestamp * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+          return tickDate === targetDate;
+        })
         .sort((a, b) => a.timestamp - b.timestamp);
 
       // Track cumulative volume for delta calculation
@@ -1747,7 +1869,7 @@ const MarketDataPage: React.FC = () => {
     }
 
     return [];
-  }, [symbolOhlc, symbolHistory]);
+  }, [symbolOhlc, symbolHistory, effectiveDate]);
 
   // Loading state
   if (!isClient) {
@@ -2036,7 +2158,7 @@ const MarketDataPage: React.FC = () => {
                     <TabsList className="h-7 bg-muted/50 p-0.5">
                       <TabsTrigger value="livedata" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Live Data</TabsTrigger>
                       <TabsTrigger value="predictions" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">AI Predictions & GTT</TabsTrigger>
-                      <TabsTrigger value="charts" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">LSTM-AE & SIPR</TabsTrigger>
+                      <TabsTrigger value="charts" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Metrices</TabsTrigger>
                     </TabsList>
                     {/* Drag handle and hide button on the right */}
                     <div

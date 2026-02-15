@@ -1492,7 +1492,7 @@ export const ImageCarousel: React.FC<ImageCarouselProps> = ({
               </div>
 
               {/* News headline and metadata display with sentiment-based background */}
-              <div className={`p-6 border-t ${currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
+              <div className={`p-6 pb-8 border-t ${currentNews.sentiment === 'positive' ? 'border-green-700/50 bg-green-950/40' :
                 currentNews.sentiment === 'negative' ? 'border-red-700/50 bg-red-950/40' :
                   'border-zinc-700/50 bg-zinc-800/50'
                 }`}>

@@ -64,15 +64,26 @@ export async function GET(request: NextRequest) {
     const text = await response.text();
     const lines = text.trim().split('\n').filter(line => line.trim());
     
-    // Calculate today's 9:15 AM in IST (UTC+5:30)
-    const now = new Date();
-    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
-    const todayIST = new Date(now.getTime() + istOffset);
-    const tradingStartIST = new Date(todayIST);
-    tradingStartIST.setUTCHours(9, 15, 0, 0); // 9:15 AM IST
-    const tradingStartTimestamp = Math.floor((tradingStartIST.getTime() - istOffset) / 1000); // Convert back to Unix timestamp
+    // ✅ FIXED: Use the REQUESTED DATE's 9:15 AM in IST, not today's
+    // Parse the requested date (format: YYYY-MM-DD)
+    const [requestedYear, requestedMonth, requestedDay] = date.split('-').map(Number);
+    const requestedDateIST = new Date(
+      requestedYear,
+      requestedMonth - 1, // JavaScript months are 0-indexed
+      requestedDay,
+      9, // 9 AM
+      15, // 15 minutes
+      0,
+      0
+    );
     
-    console.log(`[API Proxy] 🕐 Today's trading start (9:15 AM IST): ${new Date(tradingStartTimestamp * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+    // Convert to UTC timestamp
+    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+    const utcTimestamp = requestedDateIST.getTime() - istOffset;
+    const tradingStartTimestamp = Math.floor(utcTimestamp / 1000);
+    
+    console.log(`[API Proxy] 🕐 Requested date: ${date}`);
+    console.log(`[API Proxy] 🕐 Trading start for ${date} (9:15 AM IST): ${new Date(tradingStartTimestamp * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
     console.log(`[API Proxy] 🕐 Filter timestamp: ${tradingStartTimestamp}`);
     
     const allDataPoints = [];
@@ -83,7 +94,7 @@ export async function GET(request: NextRequest) {
         const point = JSON.parse(line);
         const timestamp = point.timestamp || point.last_traded_time;
         
-        // Server-side filtering: Only include data from today 9:15 AM onwards
+        // Server-side filtering: Only include data from the requested date's 9:15 AM onwards
         if (timestamp >= tradingStartTimestamp) {
           allDataPoints.push({
             symbol: symbol,
@@ -109,7 +120,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`[API Proxy] ✅ Parsed ${lines.length} total lines`);
-    console.log(`[API Proxy] ✅ Returning ${allDataPoints.length} points from today (filtered out ${filteredCount} old points)`);
+    console.log(`[API Proxy] ✅ Returning ${allDataPoints.length} points from requested date (filtered out ${filteredCount} points before 9:15 AM IST)`);
     
     if (allDataPoints.length > 0) {
       const firstPoint = allDataPoints[0];
@@ -126,7 +137,8 @@ export async function GET(request: NextRequest) {
         returnedPoints: allDataPoints.length,
         filteredPoints: filteredCount,
         tradingStartTimestamp: tradingStartTimestamp,
-        filterApplied: 'TODAY_ONLY_9_15_AM_IST_ONWARDS'
+        requestedDate: date,
+        filterApplied: 'REQUESTED_DATE_9_15_AM_IST_ONWARDS'
       }
     }, {
       headers: {
