@@ -3,7 +3,7 @@
  * Run this to verify the historical data fetching functionality
  */
 
-import { fetchHistoricalData, mergeHistoricalData, detectDataGaps } from '../lib/historicalDataFetcher';
+import { fetchHistoricalData, mergeHistoricalData, detectDataGaps } from './lib/historicalDataFetcher';
 
 async function testHistoricalDataFetcher() {
   console.log('🧪 Testing Historical Data Fetcher\n');

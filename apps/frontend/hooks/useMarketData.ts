@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSocket } from '../lib/socket';
 
 interface MarketData {
+  symbol: string;
   ltp: number;
   change: number;
   changePercent: number;
@@ -108,7 +109,7 @@ export const useMarketData = (initialSymbols: string[] = []): UseMarketDataRetur
 
   // Refs
   const socketRef = useRef<any>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const saveTimeoutRef = useRef<NodeJS.Timeout>(undefined);
   const isInitializedRef = useRef(false);
 
   // Auto-save with debounce

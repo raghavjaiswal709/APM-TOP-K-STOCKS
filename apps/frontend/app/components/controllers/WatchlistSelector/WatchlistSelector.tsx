@@ -59,7 +59,14 @@ export const WatchlistSelector = React.memo(({
     exchanges: [] as string[],
     markers: [] as string[],
     refined: null as boolean | null,
-    showAllCompanies: false
+    showAllCompanies: false,
+    hasPrediction: null as boolean | null,
+    hasGtt: null as boolean | null,
+    sentiment: null as 'BULLISH' | 'BEARISH' | 'NEUTRAL' | null,
+    desirability: null as 'high' | 'medium' | 'low' | null,
+    hasUmapData: null as boolean | null,
+    umapConfidence: null as 'high' | 'medium' | 'low' | null,
+    umapNoise: null as 'low' | 'medium' | 'high' | null,
   });
 
   // Use internal hook only when external state is not provided

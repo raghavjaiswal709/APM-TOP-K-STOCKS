@@ -1,7 +1,7 @@
 // FilterModal.tsx
 "use client"
 import * as React from "react"
-import { Filter, X, Check, Brain, Zap, TrendingUp, TrendingDown, Minus, Target } from "lucide-react"
+import { Filter, X, Check, Brain, Zap, TrendingUp, TrendingDown, Minus, Target, Fingerprint } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -21,6 +21,9 @@ interface ActiveFilters {
   hasGtt: boolean | null;
   sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | null;
   desirability: 'high' | 'medium' | 'low' | null;
+  hasUmapData: boolean | null;
+  umapConfidence: 'high' | 'medium' | 'low' | null;
+  umapNoise: 'low' | 'medium' | 'high' | null;
 }
 
 interface FilterModalProps {
@@ -98,7 +101,10 @@ export function FilterModal({
       hasPrediction: null,
       hasGtt: null,
       sentiment: null,
-      desirability: null
+      desirability: null,
+      hasUmapData: null,
+      umapConfidence: null,
+      umapNoise: null,
     };
     setTempFilters(clearedFilters);
     onFiltersChange(clearedFilters);
@@ -127,6 +133,9 @@ export function FilterModal({
     if (tempFilters.hasGtt !== null) count++;
     if (tempFilters.sentiment !== null) count++;
     if (tempFilters.desirability !== null) count++;
+    if (tempFilters.hasUmapData !== null) count++;
+    if (tempFilters.umapConfidence !== null) count++;
+    if (tempFilters.umapNoise !== null) count++;
     return count;
   };
 
@@ -142,7 +151,7 @@ export function FilterModal({
       
       {/* Modal */}
       <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50">
-        <Card className="w-[480px] max-h-[600px] overflow-hidden">
+        <Card className="w-[480px] max-h-[700px] overflow-hidden">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -163,7 +172,7 @@ export function FilterModal({
             </div>
           </CardHeader>
           
-          <CardContent className="space-y-6 max-h-[400px] overflow-y-auto">
+          <CardContent className="space-y-6 max-h-[500px] overflow-y-auto">
             {/* Show All Companies Toggle */}
             <div className="space-y-3 pb-3 border-b">
               <div 
@@ -545,6 +554,143 @@ export function FilterModal({
                   )}
                 >
                   <span className="text-xs font-medium text-amber-500">Low</span>
+                </div>
+              </div>
+            </div>
+
+            {/* UMAP Clustering Filters */}
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Fingerprint className="h-4 w-4 text-violet-500" />
+                UMAP Clustering
+              </h4>
+              
+              {/* Has UMAP Data */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-1.5">Data Available</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div
+                    onClick={() => setTempFilters(prev => ({ ...prev, hasUmapData: null }))}
+                    className={cn(
+                      "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                      tempFilters.hasUmapData === null && "bg-accent border-primary"
+                    )}
+                  >
+                    <div className={cn("h-4 w-4 border rounded flex items-center justify-center", tempFilters.hasUmapData === null && "bg-primary border-primary")}>
+                      {tempFilters.hasUmapData === null && <Check className="h-3 w-3 text-primary-foreground" />}
+                    </div>
+                    <span className="text-xs font-medium">All</span>
+                  </div>
+                  <div
+                    onClick={() => setTempFilters(prev => ({ ...prev, hasUmapData: true }))}
+                    className={cn(
+                      "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                      tempFilters.hasUmapData === true && "bg-violet-500/20 border-violet-500"
+                    )}
+                  >
+                    <div className={cn("h-4 w-4 border rounded flex items-center justify-center", tempFilters.hasUmapData === true && "bg-violet-500 border-violet-500")}>
+                      {tempFilters.hasUmapData === true && <Check className="h-3 w-3 text-white" />}
+                    </div>
+                    <span className="text-xs font-medium">With 🔬</span>
+                  </div>
+                  <div
+                    onClick={() => setTempFilters(prev => ({ ...prev, hasUmapData: false }))}
+                    className={cn(
+                      "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                      tempFilters.hasUmapData === false && "bg-accent border-primary"
+                    )}
+                  >
+                    <div className={cn("h-4 w-4 border rounded flex items-center justify-center", tempFilters.hasUmapData === false && "bg-primary border-primary")}>
+                      {tempFilters.hasUmapData === false && <Check className="h-3 w-3 text-primary-foreground" />}
+                    </div>
+                    <span className="text-xs font-medium">Without</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* UMAP Confidence */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-1.5">Confidence Level</p>
+                <div className="grid grid-cols-4 gap-2">
+                  <div
+                    onClick={() => setTempFilters(prev => ({ ...prev, umapConfidence: null }))}
+                    className={cn(
+                      "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                      tempFilters.umapConfidence === null && "bg-accent border-primary"
+                    )}
+                  >
+                    <span className="text-xs font-medium">All</span>
+                  </div>
+                  <div
+                    onClick={() => setTempFilters(prev => ({ ...prev, umapConfidence: 'high' }))}
+                    className={cn(
+                      "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                      tempFilters.umapConfidence === 'high' && "bg-emerald-500/20 border-emerald-500"
+                    )}
+                  >
+                    <span className="text-xs font-medium text-emerald-500">High</span>
+                  </div>
+                  <div
+                    onClick={() => setTempFilters(prev => ({ ...prev, umapConfidence: 'medium' }))}
+                    className={cn(
+                      "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                      tempFilters.umapConfidence === 'medium' && "bg-blue-500/20 border-blue-500"
+                    )}
+                  >
+                    <span className="text-xs font-medium text-blue-500">Mid</span>
+                  </div>
+                  <div
+                    onClick={() => setTempFilters(prev => ({ ...prev, umapConfidence: 'low' }))}
+                    className={cn(
+                      "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                      tempFilters.umapConfidence === 'low' && "bg-red-500/20 border-red-500"
+                    )}
+                  >
+                    <span className="text-xs font-medium text-red-500">Low</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* UMAP Noise Level */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-1.5">Noise Level</p>
+                <div className="grid grid-cols-4 gap-2">
+                  <div
+                    onClick={() => setTempFilters(prev => ({ ...prev, umapNoise: null }))}
+                    className={cn(
+                      "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                      tempFilters.umapNoise === null && "bg-accent border-primary"
+                    )}
+                  >
+                    <span className="text-xs font-medium">All</span>
+                  </div>
+                  <div
+                    onClick={() => setTempFilters(prev => ({ ...prev, umapNoise: 'low' }))}
+                    className={cn(
+                      "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                      tempFilters.umapNoise === 'low' && "bg-emerald-500/20 border-emerald-500"
+                    )}
+                  >
+                    <span className="text-xs font-medium text-emerald-500">Low</span>
+                  </div>
+                  <div
+                    onClick={() => setTempFilters(prev => ({ ...prev, umapNoise: 'medium' }))}
+                    className={cn(
+                      "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                      tempFilters.umapNoise === 'medium' && "bg-amber-500/20 border-amber-500"
+                    )}
+                  >
+                    <span className="text-xs font-medium text-amber-500">Mid</span>
+                  </div>
+                  <div
+                    onClick={() => setTempFilters(prev => ({ ...prev, umapNoise: 'high' }))}
+                    className={cn(
+                      "flex items-center justify-center gap-1 p-2 rounded border cursor-pointer transition-colors hover:bg-accent",
+                      tempFilters.umapNoise === 'high' && "bg-red-500/20 border-red-500"
+                    )}
+                  >
+                    <span className="text-xs font-medium text-red-500">High</span>
+                  </div>
                 </div>
               </div>
             </div>

@@ -41,7 +41,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelector2/WatchlistSelector";
 import { ImageCarousel } from "./components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
-import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity, Calendar as CalendarIcon, Images, ChevronDown, ChevronUp, PanelBottomOpen, PanelBottomClose, AlertTriangle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity, Calendar as CalendarIcon, Images, ChevronDown, ChevronUp, PanelBottomOpen, PanelBottomClose, AlertTriangle, ChevronLeft, ChevronRight, ShieldAlert } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
 import { isMarketOpen } from "@/lib/marketHours";
 import {
@@ -102,6 +102,15 @@ const GttPredictionChart = dynamic(() => import('./components/charts/GttPredicti
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-zinc-900">
       <div className="animate-pulse text-purple-500">Loading GTT Engine...</div>
+    </div>
+  )
+});
+
+const UMAPClusterDashboard = dynamic(() => import('./components/umap/UMAPClusterDashboard'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-zinc-900">
+      <div className="animate-pulse text-cyan-500">Loading UMAP Analysis...</div>
     </div>
   )
 });
@@ -288,6 +297,9 @@ const MarketDataPage: React.FC = () => {
   const [stoppedSymbols, setStoppedSymbols] = useState<string[]>([]);
   const [permanentlyStoppedSymbols, setPermanentlyStoppedSymbols] = useState<string[]>([]);
 
+  // Auth status state for orange banner
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
   // Track which symbols have been backfilled to avoid duplicate fetches
   const backfilledSymbolsRef = useRef<Set<string>>(new Set());
 
@@ -355,6 +367,45 @@ const MarketDataPage: React.FC = () => {
       };
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  // Resizable & collapsible sidebar (company list)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(280); // pixels
+  const [isSidebarDragging, setIsSidebarDragging] = useState<boolean>(false);
+  const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
+  const mainRowRef = useRef<HTMLDivElement>(null);
+
+  const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsSidebarDragging(true);
+  }, []);
+
+  const handleSidebarMouseMove = useCallback((e: MouseEvent) => {
+    if (!isSidebarDragging || !mainRowRef.current) return;
+    const containerRect = mainRowRef.current.getBoundingClientRect();
+    const newWidth = containerRect.right - e.clientX;
+    // Clamp between 200px and 500px
+    const clampedWidth = Math.max(200, Math.min(500, newWidth));
+    setSidebarWidth(clampedWidth);
+  }, [isSidebarDragging]);
+
+  const handleSidebarMouseUp = useCallback(() => {
+    setIsSidebarDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (isSidebarDragging) {
+      document.addEventListener('mousemove', handleSidebarMouseMove);
+      document.addEventListener('mouseup', handleSidebarMouseUp);
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+      return () => {
+        document.removeEventListener('mousemove', handleSidebarMouseMove);
+        document.removeEventListener('mouseup', handleSidebarMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isSidebarDragging, handleSidebarMouseMove, handleSidebarMouseUp]);
 
   // Sync state to context on changes (for state persistence across navigation)
   useEffect(() => {
@@ -474,7 +525,7 @@ const MarketDataPage: React.FC = () => {
       console.log(`✅ [PREDICTION UPDATE] Predictions updated for ${selectedCompany}:`, data.count, 'predictions');
     },
     onError: (error) => {
-      console.error('❌ Prediction error:', error);
+      console.warn('⚠️ Prediction unavailable:', error);
     },
     onComplete: () => {
       console.log('✅ Prediction collection completed for 25 minutes');
@@ -1288,6 +1339,26 @@ const MarketDataPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Auth status check — show orange banner when not authenticated
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/fyers/status');
+        if (res.ok) {
+          const data = await res.json();
+          setIsAuthenticated(data.authenticated === true && data.token_valid === true);
+        } else {
+          setIsAuthenticated(false);
+        }
+      } catch {
+        setIsAuthenticated(false);
+      }
+    };
+    checkAuth();
+    const authInterval = setInterval(checkAuth, 60000);
+    return () => clearInterval(authInterval);
+  }, []);
+
   // Trigger deferred initialization on next frame for smooth page transitions
   useEffect(() => {
     if (!isClient) return;
@@ -1493,11 +1564,15 @@ const MarketDataPage: React.FC = () => {
       const backfillKey = `${selectedSymbol}_${effectiveDate || new Date().toISOString().split('T')[0]}`;
       if (backfilledSymbolsRef.current.has(backfillKey)) {
         console.log(`📡 [Backfill] Already backfilled ${backfillKey}, skipping`);
+        setIsLoadingHistorical(false);
         return;
       }
 
       // Check if cancelled before starting
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        setIsLoadingHistorical(false);
+        return;
+      }
 
       setIsLoadingHistorical(true);
       setHistoricalDataStatus('Checking data completeness...');
@@ -1626,14 +1701,16 @@ const MarketDataPage: React.FC = () => {
             : 'Using real-time data only');
         }
       } catch (error) {
-        // Don't show errors for aborted requests (company changed mid-fetch)
-        if (signal.aborted) return;
-        console.error(`❌ [Backfill] Error:`, error);
-        setHistoricalDataStatus('Failed to load historical data');
-      } finally {
-        // Don't reset loading state if aborted (new company's fetch will handle it)
+        // Don't log errors for aborted requests (company changed mid-fetch)
         if (!signal.aborted) {
-          setIsLoadingHistorical(false);
+          console.error(`❌ [Backfill] Error:`, error);
+          setHistoricalDataStatus('Failed to load historical data');
+        }
+      } finally {
+        // Always clear loading state. If aborted, the new company's effect will
+        // set isLoadingHistorical=true again when it starts its own fetch.
+        setIsLoadingHistorical(false);
+        if (!signal.aborted) {
           setTimeout(() => setHistoricalDataStatus(''), 5000);
         }
       }
@@ -1648,8 +1725,20 @@ const MarketDataPage: React.FC = () => {
       fetchAndBackfillHistoricalData(abortController.signal);
     }, 500); // Reduced from 1.5s to 0.5s for faster loading
 
+    // Safety timeout: if loading is still true after 15s, force-clear it
+    const safetyTimer = setTimeout(() => {
+      setIsLoadingHistorical(prev => {
+        if (prev) {
+          console.warn('⚠️ [Safety] Force-clearing isLoadingHistorical after 15s timeout');
+          return false;
+        }
+        return prev;
+      });
+    }, 15000);
+
     return () => {
       clearTimeout(fetchTimer);
+      clearTimeout(safetyTimer);
       // ✅ Cancel any in-flight fetch when effect re-runs (company/date changed)
       abortController.abort();
 
@@ -2092,8 +2181,16 @@ const MarketDataPage: React.FC = () => {
           </div>
         )}
 
+        {/* Auth Warning Banner */}
+        {isAuthenticated === false && (
+          <div className="bg-orange-500/90 text-white px-4 py-2 flex items-center gap-2 text-sm font-medium border-b border-orange-600/50">
+            <ShieldAlert className="h-4 w-4 flex-shrink-0" />
+            <span>Dashboard is not authenticated — this data is from server, not updating live</span>
+          </div>
+        )}
+
         {/* MAIN CONTENT ROW */}
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden" ref={mainRowRef}>
 
           {/* LEFT: CHART & ANALYSIS SPLIT */}
           <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden" ref={containerRef}>
@@ -2159,6 +2256,7 @@ const MarketDataPage: React.FC = () => {
                       <TabsTrigger value="livedata" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Live Data</TabsTrigger>
                       <TabsTrigger value="predictions" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">AI Predictions & GTT</TabsTrigger>
                       <TabsTrigger value="charts" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Metrices</TabsTrigger>
+                      <TabsTrigger value="umap" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">UMAP Clustering</TabsTrigger>
                     </TabsList>
                     {/* Drag handle and hide button on the right */}
                     <div
@@ -2262,16 +2360,47 @@ const MarketDataPage: React.FC = () => {
                           />
                         </ScrollArea>
                       </TabsContent>
+                      <TabsContent value="umap" className="h-full m-0">
+                        <ScrollArea className="h-full w-full">
+                          <UMAPClusterDashboard initialSymbol={selectedCompany || selectedSymbol || 'RELIANCE'} />
+                        </ScrollArea>
+                      </TabsContent>
                     </div>
                   </div>
                 )}
               </Tabs>
           </div>
 
-          {/* RIGHT: SIDEBAR (Company List) */}
-          <div className="w-72 border-l bg-background flex flex-col shrink-0 transition-all duration-300">
-            <div className="flex-1 overflow-hidden">
-              <CompanyList
+          {/* RIGHT: SIDEBAR (Company List) - Draggable & Collapsible */}
+          {isSidebarVisible ? (
+            <div
+              className="relative bg-background flex flex-col shrink-0 transition-all"
+              style={{
+                width: sidebarWidth,
+                transition: isSidebarDragging ? 'none' : 'width 300ms ease-in-out',
+              }}
+            >
+              {/* Drag Handle (left edge) */}
+              <div
+                className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-primary/40 active:bg-primary/60 z-10 group"
+                onMouseDown={handleSidebarMouseDown}
+                title="Drag to resize sidebar"
+              >
+                <div className="absolute inset-y-0 -left-0.5 w-2 group-hover:bg-primary/20" />
+              </div>
+              {/* Collapse button */}
+              <div className="flex items-center justify-between px-2 py-1 border-b border-l bg-muted/20">
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Companies</span>
+                <button
+                  onClick={() => setIsSidebarVisible(false)}
+                  className="p-0.5 rounded hover:bg-accent transition-colors"
+                  title="Collapse sidebar"
+                >
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden border-l">
+                <CompanyList
                 companies={companies || []}
                 selectedCompanyCode={selectedCompany}
                 onSelect={(companyCode: string) => {
@@ -2289,8 +2418,25 @@ const MarketDataPage: React.FC = () => {
                 desirabilityMap={desirabilityMap}
                 sentimentMap={sentimentMap}
               />
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Collapsed sidebar - show expand button */
+            <div className="w-8 bg-background border-l flex flex-col items-center py-2 shrink-0">
+              <button
+                onClick={() => setIsSidebarVisible(true)}
+                className="p-1 rounded hover:bg-accent transition-colors"
+                title="Expand sidebar"
+              >
+                <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+              </button>
+              <div className="mt-2 flex-1 flex items-center">
+                <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
+                  Companies
+                </span>
+              </div>
+            </div>
+          )}
 
         </div>
 

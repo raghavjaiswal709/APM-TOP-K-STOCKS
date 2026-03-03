@@ -39,6 +39,8 @@ import {
 
 import { FilterModal } from "./controllers/WatchlistSelector/FilterModal";
 import { ImageCarousel } from "./ImageCarousel";
+import { clusteringV2Service } from "@/app/services/clusteringService";
+import type { ClusteringAnalysisResponse } from "@/types/clustering";
 
 export interface Company {
     company_id?: number;
@@ -130,6 +132,9 @@ export function CompanyList({
         hasGtt: boolean | null;
         sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | null;
         desirability: 'high' | 'medium' | 'low' | null;
+        hasUmapData: boolean | null;
+        umapConfidence: 'high' | 'medium' | 'low' | null;
+        umapNoise: 'low' | 'medium' | 'high' | null;
     }>({
         exchanges: [],
         markers: [],
@@ -138,7 +143,10 @@ export function CompanyList({
         hasPrediction: null,
         hasGtt: null,
         sentiment: null,
-        desirability: null
+        desirability: null,
+        hasUmapData: null,
+        umapConfidence: null,
+        umapNoise: null,
     });
     
     // Sync external showAllCompanies prop with internal state
@@ -170,6 +178,12 @@ export function CompanyList({
     const [localSentimentMap, setLocalSentimentMap] = React.useState<Record<string, SentimentType>>({});
     const [batchDataLoading, setBatchDataLoading] = React.useState(false);
     const batchLoadedRef = React.useRef<Set<string>>(new Set());
+
+    // UMAP Clustering data for filtering
+    const [umapSymbolsSet, setUmapSymbolsSet] = React.useState<Set<string>>(new Set());
+    const [umapAnalysisMap, setUmapAnalysisMap] = React.useState<Record<string, { confidence: number; noise: number; clusters: number }>>({});
+    const [umapDataLoading, setUmapDataLoading] = React.useState(false);
+    const umapLoadedRef = React.useRef(false);
 
     // Fetch prediction availability on mount
     React.useEffect(() => {
@@ -270,6 +284,62 @@ export function CompanyList({
 
         // Delay slightly to ensure component is mounted
         const timer = setTimeout(fetchBatchData, 500);
+        return () => clearTimeout(timer);
+    }, [companies]);
+
+    // Batch fetch UMAP clustering symbols + analysis for all companies
+    React.useEffect(() => {
+        if (!companies || companies.length === 0 || umapLoadedRef.current) return;
+
+        const fetchUmapData = async () => {
+            setUmapDataLoading(true);
+            try {
+                // Step 1: Get all symbols that have clustering data
+                const symbolsResponse = await clusteringV2Service.getSymbols();
+                const availableSymbols = new Set(symbolsResponse.symbols || []);
+                setUmapSymbolsSet(availableSymbols);
+
+                // Step 2: Find which companies have UMAP data
+                const companySymbols = companies
+                    .map(c => c.company_code)
+                    .filter(code => availableSymbols.has(code));
+
+                console.log(`🔬 UMAP: ${companySymbols.length} of ${companies.length} companies have clustering data`);
+
+                // Step 3: Batch fetch analysis for matching companies (max 30 in parallel)
+                const BATCH_SIZE = 15;
+                const analysisResults: Record<string, { confidence: number; noise: number; clusters: number }> = {};
+
+                for (let i = 0; i < companySymbols.length; i += BATCH_SIZE) {
+                    const batch = companySymbols.slice(i, i + BATCH_SIZE);
+                    const results = await Promise.allSettled(
+                        batch.map(sym => clusteringV2Service.getAnalysis(sym, 7))
+                    );
+
+                    results.forEach((result, idx) => {
+                        if (result.status === 'fulfilled' && result.value) {
+                            const a = result.value;
+                            analysisResults[batch[idx]] = {
+                                confidence: a.confidence_consistency?.overall_confidence ?? 0,
+                                noise: a.noise?.total_noise_fraction ?? 0,
+                                clusters: a.active_clusters?.count ?? 0,
+                            };
+                        }
+                    });
+                }
+
+                setUmapAnalysisMap(analysisResults);
+                umapLoadedRef.current = true;
+                console.log(`✅ UMAP: Loaded analysis for ${Object.keys(analysisResults).length} companies`);
+            } catch (error) {
+                console.error('❌ Failed to fetch UMAP data:', error);
+            } finally {
+                setUmapDataLoading(false);
+            }
+        };
+
+        // Delay to not block initial render
+        const timer = setTimeout(fetchUmapData, 1500);
         return () => clearTimeout(timer);
     }, [companies]);
 
@@ -399,7 +469,41 @@ export function CompanyList({
             });
         }
 
-        // 5. Search Term
+        // 5. UMAP Clustering Filters
+        if (activeFilters.hasUmapData !== null) {
+            result = result.filter(c => {
+                const hasData = umapSymbolsSet.has(c.company_code);
+                return activeFilters.hasUmapData ? hasData : !hasData;
+            });
+        }
+        if (activeFilters.umapConfidence !== null) {
+            result = result.filter(c => {
+                const umap = umapAnalysisMap[c.company_code];
+                if (!umap) return false;
+                const conf = umap.confidence;
+                switch (activeFilters.umapConfidence) {
+                    case 'high': return conf >= 0.7;
+                    case 'medium': return conf >= 0.4 && conf < 0.7;
+                    case 'low': return conf < 0.4;
+                    default: return true;
+                }
+            });
+        }
+        if (activeFilters.umapNoise !== null) {
+            result = result.filter(c => {
+                const umap = umapAnalysisMap[c.company_code];
+                if (!umap) return false;
+                const noise = umap.noise;
+                switch (activeFilters.umapNoise) {
+                    case 'low': return noise < 0.15;
+                    case 'medium': return noise >= 0.15 && noise < 0.35;
+                    case 'high': return noise >= 0.35;
+                    default: return true;
+                }
+            });
+        }
+
+        // 6. Search Term
         if (searchTerm) {
             const searchLower = searchTerm.toLowerCase();
             result = result.filter(company => {
@@ -413,7 +517,7 @@ export function CompanyList({
             });
         }
         return result;
-    }, [companies, searchTerm, activeFilters, regularPredictions, gttPredictions, mergedSentimentMap, mergedDesirabilityMap]);
+    }, [companies, searchTerm, activeFilters, regularPredictions, gttPredictions, mergedSentimentMap, mergedDesirabilityMap, umapSymbolsSet, umapAnalysisMap]);
 
     // Selected company object for ImageCarousel
     const selectedCompanyObj = React.useMemo(() =>
@@ -431,6 +535,9 @@ export function CompanyList({
         if (activeFilters.hasGtt !== null) count++;
         if (activeFilters.sentiment !== null) count++;
         if (activeFilters.desirability !== null) count++;
+        if (activeFilters.hasUmapData !== null) count++;
+        if (activeFilters.umapConfidence !== null) count++;
+        if (activeFilters.umapNoise !== null) count++;
         return count;
     }, [activeFilters]);
 
@@ -587,13 +694,13 @@ export function CompanyList({
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto" suppressHydrationWarning>
                 {filteredCompanies.length === 0 ? (
                     <div className="p-8 text-center text-sm text-muted-foreground">
                         {searchTerm ? 'No matches found' : 'No companies available'}
                     </div>
                 ) : (
-                    <div className="flex flex-col">
+                    <div className="flex flex-col" suppressHydrationWarning>
                         {filteredCompanies.map((company, index) => {
                             const uniqueKey = `${company.company_code}-${company.exchange}-${index}`;
                             const isSelected = selectedCompanyCode === company.company_code;
@@ -784,7 +891,7 @@ export function CompanyList({
                 <ImageCarousel
                     isOpen={isCarouselOpen}
                     onClose={() => setIsCarouselOpen(false)}
-                    companyCode={selectedCompanyObj.companyCode}
+                    companyCode={selectedCompanyObj.company_code}
                     exchange={selectedCompanyObj.exchange}
                     selectedDate={selectedWatchlistDate || undefined}
                 />

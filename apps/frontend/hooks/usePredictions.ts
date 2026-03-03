@@ -185,7 +185,7 @@ export const usePredictions = (options: UsePredictionsOptions) => {
           return fetchPredictions(attempt + 1, bypassCache);
         }
 
-        console.error(`❌ Failed to fetch predictions for ${company}:`, errorMessage);
+        console.warn(`⚠️ Failed to fetch predictions for ${company}:`, errorMessage);
         setError(errorMessage);
         setRetrying(false);
 

@@ -24,6 +24,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { DesirabilityData } from '@/hooks/useDesirability';
+import { useClusteringAnalysis, useClusteringConfidence, useActiveClusters } from '@/hooks/useClusteringV2';
+import { ARCHETYPE_COLORS } from '@/types/clustering';
 import {
   Tooltip,
   TooltipContent,
@@ -216,6 +218,11 @@ export const LiveDataDashboard: React.FC<LiveDataDashboardProps> = ({
   const reoccurrenceProbability = desirabilityData?.top_pattern?.reoccurrence_probability ?? null;
   const reoccurrenceConfig = useMemo(() => getReoccurrenceConfig(reoccurrenceProbability), [reoccurrenceProbability]);
   const details = desirabilityData?.top_pattern?.details;
+
+  // UMAP v2 Clustering Hooks
+  const { data: umapAnalysis, loading: umapLoading } = useClusteringAnalysis(symbol, 7, !!symbol);
+  const { data: umapConfidence } = useClusteringConfidence(symbol, 7, !!symbol);
+  const { data: umapActiveClusters } = useActiveClusters(symbol, 7, !!symbol);
 
   const formatPrice = (price?: number) => {
     if (price === undefined || price === null) return '0.00';
@@ -649,6 +656,60 @@ export const LiveDataDashboard: React.FC<LiveDataDashboardProps> = ({
                 )}
               </div>
             </div>
+
+            {/* UMAP Cluster Summary */}
+            {(umapAnalysis || umapLoading) && (
+              <div className="bg-muted/20 rounded-xl p-4 border border-violet-500/20">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="h-4 w-4 text-violet-400" />
+                  <span className="text-sm font-semibold text-foreground">UMAP Cluster Insights</span>
+                  {umapLoading && <Loader2 className="h-3 w-3 animate-spin text-violet-400" />}
+                </div>
+                {umapAnalysis ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-muted/30 rounded-lg p-2 text-center border border-border/50">
+                        <div className="text-[10px] text-muted-foreground uppercase">Confidence</div>
+                        <div className="text-sm font-bold text-emerald-400">
+                          {umapConfidence ? `${(umapConfidence.overall_confidence * 100).toFixed(0)}%` : 'N/A'}
+                        </div>
+                      </div>
+                      <div className="bg-muted/30 rounded-lg p-2 text-center border border-border/50">
+                        <div className="text-[10px] text-muted-foreground uppercase">Noise</div>
+                        <div className="text-sm font-bold text-amber-400">
+                          {`${(umapAnalysis.noise.total_noise_fraction * 100).toFixed(1)}%`}
+                        </div>
+                      </div>
+                      <div className="bg-muted/30 rounded-lg p-2 text-center border border-border/50">
+                        <div className="text-[10px] text-muted-foreground uppercase">Clusters</div>
+                        <div className="text-sm font-bold text-violet-400">
+                          {umapActiveClusters?.n_active_clusters ?? umapAnalysis.active_clusters.count}
+                        </div>
+                      </div>
+                    </div>
+                    {/* Top archetypes */}
+                    {umapActiveClusters?.clusters && umapActiveClusters.clusters.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {umapActiveClusters.clusters.slice(0, 4).map((cluster: any, idx: number) => {
+                          const archetype = cluster.profile?.pattern_archetype || 'unknown';
+                          const color = ARCHETYPE_COLORS[archetype as keyof typeof ARCHETYPE_COLORS] || '#71717a';
+                          return (
+                            <span key={idx} className="inline-flex items-center gap-1 text-[10px] bg-muted/40 px-2 py-0.5 rounded-full border border-border/50">
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+                              <span className="text-muted-foreground capitalize">{archetype.replace(/_/g, ' ')}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-2">
+                    <span className="text-xs text-muted-foreground">Loading cluster data...</span>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

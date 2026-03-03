@@ -15,7 +15,9 @@ export const calculateBuySellVolume = (
   } else {
     let priceChange = 0;
     if ('open' in dataPoint && 'close' in dataPoint) {
-      priceChange = (dataPoint.close - dataPoint.open) / dataPoint.open;
+      const open = (dataPoint as any).open || 0;
+      const close = (dataPoint as any).close || 0;
+      priceChange = open > 0 ? (close - open) / open : 0;
     } else if ('ltp' in dataPoint) {
       const currentIndex = historicalData.findIndex(p => p.timestamp === dataPoint.timestamp);
       if (currentIndex > 0) {
@@ -122,7 +124,7 @@ export const calculateSMA = (prices: number[], period: number) => {
 export const calculateEMA = (prices: number[], period: number) => {
   if (prices.length < period) return [];
   const multiplier = 2 / (period + 1);
-  const emaValues = [];
+  const emaValues: number[] = [];
   const firstSMA = prices.slice(0, period).reduce((acc, val) => acc + val, 0) / period;
   emaValues.push(firstSMA);
 

@@ -104,6 +104,11 @@ const data = {
       icon: Star,
     },
     {
+      title: "UMAP Clustering",
+      url: "/umap-clustering",
+      icon: Frame,
+    },
+    {
       title: "Watchlist",
       url: "/watchlist",
       icon: BookOpen,

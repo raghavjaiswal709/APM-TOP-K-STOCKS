@@ -27,6 +27,16 @@ const nextConfig = {
         destination: `http://${SERVER_IP}:8505/intraday/:path*`,
       },
 
+      // UMAP Clustering V2 API (port 6968)
+      {
+        source: '/api/v2/clustering/:path*',
+        destination: `http://${SERVER_IP}:6968/api/v2/clustering/:path*`,
+      },
+      {
+        source: '/api/v2/health',
+        destination: `http://${SERVER_IP}:6968/health`,
+      },
+
       // ⚠️ CATCH-ALL: Proxy remaining /api/* to NestJS backend (port 5002)
       // This excludes paths already matched above AND Next.js API routes like /api/time-machine
       // Uses BACKEND_URL env var for Docker compatibility (defaults to localhost for local dev)

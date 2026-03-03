@@ -1,9 +1,20 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Maximize2 } from 'lucide-react';
+import { X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useClusterPattern } from '@/hooks/useClusterPattern';
+import { ARCHETYPE_COLORS } from '@/types/clustering';
+
+// Dynamically import the full UMAP dashboard for separate view
+const UMAPClusterDashboard = dynamic(() => import('@/app/market-data/components/umap/UMAPClusterDashboard'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-zinc-900">
+      <div className="animate-pulse text-cyan-500">Loading UMAP Analysis...</div>
+    </div>
+  )
+});
 
 // Dynamically import Plot and ClusterChart to avoid SSR issues
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
@@ -98,7 +109,7 @@ export function SeparateViewModal({
   getTimeRange,
   chartMode
 }: SeparateViewModalProps) {
-  const [separateViewMode, setSeparateViewMode] = useState<'live-prediction' | 'live-cluster' | 'prediction-cluster' | 'combined'>('live-prediction');
+  const [separateViewMode, setSeparateViewMode] = useState<'live-prediction' | 'live-cluster' | 'prediction-cluster' | 'combined' | 'umap-analysis'>('live-prediction');
 
   // Cluster Pattern Hook
   const {
@@ -119,109 +130,34 @@ export function SeparateViewModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="relative w-[98vw] h-screen max-h-screen bg-zinc-950 rounded-xl shadow-xl border border-zinc-800 overflow-hidden flex flex-col">
         
-        {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-zinc-800 rounded-lg">
-              <Maximize2 className="h-4 w-4 text-zinc-400" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-zinc-100">
-                Comparative Analysis
-              </h2>
-              <p className="text-xs text-zinc-400">
-                Side-by-side view of market data
-              </p>
-            </div>
-          </div>
+        {/* Compact Top Bar: Dropdown + Close */}
+        <div className="flex items-center gap-3 px-4 py-2 bg-zinc-900 border-b border-zinc-800 shrink-0">
+          <select
+            value={separateViewMode}
+            onChange={(e) => setSeparateViewMode(e.target.value as any)}
+            className="flex-1 px-3 py-1.5 text-sm bg-zinc-950 text-zinc-100 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:border-transparent"
+          >
+            <option value="combined">Combined View</option>
+            <option value="live-prediction">Live Market ↔ Prediction</option>
+            <option value="live-cluster">Live Market ↔ Cluster Pattern</option>
+            <option value="prediction-cluster">Prediction ↔ Cluster Pattern</option>
+            <option value="umap-analysis">Live Market ↔ UMAP Cluster Analysis</option>
+          </select>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-zinc-800 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-zinc-800 transition-colors shrink-0"
             title="Close"
           >
             <X className="h-4 w-4 text-zinc-400" />
           </button>
         </div>
 
-        {/* Mode Selector */}
-        <div className="px-6 py-3 bg-zinc-900 border-b border-zinc-800">
-          <select
-            value={separateViewMode}
-            onChange={(e) => setSeparateViewMode(e.target.value as any)}
-            className="w-full px-3 py-2 text-sm bg-zinc-950 text-zinc-100 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:border-transparent"
-          >
-            <option value="combined">Combined View</option>
-            <option value="live-prediction">Live Market ↔ Prediction</option>
-            <option value="live-cluster">Live Market ↔ Cluster Pattern</option>
-            <option value="prediction-cluster">Prediction ↔ Cluster Pattern</option>
-          </select>
-        </div>
-
         {/* Modal Content - Conditional Layout */}
         {separateViewMode === 'combined' ? (
           /* COMBINED VIEW - Single Full-Width Chart */
-          <div className="flex-1 min-h-0 p-6 bg-zinc-950">
+          <div className="flex-1 min-h-0 p-2 bg-zinc-950">
             <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden flex flex-col">
-              <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="h-2 w-2 bg-gradient-to-r from-emerald-500 via-violet-500 to-amber-500 rounded-full animate-pulse"></div>
-                      <h3 className="text-sm font-medium text-zinc-100">
-                        Combined Analysis - Live Market, Predictions & Cluster Pattern
-                      </h3>
-                    </div>
-                    <p className="text-xs text-zinc-400">
-                      All data overlays • Market Hours: 9:15 AM - 3:30 PM {chartMode === 'lightweight' && '• Using LightweightCharts'}
-                    </p>
-                  </div>
-                  
-                  {/* Autoscale Button (Plotly only) */}
-                  {chartMode === 'plotly' && resetCombinedViewToDefault && (
-                    <>
-                      <button
-                        onClick={resetCombinedViewToDefault}
-                        className="px-3 py-1.5 text-xs font-medium bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 border border-violet-500/30 rounded-lg transition-all duration-200 flex items-center gap-1.5"
-                        title="Reset to default market hours view (9:15 AM - 3:30 PM)"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        Autoscale
-                      </button>
-                      <div className="w-px h-6 bg-zinc-700 mx-3"></div>
-                    </>
-                  )}
-                  
-                  {/* Data Status Indicators */}
-                  <div className="flex items-center gap-3 text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                      <span className="text-zinc-400">Live Market</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                      <span className="text-zinc-400">Predictions {predictions?.count ? `(${predictions.count})` : ''}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {clusterLoading ? (
-                        <div className="w-2 h-2 rounded-full bg-violet-500 animate-pulse"></div>
-                      ) : clusterError ? (
-                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                      ) : clusterPatternData?.length > 0 ? (
-                        <div className="w-2 h-2 rounded-full bg-violet-500"></div>
-                      ) : (
-                        <div className="w-2 h-2 rounded-full bg-zinc-600"></div>
-                      )}
-                      <span className="text-zinc-400">
-                        Cluster {clusterLoading ? '(Loading...)' : clusterError ? '(Error)' : clusterPatternData?.length > 0 ? `(${clusterPatternData.length} pts)` : '(No data)'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex-1 min-h-0 p-4">
+              <div className="flex-1 min-h-0 p-2">
                 {chartMode === 'plotly' && createCombinedViewData && getDefaultMarketHoursRange ? (
                   <Plot
                     divId="combined-view-chart"
@@ -309,28 +245,12 @@ export function SeparateViewModal({
           </div>
         ) : (
           /* SIDE-BY-SIDE VIEW */
-          <div className="grid grid-cols-2 gap-4 p-4 flex-1 min-h-0 bg-zinc-950">
+          <div className="grid grid-cols-2 gap-2 p-2 flex-1 min-h-0 bg-zinc-950">
             
             {/* LEFT PANEL */}
             <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden min-h-0">
-              <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="h-2 w-2 bg-emerald-500 rounded-full"></div>
-                  <h3 className="text-sm font-medium text-zinc-100">
-                    {separateViewMode === 'live-prediction' || separateViewMode === 'live-cluster'
-                      ? 'Live Market'
-                      : 'Predictions'}
-                  </h3>
-                </div>
-                <p className="text-xs text-zinc-400">
-                  {separateViewMode === 'live-prediction' || separateViewMode === 'live-cluster'
-                    ? `Real-time data for ${symbol}`
-                    : 'AI-generated forecasts'}
-                </p>
-              </div>
-
-              <div className="flex-1 min-h-0 p-4">
-                {separateViewMode === 'prediction-cluster' ? (
+              <div className="flex-1 min-h-0 p-2">
+                {separateViewMode === 'prediction-cluster' ? (  /* LEFT: predictions for pred-cluster mode */
                   chartMode === 'plotly' && createPredictionDataOnly && predictions && (predictions.count ?? 0) > 0 && todayPredictionInfo.hasTodayPredictions ? (
                     <Plot
                       data={createPredictionDataOnly()}
@@ -429,24 +349,13 @@ export function SeparateViewModal({
 
             {/* RIGHT PANEL */}
             <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden min-h-0">
-              <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="h-2 w-2 bg-violet-500 rounded-full"></div>
-                  <h3 className="text-sm font-medium text-zinc-100">
-                    {separateViewMode === 'live-prediction'
-                      ? 'Predictions'
-                      : 'Cluster Pattern'}
-                  </h3>
-                </div>
-                <p className="text-xs text-zinc-400">
-                  {separateViewMode === 'live-prediction'
-                    ? 'AI-generated forecasts'
-                    : 'Historical pattern analysis'}
-                </p>
-              </div>
-
-              <div className="flex-1 min-h-0 p-4">
-                {separateViewMode === 'live-prediction' ? (
+              <div className="flex-1 min-h-0 p-2">
+                {separateViewMode === 'umap-analysis' ? (
+                  /* RIGHT: Full UMAP Cluster Dashboard */
+                  <div className="h-full overflow-y-auto">
+                    <UMAPClusterDashboard initialSymbol={symbol} />
+                  </div>
+                ) : separateViewMode === 'live-prediction' ? (
                   chartMode === 'plotly' && createPredictionDataOnly && predictions && (predictions.count ?? 0) > 0 && todayPredictionInfo.hasTodayPredictions ? (
                     <Plot
                       data={createPredictionDataOnly()}

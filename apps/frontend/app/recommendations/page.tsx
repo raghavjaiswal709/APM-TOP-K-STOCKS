@@ -19,7 +19,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ModeToggle } from "../components/toggleButton";
-import { BarChart2, Database, PanelBottomOpen, PanelBottomClose, ChevronUp, ChevronDown } from 'lucide-react';
+import { BarChart2, Database, PanelBottomOpen, PanelBottomClose, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -117,6 +117,44 @@ const RecommendationListPage: React.FC = () => {
       };
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  // Resizable & collapsible sidebar (company list)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(280);
+  const [isSidebarDragging, setIsSidebarDragging] = useState<boolean>(false);
+  const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(true);
+  const mainRowRef = useRef<HTMLDivElement>(null);
+
+  const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsSidebarDragging(true);
+  }, []);
+
+  const handleSidebarMouseMove = useCallback((e: MouseEvent) => {
+    if (!isSidebarDragging || !mainRowRef.current) return;
+    const containerRect = mainRowRef.current.getBoundingClientRect();
+    const newWidth = containerRect.right - e.clientX;
+    const clampedWidth = Math.max(200, Math.min(500, newWidth));
+    setSidebarWidth(clampedWidth);
+  }, [isSidebarDragging]);
+
+  const handleSidebarMouseUp = useCallback(() => {
+    setIsSidebarDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (isSidebarDragging) {
+      document.addEventListener('mousemove', handleSidebarMouseMove);
+      document.addEventListener('mouseup', handleSidebarMouseUp);
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+      return () => {
+        document.removeEventListener('mousemove', handleSidebarMouseMove);
+        document.removeEventListener('mouseup', handleSidebarMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isSidebarDragging, handleSidebarMouseMove, handleSidebarMouseUp]);
 
   const [historicalDataPoints, setHistoricalDataPoints] = useState<MarketData[]>([]);
   const [ohlcDataPoints, setOHLCDataPoints] = useState<OHLCPoint[]>([]);
@@ -332,7 +370,7 @@ const RecommendationListPage: React.FC = () => {
         </header>
 
         {/* MAIN CONTENT ROW */}
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden" ref={mainRowRef}>
 
           {/* LEFT: CHART & ANALYSIS SPLIT */}
           <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden" ref={containerRef}>
@@ -447,26 +485,63 @@ const RecommendationListPage: React.FC = () => {
             )}
           </div>
 
-          {/* RIGHT: SIDEBAR (COMPANY LIST) */}
-          <div className="w-72 border-l bg-background flex flex-col shrink-0 transition-all duration-300">
-            <div className="flex-1 overflow-hidden">
-              <CompanyList
-                companies={companies || []} // Use Watchlist hook companies
-                selectedCompanyCode={selectedCompany}
-                onSelect={handleCompanySelect}
-                loading={watchlistLoading}
-
-                // Date Integration
-                selectedWatchlistDate={selectedDate}
-                onWatchlistDateChange={handleDateChange}
-                availableDates={availableDates}
-
-              // Disable chart range picker since this is Time Machine (single date view)
-              // Or maybe we treat "Range" as "Replay Window"? 
-              // For now, let's hide range picker or ignore it
-              />
+          {/* RIGHT: SIDEBAR (COMPANY LIST) - Draggable & Collapsible */}
+          {isSidebarVisible ? (
+            <div
+              className="relative bg-background flex flex-col shrink-0 transition-all"
+              style={{
+                width: sidebarWidth,
+                transition: isSidebarDragging ? 'none' : 'width 300ms ease-in-out',
+              }}
+            >
+              {/* Drag Handle (left edge) */}
+              <div
+                className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-primary/40 active:bg-primary/60 z-10 group"
+                onMouseDown={handleSidebarMouseDown}
+                title="Drag to resize sidebar"
+              >
+                <div className="absolute inset-y-0 -left-0.5 w-2 group-hover:bg-primary/20" />
+              </div>
+              {/* Collapse button */}
+              <div className="flex items-center justify-between px-2 py-1 border-b border-l bg-muted/20">
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Companies</span>
+                <button
+                  onClick={() => setIsSidebarVisible(false)}
+                  className="p-0.5 rounded hover:bg-accent transition-colors"
+                  title="Collapse sidebar"
+                >
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden border-l">
+                <CompanyList
+                  companies={companies || []}
+                  selectedCompanyCode={selectedCompany}
+                  onSelect={handleCompanySelect}
+                  loading={watchlistLoading}
+                  selectedWatchlistDate={selectedDate}
+                  onWatchlistDateChange={handleDateChange}
+                  availableDates={availableDates}
+                />
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Collapsed sidebar - show expand button */
+            <div className="w-8 bg-background border-l flex flex-col items-center py-2 shrink-0">
+              <button
+                onClick={() => setIsSidebarVisible(true)}
+                className="p-1 rounded hover:bg-accent transition-colors"
+                title="Expand sidebar"
+              >
+                <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+              </button>
+              <div className="mt-2 flex-1 flex items-center">
+                <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
+                  Companies
+                </span>
+              </div>
+            </div>
+          )}
 
         </div>
 

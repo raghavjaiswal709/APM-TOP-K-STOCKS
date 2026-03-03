@@ -1287,7 +1287,8 @@ export function LightWeightStockChart({
                     {chartTheme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
                 </Button>
 
-                {/* Separate View Button - Always visible, shows appropriate message when no data */}
+                {/* Separate View Button - Hidden when modal is already open */}
+                {!isSeparatorModalOpen && (
                 <Button
                     variant="outline"
                     size="sm"
@@ -1298,6 +1299,7 @@ export function LightWeightStockChart({
                     <Maximize2 className="h-3.5 w-3.5" />
                     Separate View
                 </Button>
+                )}
 
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsFullscreen(!isFullscreen)} title="Fullscreen">
                     {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}

@@ -1,10 +1,33 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Loader2, Copy, ArrowRight } from 'lucide-react';
+
 export default function FyersCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle className="flex items-center justify-center gap-2">
+              <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+              Fyers Authentication
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-center text-muted-foreground">Loading...</p>
+          </CardContent>
+        </Card>
+      </div>
+    }>
+      <FyersCallbackContent />
+    </Suspense>
+  );
+}
+
+function FyersCallbackContent() {
   const [status, setStatus] = useState<'processing' | 'success' | 'error' | 'timeout'>('processing');
   const [message, setMessage] = useState('Processing authentication...');
   const [authCode, setAuthCode] = useState<string>('');

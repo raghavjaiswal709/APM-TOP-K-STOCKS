@@ -278,7 +278,7 @@ export const usePredictionPolling = (config: PollingConfig) => {
         console.log(`📊 [SYNC] Current server prediction time: ${latestPrediction.predictedat}`);
       }
     } else {
-      console.error('❌ [SYNC] Initial fetch failed:', error);
+      console.warn('⚠️ [SYNC] Initial fetch returned no data:', error);
       onError?.(error || 'Failed to fetch initial predictions');
     }
 

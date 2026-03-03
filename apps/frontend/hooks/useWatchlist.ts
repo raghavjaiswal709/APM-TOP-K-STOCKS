@@ -170,8 +170,8 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
         );
 
         // Debug: Check refined status distribution
-        const refinedCount = validCompanies.filter(c => c.refined === true).length;
-        const nonRefinedCount = validCompanies.filter(c => c.refined === false || !c.refined).length;
+        const refinedCount = validCompanies.filter((c: MergedCompany) => c.refined === true).length;
+        const nonRefinedCount = validCompanies.filter((c: MergedCompany) => c.refined === false || !c.refined).length;
         console.log('[useWatchlist] 📊 Companies breakdown:', {
           total: validCompanies.length,
           refined: refinedCount,

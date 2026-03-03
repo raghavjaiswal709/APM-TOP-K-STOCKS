@@ -97,7 +97,7 @@ export const aggregatePredictions = (predictions: CompanyPredictions) => {
 export const getPredictionStats = (predictions: CompanyPredictions) => {
   const agg = aggregatePredictions(predictions);
   const ageMins = Object.values(predictions.predictions).map((p) =>
-    getTimeDiffMinutes(p.predictedat)
+    getTimeDiffMinutes(p.predictedat || '')
   );
 
   return {
@@ -177,7 +177,7 @@ export const convertPredictionsToMarketData = (predictions: CompanyPredictions) 
     close: data.close,
     type: 'prediction' as const,
     predictedat: data.predictedat,
-    confidence: getConfidenceLevel(data.predictedat),
+    confidence: getConfidenceLevel(data.predictedat || ''),
   }));
 };
 
