@@ -57,6 +57,7 @@ export function PortfolioMode({
   const [shares, setShares] = useState<number>(100);
   const [price, setPrice] = useState<number>(currentPrice);
   const [notes, setNotes] = useState<string>('');
+  const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
   
   // Get current position for selected company
   const [currentPosition, setCurrentPosition] = useState<Position | null>(null);
@@ -70,9 +71,12 @@ export function PortfolioMode({
     }
   }, [selectedCompany, enabled, getPosition, positions]);
 
+  // Only sync price from live feed when user hasn't manually edited it
   useEffect(() => {
-    setPrice(currentPrice);
-  }, [currentPrice]);
+    if (!priceManuallyEdited) {
+      setPrice(currentPrice);
+    }
+  }, [currentPrice, priceManuallyEdited]);
 
   const handleOpenTrade = (action: 'IN' | 'OUT') => {
     if (!selectedCompany) {
@@ -82,6 +86,7 @@ export function PortfolioMode({
     
     setTradeAction(action);
     setPrice(currentPrice);
+    setPriceManuallyEdited(false);
     
     if (action === 'OUT' && currentPosition) {
       setShares(currentPosition.shares);
@@ -126,6 +131,7 @@ export function PortfolioMode({
       );
       setShowTradeDialog(false);
       setNotes('');
+      setPriceManuallyEdited(false);
       refresh();
     }
   };
@@ -271,14 +277,32 @@ export function PortfolioMode({
             {/* Price Input */}
             <div className="grid grid-cols-4 items-center gap-4">
               <label className="text-right text-sm font-medium">Price (₹)</label>
-              <Input
-                type="number"
-                value={price}
-                onChange={(e) => setPrice(Number(e.target.value))}
-                className="col-span-3"
-                min={0.01}
-                step={0.01}
-              />
+              <div className="col-span-3 flex gap-2">
+                <Input
+                  type="number"
+                  value={price}
+                  onChange={(e) => {
+                    setPrice(Number(e.target.value));
+                    setPriceManuallyEdited(true);
+                  }}
+                  className="flex-1"
+                  min={0.01}
+                  step={0.01}
+                />
+                <Button
+                  type="button"
+                  variant={priceManuallyEdited ? "default" : "outline"}
+                  size="sm"
+                  className="whitespace-nowrap text-xs"
+                  onClick={() => {
+                    setPrice(currentPrice);
+                    setPriceManuallyEdited(false);
+                  }}
+                  title="Sync price with live LTP"
+                >
+                  {priceManuallyEdited ? '↻ Sync LTP' : '✓ Synced'}
+                </Button>
+              </div>
             </div>
 
             {/* Notes */}

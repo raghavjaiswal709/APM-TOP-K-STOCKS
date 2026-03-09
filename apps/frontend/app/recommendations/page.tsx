@@ -394,7 +394,6 @@ const RecommendationListPage: React.FC = () => {
                     height="100%"
                     className="w-full h-full"
                     theme={theme === 'light' ? 'light' : 'dark'}
-                    zoomMode={true}
                   />
                 </div>
               ) : (

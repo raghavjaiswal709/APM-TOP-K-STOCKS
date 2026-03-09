@@ -44,8 +44,8 @@ export async function GET(request: NextRequest) {
       headers: {
         'Accept': 'application/json',
       },
-      // Add timeout to prevent hanging
-      signal: AbortSignal.timeout(30000), // 30 seconds
+      // ✅ Reduced timeout: fail fast when external server is unreachable
+      signal: AbortSignal.timeout(10000), // 10 seconds (was 30s)
     });
 
     if (!response.ok) {

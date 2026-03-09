@@ -220,6 +220,12 @@ const MarketDataPage: React.FC = () => {
     false
   );
 
+  // Chart interval for candle aggregation (1m = 1 candle per minute, 5m = 1 candle per 5 min, etc.)
+  const [chartInterval, setChartInterval] = usePersistentState<string>(
+    'market-data-chartInterval',
+    '1m'
+  );
+
   // Scroll restoration for main page
   useScrollRestoration('market-data-main-scroll');
 
@@ -488,8 +494,15 @@ const MarketDataPage: React.FC = () => {
   const lastUpdateTimeRef = useRef(Date.now());
   const frequencyIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const socketRef = useRef<any>(null);
+  const selectedSymbolRef = useRef<string>('');
   const isSubscribedRef = useRef<Set<string>>(new Set());
+  // Persistent set of all symbols we WANT subscribed (survives disconnects)
+  const allSubscribedSymbolsRef = useRef<Set<string>>(new Set());
   const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Refs for latest data state (for stale-closure-free access in callbacks)
+  const ohlcDataRef = useRef(ohlcData);
+  const historicalDataRef = useRef(historicalData);
 
   // Track cumulative volume per symbol for real-time delta calculation
   // Format: Map<symbol, Map<minuteTimestamp, cumulativeVolumeAtStartOfMinute>>
@@ -673,6 +686,15 @@ const MarketDataPage: React.FC = () => {
     }
   }, []);
 
+  // Keep ref in sync so socket reconnect callback always has fresh value
+  useEffect(() => {
+    selectedSymbolRef.current = selectedSymbol;
+  }, [selectedSymbol]);
+
+  // Keep data refs in sync for stale-closure-free access
+  useEffect(() => { ohlcDataRef.current = ohlcData; }, [ohlcData]);
+  useEffect(() => { historicalDataRef.current = historicalData; }, [historicalData]);
+
   const handleCompanyChange = useCallback((companyCode: string | null, exchange?: string, marker?: string) => {
     console.log(`🏢 [handleCompanyChange] Full arguments:`, { companyCode, exchange, marker });
 
@@ -689,31 +711,19 @@ const MarketDataPage: React.FC = () => {
       : '';
 
     if (newSymbol && newSymbol !== selectedSymbol) {
-      console.log(`🧹 [handleCompanyChange] Clearing stale data for new symbol: ${newSymbol}`);
-      setOhlcData(prev => {
-        const updated = { ...prev };
-        delete updated[newSymbol];
-        return updated;
-      });
-      setHistoricalData(prev => {
-        const updated = { ...prev };
-        delete updated[newSymbol];
-        return updated;
-      });
-      setMarketData(prev => {
-        const updated = { ...prev };
-        delete updated[newSymbol];
-        return updated;
-      });
-      // Clear backfill tracking so the new company always gets fresh data
-      backfilledSymbolsRef.current.forEach(key => {
-        if (key.startsWith(newSymbol)) {
-          backfilledSymbolsRef.current.delete(key);
-        }
-      });
-      // Reset loading states
-      setIsLoadingHistorical(true);
-      setHistoricalDataStatus('Loading data...');
+      // ✅ DON'T delete cached data — background updates accumulate data for ALL
+      // subscribed companies. Switching just changes which key we read from.
+      // Only show loading if we truly have NO data for this company.
+      const hasExistingData = (ohlcDataRef.current[newSymbol]?.length || 0) > 0 || (historicalDataRef.current[newSymbol]?.length || 0) > 0;
+      if (hasExistingData) {
+        console.log(`⚡ [handleCompanyChange] Instant switch to ${newSymbol} — ${ohlcDataRef.current[newSymbol]?.length || 0} candles already cached`);
+        setIsLoadingHistorical(false);
+        setHistoricalDataStatus('');
+      } else {
+        console.log(`📡 [handleCompanyChange] No cached data for ${newSymbol} — will fetch`);
+        setIsLoadingHistorical(true);
+        setHistoricalDataStatus('Loading data...');
+      }
     }
 
     setSelectedCompany(companyCode);
@@ -807,7 +817,10 @@ const MarketDataPage: React.FC = () => {
           console.log('✅ Subscription successful:', response);
           toast.success(`Successfully subscribed to ${response.count || fyersSymbols.length} companies`);
 
-          fyersSymbols.forEach(s => isSubscribedRef.current.add(s));
+        fyersSymbols.forEach(s => {
+            isSubscribedRef.current.add(s);
+            allSubscribedSymbolsRef.current.add(s);
+          });
 
           const failedSymbols = response.failed || response.invalid_symbols || [];
           const successfulSymbols = fyersSymbols.filter((s: string) => !failedSymbols.includes(s));
@@ -914,17 +927,32 @@ const MarketDataPage: React.FC = () => {
         }
       });
 
-      if (selectedSymbol && !isSubscribedRef.current.has(selectedSymbol)) {
-        console.log('🔄 Re-subscribing to symbol after reconnection:', selectedSymbol);
-        socketRef.current.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
+      // ✅ Re-subscribe ALL previously tracked symbols, not just the selected one
+      // This ensures background data keeps flowing for all companies
+      // Use allSubscribedSymbolsRef because isSubscribedRef gets cleared on disconnect
+      const symbolsToResubscribe = Array.from(allSubscribedSymbolsRef.current);
+      const currentSymbol = selectedSymbolRef.current;
+      
+      // Always include the currently selected symbol
+      if (currentSymbol && !symbolsToResubscribe.includes(currentSymbol)) {
+        symbolsToResubscribe.push(currentSymbol);
+      }
+      
+      if (symbolsToResubscribe.length > 0) {
+        console.log(`🔄 Re-subscribing to ${symbolsToResubscribe.length} symbols after reconnection`);
+        // Use subscribe_companies for batch re-subscription (more efficient)
+        socketRef.current.emit('subscribe_companies', {
+          symbols: symbolsToResubscribe,
+          companyCodes: symbolsToResubscribe.map(s => s.split(':')[1]?.split('-')[0] || s)
+        }, (response: any) => {
           if (response && response.success) {
-            isSubscribedRef.current.add(selectedSymbol);
-            console.log(`✅ Successfully re-subscribed to ${selectedSymbol}`);
+            symbolsToResubscribe.forEach(s => isSubscribedRef.current.add(s));
+            console.log(`✅ Successfully re-subscribed to ${symbolsToResubscribe.length} symbols after reconnection`);
           }
         });
       }
     }
-  }, [selectedSymbol]);
+  }, []);  // ✅ Removed selectedSymbol dep — use ref instead
 
   const handleDisconnect = useCallback((reason: string) => {
     console.log('❌ Disconnected:', reason);
@@ -1449,13 +1477,17 @@ const MarketDataPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [isClient, isInitialized]);
 
-  // Socket initialization - DEFERRED for smooth page transitions
+  // Socket initialization - runs ONCE, listeners persist across company switches
+  // CRITICAL: This must NOT depend on selectedSymbol. The socket is a singleton
+  // and listeners handle data for ALL symbols via data.symbol routing.
   useEffect(() => {
     if (!isClient || !isInitialized) return;
 
-    // Skip socket reinitialization if already done and we have cached data
-    if (hasInitializedSocketRef.current && Object.keys(marketData).length > 0) {
-      console.log('⚡ [Socket] Using existing connection and cached data');
+    // Truly one-time init: if socket already set up, just ensure ref is current
+    if (hasInitializedSocketRef.current) {
+      if (!socketRef.current) {
+        socketRef.current = getSocket();
+      }
       return;
     }
 
@@ -1478,18 +1510,31 @@ const MarketDataPage: React.FC = () => {
 
     const unsubscribeReconnect = onReconnect(() => {
       console.log('🔄 Reconnection callback triggered');
-      if (selectedSymbol && socketRef.current) {
-        console.log('🔄 Re-subscribing to symbol after reconnection:', selectedSymbol);
+      if (!socketRef.current) return;
+      
+      // ✅ Re-subscribe ALL tracked symbols on reconnect (not just current)
+      const allSymbols = Array.from(allSubscribedSymbolsRef.current);
+      const currentSymbol = selectedSymbolRef.current;
+      if (currentSymbol && !allSymbols.includes(currentSymbol)) {
+        allSymbols.push(currentSymbol);
+      }
+      
+      if (allSymbols.length > 0) {
+        console.log(`🔄 Re-subscribing to ${allSymbols.length} symbols after reconnection`);
         isSubscribedRef.current.clear();
-        socketRef.current.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
+        socketRef.current.emit('subscribe_companies', {
+          symbols: allSymbols,
+          companyCodes: allSymbols.map(s => s.split(':')[1]?.split('-')[0] || s)
+        }, (response: any) => {
           if (response && response.success) {
-            isSubscribedRef.current.add(selectedSymbol);
-            console.log(`✅ Successfully re-subscribed to ${selectedSymbol} after reconnection`);
+            allSymbols.forEach(s => isSubscribedRef.current.add(s));
+            console.log(`✅ Re-subscribed to ${allSymbols.length} symbols after reconnection`);
           }
         });
       }
     });
 
+    // Cleanup only runs on unmount (deps are stable after init)
     return () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
@@ -1503,15 +1548,19 @@ const MarketDataPage: React.FC = () => {
       socket.off('heartbeat', handleHeartbeat);
       unsubscribeReconnect();
     };
-  }, [isClient, isInitialized, selectedSymbol, handleConnect, handleDisconnect, handleError, handleSubscriptionError, handleMarketDataUpdate, handleChartUpdate, handleHistoricalData, handleOhlcData, handleHeartbeat]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClient, isInitialized]);
 
-  // Fetch historical data on symbol change
+  // Subscribe + backfill on symbol change
+  // ✅ KEY DESIGN: We NEVER unsubscribe on switch — all companies stay subscribed
+  // and accumulate data in the background. Switching just changes the view.
   useEffect(() => {
     if (!isClient || !selectedSymbol || !socketRef.current) return;
 
-    // Check if we already have data that's valid for the CURRENT date
-    // Only use cache if data is from TODAY (prevents stale cross-date data)
+    const socket = socketRef.current;
     const todayDate = effectiveDate || new Date().toISOString().split('T')[0];
+
+    // Check if we already have valid cached OHLC data for this symbol+date
     const hasCachedOhlcData = ohlcData[selectedSymbol] && ohlcData[selectedSymbol].length > 0;
     const cacheIsFromToday = hasCachedOhlcData && (() => {
       const firstCandle = ohlcData[selectedSymbol][0];
@@ -1519,36 +1568,46 @@ const MarketDataPage: React.FC = () => {
       return candleDate === todayDate;
     })();
 
-    if (cacheIsFromToday && marketData[selectedSymbol]) {
-      console.log(`⚡ [Data] Using valid same-date cached data for ${selectedSymbol} on ${todayDate}`);
+    // ✅ FAST PATH: Already have data AND already subscribed → instant switch
+    if (cacheIsFromToday && isSubscribedRef.current.has(selectedSymbol)) {
+      console.log(`⚡ [Data] Instant switch to ${selectedSymbol} — ${ohlcData[selectedSymbol].length} candles cached, already subscribed`);
       hasLoadedDataRef.current = true;
-      // Still subscribe to get real-time updates
+      setIsLoadingHistorical(false);
+      setHistoricalDataStatus('');
+      return; // No cleanup needed — we don't unsubscribe
+    }
+
+    // ✅ MEDIUM PATH: Have cache but not subscribed → show cache instantly, subscribe in background
+    if (cacheIsFromToday) {
+      console.log(`⚡ [Data] Using cache for ${selectedSymbol}, subscribing for live updates...`);
+      hasLoadedDataRef.current = true;
+      setIsLoadingHistorical(false);
+      setHistoricalDataStatus('');
+      // Subscribe for real-time updates (don't block rendering)
       if (!isSubscribedRef.current.has(selectedSymbol)) {
-        const socket = socketRef.current;
         socket.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
           if (response && response.success) {
             isSubscribedRef.current.add(selectedSymbol);
+            allSubscribedSymbolsRef.current.add(selectedSymbol);
+            console.log(`✅ Subscribed to ${selectedSymbol} (had cache)`);
           }
         });
       }
-      return;
+      return; // No cleanup — don't unsubscribe
     }
 
-    const socket = socketRef.current;
+    // ✅ SLOW PATH: No cache — subscribe and fetch historical data
+    console.log(`📡 [Data] No cache for ${selectedSymbol} — subscribing + fetching...`);
 
-    if (isSubscribedRef.current.has(selectedSymbol)) {
-      console.log(`Already subscribed to ${selectedSymbol}`);
-      return;
+    if (!isSubscribedRef.current.has(selectedSymbol)) {
+      socket.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
+        if (response && response.success) {
+          isSubscribedRef.current.add(selectedSymbol);
+          allSubscribedSymbolsRef.current.add(selectedSymbol);
+          console.log(`✅ Successfully subscribed to ${selectedSymbol}`);
+        }
+      });
     }
-
-    console.log('🔄 Subscribing to symbol:', selectedSymbol);
-
-    socket.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
-      if (response && response.success) {
-        isSubscribedRef.current.add(selectedSymbol);
-        console.log(`✅ Successfully subscribed to ${selectedSymbol}`);
-      }
-    });
 
     /**
      * ROBUST HISTORICAL DATA BACKFILL
@@ -1696,22 +1755,27 @@ const MarketDataPage: React.FC = () => {
           }
         } else {
           console.warn(`⚠️ [Backfill] No external data available: ${result.error || 'Unknown'}`);
+          // ✅ DON'T mark as backfilled on failure — allow retry later
+          // backfilledSymbolsRef.current.add(backfillKey) is NOT called here
           setHistoricalDataStatus(isAfterMarket
-            ? 'After-market: No data available for this date'
-            : 'Using real-time data only');
+            ? 'After-market: Historical data server unavailable'
+            : 'Historical server unavailable — showing live data only');
         }
       } catch (error) {
         // Don't log errors for aborted requests (company changed mid-fetch)
         if (!signal.aborted) {
           console.error(`❌ [Backfill] Error:`, error);
-          setHistoricalDataStatus('Failed to load historical data');
+          // ✅ Clear, user-friendly message — don't mark as backfilled so retry is possible
+          setHistoricalDataStatus('Historical data server unavailable — showing live data');
         }
       } finally {
-        // Always clear loading state. If aborted, the new company's effect will
-        // set isLoadingHistorical=true again when it starts its own fetch.
+        // ✅ CRITICAL: Always clear loading IMMEDIATELY so live data can render
+        // If aborted, the new company's effect will set isLoadingHistorical=true again.
         setIsLoadingHistorical(false);
+        hasLoadedDataRef.current = true; // ✅ Mark as loaded so chart can render with whatever data exists
         if (!signal.aborted) {
-          setTimeout(() => setHistoricalDataStatus(''), 5000);
+          // Keep status message visible for 8s (longer for awareness), then clear
+          setTimeout(() => setHistoricalDataStatus(''), 8000);
         }
       }
     };
@@ -1720,33 +1784,34 @@ const MarketDataPage: React.FC = () => {
     const abortController = new AbortController();
     historicalFetchAbortRef.current = abortController;
 
-    // Delay fetch slightly to allow WebSocket data to arrive first
+    // Fetch immediately — no artificial delay, speed is critical
     const fetchTimer = setTimeout(() => {
       fetchAndBackfillHistoricalData(abortController.signal);
-    }, 500); // Reduced from 1.5s to 0.5s for faster loading
+    }, 100); // Near-instant: just yield to let React commit state updates
 
-    // Safety timeout: if loading is still true after 15s, force-clear it
+    // Safety timeout: if loading is still true after 8s, force-clear it
     const safetyTimer = setTimeout(() => {
       setIsLoadingHistorical(prev => {
         if (prev) {
-          console.warn('⚠️ [Safety] Force-clearing isLoadingHistorical after 15s timeout');
+          console.warn('⚠️ [Safety] Force-clearing isLoadingHistorical after 8s timeout');
+          setHistoricalDataStatus('Historical data server slow — showing live data');
+          // Clear the status message after 8s
+          setTimeout(() => setHistoricalDataStatus(''), 8000);
           return false;
         }
         return prev;
       });
-    }, 15000);
+    }, 8000);
 
     return () => {
       clearTimeout(fetchTimer);
       clearTimeout(safetyTimer);
       // ✅ Cancel any in-flight fetch when effect re-runs (company/date changed)
       abortController.abort();
-
-      if (isSubscribedRef.current.has(selectedSymbol)) {
-        console.log('🛑 Unsubscribing from:', selectedSymbol);
-        socket.emit('unsubscribe', { symbol: selectedSymbol });
-        isSubscribedRef.current.delete(selectedSymbol);
-      }
+      // ✅ CRITICAL: Do NOT unsubscribe — keep all subscriptions alive
+      // so background data continues flowing for ALL companies.
+      // The data stores are keyed by symbol, so switching companies
+      // just changes which key we read from.
     };
   }, [selectedSymbol, isClient, effectiveDate]);
 
@@ -1839,18 +1904,78 @@ const MarketDataPage: React.FC = () => {
   // The WebSocket sends ohlcData with proper open/high/low/close per minute
   // =====================================================================
 
+  // Helper: Get interval duration in seconds for candle aggregation
+  const getIntervalSeconds = useCallback((interval: string): number => {
+    switch (interval) {
+      case '1m': return 60;
+      case '5m': return 5 * 60;
+      case '15m': return 15 * 60;
+      case '30m': return 30 * 60;
+      case '1h': return 60 * 60;
+      case '1d': return 24 * 60 * 60;
+      default: return 60;
+    }
+  }, []);
+
+  // Helper: Aggregate 1-minute OHLC candles into larger intervals
+  const aggregateCandles = useCallback((
+    minuteCandles: Array<{ interval_start: string; open: number; high: number; low: number; close: number; volume: number }>,
+    intervalSeconds: number
+  ) => {
+    if (intervalSeconds <= 60) return minuteCandles; // 1m = no aggregation
+
+    const bucketMap = new Map<number, { open: number; high: number; low: number; close: number; volume: number; ts: number }>();
+
+    for (const candle of minuteCandles) {
+      const ts = Math.floor(new Date(candle.interval_start).getTime() / 1000);
+      // Floor timestamp to the interval boundary
+      const bucketTs = Math.floor(ts / intervalSeconds) * intervalSeconds;
+
+      const existing = bucketMap.get(bucketTs);
+      if (!existing) {
+        bucketMap.set(bucketTs, {
+          ts: bucketTs,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: candle.volume,
+        });
+      } else {
+        existing.high = Math.max(existing.high, candle.high);
+        existing.low = Math.min(existing.low, candle.low);
+        existing.close = candle.close; // last close wins
+        existing.volume += candle.volume;
+      }
+    }
+
+    return Array.from(bucketMap.values())
+      .sort((a, b) => a.ts - b.ts)
+      .map(b => ({
+        interval_start: new Date(b.ts * 1000).toISOString(),
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
+        volume: b.volume,
+      }));
+  }, []);
+
   const chartData = useMemo(() => {
-    console.log(`📈 [chartData] symbolOhlc: ${symbolOhlc?.length || 0}, symbolHistory: ${symbolHistory?.length || 0}`);
+    console.log(`📈 [chartData] symbolOhlc: ${symbolOhlc?.length || 0}, symbolHistory: ${symbolHistory?.length || 0}, interval: ${chartInterval}`);
 
-    // ✅ CRITICAL: Determine the target date to filter data
-    // This prevents showing data from different dates with gaps in between
-    const targetDate = effectiveDate || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    // ✅ CRITICAL: For date filtering, use today's date for live data.
+    // Only use effectiveDate if the user explicitly picked a historical date.
+    // This prevents live ticks from being filtered out when the watchlist
+    // hook returns yesterday's date (today's watchlist not yet generated).
+    const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const targetDate = effectiveDate || todayIST;
+    const intervalSec = getIntervalSeconds(chartInterval);
 
-    // ===== USE OHLC DATA DIRECTLY (this is the correct data for candlesticks) =====
+    // ===== USE OHLC DATA DIRECTLY (1-minute candles from WebSocket/backfill) =====
     if (symbolOhlc && symbolOhlc.length > 0) {
-      // Filter valid candles and sort by timestamp
-      // ✅ Also filter to only include candles from the target date
-      const validCandles = symbolOhlc
+      // First try filtering for the target date
+      let validCandles = symbolOhlc
         .filter(candle => {
           if (
             candle.timestamp <= 0 ||
@@ -1861,104 +1986,124 @@ const MarketDataPage: React.FC = () => {
           ) {
             return false;
           }
-          // ✅ Filter to current date only - prevents cross-date gaps
           const candleDate = new Date(candle.timestamp * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
           return candleDate === targetDate;
         })
         .sort((a, b) => a.timestamp - b.timestamp);
 
-      console.log(`📈 [chartData] Using ${validCandles.length} valid OHLC candles`);
+      // ✅ FALLBACK: If no candles match targetDate but we have candles from today,
+      // show today's live data anyway. This handles the case where effectiveDate
+      // is a past date (from watchlist) but live ticks are flowing for today.
+      if (validCandles.length === 0 && targetDate !== todayIST) {
+        const todayCandles = symbolOhlc
+          .filter(candle => {
+            if (
+              candle.timestamp <= 0 ||
+              typeof candle.open !== 'number' || isNaN(candle.open) || candle.open <= 0 ||
+              typeof candle.close !== 'number' || isNaN(candle.close) || candle.close <= 0
+            ) return false;
+            const candleDate = new Date(candle.timestamp * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+            return candleDate === todayIST;
+          })
+          .sort((a, b) => a.timestamp - b.timestamp);
 
-      if (validCandles.length > 0) {
-        console.log(`📈 First candle:`, validCandles[0]);
-        console.log(`📈 Last candle:`, validCandles[validCandles.length - 1]);
+        if (todayCandles.length > 0) {
+          console.log(`📈 [chartData] No data for ${targetDate}, falling back to ${todayCandles.length} live candles from today`);
+          validCandles = todayCandles;
+        }
       }
 
-      return validCandles.map(candle => ({
-        interval_start: new Date(candle.timestamp * 1000).toISOString(),
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
-        volume: Math.max(0, candle.volume || 0),
-      }));
+      if (validCandles.length > 0) {
+        // Convert to standard format first
+        const minuteData = validCandles.map(candle => ({
+          interval_start: new Date(candle.timestamp * 1000).toISOString(),
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: Math.max(0, candle.volume || 0),
+        }));
+
+        // Aggregate to requested interval
+        const aggregated = aggregateCandles(minuteData, intervalSec);
+        console.log(`📈 [chartData] ${validCandles.length} 1m candles → ${aggregated.length} ${chartInterval} candles`);
+        return aggregated;
+      }
     }
 
     // ===== FALLBACK: Create candles from historical tick data =====
     if (symbolHistory && symbolHistory.length > 0) {
       console.log(`📈 [chartData] Creating candles from historical tick data`);
 
-      // Group ticks by minute and create proper OHLC candles
-      const minuteCandles = new Map<number, { open: number, high: number, low: number, close: number, volume: number, firstTimestamp: number }>();
+      // Try targetDate first, then fall back to today
+      const datesToTry = targetDate !== todayIST ? [targetDate, todayIST] : [targetDate];
 
-      const sortedHistory = [...symbolHistory]
-        .filter(p => {
-          if (p.ltp <= 0 || isNaN(p.ltp)) return false;
-          // ✅ Filter to current date only
-          const tickDate = new Date(p.timestamp * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-          return tickDate === targetDate;
-        })
-        .sort((a, b) => a.timestamp - b.timestamp);
+      for (const filterDate of datesToTry) {
+        const minuteCandles = new Map<number, { open: number, high: number, low: number, close: number, volume: number, firstTimestamp: number }>();
 
-      // Track cumulative volume for delta calculation
-      let prevCumulativeVolume = 0;
+        const sortedHistory = [...symbolHistory]
+          .filter(p => {
+            if (p.ltp <= 0 || isNaN(p.ltp)) return false;
+            const tickDate = new Date(p.timestamp * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+            return tickDate === filterDate;
+          })
+          .sort((a, b) => a.timestamp - b.timestamp);
 
-      sortedHistory.forEach((p, index) => {
-        const minuteTs = Math.floor(p.timestamp / 60) * 60;
-        const price = p.ltp;
+        if (sortedHistory.length === 0) continue;
 
-        // Calculate volume delta
-        const currentCumulativeVolume = p.volume || 0;
-        let deltaVolume = 0;
-        if (index > 0 && currentCumulativeVolume >= prevCumulativeVolume) {
-          deltaVolume = currentCumulativeVolume - prevCumulativeVolume;
-        }
-        prevCumulativeVolume = currentCumulativeVolume;
+        let prevCumulativeVolume = 0;
 
-        const existing = minuteCandles.get(minuteTs);
+        sortedHistory.forEach((p, index) => {
+          const minuteTs = Math.floor(p.timestamp / 60) * 60;
+          const price = p.ltp;
 
-        if (!existing) {
-          // First tick for this minute - create new candle
-          minuteCandles.set(minuteTs, {
-            open: price,
-            high: price,
-            low: price,
-            close: price,
-            volume: deltaVolume,
-            firstTimestamp: p.timestamp,
-          });
-        } else {
-          // Update existing candle with new tick
-          existing.high = Math.max(existing.high, price);
-          existing.low = Math.min(existing.low, price);
-          existing.close = price; // Last price becomes close
-          existing.volume += deltaVolume;
-        }
-      });
+          const currentCumulativeVolume = p.volume || 0;
+          let deltaVolume = 0;
+          if (index > 0 && currentCumulativeVolume >= prevCumulativeVolume) {
+            deltaVolume = currentCumulativeVolume - prevCumulativeVolume;
+          }
+          prevCumulativeVolume = currentCumulativeVolume;
 
-      // Convert to array and sort
-      const result = Array.from(minuteCandles.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map(([timestamp, candle]) => ({
-          interval_start: new Date(timestamp * 1000).toISOString(),
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: candle.volume,
-        }));
+          const existing = minuteCandles.get(minuteTs);
 
-      console.log(`📈 [chartData] Created ${result.length} minute candles from ${sortedHistory.length} ticks`);
-      if (result.length > 0) {
-        console.log(`📈 First candle:`, result[0]);
-        console.log(`📈 Last candle:`, result[result.length - 1]);
+          if (!existing) {
+            minuteCandles.set(minuteTs, {
+              open: price,
+              high: price,
+              low: price,
+              close: price,
+              volume: deltaVolume,
+              firstTimestamp: p.timestamp,
+            });
+          } else {
+            existing.high = Math.max(existing.high, price);
+            existing.low = Math.min(existing.low, price);
+            existing.close = price;
+            existing.volume += deltaVolume;
+          }
+        });
+
+        // Convert to standard format
+        const minuteData = Array.from(minuteCandles.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([timestamp, candle]) => ({
+            interval_start: new Date(timestamp * 1000).toISOString(),
+            open: candle.open,
+            high: candle.high,
+            low: candle.low,
+            close: candle.close,
+            volume: candle.volume,
+          }));
+
+        // Aggregate to requested interval
+        const aggregated = aggregateCandles(minuteData, intervalSec);
+        console.log(`📈 [chartData] ${sortedHistory.length} ticks → ${minuteData.length} 1m → ${aggregated.length} ${chartInterval} candles (date: ${filterDate})`);
+        return aggregated;
       }
-
-      return result;
     }
 
     return [];
-  }, [symbolOhlc, symbolHistory, effectiveDate]);
+  }, [symbolOhlc, symbolHistory, effectiveDate, chartInterval, getIntervalSeconds, aggregateCandles]);
 
   // Loading state
   if (!isClient) {
@@ -2217,7 +2362,7 @@ const MarketDataPage: React.FC = () => {
                   <LightWeightStockChart
                     companyId={selectedCompany}
                     data={chartData}
-                    interval="1m"
+                    interval={chartInterval}
                     loading={isLoadingHistorical}
                     height="100%"
                     className="w-full h-full"
@@ -2225,7 +2370,8 @@ const MarketDataPage: React.FC = () => {
                     defaultChartType="line"
                     predictions={predictions}
                     showPredictions={showPredictions}
-                    zoomMode={true}
+                    onIntervalChange={setChartInterval}
+                    statusMessage={historicalDataStatus && !isLoadingHistorical && historicalDataStatus.includes('unavailable') ? historicalDataStatus : null}
                   />
                 </div>
               ) : !selectedCompany ? (

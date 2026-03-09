@@ -124,27 +124,36 @@ class PortfolioService {
     const trades = this.getTradesForCompany(companyCode);
     if (trades.length === 0) return null;
 
-    let totalShares = 0;
-    let totalCost = 0;
+    // Track running shares & cost to compute weighted avg correctly
+    // When selling, we deduct at the current avg cost (weighted average method)
+    let runningShares = 0;
+    let runningCost = 0; // total cost of currently held shares
     let realizedPnL = 0;
-
-    const buyTrades: Trade[] = [];
-    const sellTrades: Trade[] = [];
 
     trades.forEach(trade => {
       if (trade.tradeType === 'BUY') {
-        buyTrades.push(trade);
-        totalShares += trade.shares;
-        totalCost += trade.totalValue;
+        // Add to position: new weighted average
+        runningCost += trade.totalValue; // shares * pricePerShare
+        runningShares += trade.shares;
       } else {
-        sellTrades.push(trade);
-        totalShares -= trade.shares;
-        // Calculate realized P&L from sells
-        realizedPnL += trade.totalValue - (trade.shares * (totalCost / (totalShares + trade.shares)));
+        // SELL: compute realized PnL at current avg cost, then deduct
+        if (runningShares > 0) {
+          const avgCostAtSell = runningCost / runningShares;
+          const costBasis = avgCostAtSell * trade.shares;
+          realizedPnL += trade.totalValue - costBasis;
+          // Deduct sold shares' cost from running totals
+          runningCost -= costBasis;
+          runningShares -= trade.shares;
+          // Clamp to zero to avoid floating point issues
+          if (runningShares <= 0) {
+            runningShares = 0;
+            runningCost = 0;
+          }
+        }
       }
     });
 
-    if (totalShares <= 0) {
+    if (runningShares <= 0) {
       return {
         id: generateId(),
         companyCode,
@@ -162,7 +171,7 @@ class PortfolioService {
       };
     }
 
-    const avgEntryPrice = totalCost / totalShares;
+    const avgEntryPrice = runningCost / runningShares;
 
     return {
       id: generateId(),
@@ -170,9 +179,9 @@ class PortfolioService {
       companyName: trades[0].companyName,
       exchange: trades[0].exchange,
       status: 'HOLDING',
-      shares: totalShares,
+      shares: runningShares,
       avgEntryPrice,
-      totalInvested: totalCost,
+      totalInvested: runningCost, // Only the cost of remaining shares
       realizedPnL,
       firstEntryDate: trades[0].date,
       lastUpdateDate: trades[trades.length - 1].date,
@@ -214,6 +223,10 @@ class PortfolioService {
     };
 
     this.trades.push(trade);
+    // Deduct cash on buy
+    if (this.portfolio) {
+      this.portfolio.availableCash -= trade.totalValue;
+    }
     this.updatePortfolioState();
     this.saveToStorage();
 
@@ -239,6 +252,10 @@ class PortfolioService {
     };
 
     this.trades.push(trade);
+    // Add cash on sell
+    if (this.portfolio) {
+      this.portfolio.availableCash += trade.totalValue;
+    }
     this.updatePortfolioState();
     this.saveToStorage();
 
@@ -251,29 +268,28 @@ class PortfolioService {
 
     const positions = this.getActivePositions();
     let totalInvested = 0;
-    let unrealizedPnL = 0;
     let realizedPnL = 0;
 
     positions.forEach(pos => {
       totalInvested += pos.totalInvested;
-      unrealizedPnL += pos.unrealizedPnL || 0;
+      realizedPnL += pos.realizedPnL || 0;
     });
 
-    // Calculate realized P&L from all closed positions
+    // Also include realized PnL from fully exited positions
     const companySet = new Set(this.trades.map(t => t.companyCode));
     companySet.forEach(companyCode => {
       const position = this.getPosition(companyCode);
-      if (position) {
+      if (position && position.status === 'EXITED') {
         realizedPnL += position.realizedPnL || 0;
       }
     });
 
     this.portfolio.positions = positions;
     this.portfolio.totalInvested = totalInvested;
-    this.portfolio.unrealizedPnL = unrealizedPnL;
+    this.portfolio.unrealizedPnL = 0; // Will be computed on frontend with live prices
     this.portfolio.realizedPnL = realizedPnL;
-    this.portfolio.totalPnL = unrealizedPnL + realizedPnL;
-    this.portfolio.totalValue = totalInvested + unrealizedPnL;
+    this.portfolio.totalPnL = realizedPnL; // Unrealized added on frontend
+    this.portfolio.totalValue = this.portfolio.availableCash + totalInvested;
     this.portfolio.updatedAt = new Date().toISOString();
     this.portfolio.trades = this.trades;
   }
@@ -291,12 +307,34 @@ class PortfolioService {
       totalInvested += t.totalValue;
     });
 
-    sellTrades.forEach(t => {
-      // Find corresponding buy for P&L
-      const position = this.getPosition(t.companyCode);
-      if (position) {
-        const avgBuyPrice = position.avgEntryPrice;
-        netPnL += (t.pricePerShare - avgBuyPrice) * t.shares;
+    // Compute sell P&L: replay trades UP TO this date to get correct avg price at time of sell
+    sellTrades.forEach(sellTrade => {
+      // Get all trades for this company up to and including this sell
+      const companyTrades = this.trades.filter(
+        t => t.companyCode === sellTrade.companyCode && t.date <= date
+      );
+      // Replay to find avg cost at time of this sell
+      let runShares = 0;
+      let runCost = 0;
+      for (const t of companyTrades) {
+        if (t.tradeType === 'BUY') {
+          runCost += t.totalValue;
+          runShares += t.shares;
+        } else {
+          if (runShares > 0) {
+            const avgAtSell = runCost / runShares;
+            if (t.id === sellTrade.id) {
+              // This is our target sell
+              netPnL += (t.pricePerShare - avgAtSell) * t.shares;
+              break;
+            }
+            // Previous sell — deduct
+            const costBasis = avgAtSell * t.shares;
+            runCost -= costBasis;
+            runShares -= t.shares;
+            if (runShares <= 0) { runShares = 0; runCost = 0; }
+          }
+        }
       }
     });
 
@@ -327,36 +365,25 @@ class PortfolioService {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    // Aggregate weekly metrics
-    let totalInvested = 0;
-    let maxInvested = 0;
-    let totalPnL = 0;
+    // Aggregate weekly metrics from daily summaries
+    let totalBought = 0; // Total bought this week
+    let totalPnL = 0; // Realized P&L from sells this week
     let totalTrades = 0;
     let winningTrades = 0;
     let losingTrades = 0;
-
-    const weekTrades = this.trades.filter(t => {
-      const tradeDate = new Date(t.date);
-      return tradeDate >= start && tradeDate <= end;
-    });
-
-    const sellTrades = weekTrades.filter(t => t.tradeType === 'SELL');
-    
-    sellTrades.forEach(trade => {
-      const position = this.getPosition(trade.companyCode);
-      if (position) {
-        const pnL = (trade.pricePerShare - position.avgEntryPrice) * trade.shares;
-        totalPnL += pnL;
-        if (pnL > 0) winningTrades++;
-        else if (pnL < 0) losingTrades++;
-      }
-    });
+    let maxDayInvested = 0;
 
     dailySummaries.forEach(summary => {
-      totalInvested += summary.totalInvested;
-      maxInvested = Math.max(maxInvested, summary.totalInvested);
+      totalBought += summary.totalInvested;
+      maxDayInvested = Math.max(maxDayInvested, summary.totalInvested);
       totalTrades += summary.newTrades + summary.closedTrades;
+      if (summary.netPnL > 0) winningTrades++;
+      else if (summary.netPnL < 0) losingTrades++;
+      totalPnL += summary.netPnL;
     });
+
+    // Current portfolio exposure (active positions cost)
+    const currentExposure = this.getActivePositions().reduce((sum, p) => sum + p.totalInvested, 0);
 
     const startMonth = start.toLocaleString('en-US', { month: 'short' });
     const endMonth = end.toLocaleString('en-US', { month: 'short' });
@@ -367,14 +394,14 @@ class PortfolioService {
       weekLabel,
       startDate,
       endDate,
-      totalInvested: totalInvested / dailySummaries.length, // Average
-      maxInvested,
+      totalInvested: totalBought, // Total amount bought this week
+      maxInvested: Math.max(maxDayInvested, currentExposure), // Peak single-day or current
       totalPnL,
-      avgPercentReturn: maxInvested > 0 ? (totalPnL / maxInvested) * 100 : 0,
+      avgPercentReturn: totalBought > 0 ? (totalPnL / totalBought) * 100 : 0,
       totalTrades,
       winningTrades,
       losingTrades,
-      winRate: totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0,
+      winRate: (winningTrades + losingTrades) > 0 ? (winningTrades / (winningTrades + losingTrades)) * 100 : 0,
       dailySummaries,
     };
   }
@@ -423,15 +450,35 @@ class PortfolioService {
       losingTrades += week.losingTrades;
     });
 
-    // Stock breakdown
+    // Stock breakdown — replay trades to get correct avg cost at time of each sell
     const stockMap = new Map<string, { trades: number; pnL: number; name: string }>();
     monthTrades.forEach(trade => {
       const existing = stockMap.get(trade.companyCode) || { trades: 0, pnL: 0, name: trade.companyName };
       existing.trades++;
       if (trade.tradeType === 'SELL') {
-        const position = this.getPosition(trade.companyCode);
-        if (position) {
-          existing.pnL += (trade.pricePerShare - position.avgEntryPrice) * trade.shares;
+        // Replay all trades for this company up to the sell date to get correct avg
+        const companyTrades = this.trades.filter(
+          t => t.companyCode === trade.companyCode && t.date <= trade.date
+        );
+        let runShares = 0;
+        let runCost = 0;
+        for (const t of companyTrades) {
+          if (t.tradeType === 'BUY') {
+            runCost += t.totalValue;
+            runShares += t.shares;
+          } else {
+            if (runShares > 0) {
+              const avgAtSell = runCost / runShares;
+              if (t.id === trade.id) {
+                existing.pnL += (t.pricePerShare - avgAtSell) * t.shares;
+                break;
+              }
+              const costBasis = avgAtSell * t.shares;
+              runCost -= costBasis;
+              runShares -= t.shares;
+              if (runShares <= 0) { runShares = 0; runCost = 0; }
+            }
+          }
         }
       }
       stockMap.set(trade.companyCode, existing);
@@ -452,7 +499,7 @@ class PortfolioService {
       month: monthName,
       year,
       monthNumber: month,
-      totalInvested: totalInvested / weeklyReports.length,
+      totalInvested, // Sum of all buys across the month
       maxInvested,
       totalPnL,
       avgPercentReturn: maxInvested > 0 ? (totalPnL / maxInvested) * 100 : 0,

@@ -97,6 +97,16 @@ import {
 
 const COLORS = ['#3b82f6', '#22c55e', '#eab308', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899'];
 
+// Read live market data from localStorage (shared with market-data page)
+function getLiveMarketData(): Record<string, { ltp: number }> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem('market-data-marketData');
+    if (raw) return JSON.parse(raw);
+  } catch { }
+  return {};
+}
+
 export default function PortfolioPage() {
   const { updatePortfolioState } = usePageState();
   const persistedState = usePersistedPortfolioState();
@@ -113,6 +123,7 @@ export default function PortfolioPage() {
     refresh,
     clearAll,
     deleteTrade,
+    getPosition,
     getWeeklyReport,
     getMonthlyReport,
     getPnLChartData,
@@ -132,6 +143,32 @@ export default function PortfolioPage() {
   });
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [livePrices, setLivePrices] = useState<Record<string, { ltp: number }>>(getLiveMarketData());
+
+  // Refresh live prices from localStorage periodically
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLivePrices(getLiveMarketData());
+    }, 2000); // every 2 seconds
+    return () => clearInterval(timer);
+  }, []);
+
+  // Helper: get LTP for a position symbol (tries various key patterns)
+  const getLTP = (companyCode: string, exchange: string): number | null => {
+    // Try symbol formats: NSE:SBIN-EQ, SBIN-EQ, NSE:SBIN, etc.
+    const keys = [
+      `${exchange}:${companyCode}`,
+      companyCode,
+      `${exchange}:${companyCode}-EQ`,
+      `${companyCode}-EQ`,
+    ];
+    for (const key of keys) {
+      if (livePrices[key]?.ltp && livePrices[key].ltp > 0) {
+        return livePrices[key].ltp;
+      }
+    }
+    return null;
+  };
 
   // Sync state to context
   useEffect(() => {
@@ -147,45 +184,83 @@ export default function PortfolioPage() {
       return {
         totalTrades: 0,
         totalInvested: 0,
+        currentMarketValue: 0,
+        unrealizedPnL: 0,
+        realizedPnL: 0,
         totalPnL: 0,
         avgReturn: 0,
         winRate: 0,
         winningTrades: 0,
         losingTrades: 0,
+        availableCash: portfolio?.availableCash ?? 1000000,
+        totalCapital: portfolio?.availableCash ?? 1000000,
+        totalBought: 0,
+        totalSold: 0,
       };
     }
 
-    let totalInvested = 0;
-    let totalPnL = 0;
+    let totalInvested = 0;     // cost basis of ACTIVE holdings only
+    let currentMarketValue = 0;
+    let unrealizedPnL = 0;
+    let realizedPnL = 0;
     let winningTrades = 0;
     let losingTrades = 0;
 
-    const buyTrades = trades.filter(t => t.tradeType === 'BUY');
-    const sellTrades = trades.filter(t => t.tradeType === 'SELL');
-
-    buyTrades.forEach(t => {
-      totalInvested += t.totalValue;
-    });
-
-    // Calculate P&L from positions
+    // Sum up ACTIVE positions
     positions.forEach(pos => {
+      totalInvested += pos.totalInvested;
+      const ltp = getLTP(pos.companyCode, pos.exchange);
+      if (ltp && ltp > 0) {
+        const marketVal = pos.shares * ltp;
+        currentMarketValue += marketVal;
+        unrealizedPnL += marketVal - pos.totalInvested;
+      } else {
+        currentMarketValue += pos.totalInvested;
+      }
       if (pos.realizedPnL) {
-        totalPnL += pos.realizedPnL;
-        if (pos.realizedPnL > 0) winningTrades++;
-        else if (pos.realizedPnL < 0) losingTrades++;
+        realizedPnL += pos.realizedPnL;
       }
     });
+
+    // Also count realized PnL from fully exited positions
+    const companySet = new Set(trades.map(t => t.companyCode));
+    companySet.forEach(code => {
+      const pos = positions.find(p => p.companyCode === code);
+      if (!pos) {
+        const fullPos = getPosition(code);
+        if (fullPos && fullPos.realizedPnL) {
+          realizedPnL += fullPos.realizedPnL;
+          if (fullPos.realizedPnL > 0) winningTrades++;
+          else if (fullPos.realizedPnL < 0) losingTrades++;
+        }
+      }
+    });
+
+    const totalPnL = unrealizedPnL + realizedPnL;
+    const availableCash = portfolio?.availableCash ?? 0;
+    // Net worth = cash on hand + market value of holdings
+    const totalCapital = availableCash + currentMarketValue;
+    // Lifetime totals
+    const totalBought = trades.filter(t => t.tradeType === 'BUY').reduce((s, t) => s + t.totalValue, 0);
+    const totalSold = trades.filter(t => t.tradeType === 'SELL').reduce((s, t) => s + t.totalValue, 0);
 
     return {
       totalTrades: trades.length,
       totalInvested,
+      currentMarketValue,
+      unrealizedPnL,
+      realizedPnL,
       totalPnL,
-      avgReturn: totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0,
+      avgReturn: totalBought > 0 ? (totalPnL / totalBought) * 100 : 0,
       winRate: (winningTrades + losingTrades) > 0 ? (winningTrades / (winningTrades + losingTrades)) * 100 : 0,
       winningTrades,
       losingTrades,
+      availableCash,
+      totalCapital,
+      totalBought,
+      totalSold,
     };
-  }, [trades, positions]);
+  }, [trades, positions, livePrices, portfolio, getPosition]);
 
   // Weekly report
   const weeklyReport = useMemo(() => {
@@ -295,51 +370,94 @@ export default function PortfolioPage() {
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            {/* Card 1: Available Cash */}
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Total Trades</CardDescription>
-                <CardTitle className="text-3xl flex items-center gap-2">
-                  <Activity className="h-6 w-6 text-blue-600" />
-                  {metrics.totalTrades}
+                <CardDescription>Available Cash</CardDescription>
+                <CardTitle className="text-2xl flex items-center gap-2">
+                  <DollarSign className="h-5 w-5 text-emerald-600" />
+                  ₹{metrics.availableCash.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>{trades.filter(t => t.tradeType === 'BUY').length} buys</span>
-                  <span>{trades.filter(t => t.tradeType === 'SELL').length} sells</span>
+                <div className="text-sm text-muted-foreground">
+                  Free for trading
                 </div>
               </CardContent>
             </Card>
 
+            {/* Card 2: Invested Value (active holdings cost) */}
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Total Invested</CardDescription>
-                <CardTitle className="text-3xl flex items-center gap-2">
-                  <DollarSign className="h-6 w-6 text-emerald-600" />
+                <CardDescription>Invested Value</CardDescription>
+                <CardTitle className="text-2xl flex items-center gap-2">
+                  <Briefcase className="h-5 w-5 text-blue-600" />
                   ₹{metrics.totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-sm text-muted-foreground">
                   {positions.length} active position{positions.length !== 1 ? 's' : ''}
+                  {positions.length === 0 && metrics.totalTrades > 0 && ' (all exited)'}
                 </div>
               </CardContent>
             </Card>
 
+            {/* Card 3: Current Market Value */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Market Value</CardDescription>
+                <CardTitle className="text-2xl flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-blue-600" />
+                  ₹{metrics.currentMarketValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className={cn(
+                  "text-sm font-medium",
+                  metrics.unrealizedPnL >= 0 ? "text-green-600" : "text-red-600"
+                )}>
+                  {metrics.unrealizedPnL >= 0 ? '+' : ''}₹{metrics.unrealizedPnL.toLocaleString('en-IN', { maximumFractionDigits: 0 })} unrealized
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Card 4: Total P&L (Realized + Unrealized) */}
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>Total P&L</CardDescription>
                 <CardTitle className={cn(
-                  "text-3xl flex items-center gap-2",
+                  "text-2xl flex items-center gap-2",
                   metrics.totalPnL >= 0 ? "text-green-600" : "text-red-600"
                 )}>
                   {metrics.totalPnL >= 0 ? (
-                    <TrendingUp className="h-6 w-6" />
+                    <TrendingUp className="h-5 w-5" />
                   ) : (
-                    <TrendingDown className="h-6 w-6" />
+                    <TrendingDown className="h-5 w-5" />
                   )}
-                  ₹{Math.abs(metrics.totalPnL).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                  {metrics.totalPnL >= 0 ? '+' : ''}₹{Math.abs(metrics.totalPnL).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+                  <span className={metrics.realizedPnL >= 0 ? "text-green-600" : "text-red-600"}>
+                    Realized: {metrics.realizedPnL >= 0 ? '+' : ''}₹{metrics.realizedPnL.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                  </span>
+                  <span className={metrics.unrealizedPnL >= 0 ? "text-green-600" : "text-red-600"}>
+                    Unrealized: {metrics.unrealizedPnL >= 0 ? '+' : ''}₹{metrics.unrealizedPnL.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Card 5: Net Worth (cash + market value = total capital) */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Net Worth</CardDescription>
+                <CardTitle className="text-2xl flex items-center gap-2">
+                  <Target className="h-5 w-5 text-purple-600" />
+                  ₹{metrics.totalCapital.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -347,23 +465,7 @@ export default function PortfolioPage() {
                   "text-sm font-medium",
                   metrics.avgReturn >= 0 ? "text-green-600" : "text-red-600"
                 )}>
-                  {metrics.avgReturn >= 0 ? '+' : ''}{metrics.avgReturn.toFixed(2)}% avg return
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Win Rate</CardDescription>
-                <CardTitle className="text-3xl flex items-center gap-2">
-                  <Target className="h-6 w-6 text-purple-600" />
-                  {metrics.winRate.toFixed(1)}%
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-between text-sm">
-                  <span className="text-green-600">{metrics.winningTrades} wins</span>
-                  <span className="text-red-600">{metrics.losingTrades} losses</span>
+                  {metrics.avgReturn >= 0 ? '+' : ''}{metrics.avgReturn.toFixed(2)}% overall return
                 </div>
               </CardContent>
             </Card>
@@ -371,17 +473,21 @@ export default function PortfolioPage() {
 
           {/* Main Content Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-            <TabsList className="grid grid-cols-5 w-full max-w-2xl">
+            <TabsList className="grid grid-cols-6 w-full max-w-3xl">
               <TabsTrigger value="overview" className="flex items-center gap-1">
                 <PieChart className="h-4 w-4" />
                 Overview
+              </TabsTrigger>
+              <TabsTrigger value="holdings" className="flex items-center gap-1">
+                <Briefcase className="h-4 w-4" />
+                Holdings
               </TabsTrigger>
               <TabsTrigger value="trades" className="flex items-center gap-1">
                 <BarChart3 className="h-4 w-4" />
                 Trades
               </TabsTrigger>
               <TabsTrigger value="positions" className="flex items-center gap-1">
-                <Briefcase className="h-4 w-4" />
+                <Activity className="h-4 w-4" />
                 Positions
               </TabsTrigger>
               <TabsTrigger value="weekly" className="flex items-center gap-1">
@@ -539,6 +645,131 @@ export default function PortfolioPage() {
               </div>
             </TabsContent>
 
+            {/* Holdings Tab - Fyers-style holdings view with live prices */}
+            <TabsContent value="holdings">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Briefcase className="h-5 w-5" />
+                    Holdings
+                  </CardTitle>
+                  <CardDescription>
+                    Your current holdings with live market data
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {positions.length > 0 ? (
+                    <>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Symbol</TableHead>
+                            <TableHead className="text-right">Net Quantity</TableHead>
+                            <TableHead className="text-right">Avg. Cost Price</TableHead>
+                            <TableHead className="text-right">LTP</TableHead>
+                            <TableHead className="text-right">Invested Value</TableHead>
+                            <TableHead className="text-right">Market Value</TableHead>
+                            <TableHead className="text-right">Unrealized P&L</TableHead>
+                            <TableHead className="text-right">Unrealized P&L (%)</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {positions.map((pos) => {
+                            const ltp = getLTP(pos.companyCode, pos.exchange);
+                            const investedValue = pos.totalInvested;
+                            const marketValue = ltp ? pos.shares * ltp : investedValue;
+                            const unrealizedPnL = marketValue - investedValue;
+                            const unrealizedPnLPct = investedValue > 0 ? (unrealizedPnL / investedValue) * 100 : 0;
+
+                            return (
+                              <TableRow key={pos.id}>
+                                <TableCell className="font-medium">
+                                  {pos.exchange}:{pos.companyCode}
+                                </TableCell>
+                                <TableCell className="text-right">{pos.shares}</TableCell>
+                                <TableCell className="text-right">₹{pos.avgEntryPrice.toFixed(2)}</TableCell>
+                                <TableCell className="text-right font-medium">
+                                  {ltp ? (
+                                    <span>₹{ltp.toFixed(2)}</span>
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  ₹{investedValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  ₹{marketValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                </TableCell>
+                                <TableCell className={cn(
+                                  "text-right font-semibold",
+                                  unrealizedPnL >= 0 ? "text-green-600" : "text-red-600"
+                                )}>
+                                  {unrealizedPnL >= 0 ? '+' : ''}₹{unrealizedPnL.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                </TableCell>
+                                <TableCell className={cn(
+                                  "text-right font-medium",
+                                  unrealizedPnLPct >= 0 ? "text-green-600" : "text-red-600"
+                                )}>
+                                  {unrealizedPnLPct >= 0 ? '+' : ''}{unrealizedPnLPct.toFixed(1)}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+
+                      {/* Holdings Summary Footer */}
+                      <div className="mt-4 pt-4 border-t grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="p-3 rounded-lg bg-muted">
+                          <p className="text-xs text-muted-foreground">Total Invested</p>
+                          <p className="text-lg font-bold">
+                            ₹{metrics.totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-muted">
+                          <p className="text-xs text-muted-foreground">Current Market Value</p>
+                          <p className="text-lg font-bold">
+                            ₹{metrics.currentMarketValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className={cn(
+                          "p-3 rounded-lg",
+                          metrics.unrealizedPnL >= 0 ? "bg-green-500/10" : "bg-red-500/10"
+                        )}>
+                          <p className="text-xs text-muted-foreground">Total Unrealized P&L</p>
+                          <p className={cn(
+                            "text-lg font-bold",
+                            metrics.unrealizedPnL >= 0 ? "text-green-600" : "text-red-600"
+                          )}>
+                            {metrics.unrealizedPnL >= 0 ? '+' : ''}₹{metrics.unrealizedPnL.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className={cn(
+                          "p-3 rounded-lg",
+                          metrics.realizedPnL >= 0 ? "bg-green-500/10" : "bg-red-500/10"
+                        )}>
+                          <p className="text-xs text-muted-foreground">Total Realized P&L</p>
+                          <p className={cn(
+                            "text-lg font-bold",
+                            metrics.realizedPnL >= 0 ? "text-green-600" : "text-red-600"
+                          )}>
+                            {metrics.realizedPnL >= 0 ? '+' : ''}₹{metrics.realizedPnL.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center text-muted-foreground py-12">
+                      <Briefcase className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No holdings</p>
+                      <p className="text-sm mt-1">Enable Portfolio Mode on the Market Data page to start tracking</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             {/* Trades Tab */}
             <TabsContent value="trades">
               <Card>
@@ -554,7 +785,6 @@ export default function PortfolioPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Date</TableHead>
-                          <TableHead>Day</TableHead>
                           <TableHead>Company</TableHead>
                           <TableHead>Type</TableHead>
                           <TableHead className="text-right">Shares</TableHead>
@@ -568,7 +798,6 @@ export default function PortfolioPage() {
                         {trades.slice().reverse().map((trade) => (
                           <TableRow key={trade.id}>
                             <TableCell>{trade.date}</TableCell>
-                            <TableCell>{trade.day}</TableCell>
                             <TableCell className="font-medium">{trade.companyCode}</TableCell>
                             <TableCell>
                               <Badge
@@ -687,13 +916,13 @@ export default function PortfolioPage() {
                   {/* Weekly Summary */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-4 rounded-lg bg-muted">
-                      <p className="text-sm text-muted-foreground">Total Invested</p>
+                      <p className="text-sm text-muted-foreground">Total Bought</p>
                       <p className="text-2xl font-bold">
                         ₹{weeklyReport.totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                       </p>
                     </div>
                     <div className="p-4 rounded-lg bg-muted">
-                      <p className="text-sm text-muted-foreground">Max Invested</p>
+                      <p className="text-sm text-muted-foreground">Peak Exposure</p>
                       <p className="text-2xl font-bold">
                         ₹{weeklyReport.maxInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                       </p>
@@ -812,7 +1041,7 @@ export default function PortfolioPage() {
                       <p className="text-2xl font-bold">{monthlyReport.totalTrades}</p>
                     </div>
                     <div className="p-4 rounded-lg bg-muted">
-                      <p className="text-sm text-muted-foreground">Max Invested</p>
+                      <p className="text-sm text-muted-foreground">Peak Exposure</p>
                       <p className="text-2xl font-bold">
                         ₹{monthlyReport.maxInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                       </p>

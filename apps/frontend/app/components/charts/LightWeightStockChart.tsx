@@ -29,7 +29,9 @@ import {
     BarChart2,
     TrendingUp,
     Grid,
-    ChevronDown
+    ChevronDown,
+    Clock,
+    AlertTriangle
 } from 'lucide-react';
 import {
     calculateSMA,
@@ -104,8 +106,7 @@ interface StockChartProps {
     className?: string;
     predictions?: CompanyPredictions | null;
     showPredictions?: boolean;
-    /** When true, interval buttons control visible range (zoom) instead of triggering data refetch */
-    zoomMode?: boolean;
+    statusMessage?: string | null;  // Overlay message shown inside chart (e.g. "Historical server unavailable")
 }
 
 // --- Constants ---
@@ -134,6 +135,16 @@ const TIME_INTERVALS = [
     { id: '1d', name: '1D' },
 ];
 
+const DURATION_OPTIONS = [
+    { id: '5m', name: '5 min', seconds: 5 * 60 },
+    { id: '15m', name: '15 min', seconds: 15 * 60 },
+    { id: '30m', name: '30 min', seconds: 30 * 60 },
+    { id: '1h', name: '1 hour', seconds: 60 * 60 },
+    { id: '2h', name: '2 hours', seconds: 2 * 60 * 60 },
+    { id: '4h', name: '4 hours', seconds: 4 * 60 * 60 },
+    { id: 'full', name: 'Full Day', seconds: 6 * 60 * 60 + 15 * 60 },
+];
+
 const CHART_TYPES = [
     { id: 'candlestick', name: 'Candles', icon: BarChart2 },
     { id: 'line', name: 'Line', icon: TrendingUp },
@@ -159,17 +170,23 @@ export function LightWeightStockChart({
     className,
     predictions = null,
     showPredictions = false,
-    zoomMode = false
+    statusMessage = null,
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
     const [chartType, setChartType] = useState(defaultChartType);
     const [selectedInterval, setSelectedInterval] = useState(interval);
+    const [selectedDuration, setSelectedDuration] = useState('full');
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [chartTheme, setChartTheme] = useState<'light' | 'dark'>(theme);
 
     // Separate View Modal State
     const [isSeparatorModalOpen, setIsSeparatorModalOpen] = useState(false);
+
+    // Sync interval prop with local state when parent changes it
+    useEffect(() => {
+        setSelectedInterval(interval);
+    }, [interval]);
 
     // Sync theme prop with local state
     useEffect(() => {
@@ -207,6 +224,12 @@ export function LightWeightStockChart({
     
     // Prediction markers plugin ref (LightweightCharts v5.x uses createSeriesMarkers)
     const predictionMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+    
+    // Track previous companyId for detecting company switches in the data effect
+    const prevCompanyIdRef = useRef<string | null>(null);
+    
+    // Track whether this is the first data load (or after company change) to avoid resetting user's zoom/pan on live updates
+    const needsInitialFitRef = useRef<boolean>(true);
 
     // Data processing helper with validation
     const processData = useCallback((rawData: StockDataPoint[]) => {
@@ -257,7 +280,7 @@ export function LightWeightStockChart({
     }), [chartTheme]);
 
     // Zoom Mode Handler - Apply visible range based on selected interval
-    const applyZoom = useCallback((intervalId: string) => {
+    const applyDurationZoom = useCallback((durationId: string) => {
         if (!mainChartRef.current || !data || data.length === 0) return;
         
         const processedData = processData(data);
@@ -266,30 +289,15 @@ export function LightWeightStockChart({
         const latestDataTime = processedData[processedData.length - 1].time as number;
         const earliestDataTime = processedData[0].time as number;
         
-        // Calculate duration based on interval
-        let durationSeconds: number;
-        switch (intervalId) {
-            case '1m':
-                durationSeconds = 1 * 60; // 1 minute
-                break;
-            case '5m':
-                durationSeconds = 5 * 60; // 5 minutes
-                break;
-            case '15m':
-                durationSeconds = 15 * 60; // 15 minutes
-                break;
-            case '30m':
-                durationSeconds = 30 * 60; // 30 minutes
-                break;
-            case '1h':
-                durationSeconds = 60 * 60; // 1 hour
-                break;
-            case '1d':
-            default:
-                // For 1D, show full trading day (9:15 AM to 3:30 PM = 6h 15min)
-                durationSeconds = 6 * 60 * 60 + 15 * 60;
-                break;
+        // Find the duration option
+        const durationOption = DURATION_OPTIONS.find(d => d.id === durationId);
+        if (!durationOption) {
+            // Default: fit content to show everything
+            mainChartRef.current.timeScale().fitContent();
+            return;
         }
+        
+        const durationSeconds = durationOption.seconds;
         
         // Calculate start time for visible range
         let startTime = latestDataTime - durationSeconds;
@@ -319,9 +327,9 @@ export function LightWeightStockChart({
                     }
                 });
                 
-            console.log(`🔍 [ZOOM] Applied ${intervalId} view: showing last ${durationSeconds / 60} minutes`);
+            console.log(`🔍 [DURATION] Applied ${durationId} view: showing last ${durationSeconds / 60} minutes`);
         } catch (e) {
-            console.warn('[ZOOM] Failed to set visible range:', e);
+            console.warn('[DURATION] Failed to set visible range:', e);
         }
     }, [data, processData]);
 
@@ -349,9 +357,26 @@ export function LightWeightStockChart({
             grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
             width: container.clientWidth,
             height: container.clientHeight,
+            handleScroll: {
+                mouseWheel: true,
+                pressedMouseMove: true,
+                horzTouchDrag: true,
+                vertTouchDrag: true,
+            },
+            handleScale: {
+                axisPressedMouseMove: { time: false, price: true },  // ✅ time axis drag = pan, price axis drag = zoom
+                mouseWheel: true,
+                pinch: true,
+            },
+            kineticScroll: {
+                touch: true,
+                mouse: true,
+            },
             timeScale: {
                 timeVisible: true,
                 borderColor: colors.grid,
+                rightOffset: 5,
+                minBarSpacing: 1,
                 tickMarkFormatter: (time: number, tickMarkType: number, locale: string) => {
                     const date = new Date(time * 1000);
                     if (tickMarkType < 3) {
@@ -398,9 +423,30 @@ export function LightWeightStockChart({
             },
             width: mainChartContainerRef.current.clientWidth,
             height: mainChartContainerRef.current.clientHeight,
+            // ✅ Smooth scrolling & zooming — enable kinetic scroll for inertial feel
+            handleScroll: {
+                mouseWheel: true,
+                pressedMouseMove: true,
+                horzTouchDrag: true,
+                vertTouchDrag: true,
+            },
+            handleScale: {
+                axisPressedMouseMove: {
+                    time: false,  // ✅ Drag on time axis PANS (slides), doesn't zoom
+                    price: true,   // Drag on price axis zooms vertically
+                },
+                mouseWheel: true,
+                pinch: true,
+            },
+            kineticScroll: {
+                touch: true,
+                mouse: true,
+            },
             timeScale: {
                 timeVisible: true,
                 borderColor: initialColors.grid,
+                rightOffset: 5,
+                minBarSpacing: 1,
                 tickMarkFormatter: (time: number, tickMarkType: number, locale: string) => {
                     const date = new Date(time * 1000);
                     if (tickMarkType < 3) {
@@ -411,6 +457,8 @@ export function LightWeightStockChart({
             },
             rightPriceScale: {
                 borderColor: initialColors.grid,
+                autoScale: true,
+                alignLabels: true,
             },
             crosshair: {
                 mode: CrosshairMode.Normal,
@@ -440,24 +488,30 @@ export function LightWeightStockChart({
 
         mainChartRef.current = chart;
 
+        // ✅ Debounced resize handler — prevents lag from rapid ResizeObserver fires
+        let resizeRafId: number | null = null;
         const handleResize = () => {
-            if (mainChartContainerRef.current && mainChartRef.current) {
-                const width = mainChartContainerRef.current.clientWidth;
-                const height = mainChartContainerRef.current.clientHeight;
-                mainChartRef.current.applyOptions({ width, height });
-            }
-            if (rsiChartContainerRef.current && rsiChartRef.current) {
-                rsiChartRef.current.applyOptions({ width: rsiChartContainerRef.current.clientWidth, height: rsiChartContainerRef.current.clientHeight });
-            }
-            if (macdChartContainerRef.current && macdChartRef.current) {
-                macdChartRef.current.applyOptions({ width: macdChartContainerRef.current.clientWidth, height: macdChartContainerRef.current.clientHeight });
-            }
-            if (bidAskChartContainerRef.current && bidAskChartRef.current) {
-                bidAskChartRef.current.applyOptions({ width: bidAskChartContainerRef.current.clientWidth, height: bidAskChartContainerRef.current.clientHeight });
-            }
-            if (buySellChartContainerRef.current && buySellChartRef.current) {
-                buySellChartRef.current.applyOptions({ width: buySellChartContainerRef.current.clientWidth, height: buySellChartContainerRef.current.clientHeight });
-            }
+            if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
+            resizeRafId = requestAnimationFrame(() => {
+                if (mainChartContainerRef.current && mainChartRef.current) {
+                    const width = mainChartContainerRef.current.clientWidth;
+                    const height = mainChartContainerRef.current.clientHeight;
+                    mainChartRef.current.applyOptions({ width, height });
+                }
+                if (rsiChartContainerRef.current && rsiChartRef.current) {
+                    rsiChartRef.current.applyOptions({ width: rsiChartContainerRef.current.clientWidth, height: rsiChartContainerRef.current.clientHeight });
+                }
+                if (macdChartContainerRef.current && macdChartRef.current) {
+                    macdChartRef.current.applyOptions({ width: macdChartContainerRef.current.clientWidth, height: macdChartContainerRef.current.clientHeight });
+                }
+                if (bidAskChartContainerRef.current && bidAskChartRef.current) {
+                    bidAskChartRef.current.applyOptions({ width: bidAskChartContainerRef.current.clientWidth, height: bidAskChartContainerRef.current.clientHeight });
+                }
+                if (buySellChartContainerRef.current && buySellChartRef.current) {
+                    buySellChartRef.current.applyOptions({ width: buySellChartContainerRef.current.clientWidth, height: buySellChartContainerRef.current.clientHeight });
+                }
+                resizeRafId = null;
+            });
         };
 
         const resizeObserver = new ResizeObserver(() => handleResize());
@@ -468,6 +522,7 @@ export function LightWeightStockChart({
         window.addEventListener('resize', handleResize);
 
         return () => {
+            if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
             window.removeEventListener('resize', handleResize);
             resizeObserver.disconnect();
             chart.remove();
@@ -478,11 +533,19 @@ export function LightWeightStockChart({
         };
     }, []);
 
-    // Subscribe to Crosshair Move
+    // Subscribe to Crosshair Move — RAF-throttled for smooth performance
     useEffect(() => {
         if (!mainChartRef.current) return;
 
+        let crosshairRafId: number | null = null;
+
         const handleCrosshairMove = (param: MouseEventParams) => {
+            // Cancel any pending RAF to avoid stacking
+            if (crosshairRafId !== null) cancelAnimationFrame(crosshairRafId);
+
+            crosshairRafId = requestAnimationFrame(() => {
+                crosshairRafId = null;
+
             if (
                 param.point === undefined ||
                 !param.time ||
@@ -560,11 +623,13 @@ export function LightWeightStockChart({
                 y: param.point.y,
                 visible: true
             });
+            }); // close requestAnimationFrame
         };
 
         mainChartRef.current.subscribeCrosshairMove(handleCrosshairMove);
 
         return () => {
+            if (crosshairRafId !== null) cancelAnimationFrame(crosshairRafId);
             if (mainChartRef.current) {
                 try {
                     mainChartRef.current.unsubscribeCrosshairMove(handleCrosshairMove);
@@ -673,10 +738,48 @@ export function LightWeightStockChart({
 
     // Data Updates
     useEffect(() => {
-        if (!mainChartRef.current || !data) return;
+        if (!mainChartRef.current) return;
+
+        const mainChart = mainChartRef.current as any;
+        const companyChanged = prevCompanyIdRef.current !== companyId;
+        prevCompanyIdRef.current = companyId;
+
+        // If company changed, clear everything for a fresh start
+        if (companyChanged) {
+            console.log(`🔄 [DATA UPDATE] Company changed to ${companyId} — clearing all series`);
+            needsInitialFitRef.current = true; // Force fit on next data load for new company
+            // Remove main series
+            if (mainSeriesRef.current) {
+                try { mainChart.removeSeries(mainSeriesRef.current); } catch (e) { }
+                mainSeriesRef.current = null;
+            }
+            // Remove volume series so it's recreated with correct data
+            if (volumeSeriesRef.current) {
+                try { mainChart.removeSeries(volumeSeriesRef.current); } catch (e) { }
+                volumeSeriesRef.current = null;
+            }
+            // Remove prediction markers
+            if (predictionMarkersRef.current) {
+                try { predictionMarkersRef.current.detach(); } catch (e) { }
+                predictionMarkersRef.current = null;
+            }
+            // Remove overlay indicator series that live on the main chart
+            ['overlay_ma_20', 'overlay_ma_50', 'overlay_bb_upper', 'overlay_bb_lower', 'prediction_line'].forEach(k => {
+                const s = indicatorSeriesRefs.current.get(k);
+                if (s) {
+                    try { mainChart.removeSeries(s); } catch (e) { }
+                    indicatorSeriesRefs.current.delete(k);
+                }
+            });
+        }
+
+        // If no data, bail but leave chart clean
+        if (!data || data.length === 0) {
+            console.log(`📊 [DATA UPDATE] No data for ${companyId}`);
+            return;
+        }
 
         const processedData = processData(data);
-        const mainChart = mainChartRef.current as any;
 
         console.log(`📊 [DATA UPDATE] Processing ${processedData.length} data points for chart type: ${chartType}`);
         if (processedData.length > 0) {
@@ -754,19 +857,19 @@ export function LightWeightStockChart({
         }
         mainSeriesRef.current = series;
 
-        // Volume histogram - overlay at bottom of chart with separate scale
-        if (!volumeSeriesRef.current) {
-            volumeSeriesRef.current = mainChart.addSeries(HistogramSeries, {
-                priceFormat: { type: 'volume' },
-                priceScaleId: 'volume_scale',
-            });
-
-            // Configure the volume scale to be at the bottom portion of the chart
-            mainChart.priceScale('volume_scale').applyOptions({
-                scaleMargins: { top: 0.55, bottom: 0 },
-                visible: false, // Hide the volume scale labels
-            });
+        // Volume histogram - recreate to stay in sync with main series data
+        if (volumeSeriesRef.current) {
+            try { mainChart.removeSeries(volumeSeriesRef.current); } catch (e) { }
+            volumeSeriesRef.current = null;
         }
+        volumeSeriesRef.current = mainChart.addSeries(HistogramSeries, {
+            priceFormat: { type: 'volume' },
+            priceScaleId: 'volume_scale',
+        });
+        mainChart.priceScale('volume_scale').applyOptions({
+            scaleMargins: { top: 0.55, bottom: 0 },
+            visible: false,
+        });
 
         // Validate and filter volume data to prevent display issues
         const volumeData = processedData
@@ -924,7 +1027,35 @@ export function LightWeightStockChart({
             }
         }
 
-    }, [data, chartType, activeIndicators, processData, colors, showBidAsk, bidAskMode, showBuySell, buySellMode]);
+        // ✅ CRITICAL: Only fit/zoom on FIRST data load or company change.
+        // On subsequent live updates, preserve the user's manual zoom/pan.
+        if (processedData.length > 0 && mainChartRef.current && needsInitialFitRef.current) {
+            if (selectedDuration === 'full') {
+                mainChartRef.current.timeScale().fitContent();
+            } else {
+                // Apply duration zoom inline (avoid circular dep with applyDurationZoom)
+                const durationOption = DURATION_OPTIONS.find(d => d.id === selectedDuration);
+                if (durationOption) {
+                    const latestTime = processedData[processedData.length - 1].time as number;
+                    const earliestTime = processedData[0].time as number;
+                    let startTime = latestTime - durationOption.seconds;
+                    if (startTime < earliestTime) startTime = earliestTime;
+                    try {
+                        mainChartRef.current.timeScale().setVisibleRange({
+                            from: startTime as UTCTimestamp,
+                            to: (latestTime + 300) as UTCTimestamp, // 5 min buffer
+                        });
+                    } catch (e) {
+                        mainChartRef.current.timeScale().fitContent();
+                    }
+                } else {
+                    mainChartRef.current.timeScale().fitContent();
+                }
+            }
+            needsInitialFitRef.current = false; // Don't reset user's view on subsequent live ticks
+        }
+
+    }, [data, companyId, chartType, activeIndicators, processData, colors, showBidAsk, bidAskMode, showBuySell, buySellMode, selectedDuration]);
 
     // --- Prediction Lines ---
     useEffect(() => {
@@ -1117,20 +1248,14 @@ export function LightWeightStockChart({
 
                 <Separator orientation="vertical" className="h-6 mx-1" />
 
-                {/* Intervals */}
+                {/* Intervals - Controls candle aggregation */}
                 <div className="flex bg-muted/20 rounded p-0.5 gap-0.5">
                     {TIME_INTERVALS.map(int => (
                         <button
                             key={int.id}
                             onClick={() => { 
                                 setSelectedInterval(int.id); 
-                                if (zoomMode) {
-                                    // In zoom mode, apply visible range instead of refetching data
-                                    applyZoom(int.id);
-                                } else {
-                                    // Normal mode - trigger data refetch with new interval
-                                    onIntervalChange?.(int.id); 
-                                }
+                                onIntervalChange?.(int.id); 
                             }}
                             className={`px-2 py-1 text-xs rounded transition-colors hover:bg-muted/50 ${selectedInterval === int.id ? 'bg-background shadow-sm text-primary font-medium' : 'text-muted-foreground'}`}
                         >
@@ -1138,6 +1263,42 @@ export function LightWeightStockChart({
                         </button>
                     ))}
                 </div>
+
+                <Separator orientation="vertical" className="h-6 mx-1" />
+
+                {/* Duration - Controls visible time range */}
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 gap-1 px-2">
+                            <Clock size={14} />
+                            <span className="text-xs">{DURATION_OPTIONS.find(d => d.id === selectedDuration)?.name || 'Duration'}</span>
+                            <ChevronDown size={12} className="opacity-50" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-40 p-1">
+                        {DURATION_OPTIONS.map(dur => (
+                            <button
+                                key={dur.id}
+                                onClick={() => {
+                                    setSelectedDuration(dur.id);
+                                    needsInitialFitRef.current = true; // Re-fit when user explicitly changes duration
+                                    if (dur.id === 'full') {
+                                        mainChartRef.current?.timeScale().fitContent();
+                                        rsiChartRef.current?.timeScale().fitContent();
+                                        macdChartRef.current?.timeScale().fitContent();
+                                        bidAskChartRef.current?.timeScale().fitContent();
+                                        buySellChartRef.current?.timeScale().fitContent();
+                                    } else {
+                                        applyDurationZoom(dur.id);
+                                    }
+                                }}
+                                className={`flex w-full items-center gap-2 px-2 py-1.5 text-sm rounded-sm hover:bg-accent ${selectedDuration === dur.id ? 'bg-accent/50 text-accent-foreground font-medium' : ''}`}
+                            >
+                                {dur.name}
+                            </button>
+                        ))}
+                    </PopoverContent>
+                </Popover>
 
                 <Separator orientation="vertical" className="h-6 mx-1" />
 
@@ -1270,6 +1431,7 @@ export function LightWeightStockChart({
 
                 {/* Right Side Tools */}
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                    needsInitialFitRef.current = true; // Allow re-fit on reset
                     mainChartRef.current?.timeScale().fitContent();
                     rsiChartRef.current?.timeScale().fitContent();
                     macdChartRef.current?.timeScale().fitContent();
@@ -1328,6 +1490,16 @@ export function LightWeightStockChart({
                                 <span className="text-xs" style={{ color: chartTheme === 'dark' ? '#a1a1aa' : '#71717a' }}>
                                     Loading historical data
                                 </span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ✅ Status message overlay — inside chart, below toolbar, never shifts layout */}
+                    {statusMessage && (
+                        <div className="absolute top-1 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+                            <div className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-amber-500/85 text-white text-xs font-medium backdrop-blur-sm shadow-sm">
+                                <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                <span>{statusMessage}</span>
                             </div>
                         </div>
                     )}

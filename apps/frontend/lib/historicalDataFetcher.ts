@@ -54,6 +54,8 @@ export async function fetchHistoricalData(
       headers: {
         'Accept': 'application/json',
       },
+      // ✅ Client-side timeout: abort if API proxy takes too long (e.g. external server unreachable)
+      signal: AbortSignal.timeout(12000), // 12 seconds max
     });
 
     if (!response.ok) {
