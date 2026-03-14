@@ -3,11 +3,17 @@
 export interface GttPrediction {
     timestamp: string;
     input_close: number;
-    H1_pred: number;
-    H2_pred: number;
-    H3_pred: number;
-    H4_pred: number;
-    H5_pred: number;
+    S1_H1_pred: number;
+    S1_H2_pred: number;
+    S1_H3_pred: number;
+    S1_H4_pred: number;
+    S1_H5_pred: number;
+    S2_H1_pred: number;
+    S2_H2_pred: number;
+    S2_H3_pred: number;
+    S2_H4_pred: number;
+    S2_H5_pred: number;
+    askbid_available?: boolean;
     prediction_time: string;
 }
 
@@ -139,30 +145,39 @@ class GttService {
         return symbol.split('-')[0]; // Remove marker if exists (BANDHANBNK-EQ -> BANDHANBNK)
     }
 
-    // Health check
+    // Health check — probes actual working endpoints instead of non-existent /health
     async healthCheck(): Promise<{ proxy: boolean; backend: boolean }> {
         const results = { proxy: false, backend: false };
 
-        // Check Next.js proxy
+        // Check Next.js proxy by fetching a known stock (lightweight check)
         try {
-            const proxyResponse = await fetch(`${this.BASE_URL}/health`, {
+            const proxyResponse = await fetch(`${this.BASE_URL}?symbol=SBIN`, {
                 method: 'GET',
-                signal: AbortSignal.timeout(3000),
+                signal: AbortSignal.timeout(5000),
             });
-            results.proxy = proxyResponse.ok;
+            if (proxyResponse.ok) {
+                const data = await proxyResponse.json();
+                // Verify it's actually GTT data (has predictions array)
+                results.proxy = !!(data && data.predictions && Array.isArray(data.predictions));
+            }
         } catch (error) {
             console.warn('[GTT Service] Proxy health check failed:', error);
         }
 
-        // Check direct backend
-        try {
-            const backendResponse = await fetch(`${this.BACKEND_URL}/gtt/health`, {
-                method: 'GET',
-                signal: AbortSignal.timeout(3000),
-            });
-            results.backend = backendResponse.ok;
-        } catch (error) {
-            console.warn('[GTT Service] Backend health check failed:', error);
+        // Check direct backend via /gtt/latest (always available when GTT engine is running)
+        if (!results.proxy) {
+            try {
+                const backendResponse = await fetch(`${this.BACKEND_URL}/gtt/latest`, {
+                    method: 'GET',
+                    signal: AbortSignal.timeout(5000),
+                });
+                if (backendResponse.ok) {
+                    const data = await backendResponse.json();
+                    results.backend = !!(data && typeof data === 'object');
+                }
+            } catch (error) {
+                console.warn('[GTT Service] Backend health check failed:', error);
+            }
         }
 
         console.log('[GTT Service] Health Check:', results);

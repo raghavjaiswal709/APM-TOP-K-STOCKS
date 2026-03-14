@@ -88,13 +88,14 @@ export async function GET(request: NextRequest) {
 /**
  * ✅ HEALTH CHECK ENDPOINT
  * Route: /api/gtt-predictions/health
+ * Probes /gtt/latest since /gtt/health doesn't exist on the NestJS backend
  */
 export async function HEAD(request: NextRequest) {
     try {
-        const backendUrl = `${GTT_BACKEND_URL}/gtt/health`;
+        const backendUrl = `${GTT_BACKEND_URL}/gtt/latest`;
         const response = await fetch(backendUrl, {
             method: 'GET',
-            signal: AbortSignal.timeout(3000),
+            signal: AbortSignal.timeout(5000),
         });
 
         return new NextResponse(null, {

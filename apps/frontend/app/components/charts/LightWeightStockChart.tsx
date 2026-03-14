@@ -52,6 +52,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SeparateViewModal } from './SeparateViewModal';
+import { ALL_HORIZON_KEYS, HORIZON_LINE_CONFIG } from '@/lib/gttTransformers';
 
 // --- Types ---
 
@@ -81,7 +82,9 @@ interface TooltipData {
     low: number;
     close: number;
     volume?: number;
-    prediction?: number;  // Predicted close price at this time
+    prediction?: number;  // Regular predicted close price at this time
+    /** Per-horizon GTT values: keys like 'S1_H1_pred', 'input_close' */
+    gttHorizons?: Record<string, number>;
     x: number;
     y: number;
     visible: boolean;
@@ -106,6 +109,10 @@ interface StockChartProps {
     className?: string;
     predictions?: CompanyPredictions | null;
     showPredictions?: boolean;
+    gttPredictions?: any | null;  // GttMultiSeriesData from gttTransformers
+    showGttPredictions?: boolean;
+    /** Per-horizon visibility: keys like 'S1_H1_pred', 'S2_H3_pred', 'input_close' */
+    gttHorizonVisibility?: Record<string, boolean>;
     statusMessage?: string | null;  // Overlay message shown inside chart (e.g. "Historical server unavailable")
 }
 
@@ -170,6 +177,9 @@ export function LightWeightStockChart({
     className,
     predictions = null,
     showPredictions = false,
+    gttPredictions = null,
+    showGttPredictions = false,
+    gttHorizonVisibility = {},
     statusMessage = null,
 }: StockChartProps) {
     // State
@@ -224,6 +234,8 @@ export function LightWeightStockChart({
     
     // Prediction markers plugin ref (LightweightCharts v5.x uses createSeriesMarkers)
     const predictionMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+    // GTT Prediction markers plugin ref
+    const gttPredictionMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     
     // Track previous companyId for detecting company switches in the data effect
     const prevCompanyIdRef = useRef<string | null>(null);
@@ -593,7 +605,7 @@ export function LightWeightStockChart({
                 }
             }
 
-            // Get prediction data
+            // Get prediction data (regular)
             let prediction = undefined;
             const predictionSeries = indicatorSeriesRefs.current.get('prediction_line');
             if (predictionSeries) {
@@ -602,6 +614,20 @@ export function LightWeightStockChart({
                     prediction = (predData as any).value;
                 }
             }
+
+            // Get GTT per-horizon prediction data
+            const gttHorizons: Record<string, number> = {};
+            // Check all 10 horizons + input_close
+            [...ALL_HORIZON_KEYS, 'input_close'].forEach(key => {
+                const seriesKey = key === 'input_close' ? 'gtt_input_close_line' : `gtt_${key}`;
+                const gttSeries = indicatorSeriesRefs.current.get(seriesKey);
+                if (gttSeries) {
+                    const gttData = seriesData.get(gttSeries);
+                    if (gttData && 'value' in gttData) {
+                        gttHorizons[key] = (gttData as any).value;
+                    }
+                }
+            });
 
             // Format Data
             const timeStr = typeof param.time === 'number'
@@ -619,6 +645,7 @@ export function LightWeightStockChart({
                 close,
                 volume,
                 prediction,
+                gttHorizons: Object.keys(gttHorizons).length > 0 ? gttHorizons : undefined,
                 x: param.point.x,
                 y: param.point.y,
                 visible: true
@@ -763,8 +790,16 @@ export function LightWeightStockChart({
                 try { predictionMarkersRef.current.detach(); } catch (e) { }
                 predictionMarkersRef.current = null;
             }
+            // Remove GTT prediction markers
+            if (gttPredictionMarkersRef.current) {
+                try { gttPredictionMarkersRef.current.detach(); } catch (e) { }
+                gttPredictionMarkersRef.current = null;
+            }
             // Remove overlay indicator series that live on the main chart
-            ['overlay_ma_20', 'overlay_ma_50', 'overlay_bb_upper', 'overlay_bb_lower', 'prediction_line'].forEach(k => {
+            const keysToRemove = ['overlay_ma_20', 'overlay_ma_50', 'overlay_bb_upper', 'overlay_bb_lower', 'prediction_line', 'gtt_input_close_line'];
+            // Also remove all per-horizon GTT series
+            ALL_HORIZON_KEYS.forEach(hk => keysToRemove.push(`gtt_${hk}`));
+            keysToRemove.forEach(k => {
                 const s = indicatorSeriesRefs.current.get(k);
                 if (s) {
                     try { mainChart.removeSeries(s); } catch (e) { }
@@ -1216,6 +1251,155 @@ export function LightWeightStockChart({
         }
     }, [predictions, showPredictions]);
 
+    // --- GTT Prediction Lines: 10 individual horizons + input_close (12 toggleable series) ---
+    useEffect(() => {
+        if (!mainChartRef.current) {
+            return;
+        }
+
+        const mainChart = mainChartRef.current;
+
+        // Helper to clean up ALL GTT series (10 horizons + input_close)
+        const cleanupGttSeries = () => {
+            ALL_HORIZON_KEYS.forEach(hk => {
+                const series = indicatorSeriesRefs.current.get(`gtt_${hk}`);
+                if (series) {
+                    try { mainChart.removeSeries(series); } catch (e) { }
+                    indicatorSeriesRefs.current.delete(`gtt_${hk}`);
+                }
+            });
+            const icSeries = indicatorSeriesRefs.current.get('gtt_input_close_line');
+            if (icSeries) {
+                try { mainChart.removeSeries(icSeries); } catch (e) { }
+                indicatorSeriesRefs.current.delete('gtt_input_close_line');
+            }
+            if (gttPredictionMarkersRef.current) {
+                try { gttPredictionMarkersRef.current.detach(); } catch (e) { }
+                gttPredictionMarkersRef.current = null;
+            }
+        };
+
+        if (!showGttPredictions) {
+            cleanupGttSeries();
+            return;
+        }
+
+        if (!gttPredictions) {
+            cleanupGttSeries();
+            return;
+        }
+
+        console.log('🔍 [GTT PREDICTIONS] Received GTT per-horizon data:', {
+            horizonCounts: gttPredictions.horizonCounts,
+            inputCloseCount: gttPredictions.inputCloseCount,
+            company: gttPredictions.company,
+        });
+
+        // Remove old GTT series before re-adding
+        cleanupGttSeries();
+
+        const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+        // Helper: convert prediction Record into sorted time-series points for today
+        const toChartPoints = (record: Record<string, { close: number }>) => {
+            return Object.entries(record)
+                .filter(([dateStr]) => dateStr.startsWith(todayIST))
+                .map(([dateStr, pred]) => {
+                    const normalizedDateStr = dateStr.includes(':') && dateStr.split(':').length === 2
+                        ? `${dateStr}:00`
+                        : dateStr;
+                    const isoWithTz = normalizedDateStr.replace(' ', 'T') + '+05:30';
+                    const parsedDate = new Date(isoWithTz);
+                    const time = (parsedDate.getTime() / 1000) as UTCTimestamp;
+                    return { time, value: pred.close };
+                })
+                .filter(p => !isNaN(p.time as number) && isFinite(p.time as number) && !isNaN(p.value) && isFinite(p.value))
+                .sort((a, b) => (a.time as number) - (b.time as number));
+        };
+
+        // Map style strings to LineStyle enum
+        const styleMap: Record<string, number> = {
+            'solid': LineStyle.Solid,
+            'dashed': LineStyle.Dashed,
+            'dotted': LineStyle.Dotted,
+        };
+
+        try {
+            let anySeriesAdded = false;
+
+            // Add each of the 10 horizon lines
+            for (const hk of ALL_HORIZON_KEYS) {
+                const isVisible = gttHorizonVisibility[hk] !== false; // default true
+                const horizonData = gttPredictions.horizonLines?.[hk];
+                if (!isVisible || !horizonData) continue;
+
+                const points = toChartPoints(horizonData);
+                if (points.length === 0) continue;
+
+                const cfg = HORIZON_LINE_CONFIG[hk];
+                if (!cfg) continue;
+
+                const lineSeries = mainChart.addSeries(LineSeries, {
+                    color: cfg.color,
+                    lineWidth: 2,
+                    lineStyle: styleMap[cfg.style] ?? LineStyle.Solid,
+                    crosshairMarkerVisible: true,
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                    title: cfg.label,
+                });
+                lineSeries.setData(points);
+                indicatorSeriesRefs.current.set(`gtt_${hk}`, lineSeries);
+                anySeriesAdded = true;
+            }
+
+            // input_close line — green dotted
+            if (gttHorizonVisibility['input_close'] !== false && gttPredictions.inputClosePredictions) {
+                const icPoints = toChartPoints(gttPredictions.inputClosePredictions);
+                if (icPoints.length > 0) {
+                    const icSeries = mainChart.addSeries(LineSeries, {
+                        color: '#4caf50',
+                        lineWidth: 2,
+                        lineStyle: LineStyle.Dotted,
+                        crosshairMarkerVisible: true,
+                        lastValueVisible: false,
+                        priceLineVisible: false,
+                        title: 'Input Close',
+                    });
+                    icSeries.setData(icPoints);
+                    indicatorSeriesRefs.current.set('gtt_input_close_line', icSeries);
+                    anySeriesAdded = true;
+                }
+            }
+
+            // Add markers on S1_H1 (primary model) for emphasis
+            if (gttHorizonVisibility['S1_H1_pred'] !== false) {
+                const s1h1Series = indicatorSeriesRefs.current.get('gtt_S1_H1_pred');
+                if (s1h1Series && gttPredictions.horizonLines?.['S1_H1_pred']) {
+                    const pts = toChartPoints(gttPredictions.horizonLines['S1_H1_pred']);
+                    const markers = pts.map(p => ({
+                        time: p.time,
+                        position: 'inBar' as const,
+                        color: '#9c27b0',
+                        shape: 'square' as const,
+                        size: 1,
+                    }));
+                    if (markers.length > 0) {
+                        gttPredictionMarkersRef.current = createSeriesMarkers(s1h1Series, markers);
+                    }
+                }
+            }
+
+            if (anySeriesAdded) {
+                mainChart.timeScale().fitContent();
+            }
+
+            console.log(`✅ [GTT PREDICTIONS] Added ${[...indicatorSeriesRefs.current.keys()].filter(k => k.startsWith('gtt_')).length} GTT series to chart`);
+        } catch (error) {
+            console.error('❌ [GTT PREDICTIONS] Error adding GTT predictions to chart:', error);
+        }
+    }, [gttPredictions, showGttPredictions, gttHorizonVisibility]);
+
     // Apply Options
     useEffect(() => {
         const opts = {
@@ -1583,7 +1767,7 @@ export function LightWeightStockChart({
                             </div>
                         )}
 
-                        {/* AI PREDICTION */}
+                        {/* AI PREDICTION (Regular) */}
                         {tooltipData.prediction !== undefined && (
                             <div className="col-span-2 flex justify-between mt-1 pt-1 border-t border-orange-500/30">
                                 <span className="opacity-60 flex items-center gap-1">
@@ -1593,6 +1777,29 @@ export function LightWeightStockChart({
                                     {tooltipData.prediction.toFixed(2)}
                                 </span>
                             </div>
+                        )}
+
+                        {/* GTT HORIZON PREDICTIONS */}
+                        {tooltipData.gttHorizons && Object.keys(tooltipData.gttHorizons).length > 0 && (
+                            <>
+                                {Object.entries(tooltipData.gttHorizons).map(([key, value], idx) => {
+                                    const cfg = key === 'input_close'
+                                        ? { label: 'Input Close', color: '#4caf50', style: 'dotted' as const }
+                                        : HORIZON_LINE_CONFIG[key];
+                                    if (!cfg) return null;
+                                    const shape = key === 'input_close' ? '●' : cfg.style === 'dashed' ? '◆' : '■';
+                                    return (
+                                        <div key={key} className={`col-span-2 flex justify-between ${idx === 0 ? 'mt-1 pt-1 border-t border-purple-500/30' : 'mt-0.5'}`}>
+                                            <span className="opacity-60 flex items-center gap-1">
+                                                <span style={{ color: cfg.color }}>{shape}</span> {cfg.label}
+                                            </span>
+                                            <span className="font-mono font-medium" style={{ color: cfg.color }}>
+                                                {value.toFixed(2)}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </>
                         )}
                     </div>
                 </div>

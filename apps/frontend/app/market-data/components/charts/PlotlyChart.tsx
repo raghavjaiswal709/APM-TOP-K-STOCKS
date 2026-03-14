@@ -197,11 +197,17 @@ interface PredictionData {
 interface GttPredictionData {
   timestamp: string;
   input_close: number;
-  H1_pred: number;
-  H2_pred: number;
-  H3_pred: number;
-  H4_pred: number;
-  H5_pred: number;
+  S1_H1_pred: number;
+  S1_H2_pred: number;
+  S1_H3_pred: number;
+  S1_H4_pred: number;
+  S1_H5_pred: number;
+  S2_H1_pred: number;
+  S2_H2_pred: number;
+  S2_H3_pred: number;
+  S2_H4_pred: number;
+  S2_H5_pred: number;
+  askbid_available?: boolean;
   prediction_time: string;
 }
 
@@ -429,11 +435,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
     });
     // H1-H5 prediction lines (extending into future)
     const predictionHorizons = [
-      { label: 'H1 (+15m)', value: latestPrediction.H1_pred, offset: 15 * 60 * 1000, color: '#10b981' },
-      { label: 'H2 (+30m)', value: latestPrediction.H2_pred, offset: 30 * 60 * 1000, color: '#3b82f6' },
-      { label: 'H3 (+45m)', value: latestPrediction.H3_pred, offset: 45 * 60 * 1000, color: '#f59e0b' },
-      { label: 'H4 (+60m)', value: latestPrediction.H4_pred, offset: 60 * 60 * 1000, color: '#ef4444' },
-      { label: 'H5 (+75m)', value: latestPrediction.H5_pred, offset: 75 * 60 * 1000, color: '#8b5cf6' },
+      { label: 'H1 (+15m)', value: latestPrediction.S1_H1_pred, offset: 15 * 60 * 1000, color: '#10b981' },
+      { label: 'H2 (+30m)', value: latestPrediction.S1_H2_pred, offset: 30 * 60 * 1000, color: '#3b82f6' },
+      { label: 'H3 (+45m)', value: latestPrediction.S1_H3_pred, offset: 45 * 60 * 1000, color: '#f59e0b' },
+      { label: 'H4 (+60m)', value: latestPrediction.S1_H4_pred, offset: 60 * 60 * 1000, color: '#ef4444' },
+      { label: 'H5 (+75m)', value: latestPrediction.S1_H5_pred, offset: 75 * 60 * 1000, color: '#8b5cf6' },
     ];
     predictionHorizons.forEach(({ label, value, offset, color }) => {
       traces.push({
@@ -1066,7 +1072,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         }
 
 
-        const horizons = ['H1_pred', 'H2_pred', 'H3_pred', 'H4_pred', 'H5_pred'];
+        const horizons = ['S1_H1_pred', 'S1_H2_pred', 'S1_H3_pred', 'S1_H4_pred', 'S1_H5_pred'];
         horizons.forEach(h => {
           if (pred[h] && !isNaN(pred[h])) {
             allPrices.push(Number(pred[h]));
@@ -2553,11 +2559,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
           // Define horizon colors and time offsets
           const horizonConfig = [
-            { horizon: 'H1', color: '#10b981', offset: 15, label: '+15min' },  // Green
-            { horizon: 'H2', color: '#3b82f6', offset: 30, label: '+30min' },  // Blue
-            { horizon: 'H3', color: '#f59e0b', offset: 45, label: '+45min' },  // Orange
-            { horizon: 'H4', color: '#ef4444', offset: 60, label: '+60min' },  // Red
-            { horizon: 'H5', color: '#8b5cf6', offset: 75, label: '+75min' },  // Purple
+            { horizon: 'S1_H1', color: '#10b981', offset: 15, label: '+15min' },  // Green
+            { horizon: 'S1_H2', color: '#3b82f6', offset: 30, label: '+30min' },  // Blue
+            { horizon: 'S1_H3', color: '#f59e0b', offset: 45, label: '+45min' },  // Orange
+            { horizon: 'S1_H4', color: '#ef4444', offset: 60, label: '+60min' },  // Red
+            { horizon: 'S1_H5', color: '#8b5cf6', offset: 75, label: '+75min' },  // Purple
           ];
 
           // ✅ FIX: Get latest prediction from either source
@@ -2572,7 +2578,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
           // Add all horizon predictions in order
           horizonConfig.forEach(({ horizon, color, offset, label }) => {
-            const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
+            const predKey = `${horizon}_pred` as 'S1_H1_pred' | 'S1_H2_pred' | 'S1_H3_pred' | 'S1_H4_pred' | 'S1_H5_pred';
             const targetTime = new Date(latestPredTime + offset * 60 * 1000);
             const value = latestPrediction[predKey];
 
@@ -2618,7 +2624,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
           // Render historical predictions only if enabled
           if (showGttHistory) {
             horizonConfig.forEach(({ horizon, color, offset, label }) => {
-              const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
+              const predKey = `${horizon}_pred` as 'S1_H1_pred' | 'S1_H2_pred' | 'S1_H3_pred' | 'S1_H4_pred' | 'S1_H5_pred';
 
               const historicalX: Date[] = [];
               const historicalY: number[] = [];
@@ -3169,11 +3175,11 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         // });
 
         const horizonConfig = [
-          { horizon: 'H1', color: '#10b981', offset: 15, label: '+15min' },
-          { horizon: 'H2', color: '#3b82f6', offset: 30, label: '+30min' },
-          { horizon: 'H3', color: '#f59e0b', offset: 45, label: '+45min' },
-          { horizon: 'H4', color: '#ef4444', offset: 60, label: '+60min' },
-          { horizon: 'H5', color: '#8b5cf6', offset: 75, label: '+75min' },
+          { horizon: 'S1_H1', color: '#10b981', offset: 15, label: '+15min' },
+          { horizon: 'S1_H2', color: '#3b82f6', offset: 30, label: '+30min' },
+          { horizon: 'S1_H3', color: '#f59e0b', offset: 45, label: '+45min' },
+          { horizon: 'S1_H4', color: '#ef4444', offset: 60, label: '+60min' },
+          { horizon: 'S1_H5', color: '#8b5cf6', offset: 75, label: '+75min' },
         ];
 
         // ✅ FIX: Get latest prediction from either source
@@ -3195,7 +3201,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
 
         // Add all horizon predictions in order
         horizonConfig.forEach(({ horizon, color, offset }) => {
-          const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
+          const predKey = `${horizon}_pred` as 'S1_H1_pred' | 'S1_H2_pred' | 'S1_H3_pred' | 'S1_H4_pred' | 'S1_H5_pred';
           const targetTime = new Date(latestPredTime + offset * 60 * 1000);
           const value = latestPrediction[predKey];
 
@@ -3241,7 +3247,7 @@ const PlotlyChart: React.FC<PlotlyChartProps> = ({
         // Render historical predictions ONLY if enabled
         if (showGttHistory) {
           horizonConfig.forEach(({ horizon, color, offset, label }) => {
-            const predKey = `${horizon}_pred` as 'H1_pred' | 'H2_pred' | 'H3_pred' | 'H4_pred' | 'H5_pred';
+            const predKey = `${horizon}_pred` as 'S1_H1_pred' | 'S1_H2_pred' | 'S1_H3_pred' | 'S1_H4_pred' | 'S1_H5_pred';
 
             const historicalX: Date[] = [];
             const historicalY: number[] = [];

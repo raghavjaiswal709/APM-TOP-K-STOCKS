@@ -66,7 +66,7 @@ import { Zap } from 'lucide-react';
 // Prediction Integration
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
 import { useGttPolling } from '@/hooks/useGttPolling';
-import { transformGttToChartPredictions } from '@/lib/gttTransformers';
+import { transformGttToChartPredictions, ALL_HORIZON_KEYS, HORIZON_LINE_CONFIG } from '@/lib/gttTransformers';
 import AIPredictionsDashboard from './components/AIPredictionsDashboard';
 import { LiveDataDashboard } from './components/LiveDataDashboard';
 import PredictionAPIService from '@/lib/predictionService';
@@ -219,6 +219,12 @@ const MarketDataPage: React.FC = () => {
     'market-data-isGttEnabled',
     false
   );
+  // GTT per-horizon visibility: each of the 10 horizons + input_close can be toggled
+  const [gttHorizonVisibility, setGttHorizonVisibility] = usePersistentState<Record<string, boolean>>(
+    'market-data-gttHorizonVisibility',
+    // Default: all visible
+    Object.fromEntries([...ALL_HORIZON_KEYS.map(k => [k, true]), ['input_close', true]])
+  );
 
   // Chart interval for candle aggregation (1m = 1 candle per minute, 5m = 1 candle per 5 min, etc.)
   const [chartInterval, setChartInterval] = usePersistentState<string>(
@@ -234,12 +240,11 @@ const MarketDataPage: React.FC = () => {
   const hasInitializedSocketRef = useRef<boolean>(false);
 
   // Health check state for prediction services
-  const [predictionServiceHealth, setPredictionServiceHealth] = usePersistentState<'checking' | 'available' | 'unavailable'>(
-    'market-data-predictionServiceHealth',
+  // Health check state — NEVER persisted, always re-checked fresh on mount
+  const [predictionServiceHealth, setPredictionServiceHealth] = useState<'checking' | 'available' | 'unavailable'>(
     'checking'
   );
-  const [gttServiceHealth, setGttServiceHealth] = usePersistentState<'checking' | 'available' | 'unavailable'>(
-    'market-data-gttServiceHealth',
+  const [gttServiceHealth, setGttServiceHealth] = useState<'checking' | 'available' | 'unavailable'>(
     'checking'
   );
   const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
@@ -532,7 +537,7 @@ const MarketDataPage: React.FC = () => {
     company: selectedCompany || selectedSymbol.split(':')[1]?.split('-')[0] || '',
     pollInterval: 5 * 60 * 1000, // Poll every 5 minutes to sync with server prediction times (9:15, 9:20, etc.)
     totalDuration: 7 * 60 * 60 * 1000, // Run for entire market day (9:15 AM - 3:30 PM = ~6.25 hours)
-    enabled: showPredictions && isClient,
+    enabled: showPredictions && isClient && predictionServiceHealth === 'available',
     autoStart: true,
     onUpdate: (data) => {
       console.log(`✅ [PREDICTION UPDATE] Predictions updated for ${selectedCompany}:`, data.count, 'predictions');
@@ -556,7 +561,7 @@ const MarketDataPage: React.FC = () => {
     stopPolling: stopGttPolling
   } = useGttPolling({
     symbol: selectedSymbol,
-    enabled: isGttEnabled && isClient && !!selectedSymbol,
+    enabled: isGttEnabled && isClient && !!selectedSymbol && gttServiceHealth === 'available',
     pollInterval: 60000
   });
 
@@ -564,6 +569,10 @@ const MarketDataPage: React.FC = () => {
     if (!rawGttPredictions) return null;
     return transformGttToChartPredictions(rawGttPredictions);
   }, [rawGttPredictions]);
+
+  // Both prediction types are now passed separately to the chart.
+  // Regular predictions (port 5112) → predictions prop, controlled by showPredictions
+  // GTT predictions (port 5113) → gttPredictions prop, controlled by isGttEnabled
 
   // Check if predictions are outdated (not from today)
   useEffect(() => {
@@ -1405,11 +1414,8 @@ const MarketDataPage: React.FC = () => {
   useEffect(() => {
     if (!isClient || !isInitialized) return;
 
-    // Skip if health already checked and cached
-    if (predictionServiceHealth !== 'checking' && gttServiceHealth !== 'checking') {
-      console.log('⚡ [Health Check] Using cached health status');
-      return;
-    }
+    // Always re-check GTT health on mount — the GTT server may have started/stopped
+    // Only skip if both are already confirmed available (not 'unavailable' which needs re-check)
 
     const checkPredictionServicesHealth = async () => {
       setIsCheckingHealth(true);
@@ -2232,8 +2238,13 @@ const MarketDataPage: React.FC = () => {
                       Prediction Unavailable
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white">
-                    <p className="text-xs">Prediction service is not responding. Please check if the server is running.</p>
+                  <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white max-w-xs">
+                    <div className="text-xs space-y-1">
+                      <p className="font-semibold text-red-400">⚠ Regular Prediction Service — DOWN</p>
+                      <p className="text-zinc-400">Port: 5112 · Service not responding</p>
+                      {selectedCompany && <p className="text-zinc-400">Company: {selectedCompany}</p>}
+                      <p className="text-zinc-500">Health checks run every 2 min. Start the prediction server to enable.</p>
+                    </div>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -2258,11 +2269,19 @@ const MarketDataPage: React.FC = () => {
                       {showPredictions ? 'Predictions ON' : 'Predictions OFF'}
                     </button>
                   </TooltipTrigger>
-                  {predictionsOutdated && showPredictions && (
-                    <TooltipContent side="bottom" className="bg-red-900 border-red-700 text-white">
-                      <p className="text-xs">⚠️ Running with outdated prediction data. Predictions are not from today.</p>
-                    </TooltipContent>
-                  )}
+                  <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white max-w-xs">
+                    <div className="text-xs space-y-1">
+                      <p className="font-semibold text-green-400">✓ Regular Prediction Service — Available</p>
+                      <p className="text-zinc-400">Port: 5112 · {showPredictions ? 'Enabled (orange line on chart)' : 'Disabled — click to enable'}</p>
+                      {selectedCompany && <p className="text-zinc-400">Company: {selectedCompany}</p>}
+                      {showPredictions && predictions && (
+                        <p className="text-zinc-400">Predictions: {predictions.count || Object.keys(predictions.predictions || {}).length} points</p>
+                      )}
+                      {predictionsOutdated && showPredictions && (
+                        <p className="text-red-400">⚠️ Prediction data is outdated (not from today).</p>
+                      )}
+                    </div>
+                  </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
@@ -2285,22 +2304,170 @@ const MarketDataPage: React.FC = () => {
                       GTT Unavailable
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white">
-                    <p className="text-xs">GTT prediction service is not responding. Please check if the GTT server is running.</p>
+                  <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white max-w-xs">
+                    <div className="text-xs space-y-1">
+                      <p className="font-semibold text-orange-400">⚠ GTT Prediction Service — DOWN</p>
+                      <p className="text-zinc-400">Port: 5113 (via backend 5002) · Service not responding</p>
+                      {selectedCompany && <p className="text-zinc-400">Company: {selectedCompany}</p>}
+                      <p className="text-zinc-500">Health checks run every 2 min. Start the GTT server to enable.</p>
+                    </div>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             ) : (
-              <button
-                onClick={() => setIsGttEnabled(!isGttEnabled)}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${isGttEnabled
-                  ? 'bg-purple-600 text-white hover:bg-purple-700'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-              >
-                <Zap className="h-3.5 w-3.5" />
-                {isGttEnabled ? 'GTT ON' : 'GTT OFF'}
-              </button>
+              /* Split-button: Main click = toggle GTT, Dropdown arrow = control panel */
+              <div className="flex items-center">
+                {/* Main GTT toggle button */}
+                <button
+                  onClick={() => setIsGttEnabled(!isGttEnabled)}
+                  className={`px-3 py-1 rounded-l text-sm font-medium transition-colors flex items-center gap-1.5 ${isGttEnabled
+                    ? 'bg-purple-600 text-white hover:bg-purple-700'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                  {isGttEnabled ? 'GTT ON' : 'GTT OFF'}
+                </button>
+                {/* Dropdown arrow — opens control panel */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      className={`px-1.5 py-1 rounded-r border-l transition-colors ${isGttEnabled
+                        ? 'bg-purple-700 text-white hover:bg-purple-800 border-purple-500'
+                        : 'bg-gray-300 text-gray-700 hover:bg-gray-400 border-gray-400 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 dark:border-gray-500'
+                        }`}
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent side="bottom" align="end" className="w-80 p-0" sideOffset={4}>
+                    <div className="p-3 space-y-3">
+                      {/* Header */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Zap className="h-4 w-4 text-purple-400" />
+                          <span className="font-semibold text-sm">GTT Control Panel</span>
+                        </div>
+                        <Badge variant={isGttEnabled ? "default" : "secondary"} className={cn("text-[10px]", isGttEnabled ? "bg-purple-600" : "")}>
+                          {isGttEnabled ? 'ON' : 'OFF'}
+                        </Badge>
+                      </div>
+
+                      {/* Info */}
+                      <div className="text-xs text-muted-foreground space-y-0.5">
+                        <p>Port: 5113 · Multi-horizon predictions (H1–H5)</p>
+                        {selectedCompany && <p>Company: {selectedCompany}</p>}
+                        {isGttEnabled && gttChartData && (
+                          <p>{gttChartData.total_predictions} predictions · {gttChartData.inputCloseCount} input_close pts</p>
+                        )}
+                      </div>
+
+                      {/* Master Toggle */}
+                      <div className="flex items-center justify-between py-1.5 px-2 rounded-md bg-muted/50">
+                        <span className="text-xs font-medium">GTT Engine</span>
+                        <button
+                          onClick={() => setIsGttEnabled(!isGttEnabled)}
+                          className={cn(
+                            "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+                            isGttEnabled ? "bg-purple-600" : "bg-gray-300 dark:bg-gray-600"
+                          )}
+                        >
+                          <span className={cn(
+                            "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm",
+                            isGttEnabled ? "translate-x-4.5" : "translate-x-0.5"
+                          )} />
+                        </button>
+                      </div>
+
+                      {/* Per-horizon toggles — only when GTT is ON */}
+                      {isGttEnabled && (
+                        <div className="space-y-1 border-t pt-2">
+                          {/* Quick group toggles */}
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <button
+                              onClick={() => {
+                                const newVis = { ...gttHorizonVisibility };
+                                const allS1On = ALL_HORIZON_KEYS.filter(k => k.startsWith('S1_')).every(k => newVis[k] !== false);
+                                ALL_HORIZON_KEYS.filter(k => k.startsWith('S1_')).forEach(k => { newVis[k] = !allS1On; });
+                                setGttHorizonVisibility(newVis);
+                              }}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 font-medium"
+                            >
+                              {ALL_HORIZON_KEYS.filter(k => k.startsWith('S1_')).every(k => gttHorizonVisibility[k] !== false) ? 'Hide' : 'Show'} All S1
+                            </button>
+                            <button
+                              onClick={() => {
+                                const newVis = { ...gttHorizonVisibility };
+                                const allS2On = ALL_HORIZON_KEYS.filter(k => k.startsWith('S2_')).every(k => newVis[k] !== false);
+                                ALL_HORIZON_KEYS.filter(k => k.startsWith('S2_')).forEach(k => { newVis[k] = !allS2On; });
+                                setGttHorizonVisibility(newVis);
+                              }}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 font-medium"
+                            >
+                              {ALL_HORIZON_KEYS.filter(k => k.startsWith('S2_')).every(k => gttHorizonVisibility[k] !== false) ? 'Hide' : 'Show'} All S2
+                            </button>
+                          </div>
+
+                          {/* S1 horizons */}
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">S1 Model (Purple)</p>
+                          {ALL_HORIZON_KEYS.filter(k => k.startsWith('S1_')).map(hk => {
+                            const cfg = HORIZON_LINE_CONFIG[hk];
+                            return (
+                              <label key={hk} className="flex items-center justify-between py-0.5 px-2 rounded hover:bg-muted/50 cursor-pointer">
+                                <span className="flex items-center gap-2 text-xs">
+                                  <span className="w-3 h-0.5 inline-block rounded" style={{ borderBottom: `2px ${cfg.style} ${cfg.color}` }} />
+                                  {cfg.label}
+                                </span>
+                                <input
+                                  type="checkbox"
+                                  checked={gttHorizonVisibility[hk] !== false}
+                                  onChange={() => setGttHorizonVisibility({ ...gttHorizonVisibility, [hk]: !(gttHorizonVisibility[hk] !== false) })}
+                                  className="h-3.5 w-3.5 rounded border-gray-300 accent-purple-600"
+                                />
+                              </label>
+                            );
+                          })}
+
+                          {/* S2 horizons */}
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-2">S2 Model (Cyan)</p>
+                          {ALL_HORIZON_KEYS.filter(k => k.startsWith('S2_')).map(hk => {
+                            const cfg = HORIZON_LINE_CONFIG[hk];
+                            return (
+                              <label key={hk} className="flex items-center justify-between py-0.5 px-2 rounded hover:bg-muted/50 cursor-pointer">
+                                <span className="flex items-center gap-2 text-xs">
+                                  <span className="w-3 h-0.5 inline-block rounded" style={{ borderBottom: `2px ${cfg.style} ${cfg.color}` }} />
+                                  {cfg.label}
+                                </span>
+                                <input
+                                  type="checkbox"
+                                  checked={gttHorizonVisibility[hk] !== false}
+                                  onChange={() => setGttHorizonVisibility({ ...gttHorizonVisibility, [hk]: !(gttHorizonVisibility[hk] !== false) })}
+                                  className="h-3.5 w-3.5 rounded border-gray-300 accent-cyan-600"
+                                />
+                              </label>
+                            );
+                          })}
+
+                          {/* Input Close */}
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-2">Anchor</p>
+                          <label className="flex items-center justify-between py-0.5 px-2 rounded hover:bg-muted/50 cursor-pointer">
+                            <span className="flex items-center gap-2 text-xs">
+                              <span className="w-3 h-0.5 inline-block rounded" style={{ borderBottom: '2px dotted #4caf50' }} />
+                              Input Close
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={gttHorizonVisibility['input_close'] !== false}
+                              onChange={() => setGttHorizonVisibility({ ...gttHorizonVisibility, input_close: !(gttHorizonVisibility['input_close'] !== false) })}
+                              className="h-3.5 w-3.5 rounded border-gray-300 accent-green-600"
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
             )}
 
             {/* Portfolio Mode */}
@@ -2368,8 +2535,11 @@ const MarketDataPage: React.FC = () => {
                     className="w-full h-full"
                     theme={theme === 'light' ? 'light' : 'dark'}
                     defaultChartType="line"
-                    predictions={predictions}
-                    showPredictions={showPredictions}
+                    predictions={predictionServiceHealth === 'available' ? predictions : null}
+                    showPredictions={showPredictions && predictionServiceHealth === 'available'}
+                    gttPredictions={gttServiceHealth === 'available' ? gttChartData : null}
+                    showGttPredictions={isGttEnabled && gttServiceHealth === 'available'}
+                    gttHorizonVisibility={gttHorizonVisibility}
                     onIntervalChange={setChartInterval}
                     statusMessage={historicalDataStatus && !isLoadingHistorical && historicalDataStatus.includes('unavailable') ? historicalDataStatus : null}
                   />
@@ -2445,7 +2615,7 @@ const MarketDataPage: React.FC = () => {
                   <div className="flex-1 overflow-hidden relative">
                     <TabsContent value="predictions" className="h-full m-0">
                       <ScrollArea className="h-full w-full">
-                        {showPredictions ? (
+                        {((showPredictions && predictionServiceHealth === 'available') || (isGttEnabled && gttServiceHealth === 'available')) ? (
                           <AIPredictionsDashboard
                             isPolling={isPolling}
                             elapsedTime={elapsedTime}
@@ -2457,22 +2627,29 @@ const MarketDataPage: React.FC = () => {
                             onPause={pausePolling}
                             onStop={stopPolling}
                             onRefresh={handleManualRefresh}
-                            predictions={predictions}
+                            predictions={predictionServiceHealth === 'available' ? predictions : null}
                             company={selectedCompany || selectedSymbol}
                             dataAge={predictionDataAge}
                             isStale={isDataStale}
                             isLoading={predictionLoading}
-                            isGttEnabled={isGttEnabled}
+                            isGttEnabled={isGttEnabled && gttServiceHealth === 'available'}
                             gttLoading={gttLoading}
                             gttError={gttError}
-                            gttData={gttChartData}
-                          />
-                        ) : (
+                            gttData={gttServiceHealth === 'available' ? gttChartData : null}
+                          />) : (
                           <div className="flex items-center justify-center h-full py-12 text-muted-foreground">
                             <div className="text-center">
                               <Zap className="h-12 w-12 mx-auto mb-3 opacity-30" />
                               <p className="text-sm">AI Predictions are disabled</p>
-                              <p className="text-xs mt-1">Enable predictions in settings to view this panel</p>
+                              <p className="text-xs mt-1">
+                                {predictionServiceHealth === 'unavailable' && gttServiceHealth === 'unavailable'
+                                  ? 'Both prediction services are unavailable. Check if servers are running.'
+                                  : predictionServiceHealth === 'unavailable'
+                                    ? 'Regular prediction service (port 5112) is unavailable. GTT can be enabled separately.'
+                                    : gttServiceHealth === 'unavailable'
+                                      ? 'GTT prediction service (port 5113) is unavailable. Regular predictions can be enabled separately.'
+                                      : 'Enable predictions or GTT in the toolbar to view this panel.'}
+                              </p>
                             </div>
                           </div>
                         )}

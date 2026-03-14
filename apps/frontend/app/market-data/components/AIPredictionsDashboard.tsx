@@ -26,6 +26,7 @@ import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { CompanyPredictions } from '@/hooks/usePredictions';
+import { GttMultiSeriesData } from '@/lib/gttTransformers';
 import { getPredictionStats, aggregatePredictions, formatDataAge } from '@/lib/predictionUtils';
 
 interface AIPredictionsDashboardProps {
@@ -54,7 +55,7 @@ interface AIPredictionsDashboardProps {
   isGttEnabled?: boolean;
   gttLoading?: boolean;
   gttError?: string | null;
-  gttData?: any;
+  gttData?: GttMultiSeriesData | null;
 }
 
 export const AIPredictionsDashboard: React.FC<AIPredictionsDashboardProps> = ({
@@ -307,7 +308,7 @@ export const AIPredictionsDashboard: React.FC<AIPredictionsDashboardProps> = ({
                 </div>
                 <div>
                   <h3 className="font-semibold text-sm text-foreground">GTT Engine</h3>
-                  <p className="text-xs text-muted-foreground">Get The Trend Analysis</p>
+                  <p className="text-xs text-muted-foreground">Get The Trend — S1 + S2 + Input Close</p>
                 </div>
               </div>
               
@@ -318,10 +319,103 @@ export const AIPredictionsDashboard: React.FC<AIPredictionsDashboardProps> = ({
                 </div>
               ) : gttError ? (
                 <div className="text-sm text-red-400">{gttError}</div>
-              ) : gttData ? (
-                <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  ✓ Predictions Active
-                </Badge>
+              ) : gttData && gttData.latest ? (
+                <div className="space-y-3">
+                  <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-2">
+                    ✓ {gttData.total_predictions} Predictions Active
+                  </Badge>
+
+                  {/* Latest prediction details */}
+                  <div className="space-y-2">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Latest Prediction</p>
+                    <div className="text-xs text-muted-foreground">
+                      {(() => {
+                        const pt = gttData.latest?.prediction_time;
+                        if (!pt) return null;
+                        const d = new Date(pt.replace(' ', 'T') + (pt.includes('+') ? '' : '+05:30'));
+                        return isNaN(d.getTime()) ? pt : d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                      })()}
+                    </div>
+
+                    {/* Input Close */}
+                    <div className="flex items-center justify-between py-1.5 px-2 rounded-md bg-green-500/10 border border-green-500/20">
+                      <span className="text-xs flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-green-500" />
+                        Input Close
+                      </span>
+                      <span className="font-mono text-sm font-bold text-green-400">
+                        ₹{gttData.latest.input_close?.toFixed(2) ?? '—'}
+                      </span>
+                    </div>
+
+                    {/* S1 Model Horizons */}
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-wider text-purple-400 font-semibold flex items-center gap-1">
+                        <span className="w-2 h-0.5 bg-purple-500 inline-block rounded" />
+                        S1 Model (H1–H5)
+                      </p>
+                      <div className="grid grid-cols-5 gap-1">
+                        {(['S1_H1_pred', 'S1_H2_pred', 'S1_H3_pred', 'S1_H4_pred', 'S1_H5_pred'] as const).map((key, i) => {
+                          const val = gttData.latest?.[key];
+                          const anchor = gttData.latest?.input_close ?? 0;
+                          const diff = val != null ? val - anchor : 0;
+                          const isUp = diff >= 0;
+                          return (
+                            <div key={key} className="bg-muted/30 rounded-lg p-1.5 text-center border border-border/50">
+                              <div className="text-[9px] text-muted-foreground">+{(i + 1) * 15}m</div>
+                              <div className="text-xs font-bold font-mono text-purple-400">
+                                {val != null ? `₹${val.toFixed(1)}` : '—'}
+                              </div>
+                              {val != null && (
+                                <div className={cn("text-[9px] font-mono", isUp ? "text-emerald-400" : "text-red-400")}>
+                                  {isUp ? '+' : ''}{diff.toFixed(1)}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* S2 Model Horizons */}
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-wider text-cyan-400 font-semibold flex items-center gap-1">
+                        <span className="w-2 h-0.5 bg-cyan-500 inline-block rounded" style={{ borderBottom: '1px dashed #00bcd4' }} />
+                        S2 Model (H1–H5)
+                      </p>
+                      <div className="grid grid-cols-5 gap-1">
+                        {(['S2_H1_pred', 'S2_H2_pred', 'S2_H3_pred', 'S2_H4_pred', 'S2_H5_pred'] as const).map((key, i) => {
+                          const val = gttData.latest?.[key];
+                          const anchor = gttData.latest?.input_close ?? 0;
+                          const diff = val != null ? val - anchor : 0;
+                          const isUp = diff >= 0;
+                          return (
+                            <div key={key} className="bg-muted/30 rounded-lg p-1.5 text-center border border-border/50">
+                              <div className="text-[9px] text-muted-foreground">+{(i + 1) * 15}m</div>
+                              <div className="text-xs font-bold font-mono text-cyan-400">
+                                {val != null ? `₹${val.toFixed(1)}` : '—'}
+                              </div>
+                              {val != null && (
+                                <div className={cn("text-[9px] font-mono", isUp ? "text-emerald-400" : "text-red-400")}>
+                                  {isUp ? '+' : ''}{diff.toFixed(1)}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Data point counts */}
+                    <div className="flex gap-2 text-[10px] text-muted-foreground pt-1 border-t border-border/50">
+                      <span>{gttData.total_predictions} predictions</span>
+                      <span>·</span>
+                      <span>Input: {gttData.inputCloseCount} pts</span>
+                      <span>·</span>
+                      <span>{Object.keys(gttData.horizonCounts).filter(k => (gttData.horizonCounts[k] || 0) > 0).length} horizons</span>
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <div className="text-sm text-muted-foreground">No GTT data available</div>
               )}

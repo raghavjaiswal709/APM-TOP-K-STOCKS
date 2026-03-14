@@ -7,11 +7,17 @@ import { AxiosError } from 'axios';
 export interface GttPrediction {
     prediction_time: string;
     input_close: number;
-    H1_pred: number;
-    H2_pred: number;
-    H3_pred: number;
-    H4_pred: number;
-    H5_pred: number;
+    S1_H1_pred: number;
+    S1_H2_pred: number;
+    S1_H3_pred: number;
+    S1_H4_pred: number;
+    S1_H5_pred: number;
+    S2_H1_pred: number;
+    S2_H2_pred: number;
+    S2_H3_pred: number;
+    S2_H4_pred: number;
+    S2_H5_pred: number;
+    askbid_available?: boolean;
     timestamp: string;
 }
 
