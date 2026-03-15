@@ -31,7 +31,7 @@ def main():
                        help='Fetch all available data for the company (ignores date range)')
     
     # Additional arguments
-    parser.add_argument('--limit', type=int, default=2500, help='Maximum number of records to return')
+    parser.add_argument('--limit', type=int, default=5000, help='Maximum number of records to return')
     parser.add_argument('--enable_cache', type=str, default='false', 
                        choices=['true', 'false'],
                        help='Enable caching (future feature)')
@@ -161,26 +161,16 @@ def main():
 
         # Build optimized query based on request type
         if fetch_all_data:
-            if optimize_for_range:
-                # Optimized query for large datasets
-                stock_data_query = f"""
-                SELECT timestamp, open, high, low, close, volume, company_id
-                FROM company_data
-                WHERE company_id IN ({company_id_placeholders})
-                ORDER BY timestamp DESC
-                LIMIT %s
-                """
-                query_params = company_ids + [args.limit]
-                logger.info(f"Querying RECENT {args.limit} records for company_ids: {company_ids}")
-            else:
-                stock_data_query = f"""
-                SELECT timestamp, open, high, low, close, volume, company_id
-                FROM company_data
-                WHERE company_id IN ({company_id_placeholders})
-                ORDER BY timestamp
-                """
-                query_params = company_ids
-                logger.info(f"Querying ALL stock data for company_ids: {company_ids}")
+            # ALWAYS use LIMIT in SQL to avoid loading hundreds of thousands of rows
+            stock_data_query = f"""
+            SELECT timestamp, open, high, low, close, volume, company_id
+            FROM company_data
+            WHERE company_id IN ({company_id_placeholders})
+            ORDER BY timestamp DESC
+            LIMIT %s
+            """
+            query_params = company_ids + [args.limit]
+            logger.info(f"Querying RECENT {args.limit} records for company_ids: {company_ids}")
         else:
             if optimize_for_range:
                 # Optimized range query with indexes
@@ -222,10 +212,9 @@ def main():
                 logger.info(f"No stock data found for company_code='{args.company_code}' on exchanges={args.exchange} in date range {start_date} to {end_date}")
             sys.exit(0)
 
-        # Apply limit for all data requests (if not already limited in query)
-        if fetch_all_data and not optimize_for_range and len(rows) > args.limit:
-            logger.info(f"Large dataset detected ({len(rows)} records). Limiting to most recent {args.limit} records.")
-            rows = rows[-args.limit:]
+        # If fetched with DESC order (fetch_all_data), reverse to chronological
+        if fetch_all_data:
+            rows = list(reversed(rows))
 
         # Data aggregation with enhanced error handling
         def get_interval_start(dt):

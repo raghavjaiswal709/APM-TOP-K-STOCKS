@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(data, { status: 200 });
 
     } catch (error: any) {
-        console.error('[Prediction Health] ❌ Error:', error.message);
+        console.warn('[Prediction Health] ⚠️ Service unavailable:', error.message);
 
         return NextResponse.json(
             { status: 'stopped', running: false, error: error.message },

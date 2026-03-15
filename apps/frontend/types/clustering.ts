@@ -25,31 +25,33 @@ export type PatternArchetype =
   | 'Trending_Bear'
   | 'Volatile_Bear'
   | 'Compressed_Bear'
+  | 'Mean_Reversion'
   | 'Whipsaw'
-  | 'Indecision';
+  | 'Indecision'
+  | string;  // Allow other server-defined archetypes
 
 // ─── Full Analysis (/analysis) ───────────────────────────────────────────────
 export interface ClusteringAnalysisResponse {
   symbol: string;
   analysis_window: number;
   total_days: number;
-  confidence_consistency: {
+  confidence_consistency?: {                   // May not be present in API
     rolling_confidence: number;
     rolling_consistency_pct: number;
     overall_confidence: number;
     overall_consistency_pct: number;
   };
-  noise: {
+  noise?: {
     rolling_noise_fraction: number;
     total_noise_fraction: number;
     total_noise_days: number;
   };
-  quality_metrics: QualityMetrics;
-  active_clusters: {
+  quality_metrics?: QualityMetrics;
+  active_clusters?: {
     count: number;
     clusters: ActiveClusterSummary[];
   };
-  lineage_summary: {
+  lineage_summary?: {                          // May not be present in API
     total_runs: number;
     n_canonical: number;
     n_retired: number;
@@ -65,32 +67,24 @@ export interface QualityMetrics {
 
 export interface ActiveClusterSummary {
   cluster_id: number;
-  h_label: string;
+  h_label?: string;
   days_in_window: number;
   noise_fraction: number;
-  avg_confidence: number;
-  volatility_distribution: {
-    low: number;
-    normal: number;
-    high: number;
-  };
-  trend_distribution: {
-    down: number;
-    sideways: number;
-    up: number;
-  };
-  lineage: {
+  avg_confidence?: number;
+  volatility_distribution?: Record<string, number>;
+  trend_distribution?: Record<string, number>;
+  lineage?: {
     stability_streak: number;
     avg_jaccard_30d: number;
     last_event: string;
   };
-  archetype: PatternArchetype;
-  win_rate: number;
-  risk_adjusted_return: number;
-  avg_return_pct: number;
-  avg_volatility_pct: number;
-  persistence: number;
-  intra_pattern_similarity: number;
+  archetype?: PatternArchetype;
+  win_rate?: number;
+  risk_adjusted_return?: number;
+  avg_return_pct?: number;
+  avg_volatility_pct?: number;
+  persistence?: number;
+  intra_pattern_similarity?: number;
 }
 
 // ─── Confidence (/confidence) ────────────────────────────────────────────────
@@ -149,22 +143,24 @@ export interface ClusterCharacteristics {
 }
 
 export interface ClusterProfile {
-  h_label: string;
+  h_label?: string;                    // May not exist (h_label often on parent cluster)
   pattern_archetype: PatternArchetype;
   n_days: number;
-  avg_return: number;
-  avg_volatility: number;
+  avg_return?: number;                 // Legacy field name
+  avg_return_pct?: number;             // Actual API field
+  avg_volatility?: number;             // Legacy field name
+  avg_volatility_pct?: number;         // Actual API field
   persistence: number;
   intra_pattern_similarity: number;
   win_rate: number;
   risk_adjusted_return: number;
   intraday_range: number;
   return_std: number;
-  recurrence_rate: number;
-  percentage_overall: number;
-  regime_id: number;
-  global_cluster_id: number;
-  characteristics: ClusterCharacteristics;
+  recurrence_rate?: number;
+  percentage_overall?: number;         // Not in all endpoints
+  regime_id?: number;                  // Not in all endpoints
+  global_cluster_id?: number;          // Not in all endpoints
+  characteristics?: ClusterCharacteristics; // Not in active-clusters endpoint
 }
 
 export interface ClusterRegistry {
@@ -177,13 +173,16 @@ export interface ClusterRegistry {
 
 export interface ActiveCluster {
   cluster_id: number;
+  h_label?: string;                            // Pattern label (e.g. "P1")
   days_in_window: number;
   core_days: number;
   noise_days: number;
   noise_fraction: number;
-  avg_confidence: number;
+  avg_confidence?: number;                     // Not always present
+  volatility_distribution?: Record<string, number>;
+  trend_distribution?: Record<string, number>;
   profile: ClusterProfile;
-  registry: ClusterRegistry;
+  registry?: ClusterRegistry;                  // Not present in active-clusters endpoint
 }
 
 export interface ActiveClustersResponse {
@@ -275,10 +274,17 @@ export interface IntradayShapePattern {
   median_shape: number[];
   p25_shape: number[];
   p75_shape: number[];
-  median_return_from_open: number[];
-  p25_return_from_open: number[];
-  p75_return_from_open: number[];
-  median_volume_profile: number[];
+  median_return_from_open?: number[];
+  p25_return_from_open?: number[];
+  p75_return_from_open?: number[];
+  median_volume_profile?: number[];
+  avg_volume_profile?: number[];
+  metrics?: {
+    win_rate: number;
+    risk_adjusted_return: number;
+    avg_return: number;
+    avg_volatility: number;
+  };
   core_shapes?: number[][];
   noise_shapes?: number[][];
 }
@@ -336,26 +342,28 @@ export interface LineageEvent {
 }
 
 // ─── Archetype Color/Style Map ───────────────────────────────────────────────
-export const ARCHETYPE_COLORS: Record<PatternArchetype, string> = {
+export const ARCHETYPE_COLORS: Record<string, string> = {
   Trending_Bull: '#22c55e',
   Volatile_Bull: '#4ade80',
   Compressed_Bull: '#86efac',
   Trending_Bear: '#ef4444',
   Volatile_Bear: '#f87171',
   Compressed_Bear: '#fca5a5',
+  Mean_Reversion: '#06b6d4',
   Whipsaw: '#f59e0b',
   Indecision: '#8b5cf6',
 };
 
-export const ARCHETYPE_ICONS: Record<PatternArchetype, string> = {
-  Trending_Bull: '📈',
-  Volatile_Bull: '⚡📈',
-  Compressed_Bull: '🔋📈',
-  Trending_Bear: '📉',
-  Volatile_Bear: '⚡📉',
-  Compressed_Bear: '🔋📉',
-  Whipsaw: '🔀',
-  Indecision: '❓',
+export const ARCHETYPE_ICONS: Record<string, string> = {
+  Trending_Bull: 'TB',
+  Volatile_Bull: 'VB',
+  Compressed_Bull: 'CB',
+  Trending_Bear: 'Tb',
+  Volatile_Bear: 'Vb',
+  Compressed_Bear: 'Cb',
+  Mean_Reversion: 'MR',
+  Whipsaw: 'WS',
+  Indecision: 'ID',
 };
 
 // ─── Pattern Color Palette (for consistent chart colors) ─────────────────────

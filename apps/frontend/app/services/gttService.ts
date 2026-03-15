@@ -62,9 +62,20 @@ class GttService {
 
             const data: GttStockHistoryResponse = await response.json();
 
-            // Validation
-            if (!data.latest || !data.predictions || !Array.isArray(data.predictions)) {
+            // Validation – handle GTT engine being unavailable (latest=null, predictions=[])
+            if (!data.predictions || !Array.isArray(data.predictions)) {
                 throw new Error('Invalid response format from GTT service');
+            }
+
+            // If no predictions available (engine down), return an empty response
+            if (!data.latest || data.predictions.length === 0) {
+                console.warn(`[GTT Service] ⚠️ GTT engine unavailable for ${companyCode} – no predictions`);
+                return {
+                    latest: null as any,
+                    predictions: [],
+                    symbol: data.symbol || companyCode,
+                    total_predictions: 0,
+                };
             }
 
             console.log(`[GTT Service] ✅ Received ${data.total_predictions || data.predictions.length} predictions for ${companyCode}`);

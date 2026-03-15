@@ -2,6 +2,7 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, ISeriesApi, UTCTimestamp, LineData } from 'lightweight-charts';
+import { attachPriceAxisWheelZoom, removePriceAxisWheelZoom } from '@/utils/chartWheelHandler';
 interface MarketData {
   ltp: number;
   timestamp: number;
@@ -78,9 +79,13 @@ const MarketChart: React.FC<MarketChartProps> = ({ symbol, data }) => {
         crosshair: {
           mode: 1,
         },
-        handleScroll: true,
-        handleScale: true,
+        handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
+        handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true } },
       });
+
+      // Attach custom price-axis wheel zoom handler
+      attachPriceAxisWheelZoom(chartContainerRef.current, chartRef as { current: ReturnType<typeof createChart> | null });
+
       seriesRef.current = chartRef.current.addSeries({
         color: '#2962FF',
         lineWidth: 2,
@@ -139,6 +144,8 @@ const MarketChart: React.FC<MarketChartProps> = ({ symbol, data }) => {
   }, [isClient, chartHeight]);
   useEffect(() => {
     return () => {
+      // Clean up custom wheel handler
+      removePriceAxisWheelZoom(chartContainerRef.current);
       if (chartRef.current) {
         try {
           chartRef.current.remove();

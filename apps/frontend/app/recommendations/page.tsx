@@ -195,11 +195,17 @@ const RecommendationListPage: React.FC = () => {
     });
   }, [isAnalysisVisible, selectedCompany, selectedDate, updateRecommendationsState]);
 
+  // Show all companies filter state
+  const [showAllCompanies, setShowAllCompanies] = usePersistentState<boolean>(
+    'recommendations-showAllCompanies',
+    false
+  );
+
   // Use Watchlist Hook for consistent company list in sidebar
   const {
     companies: watchlistCompanies,
     loading: watchlistLoading
-  } = useWatchlist({ date: selectedDate || undefined });
+  } = useWatchlist({ date: selectedDate || undefined, showAllCompanies });
 
   // Merge availableCompanies from TimeMachine (strings) with Watchlist (objects)
   // This ensures we always show the companies available in the file system for that date
@@ -521,6 +527,8 @@ const RecommendationListPage: React.FC = () => {
                   selectedWatchlistDate={selectedDate}
                   onWatchlistDateChange={handleDateChange}
                   availableDates={availableDates}
+                  showAllCompanies={showAllCompanies}
+                  onShowAllCompaniesChange={setShowAllCompanies}
                 />
               </div>
             </div>

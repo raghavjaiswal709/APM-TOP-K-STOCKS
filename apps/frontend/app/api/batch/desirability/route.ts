@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Batch fetch desirability data for multiple companies
-// Uses the proxy API that's already working
+// Primary: port 8506 (/visualize/predicted-analysis)
+// Fallback: port 6968 UMAP Clustering V2 (/api/v2/clustering/{symbol}/analysis)
+
+const SERVER_IP = process.env.SERVER_IP || '100.93.172.21';
+const PRIMARY_URL = `http://${SERVER_IP}:8506/visualize/predicted-analysis`;
+const UMAP_BASE = `http://${SERVER_IP}:6968/api/v2/clustering`;
 
 interface TopClusterData {
   cluster_id: number;
@@ -16,6 +21,74 @@ interface DesirabilityResult {
   classification: string;
   reoccurrenceProbability: number;
   success: boolean;
+  source?: 'primary' | 'umap-fallback';
+}
+
+// Track whether primary is reachable (avoids hammering a dead endpoint)
+let primaryDown = false;
+let primaryDownAt = 0;
+const PRIMARY_RETRY_MS = 5 * 60_000;
+
+// ── Derive desirability from UMAP cluster data ──────────────────────────────
+function classifyFromUMAP(c: { win_rate: number; risk_adjusted_return: number; archetype: string }): string {
+  if (c.win_rate >= 0.7 && c.risk_adjusted_return > 0.5) return 'Highly Desirable';
+  if (c.win_rate >= 0.5 && c.risk_adjusted_return > 0) return 'Moderately Desirable';
+  if (c.win_rate >= 0.3 && c.risk_adjusted_return > -0.3) return 'Neutral';
+  if (c.archetype === 'Trending_Down' || c.risk_adjusted_return < -0.5) return 'Undesirable';
+  return 'Low Desirability';
+}
+
+function scoreFromUMAP(c: { win_rate: number; risk_adjusted_return: number; recurrence_rate: number; persistence: number }): number {
+  const normRAR = Math.max(0, Math.min(1, (c.risk_adjusted_return + 1) / 2));
+  return Math.max(0, Math.min(1,
+    0.4 * c.win_rate + 0.3 * normRAR + 0.2 * Math.min(c.recurrence_rate * 5, 1) + 0.1 * c.persistence
+  ));
+}
+
+async function fetchFromPrimary(cleanSymbol: string, signal: AbortSignal): Promise<DesirabilityResult | null> {
+  const response = await fetch(PRIMARY_URL, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol: cleanSymbol, method: 'spectral', exchange: 'NSE', top_n: 5 }),
+    signal,
+  });
+  if (!response.ok) return null;
+  const data = await response.json();
+  if (data.top_clusters?.length > 0) {
+    const top = data.top_clusters[0];
+    return {
+      symbol: cleanSymbol,
+      score: top.desirability_score ?? 0,
+      classification: top.classification ?? 'Unknown',
+      reoccurrenceProbability: top.probability ?? 0,
+      success: true,
+      source: 'primary',
+    };
+  }
+  return null;
+}
+
+async function fetchFromUMAP(cleanSymbol: string, signal: AbortSignal): Promise<DesirabilityResult | null> {
+  const res = await fetch(`${UMAP_BASE}/${encodeURIComponent(cleanSymbol)}/analysis?window=7`, { signal });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const clusters = data.active_clusters?.clusters;
+  if (!clusters?.length) return null;
+  // Pick the best cluster by derived score
+  let best = clusters[0];
+  let bestScore = scoreFromUMAP(best);
+  for (const c of clusters) {
+    const s = scoreFromUMAP(c);
+    if (s > bestScore) { best = c; bestScore = s; }
+  }
+  return {
+    symbol: cleanSymbol,
+    score: bestScore,
+    classification: classifyFromUMAP(best),
+    reoccurrenceProbability: best.recurrence_rate ?? 0,
+    success: true,
+    source: 'umap-fallback',
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -27,105 +100,73 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'No symbols provided', data: {} });
     }
 
-    // Limit to 30 companies at a time to avoid overwhelming the server
     const limitedSymbols = symbols.slice(0, 30);
-    
-    console.log(`📊 Batch fetching desirability for ${limitedSymbols.length} symbols`);
+    const shouldTryPrimary = !primaryDown || (Date.now() - primaryDownAt > PRIMARY_RETRY_MS);
 
-    // Fetch in parallel with a concurrency limit
-    const CONCURRENCY = 5; // Lower concurrency to avoid overwhelming server
+    const CONCURRENCY = 5;
     const results: Record<string, DesirabilityResult> = {};
-    
+
     for (let i = 0; i < limitedSymbols.length; i += CONCURRENCY) {
       const batch = limitedSymbols.slice(i, i + CONCURRENCY);
-      
+
       const batchResults = await Promise.allSettled(
         batch.map(async (symbol) => {
-          // Clean symbol - remove -NSE, -BSE suffix
           const cleanSymbol = symbol.includes('-') ? symbol.split('-')[0] : symbol;
-          
-          try {
-            // Use the same endpoint as useDesirability hook
-            const response = await fetch(
-              `http://100.93.172.21:8506/visualize/predicted-analysis`,
-              {
-                method: 'POST',
-                headers: { 
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  symbol: cleanSymbol,
-                  method: 'spectral',
-                  exchange: 'NSE',
-                  top_n: 5
-                }),
-                signal: AbortSignal.timeout(8000) // 8 second timeout per request
+          const ac = AbortSignal.timeout(8000);
+
+          // Try primary first (if it's not known-down)
+          if (shouldTryPrimary) {
+            try {
+              const primary = await fetchFromPrimary(cleanSymbol, ac);
+              if (primary) {
+                primaryDown = false;
+                return { ...primary, symbol };
               }
-            );
-
-            if (!response.ok) {
-              console.log(`⚠️ Desirability failed for ${cleanSymbol}: ${response.status}`);
-              return { symbol, success: false };
+            } catch {
+              primaryDown = true;
+              primaryDownAt = Date.now();
             }
-
-            const data = await response.json();
-            
-            if (data.top_clusters && data.top_clusters.length > 0) {
-              const topCluster = data.top_clusters[0];
-              return {
-                symbol,
-                score: topCluster.desirability_score || 0,
-                classification: topCluster.classification || 'Unknown',
-                reoccurrenceProbability: topCluster.probability || 0,
-                success: true
-              };
-            }
-            
-            return { symbol, success: false };
-          } catch (error) {
-            console.log(`⚠️ Desirability error for ${cleanSymbol}:`, error);
-            return { symbol, success: false };
           }
+
+          // Fallback to UMAP V2
+          try {
+            const fallback = await fetchFromUMAP(cleanSymbol, ac);
+            if (fallback) return { ...fallback, symbol };
+          } catch { /* both failed */ }
+
+          return { symbol, success: false } as DesirabilityResult;
         })
       );
 
-      // Process batch results
       batchResults.forEach((result, idx) => {
         const symbol = batch[idx];
         if (result.status === 'fulfilled' && result.value.success) {
           const data = result.value as DesirabilityResult;
           results[symbol] = data;
-          // Also add with clean symbol key
           const cleanSymbol = symbol.includes('-') ? symbol.split('-')[0] : symbol;
-          if (cleanSymbol !== symbol) {
-            results[cleanSymbol] = data;
-          }
+          if (cleanSymbol !== symbol) results[cleanSymbol] = data;
         }
       });
-      
-      // Small delay between batches to avoid overwhelming server
+
       if (i + CONCURRENCY < limitedSymbols.length) {
         await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 
     const successCount = Object.values(results).filter(r => r.success).length;
-    console.log(`✅ Batch desirability: ${successCount} companies loaded successfully`);
 
     return NextResponse.json({
       success: true,
       data: results,
       count: successCount,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
     console.error('Batch desirability fetch error:', error);
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
-      data: {}
+      data: {},
     }, { status: 500 });
   }
 }

@@ -159,12 +159,24 @@ export class StockService {
         const bufferMinutes = this.getBufferMinutes(params.interval);
         command += ` --buffer_minutes=${bufferMinutes}`;
 
+        // Target ~2000 aggregated candles for range queries too (same formula as fetchAllData)
+        const intervalMultiplier = this.getIntervalMultiplier(params.interval);
+        const rangeLimit = Math.min(2000 * intervalMultiplier, 50000);
+        command += ` --limit=${rangeLimit}`;
+
         if (params.firstFifteenMinutes) {
           command += ' --first_fifteen_minutes=true';
         }
       } else {
         command += ' --fetch_all_data=true';
-        command += ' --limit=2500';
+        command += ' --optimize_for_range=true';
+        // Target: ~2000 aggregated candles. Raw records needed = 2000 × intervalMultiplier.
+        // Capped at 50000 raw records to keep DB query fast (< 5s).
+        // For large intervals (1h+) the cap means fewer candles, but the user can
+        // scroll left to trigger incremental loading for older data.
+        const intervalMultiplier = this.getIntervalMultiplier(params.interval);
+        const rawLimit = Math.min(2000 * intervalMultiplier, 50000);
+        command += ` --limit=${rawLimit}`;
       }
 
       command += ' --enable_cache=true';
@@ -541,10 +553,13 @@ export class StockService {
       '1m': 15,
       '5m': 60,
       '15m': 180,
+      '30m': 360,
       '1h': 720,
+      '2h': 1440,
+      '4h': 2880,
       '1d': 1440
     };
-    return bufferMap[interval] || 30;
+    return bufferMap[interval] || 60;
   }
 
   private getTimeoutForRange(params: StockDataRequestDto): number {
@@ -563,10 +578,27 @@ export class StockService {
       '1m': 365,
       '5m': 365,
       '15m': 365,
+      '30m': 365,
       '1h': 365,
+      '2h': 365,
+      '4h': 365,
       '1d': 1825 // 5 years
     };
-    return maxDaysMap[interval] || 30;
+    return maxDaysMap[interval] || 365;
+  }
+
+  private getIntervalMultiplier(interval: string): number {
+    const map: { [key: string]: number } = {
+      '1m': 1,
+      '5m': 5,
+      '15m': 15,
+      '30m': 30,
+      '1h': 60,
+      '2h': 120,
+      '4h': 240,
+      '1d': 390  // full trading day ~390 1m records
+    };
+    return map[interval] || 1;
   }
 
   private getIntervalInMs(interval: string): number {
@@ -574,7 +606,10 @@ export class StockService {
       '1m': 60 * 1000,
       '5m': 5 * 60 * 1000,
       '15m': 15 * 60 * 1000,
+      '30m': 30 * 60 * 1000,
       '1h': 60 * 60 * 1000,
+      '2h': 2 * 60 * 60 * 1000,
+      '4h': 4 * 60 * 60 * 1000,
       '1d': 24 * 60 * 60 * 1000
     };
     return intervalMap[interval] || 60 * 1000;

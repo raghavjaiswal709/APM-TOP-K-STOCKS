@@ -76,7 +76,9 @@ export const getSocket = (): Socket => {
     });
 
     socket.on('error', (error) => {
-      console.error('❌ Socket error:', error);
+      // Transient socket errors are expected when the Fyers service restarts – warn, don't error
+      const msg = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+      console.warn(`⚠️ Socket error (will auto-reconnect): ${msg || 'unknown'}`);
     });
 
     socket.on('reconnect', (attemptNumber) => {

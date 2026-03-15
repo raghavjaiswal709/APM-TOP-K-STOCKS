@@ -72,7 +72,8 @@ export async function GET(request: NextRequest) {
         });
 
     } catch (error: any) {
-        console.error('[Prediction Proxy] ❌ Error:', error);
+        // Downgrade to warn – prediction server (5112) being down is expected
+        console.warn('[Prediction Proxy] ⚠️ Prediction service unavailable:', error.message || 'unknown');
 
         if (error.name === 'AbortError') {
             return NextResponse.json(
@@ -81,9 +82,11 @@ export async function GET(request: NextRequest) {
             );
         }
 
+        // Return empty predictions instead of 500 when the service is simply down
+        const company = request.nextUrl.searchParams.get('company') || 'unknown';
         return NextResponse.json(
-            { error: 'Failed to fetch predictions', message: error.message },
-            { status: 500 }
+            { company, predictions: {}, count: 0, error: 'Prediction service unavailable' },
+            { status: 200, headers: { 'Cache-Control': 'no-store, max-age=0' } }
         );
     }
 }

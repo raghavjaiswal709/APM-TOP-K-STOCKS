@@ -66,6 +66,10 @@ function DashboardContent() {
     'dashboard-selectedWatchlist',
     ""
   );
+  const [showAllCompanies, setShowAllCompanies] = usePersistentState<boolean>(
+    'dashboard-showAllCompanies',
+    false
+  );
 
   const {
     companies,
@@ -78,15 +82,18 @@ function DashboardContent() {
     availableMarkers,
     totalCompanies
   } = useWatchlist({
+    showAllCompanies,
   }) as any;
 
   const {
     data: stockData,
     loading: stockLoading,
     error: stockError,
+    isLoadingMore,
     fetchData: fetchStockData,
     loadDataForRange,
-    clearData
+    clearData,
+    restoreFromDayCache
   } = useStockData({
     companyCode: selectedCompany,
     exchange: selectedExchange,
@@ -112,26 +119,50 @@ function DashboardContent() {
     }
   }, [searchParams, urlParamsProcessed]);
 
-  // Trigger Fetch on Company Change (Default All Data) - but only if no data exists
+  // Trigger Fetch on Company Change — use day-cache for instant restore, then fetch fresh
   useEffect(() => {
     if (selectedCompany) {
-      // Only fetch if we don't already have data (prevents reload on page return)
-      if (!stockData || stockData.length === 0) {
-        fetchStockData(undefined, undefined, { fetchAllData: true })
-          .then(() => setIsAutoLoading(false));
+      // 1. Reset local hook state (does NOT wipe the module-level day-cache)
+      clearData();
+
+      // 2. Try to instantly restore from the day-cache (same company+exchange+interval, same IST day)
+      const cacheEntry = restoreFromDayCache();
+
+      if (cacheEntry) {
+        // ★ Cache HIT — data is already showing on chart instantly.
+        // Now fetch fresh data and APPEND any new points that arrived since the cache was stored.
+        setIsAutoLoading(false); // no loading spinner — user already sees data
+        fetchStockData(undefined, undefined, { fetchAllData: true, appendToCache: true });
       } else {
-        setIsAutoLoading(false);
+        // ★ Cache MISS — full loading spinner, fetch everything
+        setIsAutoLoading(true);
+        fetchStockData(undefined, undefined, { fetchAllData: true })
+          .finally(() => setIsAutoLoading(false));
       }
     } else {
       clearData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCompany, selectedExchange]);
 
-  // Refetch on Interval Change
+  // Refetch on Interval Change — interval change means different aggregation, must fetch fresh
   useEffect(() => {
     if (selectedCompany) {
-      fetchStockData(selectedStartDate, selectedEndDate, { fetchAllData: !selectedStartDate });
+      clearData();
+
+      // Try day-cache for the new interval
+      const cacheEntry = restoreFromDayCache();
+
+      if (cacheEntry) {
+        setIsAutoLoading(false);
+        fetchStockData(selectedStartDate, selectedEndDate, { fetchAllData: !selectedStartDate, appendToCache: true });
+      } else {
+        setIsAutoLoading(true);
+        fetchStockData(selectedStartDate, selectedEndDate, { fetchAllData: !selectedStartDate })
+          .finally(() => setIsAutoLoading(false));
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedInterval]); // Only interval trigger
 
   const handleCompanySelect = useCallback((companyCode: string) => {
@@ -248,17 +279,33 @@ function DashboardContent() {
           {/* LEFT: CHART AREA */}
           <div className="flex-1 flex flex-col min-w-0 bg-secondary/5 relative">
             {selectedCompany ? (
-              <StockChart
-                companyId={selectedCompany}
-                data={stockData}
-                interval={selectedInterval}
-                onIntervalChange={handleIntervalChange}
-                indicators={selectedIndicators}
-                loading={stockLoading || isAutoLoading}
-                height="100%"
-                className="w-full h-full"
-                onRangeChange={handleRangeChange}
-              />
+              /* Show a full loading screen while initial data is being fetched.
+                 Only render the chart once we actually have data to display. */
+              (stockLoading || isAutoLoading) && (!stockData || stockData.length === 0) ? (
+                <div className="flex h-full items-center justify-center flex-col gap-4">
+                  <div className="relative">
+                    <div className="w-12 h-12 rounded-full border-2 border-muted animate-spin"
+                      style={{ borderTopColor: 'hsl(var(--primary))' }} />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-foreground">{selectedCompany}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Fetching historical data…</p>
+                  </div>
+                </div>
+              ) : (
+                <StockChart
+                  companyId={selectedCompany}
+                  data={stockData}
+                  interval={selectedInterval}
+                  onIntervalChange={handleIntervalChange}
+                  indicators={selectedIndicators}
+                  loading={stockLoading}
+                  isLoadingMore={isLoadingMore}
+                  height="100%"
+                  className="w-full h-full"
+                  onRangeChange={handleRangeChange}
+                />
+              )
             ) : (
               <div className="flex h-full items-center justify-center text-muted-foreground p-8 text-center flex-col gap-4">
                 <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
@@ -315,6 +362,8 @@ function DashboardContent() {
                   availableExchanges={availableExchanges}
                   availableMarkers={availableMarkers}
                   totalCompanies={totalCompanies}
+                  showAllCompanies={showAllCompanies}
+                  onShowAllCompaniesChange={setShowAllCompanies}
                 />
               </div>
               {/* Footer Info */}

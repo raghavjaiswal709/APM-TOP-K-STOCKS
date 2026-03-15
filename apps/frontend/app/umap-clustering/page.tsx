@@ -42,6 +42,12 @@ export default function UMAPPage() {
     'RELIANCE'
   );
 
+  // ── Show all companies filter state ──────────────────────────────────────
+  const [showAllCompanies, setShowAllCompanies] = usePersistentState<boolean>(
+    'umap-showAllCompanies',
+    false
+  );
+
   // ── Watchlist data (same hook used by market-data & dashboard pages) ─────
   const {
     companies,
@@ -49,7 +55,7 @@ export default function UMAPPage() {
     availableDates,
     selectedDate: watchlistDate,
     setSelectedDate: setWatchlistDate,
-  } = useWatchlist({}) as any;
+  } = useWatchlist({ showAllCompanies }) as any;
 
   // ── Company change handler ───────────────────────────────────────────────
   const handleCompanySelect = useCallback((companyCode: string) => {
@@ -102,6 +108,8 @@ export default function UMAPPage() {
                 selectedWatchlistDate={watchlistDate}
                 onWatchlistDateChange={setWatchlistDate}
                 availableDates={availableDates}
+                showAllCompanies={showAllCompanies}
+                onShowAllCompaniesChange={setShowAllCompanies}
               />
             </div>
           </div>

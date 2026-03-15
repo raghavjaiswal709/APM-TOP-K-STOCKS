@@ -168,7 +168,7 @@ export default function UMAPClusterDashboard({ initialSymbol = 'RELIANCE' }: { i
       {analysisError && (
         <div className="max-w-[1800px] mx-auto px-4 mt-4">
           <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400 text-sm">
-            ⚠️ {analysisError}
+            {analysisError}
           </div>
         </div>
       )}
@@ -177,91 +177,97 @@ export default function UMAPClusterDashboard({ initialSymbol = 'RELIANCE' }: { i
       <div className="max-w-[1800px] mx-auto px-4 py-4 space-y-4">
         {/* Row 1: Overview Metrics */}
         {a && (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
             <MetricCard
               label="Confidence"
-              value={`${(a.confidence_consistency.rolling_confidence * 100).toFixed(0)}%`}
-              sub={`Overall: ${(a.confidence_consistency.overall_confidence * 100).toFixed(0)}%`}
+              value={a.confidence_consistency ? `${(a.confidence_consistency.rolling_confidence * 100).toFixed(0)}%` : 'N/A'}
+              sub={a.confidence_consistency ? `Overall: ${(a.confidence_consistency.overall_confidence * 100).toFixed(0)}%` : undefined}
               icon={Shield}
               color="text-violet-400"
             />
             <MetricCard
               label="Consistency"
-              value={`${a.confidence_consistency.rolling_consistency_pct.toFixed(0)}%`}
-              sub={`Overall: ${a.confidence_consistency.overall_consistency_pct.toFixed(0)}%`}
+              value={a.confidence_consistency ? `${a.confidence_consistency.rolling_consistency_pct.toFixed(0)}%` : 'N/A'}
+              sub={a.confidence_consistency ? `Overall: ${a.confidence_consistency.overall_consistency_pct.toFixed(0)}%` : undefined}
               icon={Target}
               color="text-emerald-400"
             />
             <MetricCard
               label="Noise"
-              value={`${(a.noise.rolling_noise_fraction * 100).toFixed(0)}%`}
-              sub={`Total: ${a.noise.total_noise_days}/${a.total_days} days`}
+              value={a.noise ? `${(a.noise.rolling_noise_fraction * 100).toFixed(0)}%` : 'N/A'}
+              sub={a.noise ? `Total: ${a.noise.total_noise_days}/${a.total_days} days` : undefined}
               icon={Volume2}
               color="text-amber-400"
             />
             <MetricCard
               label="Active Clusters"
-              value={`${a.active_clusters.count}`}
+              value={`${a.active_clusters?.count ?? 0}`}
               sub={`Window: ${a.analysis_window}d`}
               icon={Layers}
               color="text-blue-400"
             />
             <MetricCard
               label="Trustworthiness"
-              value={a.quality_metrics.trustworthiness.toFixed(3)}
-              sub={`Silhouette: ${a.quality_metrics.silhouette_score.toFixed(3)}`}
+              value={a.quality_metrics?.trustworthiness?.toFixed(3) ?? 'N/A'}
+              sub={a.quality_metrics ? `Silhouette: ${a.quality_metrics.silhouette_score.toFixed(3)}` : undefined}
               icon={Eye}
               color="text-cyan-400"
             />
+            {/* Lineage MetricCard - commented out (data not available)
             <MetricCard
               label="Lineage"
-              value={`${a.lineage_summary.n_canonical} canonical`}
-              sub={`${a.lineage_summary.total_runs} runs, ${a.lineage_summary.n_retired} retired`}
+              value={a.lineage_summary ? `${a.lineage_summary.n_canonical} canonical` : 'N/A'}
+              sub={a.lineage_summary ? `${a.lineage_summary.total_runs} runs, ${a.lineage_summary.n_retired} retired` : undefined}
               icon={GitBranch}
               color="text-pink-400"
             />
+            */}
           </div>
         )}
 
-        {/* Row 2: Confidence + Noise timeseries */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Section title="Confidence Timeseries" icon={Shield}>
-            <ConfidenceChart data={confidence} loading={confLoading} height={300} isDark={isDark} />
-          </Section>
-          <Section title="Noise Density" icon={Volume2}>
-            <NoiseChart data={noise} loading={noiseLoading} height={300} isDark={isDark} />
-          </Section>
+        {/* Confidence Timeseries - commented out (endpoint 404)
+        <Section title="Confidence Timeseries" icon={Shield}>
+          <ConfidenceChart data={confidence} loading={confLoading} height={300} isDark={isDark} />
+        </Section>
+        */}
+
+        {/* Left: 3 charts stacked | Right: Active Clusters — same fixed height, both scroll */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: '900px' }}>
+          {/* Left column: scrollable stack of 3 charts */}
+          <div className="overflow-y-auto space-y-4 pr-1">
+            <Section title="Noise Density" icon={Volume2}>
+              <NoiseChart data={noise} loading={noiseLoading} height={240} isDark={isDark} />
+            </Section>
+            <Section title="Core vs Noise Distribution" icon={BarChart3}>
+              <NoiseDistributionChart data={noiseDist} loading={ndLoading} height={240} isDark={isDark} />
+            </Section>
+            <Section title="Regime Distribution" icon={Activity}>
+              <RegimeDistributionChart data={regime} loading={regimeLoading} height={240} isDark={isDark} />
+            </Section>
+          </div>
+          {/* Right column: scrollable Active Clusters */}
+          <div className="overflow-y-auto pr-1">
+            <Section title="Active Clusters" icon={Layers}>
+              <ActiveClustersPanel data={activeClusters} loading={acLoading} isDark={isDark} />
+            </Section>
+          </div>
         </div>
 
-        {/* Row 3: Active Clusters + Risk-Return */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Section title="Active Clusters" icon={Layers}>
-            <ActiveClustersPanel data={activeClusters} loading={acLoading} isDark={isDark} />
-          </Section>
-          <Section title="Pattern Risk vs Return" icon={TrendingUp}>
-            <PatternRiskReturnChart data={riskReturn} loading={rrLoading} height={380} isDark={isDark} />
-          </Section>
-        </div>
-
-        {/* Row 4: Noise Distribution + Regime Distribution */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Section title="Core vs Noise Distribution" icon={BarChart3}>
-            <NoiseDistributionChart data={noiseDist} loading={ndLoading} height={320} isDark={isDark} />
-          </Section>
-          <Section title="Regime Distribution" icon={Activity}>
-            <RegimeDistributionChart data={regime} loading={regimeLoading} height={360} isDark={isDark} />
-          </Section>
-        </div>
+        {/* Pattern Risk vs Return (full width) */}
+        <Section title="Pattern Risk vs Return" icon={TrendingUp}>
+          <PatternRiskReturnChart data={riskReturn} loading={rrLoading} height={380} isDark={isDark} />
+        </Section>
 
         {/* Row 5: Intraday Shapes (full width) */}
         <Section title="Intraday Shapes" icon={Zap} className="col-span-full">
           <IntradayShapesChart data={intradayShapes} loading={isLoading} height={420} isDark={isDark} />
         </Section>
 
-        {/* Row 6: Pattern Confidence (full width) */}
+        {/* Pattern Confidence & Quality - commented out (endpoint 404)
         <Section title="Pattern Confidence & Quality" icon={Fingerprint} className="col-span-full">
           <PatternConfidencePanel data={patternConf} loading={pcLoading} height={280} isDark={isDark} />
         </Section>
+        */}
       </div>
     </div>
   );

@@ -216,8 +216,8 @@ export const usePredictionPolling = (config: PollingConfig) => {
         onUpdateRef.current?.(freshData); // Call onUpdate even if data unchanged
       }
     } else {
-      console.error(`❌ [SYNC] Poll #${currentPollCount} failed:`, errorRef.current);
-      onErrorRef.current?.(errorRef.current || 'Failed to fetch predictions');
+      console.warn(`⚠️ [SYNC] Poll #${currentPollCount}: prediction service unavailable`);
+      onErrorRef.current?.(errorRef.current || 'Prediction service unavailable');
     }
 
     // Schedule next sync

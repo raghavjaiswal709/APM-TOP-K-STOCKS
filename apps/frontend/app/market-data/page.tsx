@@ -2316,11 +2316,11 @@ const MarketDataPage: React.FC = () => {
               </TooltipProvider>
             ) : (
               /* Split-button: Main click = toggle GTT, Dropdown arrow = control panel */
-              <div className="flex items-center">
+              <div className="flex items-stretch">
                 {/* Main GTT toggle button */}
                 <button
                   onClick={() => setIsGttEnabled(!isGttEnabled)}
-                  className={`px-3 py-1 rounded-l text-sm font-medium transition-colors flex items-center gap-1.5 ${isGttEnabled
+                  className={`px-3 py-1.5 rounded-l text-sm font-medium transition-colors flex items-center gap-1.5 ${isGttEnabled
                     ? 'bg-purple-600 text-white hover:bg-purple-700'
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
                     }`}
@@ -2332,7 +2332,7 @@ const MarketDataPage: React.FC = () => {
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
-                      className={`px-1.5 py-1 rounded-r border-l transition-colors ${isGttEnabled
+                      className={`px-1.5 rounded-r border-l transition-colors flex items-center ${isGttEnabled
                         ? 'bg-purple-700 text-white hover:bg-purple-800 border-purple-500'
                         : 'bg-gray-300 text-gray-700 hover:bg-gray-400 border-gray-400 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 dark:border-gray-500'
                         }`}
@@ -2555,8 +2555,15 @@ const MarketDataPage: React.FC = () => {
                   </p>
                 </div>
               ) : (
-                <div className="h-full w-full flex items-center justify-center p-0">
-                  <MarketClosedBanner className="w-full h-full flex items-center justify-center" />
+                /* Market closed + company selected — show a centered placeholder (banner is already at top) */
+                <div className="flex h-full items-center justify-center text-muted-foreground p-8 text-center flex-col gap-3">
+                  <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center">
+                    <Clock size={28} className="text-amber-500" />
+                  </div>
+                  <h2 className="text-lg font-semibold text-foreground">{selectedCompany}</h2>
+                  <p className="text-sm text-muted-foreground max-w-sm">
+                    Live chart will be available when the market opens. You can still view analysis data below.
+                  </p>
                 </div>
               )}
             </div>
@@ -2610,7 +2617,7 @@ const MarketDataPage: React.FC = () => {
               </div>
 
               {/* Analysis Panel with TabsContent - Only show when visible AND conditions met */}
-              {isAnalysisVisible && selectedCompany && marketOpen && (
+              {isAnalysisVisible && selectedCompany && (
                 <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden">
                   <div className="flex-1 overflow-hidden relative">
                     <TabsContent value="predictions" className="h-full m-0">

@@ -31,7 +31,9 @@ import {
     Grid,
     ChevronDown,
     Clock,
-    AlertTriangle
+    AlertTriangle,
+    Lock,
+    Unlock
 } from 'lucide-react';
 import {
     calculateSMA,
@@ -53,6 +55,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SeparateViewModal } from './SeparateViewModal';
 import { ALL_HORIZON_KEYS, HORIZON_LINE_CONFIG } from '@/lib/gttTransformers';
+import { attachPriceAxisWheelZoom, removePriceAxisWheelZoom } from '@/utils/chartWheelHandler';
 
 // --- Types ---
 
@@ -114,6 +117,8 @@ interface StockChartProps {
     /** Per-horizon visibility: keys like 'S1_H1_pred', 'S2_H3_pred', 'input_close' */
     gttHorizonVisibility?: Record<string, boolean>;
     statusMessage?: string | null;  // Overlay message shown inside chart (e.g. "Historical server unavailable")
+    /** True when incremental gap-fill is loading older data (shows left-edge spinner) */
+    isLoadingMore?: boolean;
 }
 
 // --- Constants ---
@@ -181,6 +186,7 @@ export function LightWeightStockChart({
     showGttPredictions = false,
     gttHorizonVisibility = {},
     statusMessage = null,
+    isLoadingMore = false,
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -209,6 +215,10 @@ export function LightWeightStockChart({
     const [showBuySell, setShowBuySell] = useState(false);
 
     const [buySellMode, setBuySellMode] = useState<'Line' | 'Spread' | 'STD'>('Line');
+
+    // Auto-scale lock: when locked (true) = chart auto-adjusts vertical axis (default behavior)
+    // When unlocked (false) = user has full manual control of the vertical price scale
+    const [autoScaleLocked, setAutoScaleLocked] = useState(true);
 
     // Tooltip State
     const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
@@ -239,6 +249,15 @@ export function LightWeightStockChart({
     
     // Track previous companyId for detecting company switches in the data effect
     const prevCompanyIdRef = useRef<string | null>(null);
+    
+    // Track previous chartType to detect chart type changes (need series recreation) vs data-only changes (reuse series)
+    const prevChartTypeRef = useRef<string | null>(null);
+    
+    // Track previous interval to detect interval changes (need series recreation + re-fit)
+    const prevIntervalRef = useRef<string | null>(null);
+    
+    // Track previous data length to detect meaningful data changes vs same-data re-renders
+    const prevDataLengthRef = useRef<number>(0);
     
     // Track whether this is the first data load (or after company change) to avoid resetting user's zoom/pan on live updates
     const needsInitialFitRef = useRef<boolean>(true);
@@ -376,7 +395,7 @@ export function LightWeightStockChart({
                 vertTouchDrag: true,
             },
             handleScale: {
-                axisPressedMouseMove: { time: false, price: true },  // ✅ time axis drag = pan, price axis drag = zoom
+                axisPressedMouseMove: { time: true, price: true },  // ✅ drag on either axis scales it
                 mouseWheel: true,
                 pinch: true,
             },
@@ -444,8 +463,8 @@ export function LightWeightStockChart({
             },
             handleScale: {
                 axisPressedMouseMove: {
-                    time: false,  // ✅ Drag on time axis PANS (slides), doesn't zoom
-                    price: true,   // Drag on price axis zooms vertically
+                    time: true,   // ✅ Drag on time axis zooms horizontally
+                    price: true,   // ✅ Drag on price axis zooms vertically
                 },
                 mouseWheel: true,
                 pinch: true,
@@ -469,7 +488,7 @@ export function LightWeightStockChart({
             },
             rightPriceScale: {
                 borderColor: initialColors.grid,
-                autoScale: true,
+                autoScale: autoScaleLocked,
                 alignLabels: true,
             },
             crosshair: {
@@ -499,6 +518,12 @@ export function LightWeightStockChart({
         });
 
         mainChartRef.current = chart;
+
+        // ✅ Attach price-axis wheel zoom (scroll on price axis = vertical zoom)
+        const removePriceWheelZoom = attachPriceAxisWheelZoom(
+            mainChartContainerRef.current,
+            mainChartRef as { current: IChartApi | null }
+        );
 
         // ✅ Debounced resize handler — prevents lag from rapid ResizeObserver fires
         let resizeRafId: number | null = null;
@@ -537,6 +562,7 @@ export function LightWeightStockChart({
             if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
             window.removeEventListener('resize', handleResize);
             resizeObserver.disconnect();
+            removePriceWheelZoom(); // ✅ Clean up price-axis wheel zoom
             chart.remove();
             mainChartRef.current = null;
             mainSeriesRef.current = null;
@@ -694,6 +720,7 @@ export function LightWeightStockChart({
         if (hasRSI && rsiChartContainerRef.current && !rsiChartRef.current) {
             const chart = createStandardChart(rsiChartContainerRef.current);
             rsiChartRef.current = chart;
+            attachPriceAxisWheelZoom(rsiChartContainerRef.current, rsiChartRef as { current: IChartApi | null });
             const rsiSeries = chart.addSeries(LineSeries, { color: '#7e57c2', lineWidth: 2, title: 'RSI 14' });
             (rsiSeries as any).createPriceLine({ price: 70, color: '#ef5350', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: '' });
             (rsiSeries as any).createPriceLine({ price: 30, color: '#26a69a', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: '' });
@@ -703,6 +730,7 @@ export function LightWeightStockChart({
             if (mainChartRef.current) syncCharts(mainChartRef.current, [chart]);
             syncCharts(chart, [mainChartRef.current, macdChartRef.current, bidAskChartRef.current, buySellChartRef.current]);
         } else if (!hasRSI && rsiChartRef.current) {
+            removePriceAxisWheelZoom(rsiChartContainerRef.current);
             rsiChartRef.current.remove();
             rsiChartRef.current = null;
             indicatorSeriesRefs.current.delete('rsi');
@@ -712,6 +740,7 @@ export function LightWeightStockChart({
         if (hasMACD && macdChartContainerRef.current && !macdChartRef.current) {
             const chart = createStandardChart(macdChartContainerRef.current);
             macdChartRef.current = chart;
+            attachPriceAxisWheelZoom(macdChartContainerRef.current, macdChartRef as { current: IChartApi | null });
             const histogramSeries = chart.addSeries(HistogramSeries, { color: '#26a69a' });
             const macdSeries = chart.addSeries(LineSeries, { color: '#2962FF', lineWidth: 2, title: 'MACD' });
             const signalSeries = chart.addSeries(LineSeries, { color: '#FF6D00', lineWidth: 2, title: 'Signal' });
@@ -722,6 +751,7 @@ export function LightWeightStockChart({
             if (mainChartRef.current) syncCharts(mainChartRef.current, [chart]);
             syncCharts(chart, [mainChartRef.current, rsiChartRef.current, bidAskChartRef.current, buySellChartRef.current]);
         } else if (!hasMACD && macdChartRef.current) {
+            removePriceAxisWheelZoom(macdChartContainerRef.current);
             macdChartRef.current.remove();
             macdChartRef.current = null;
             indicatorSeriesRefs.current.delete('macd_hist');
@@ -733,10 +763,12 @@ export function LightWeightStockChart({
         if (showBidAsk && bidAskChartContainerRef.current && !bidAskChartRef.current) {
             const chart = createStandardChart(bidAskChartContainerRef.current);
             bidAskChartRef.current = chart;
+            attachPriceAxisWheelZoom(bidAskChartContainerRef.current, bidAskChartRef as { current: IChartApi | null });
 
             if (mainChartRef.current) syncCharts(mainChartRef.current, [chart]);
             syncCharts(chart, [mainChartRef.current, rsiChartRef.current, macdChartRef.current, buySellChartRef.current]);
         } else if (!showBidAsk && bidAskChartRef.current) {
+            removePriceAxisWheelZoom(bidAskChartContainerRef.current);
             bidAskChartRef.current.remove();
             bidAskChartRef.current = null;
             indicatorSeriesRefs.current.delete('bid_line');
@@ -749,10 +781,12 @@ export function LightWeightStockChart({
         if (showBuySell && buySellChartContainerRef.current && !buySellChartRef.current) {
             const chart = createStandardChart(buySellChartContainerRef.current);
             buySellChartRef.current = chart;
+            attachPriceAxisWheelZoom(buySellChartContainerRef.current, buySellChartRef as { current: IChartApi | null });
 
             if (mainChartRef.current) syncCharts(mainChartRef.current, [chart]);
             syncCharts(chart, [mainChartRef.current, rsiChartRef.current, macdChartRef.current, bidAskChartRef.current]);
         } else if (!showBuySell && buySellChartRef.current) {
+            removePriceAxisWheelZoom(buySellChartContainerRef.current);
             buySellChartRef.current.remove();
             buySellChartRef.current = null;
             indicatorSeriesRefs.current.delete('buy_vol');
@@ -769,12 +803,24 @@ export function LightWeightStockChart({
 
         const mainChart = mainChartRef.current as any;
         const companyChanged = prevCompanyIdRef.current !== companyId;
+        const chartTypeChanged = prevChartTypeRef.current !== null && prevChartTypeRef.current !== chartType;
+        const intervalChanged = prevIntervalRef.current !== null && prevIntervalRef.current !== selectedInterval;
         prevCompanyIdRef.current = companyId;
+        prevChartTypeRef.current = chartType;
+        prevIntervalRef.current = selectedInterval;
 
-        // If company changed, clear everything for a fresh start
-        if (companyChanged) {
-            console.log(`🔄 [DATA UPDATE] Company changed to ${companyId} — clearing all series`);
-            needsInitialFitRef.current = true; // Force fit on next data load for new company
+        // Determine if we need to fully recreate series or can just update data in-place
+        const needsSeriesRecreation = companyChanged || chartTypeChanged || intervalChanged || !mainSeriesRef.current;
+
+        // When company or interval changes, we need a clean slate
+        if (companyChanged || intervalChanged) {
+            const reason = companyChanged ? `company changed to ${companyId}` : `interval changed to ${selectedInterval}`;
+            console.log(`🔄 [DATA UPDATE] ${reason} — clearing all series`);
+            needsInitialFitRef.current = true; // Force fit on next data load
+            // Reset auto-scale to locked (true) on interval change for fresh data
+            if (intervalChanged && !companyChanged) {
+                setAutoScaleLocked(true);
+            }
             // Remove main series
             if (mainSeriesRef.current) {
                 try { mainChart.removeSeries(mainSeriesRef.current); } catch (e) { }
@@ -806,6 +852,17 @@ export function LightWeightStockChart({
                     indicatorSeriesRefs.current.delete(k);
                 }
             });
+        } else if (chartTypeChanged) {
+            // Chart type changed but same company — remove series but keep predictions/indicators
+            console.log(`🔄 [DATA UPDATE] Chart type changed to ${chartType} — recreating main & volume series`);
+            if (mainSeriesRef.current) {
+                try { mainChart.removeSeries(mainSeriesRef.current); } catch (e) { }
+                mainSeriesRef.current = null;
+            }
+            if (volumeSeriesRef.current) {
+                try { mainChart.removeSeries(volumeSeriesRef.current); } catch (e) { }
+                volumeSeriesRef.current = null;
+            }
         }
 
         // If no data, bail but leave chart clean
@@ -816,95 +873,143 @@ export function LightWeightStockChart({
 
         const processedData = processData(data);
 
-        console.log(`📊 [DATA UPDATE] Processing ${processedData.length} data points for chart type: ${chartType}`);
+        console.log(`📊 [DATA UPDATE] Processing ${processedData.length} data points for chart type: ${chartType}, seriesReuse: ${!needsSeriesRecreation}`);
         if (processedData.length > 0) {
             console.log(`📊 [DATA UPDATE] First point time: ${new Date(processedData[0].time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}, Last: ${new Date(processedData[processedData.length - 1].time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
         }
 
         // --- Main Chart Data ---
-        if (mainSeriesRef.current) {
-            try { mainChart.removeSeries(mainSeriesRef.current); } catch (e) { }
-            mainSeriesRef.current = null;
-        }
+        // OPTIMIZATION: When only data changed (background loading / incremental merge),
+        // reuse the existing series and just call setData(). This prevents the chart from
+        // flickering, jumping, or resetting the user's zoom/pan position.
+        // Only recreate the series when the company or chart type has actually changed.
 
-        let series: ISeriesApi<any>;
-        const candlestickOptions = {
-            upColor: colors.up,
-            downColor: colors.down,
-            borderUpColor: colors.up,
-            borderDownColor: colors.down,
-            wickUpColor: colors.up,
-            wickDownColor: colors.down,
+        // Helper: prepare data for the current chart type
+        const prepareMainSeriesData = () => {
+            if (chartType === 'line' || chartType === 'area') {
+                return processedData.map(d => ({ time: d.time, value: d.close }));
+            } else if (chartType === 'heikenAshi') {
+                const haData = convertToHeikenAshi(data as any);
+                const processedHa = processData(haData);
+                return processedHa.map(d => ({
+                    time: d.time, open: d.open, high: d.high, low: d.low, close: d.close,
+                }));
+            } else {
+                // candlestick (default)
+                return processedData.map(d => ({
+                    time: d.time, open: d.open, high: d.high, low: d.low, close: d.close,
+                }));
+            }
         };
 
-        if (chartType === 'line') {
-            // Determine line color based on price movement (first vs last close)
-            const firstClose = processedData[0]?.close || 0;
-            const lastClose = processedData[processedData.length - 1]?.close || 0;
-            const lineColor = lastClose >= firstClose ? colors.up : colors.down;
+        if (needsSeriesRecreation) {
+            // Full series creation — only on company change, chart type change, or first load
+            if (mainSeriesRef.current) {
+                try { mainChart.removeSeries(mainSeriesRef.current); } catch (e) { }
+                mainSeriesRef.current = null;
+            }
 
-            series = mainChart.addSeries(LineSeries, {
-                color: lineColor,
-                lineWidth: 2,
-                crosshairMarkerVisible: true,
-                crosshairMarkerRadius: 4,
-            });
-            series.setData(processedData.map(d => ({ time: d.time, value: d.close })));
-        } else if (chartType === 'area') {
-            // Area chart with dynamic color
-            const firstClose = processedData[0]?.close || 0;
-            const lastClose = processedData[processedData.length - 1]?.close || 0;
-            const isPositive = lastClose >= firstClose;
+            // Save visible range before recreation so we can restore it (for chart type changes)
+            let savedVisibleRange: { from: number; to: number } | null = null;
+            if (!companyChanged && !needsInitialFitRef.current) {
+                try {
+                    const vr = mainChart.timeScale().getVisibleRange();
+                    if (vr) savedVisibleRange = { from: vr.from as number, to: vr.to as number };
+                } catch (e) { }
+            }
 
-            series = mainChart.addSeries(AreaSeries, {
-                topColor: isPositive ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)',
-                bottomColor: isPositive ? 'rgba(38, 166, 154, 0)' : 'rgba(239, 83, 80, 0)',
-                lineColor: isPositive ? colors.up : colors.down,
-                lineWidth: 2,
-            });
-            series.setData(processedData.map(d => ({ time: d.time, value: d.close })));
-        } else if (chartType === 'heikenAshi') {
-            series = mainChart.addSeries(CandlestickSeries, candlestickOptions);
-            const haData = convertToHeikenAshi(data as any);
-            const processedHa = processData(haData);
-            // Format data for candlestick series
-            const candleData = processedHa.map(d => ({
-                time: d.time,
-                open: d.open,
-                high: d.high,
-                low: d.low,
-                close: d.close,
-            }));
-            series.setData(candleData);
+            let series: ISeriesApi<any>;
+            const candlestickOptions = {
+                upColor: colors.up,
+                downColor: colors.down,
+                borderUpColor: colors.up,
+                borderDownColor: colors.down,
+                wickUpColor: colors.up,
+                wickDownColor: colors.down,
+            };
+
+            if (chartType === 'line') {
+                const firstClose = processedData[0]?.close || 0;
+                const lastClose = processedData[processedData.length - 1]?.close || 0;
+                const lineColor = lastClose >= firstClose ? colors.up : colors.down;
+                series = mainChart.addSeries(LineSeries, {
+                    color: lineColor,
+                    lineWidth: 2,
+                    crosshairMarkerVisible: true,
+                    crosshairMarkerRadius: 4,
+                });
+            } else if (chartType === 'area') {
+                const firstClose = processedData[0]?.close || 0;
+                const lastClose = processedData[processedData.length - 1]?.close || 0;
+                const isPositive = lastClose >= firstClose;
+                series = mainChart.addSeries(AreaSeries, {
+                    topColor: isPositive ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)',
+                    bottomColor: isPositive ? 'rgba(38, 166, 154, 0)' : 'rgba(239, 83, 80, 0)',
+                    lineColor: isPositive ? colors.up : colors.down,
+                    lineWidth: 2,
+                });
+            } else if (chartType === 'heikenAshi') {
+                series = mainChart.addSeries(CandlestickSeries, candlestickOptions);
+            } else {
+                series = mainChart.addSeries(CandlestickSeries, candlestickOptions);
+            }
+
+            series.setData(prepareMainSeriesData());
+            mainSeriesRef.current = series;
+
+            console.log(`📊 [DATA UPDATE] Created new ${chartType} series with ${processedData.length} data points`);
+
+            // Restore visible range if this was a chart type change (not a company change or initial load)
+            if (savedVisibleRange && !needsInitialFitRef.current) {
+                try {
+                    mainChart.timeScale().setVisibleRange({
+                        from: savedVisibleRange.from as UTCTimestamp,
+                        to: savedVisibleRange.to as UTCTimestamp,
+                    });
+                    console.log(`📊 [DATA UPDATE] Restored visible range after chart type change`);
+                } catch (e) { }
+            }
         } else {
-            // Default candlestick chart
-            series = mainChart.addSeries(CandlestickSeries, candlestickOptions);
-            // Format data correctly for candlestick series
-            const candleData = processedData.map(d => ({
-                time: d.time,
-                open: d.open,
-                high: d.high,
-                low: d.low,
-                close: d.close,
-            }));
-            console.log(`📊 [CandlestickChart] Setting ${candleData.length} candles. First:`, candleData[0], 'Last:', candleData[candleData.length - 1]);
-            series.setData(candleData);
-        }
-        mainSeriesRef.current = series;
+            // DATA-ONLY UPDATE: Reuse existing series — just update data in place.
+            // This is the key optimization that prevents chart disruption during background data loading.
+            const newData = prepareMainSeriesData();
+            mainSeriesRef.current!.setData(newData);
 
-        // Volume histogram - recreate to stay in sync with main series data
-        if (volumeSeriesRef.current) {
-            try { mainChart.removeSeries(volumeSeriesRef.current); } catch (e) { }
-            volumeSeriesRef.current = null;
+            // Update line/area color dynamically based on price movement
+            if (chartType === 'line') {
+                const firstClose = processedData[0]?.close || 0;
+                const lastClose = processedData[processedData.length - 1]?.close || 0;
+                const lineColor = lastClose >= firstClose ? colors.up : colors.down;
+                mainSeriesRef.current!.applyOptions({ color: lineColor });
+            } else if (chartType === 'area') {
+                const firstClose = processedData[0]?.close || 0;
+                const lastClose = processedData[processedData.length - 1]?.close || 0;
+                const isPositive = lastClose >= firstClose;
+                mainSeriesRef.current!.applyOptions({
+                    topColor: isPositive ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)',
+                    bottomColor: isPositive ? 'rgba(38, 166, 154, 0)' : 'rgba(239, 83, 80, 0)',
+                    lineColor: isPositive ? colors.up : colors.down,
+                });
+            }
+
+            console.log(`📊 [DATA UPDATE] Reused existing ${chartType} series — updated ${newData.length} data points in-place (no chart disruption)`);
         }
-        volumeSeriesRef.current = mainChart.addSeries(HistogramSeries, {
-            priceFormat: { type: 'volume' },
-            priceScaleId: 'volume_scale',
-        });
-        mainChart.priceScale('volume_scale').applyOptions({
-            scaleMargins: { top: 0.55, bottom: 0 },
-            visible: false,
-        });
+
+        // Volume histogram — reuse existing series if possible, same as main series
+        if (needsSeriesRecreation || !volumeSeriesRef.current) {
+            if (volumeSeriesRef.current) {
+                try { mainChart.removeSeries(volumeSeriesRef.current); } catch (e) { }
+                volumeSeriesRef.current = null;
+            }
+            volumeSeriesRef.current = mainChart.addSeries(HistogramSeries, {
+                priceFormat: { type: 'volume' },
+                priceScaleId: 'volume_scale',
+            });
+            mainChart.priceScale('volume_scale').applyOptions({
+                scaleMargins: { top: 0.55, bottom: 0 },
+                visible: false,
+            });
+        }
 
         // Validate and filter volume data to prevent display issues
         const volumeData = processedData
@@ -926,37 +1031,56 @@ export function LightWeightStockChart({
         volumeSeriesRef.current?.setData(volumeData);
 
 
-        // --- Indicators ---
+        // --- Indicators (optimized: reuse existing series when possible) ---
         const closePrices = data.map(d => d.close);
 
         if (activeIndicators.includes('ma')) {
+            [20, 50].forEach(period => {
+                const key = `overlay_ma_${period}`;
+                const ma = calculateSMA(closePrices, period);
+                const maData = processedData.map((d, i) => ({ time: d.time, value: ma[i] || NaN })).filter(d => !isNaN(d.value));
+                const existing = indicatorSeriesRefs.current.get(key);
+                if (existing && !needsSeriesRecreation) {
+                    // Reuse: just update data
+                    existing.setData(maData);
+                } else {
+                    // Create new series
+                    if (existing) { try { mainChart.removeSeries(existing); } catch (e) { } indicatorSeriesRefs.current.delete(key); }
+                    const series = mainChart.addSeries(LineSeries, { color: period === 20 ? 'yellow' : 'orange', lineWidth: 1, title: `MA ${period}` });
+                    series.setData(maData);
+                    indicatorSeriesRefs.current.set(key, series);
+                }
+            });
+        } else {
             ['overlay_ma_20', 'overlay_ma_50'].forEach(k => {
                 const s = indicatorSeriesRefs.current.get(k);
                 if (s) { try { mainChart.removeSeries(s); } catch (e) { } indicatorSeriesRefs.current.delete(k); }
             });
-            [20, 50].forEach(period => {
-                const ma = calculateSMA(closePrices, period);
-                const series = mainChart.addSeries(LineSeries, { color: period === 20 ? 'yellow' : 'orange', lineWidth: 1, title: `MA ${period}` });
-                const maData = processedData.map((d, i) => ({ time: d.time, value: ma[i] || NaN })).filter(d => !isNaN(d.value));
-                series.setData(maData);
-                indicatorSeriesRefs.current.set(`overlay_ma_${period}`, series);
-            });
         }
 
         if (activeIndicators.includes('bollinger')) {
-            ['overlay_bb_upper', 'overlay_bb_lower'].forEach(k => {
-                const s = indicatorSeriesRefs.current.get(k);
-                if (s) { try { mainChart.removeSeries(s); } catch (e) { } indicatorSeriesRefs.current.delete(k); }
-            });
             const bb = calculateBollinger(closePrices);
-            const upper = mainChart.addSeries(LineSeries, { color: 'blue', lineWidth: 1, title: 'BB Upper' });
-            const lower = mainChart.addSeries(LineSeries, { color: 'blue', lineWidth: 1, title: 'BB Lower' });
+            const upperData = processedData.map((d, i) => ({ time: d.time, value: bb.upper[i] || NaN })).filter(d => !isNaN(d.value));
+            const lowerData = processedData.map((d, i) => ({ time: d.time, value: bb.lower[i] || NaN })).filter(d => !isNaN(d.value));
 
-            upper.setData(processedData.map((d, i) => ({ time: d.time, value: bb.upper[i] || NaN })).filter(d => !isNaN(d.value)));
-            lower.setData(processedData.map((d, i) => ({ time: d.time, value: bb.lower[i] || NaN })).filter(d => !isNaN(d.value)));
+            const existingUpper = indicatorSeriesRefs.current.get('overlay_bb_upper');
+            const existingLower = indicatorSeriesRefs.current.get('overlay_bb_lower');
 
-            indicatorSeriesRefs.current.set('overlay_bb_upper', upper);
-            indicatorSeriesRefs.current.set('overlay_bb_lower', lower);
+            if (existingUpper && existingLower && !needsSeriesRecreation) {
+                // Reuse: just update data
+                existingUpper.setData(upperData);
+                existingLower.setData(lowerData);
+            } else {
+                // Create new series
+                if (existingUpper) { try { mainChart.removeSeries(existingUpper); } catch (e) { } indicatorSeriesRefs.current.delete('overlay_bb_upper'); }
+                if (existingLower) { try { mainChart.removeSeries(existingLower); } catch (e) { } indicatorSeriesRefs.current.delete('overlay_bb_lower'); }
+                const upper = mainChart.addSeries(LineSeries, { color: 'blue', lineWidth: 1, title: 'BB Upper' });
+                const lower = mainChart.addSeries(LineSeries, { color: 'blue', lineWidth: 1, title: 'BB Lower' });
+                upper.setData(upperData);
+                lower.setData(lowerData);
+                indicatorSeriesRefs.current.set('overlay_bb_upper', upper);
+                indicatorSeriesRefs.current.set('overlay_bb_lower', lower);
+            }
         } else {
             ['overlay_bb_upper', 'overlay_bb_lower'].forEach(k => {
                 const s = indicatorSeriesRefs.current.get(k);
@@ -985,30 +1109,48 @@ export function LightWeightStockChart({
             signal?.setData(processedData.map((d, i) => ({ time: d.time, value: macdRes.signalLine[i] || NaN })).filter(d => !isNaN(d.value)));
         }
 
-        // --- Bid/Ask Chart Logic ---
+        // --- Bid/Ask Chart Logic (optimized: reuse series on data-only updates) ---
         if (showBidAsk && bidAskChartRef.current) {
             const chart = bidAskChartRef.current;
-            ['bid_line', 'ask_line', 'bidask_spread', 'bidask_std'].forEach(k => {
-                const s = indicatorSeriesRefs.current.get(k);
-                if (s) { try { chart.removeSeries(s); } catch (e) { } indicatorSeriesRefs.current.delete(k); }
-            });
+            // Helper: check if existing series match current mode
+            const bidAskSeriesExist = (mode: string) => {
+                if (mode === 'Line') return indicatorSeriesRefs.current.has('bid_line') && indicatorSeriesRefs.current.has('ask_line');
+                if (mode === 'Spread') return indicatorSeriesRefs.current.has('bidask_spread');
+                if (mode === 'STD') return indicatorSeriesRefs.current.has('bidask_std');
+                return false;
+            };
+            const canReuseBidAsk = !needsSeriesRecreation && bidAskSeriesExist(bidAskMode);
+
+            if (!canReuseBidAsk) {
+                // Clean up old series first
+                ['bid_line', 'ask_line', 'bidask_spread', 'bidask_std'].forEach(k => {
+                    const s = indicatorSeriesRefs.current.get(k);
+                    if (s) { try { chart.removeSeries(s); } catch (e) { } indicatorSeriesRefs.current.delete(k); }
+                });
+            }
 
             if (bidAskMode === 'Line') {
-                const bidSeries = chart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 1, title: 'Bid' });
-                const askSeries = chart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1, title: 'Ask' });
-                bidSeries.setData(processedData.map(d => ({ time: d.time, value: d.bid || d.close })));
-                askSeries.setData(processedData.map(d => ({ time: d.time, value: d.ask || d.close })));
-                indicatorSeriesRefs.current.set('bid_line', bidSeries);
-                indicatorSeriesRefs.current.set('ask_line', askSeries);
+                if (canReuseBidAsk) {
+                    indicatorSeriesRefs.current.get('bid_line')?.setData(processedData.map(d => ({ time: d.time, value: d.bid || d.close })));
+                    indicatorSeriesRefs.current.get('ask_line')?.setData(processedData.map(d => ({ time: d.time, value: d.ask || d.close })));
+                } else {
+                    const bidSeries = chart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 1, title: 'Bid' });
+                    const askSeries = chart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1, title: 'Ask' });
+                    bidSeries.setData(processedData.map(d => ({ time: d.time, value: d.bid || d.close })));
+                    askSeries.setData(processedData.map(d => ({ time: d.time, value: d.ask || d.close })));
+                    indicatorSeriesRefs.current.set('bid_line', bidSeries);
+                    indicatorSeriesRefs.current.set('ask_line', askSeries);
+                }
             } else if (bidAskMode === 'Spread') {
-                const spreadSeries = chart.addSeries(HistogramSeries, { color: '#3b82f6', title: 'Spread' });
-                spreadSeries.setData(processedData.map(d => ({
-                    time: d.time,
-                    value: (d.ask && d.bid) ? d.ask - d.bid : 0
-                })));
-                indicatorSeriesRefs.current.set('bidask_spread', spreadSeries);
+                const spreadData = processedData.map(d => ({ time: d.time, value: (d.ask && d.bid) ? d.ask - d.bid : 0 }));
+                if (canReuseBidAsk) {
+                    indicatorSeriesRefs.current.get('bidask_spread')?.setData(spreadData);
+                } else {
+                    const spreadSeries = chart.addSeries(HistogramSeries, { color: '#3b82f6', title: 'Spread' });
+                    spreadSeries.setData(spreadData);
+                    indicatorSeriesRefs.current.set('bidask_spread', spreadSeries);
+                }
             } else if (bidAskMode === 'STD') {
-                const stdSeries = chart.addSeries(LineSeries, { color: '#8b5cf6', title: 'Spread STD' });
                 const spreads = processedData.map(d => (d.ask && d.bid) ? d.ask - d.bid : 0);
                 const stdData = [];
                 for (let i = 0; i < spreads.length; i++) {
@@ -1018,36 +1160,62 @@ export function LightWeightStockChart({
                     const std = Math.sqrt(sqDiff / slice.length);
                     stdData.push({ time: processedData[i].time, value: std });
                 }
-                stdSeries.setData(stdData);
-                indicatorSeriesRefs.current.set('bidask_std', stdSeries);
+                if (canReuseBidAsk) {
+                    indicatorSeriesRefs.current.get('bidask_std')?.setData(stdData);
+                } else {
+                    const stdSeries = chart.addSeries(LineSeries, { color: '#8b5cf6', title: 'Spread STD' });
+                    stdSeries.setData(stdData);
+                    indicatorSeriesRefs.current.set('bidask_std', stdSeries);
+                }
             }
         }
 
-        // --- Buy/Sell Chart Logic ---
+        // --- Buy/Sell Chart Logic (optimized: reuse series on data-only updates) ---
         if (showBuySell && buySellChartRef.current) {
             const chart = buySellChartRef.current;
-            ['buy_vol', 'sell_vol', 'buysell_spread', 'buysell_std'].forEach(k => {
-                const s = indicatorSeriesRefs.current.get(k);
-                if (s) { try { chart.removeSeries(s); } catch (e) { } indicatorSeriesRefs.current.delete(k); }
-            });
+            const buySellSeriesExist = (mode: string) => {
+                if (mode === 'Line') return indicatorSeriesRefs.current.has('buy_vol') && indicatorSeriesRefs.current.has('sell_vol');
+                if (mode === 'Spread') return indicatorSeriesRefs.current.has('buysell_spread');
+                if (mode === 'STD') return indicatorSeriesRefs.current.has('buysell_std');
+                return false;
+            };
+            const canReuseBuySell = !needsSeriesRecreation && buySellSeriesExist(buySellMode);
+
+            if (!canReuseBuySell) {
+                ['buy_vol', 'sell_vol', 'buysell_spread', 'buysell_std'].forEach(k => {
+                    const s = indicatorSeriesRefs.current.get(k);
+                    if (s) { try { chart.removeSeries(s); } catch (e) { } indicatorSeriesRefs.current.delete(k); }
+                });
+            }
 
             if (buySellMode === 'Line') {
-                const buySeries = chart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 1, title: 'Buy Vol' });
-                const sellSeries = chart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1, title: 'Sell Vol' });
-                buySeries.setData(processedData.map(d => ({ time: d.time, value: d.buyVolume || 0 })));
-                sellSeries.setData(processedData.map(d => ({ time: d.time, value: d.sellVolume || 0 })));
-                indicatorSeriesRefs.current.set('buy_vol', buySeries);
-                indicatorSeriesRefs.current.set('sell_vol', sellSeries);
+                const buyData = processedData.map(d => ({ time: d.time, value: d.buyVolume || 0 }));
+                const sellData = processedData.map(d => ({ time: d.time, value: d.sellVolume || 0 }));
+                if (canReuseBuySell) {
+                    indicatorSeriesRefs.current.get('buy_vol')?.setData(buyData);
+                    indicatorSeriesRefs.current.get('sell_vol')?.setData(sellData);
+                } else {
+                    const buySeries = chart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 1, title: 'Buy Vol' });
+                    const sellSeries = chart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1, title: 'Sell Vol' });
+                    buySeries.setData(buyData);
+                    sellSeries.setData(sellData);
+                    indicatorSeriesRefs.current.set('buy_vol', buySeries);
+                    indicatorSeriesRefs.current.set('sell_vol', sellSeries);
+                }
             } else if (buySellMode === 'Spread') {
-                const spreadSeries = chart.addSeries(HistogramSeries, { title: 'Net Vol' });
-                spreadSeries.setData(processedData.map(d => ({
+                const spreadData = processedData.map(d => ({
                     time: d.time,
                     value: (d.buyVolume || 0) - (d.sellVolume || 0),
                     color: ((d.buyVolume || 0) - (d.sellVolume || 0)) >= 0 ? '#26a69a' : '#ef5350'
-                })));
-                indicatorSeriesRefs.current.set('buysell_spread', spreadSeries);
+                }));
+                if (canReuseBuySell) {
+                    indicatorSeriesRefs.current.get('buysell_spread')?.setData(spreadData);
+                } else {
+                    const spreadSeries = chart.addSeries(HistogramSeries, { title: 'Net Vol' });
+                    spreadSeries.setData(spreadData);
+                    indicatorSeriesRefs.current.set('buysell_spread', spreadSeries);
+                }
             } else if (buySellMode === 'STD') {
-                const stdSeries = chart.addSeries(LineSeries, { color: '#f59e0b', title: 'Vol STD' });
                 const vols = processedData.map(d => d.volume);
                 const stdData = [];
                 for (let i = 0; i < vols.length; i++) {
@@ -1057,8 +1225,13 @@ export function LightWeightStockChart({
                     const std = Math.sqrt(sqDiff / slice.length);
                     stdData.push({ time: processedData[i].time, value: std });
                 }
-                stdSeries.setData(stdData);
-                indicatorSeriesRefs.current.set('buysell_std', stdSeries);
+                if (canReuseBuySell) {
+                    indicatorSeriesRefs.current.get('buysell_std')?.setData(stdData);
+                } else {
+                    const stdSeries = chart.addSeries(LineSeries, { color: '#f59e0b', title: 'Vol STD' });
+                    stdSeries.setData(stdData);
+                    indicatorSeriesRefs.current.set('buysell_std', stdSeries);
+                }
             }
         }
 
@@ -1090,7 +1263,18 @@ export function LightWeightStockChart({
             needsInitialFitRef.current = false; // Don't reset user's view on subsequent live ticks
         }
 
-    }, [data, companyId, chartType, activeIndicators, processData, colors, showBidAsk, bidAskMode, showBuySell, buySellMode, selectedDuration]);
+        // Re-apply autoScale setting after any data update to prevent behavioral reversal
+        // This ensures the lock icon always matches the actual chart behavior
+        mainChart.applyOptions({
+            rightPriceScale: {
+                autoScale: autoScaleLocked,
+            },
+        });
+
+        // Track data length for future optimization comparisons
+        prevDataLengthRef.current = processedData.length;
+
+    }, [data, companyId, chartType, selectedInterval, activeIndicators, processData, colors, showBidAsk, bidAskMode, showBuySell, buySellMode, selectedDuration, autoScaleLocked]);
 
     // --- Prediction Lines ---
     useEffect(() => {
@@ -1234,12 +1418,10 @@ export function LightWeightStockChart({
                     console.log(`📊 [PREDICTIONS] First point: ${new Date((todayPredictions[0].time as number) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
                     console.log(`📊 [PREDICTIONS] Last point: ${new Date((todayPredictions[todayPredictions.length - 1].time as number) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
                     
-                    // Use fitContent to show all data from all series (market data + predictions)
-                    // This will auto-adjust the visible range to include everything
-                    const timeScale = mainChart.timeScale();
-                    timeScale.fitContent();
-                    
-                    console.log(`📏 [PREDICTIONS] Applied fitContent to show all prediction and market data`);
+                    // NOTE: Do NOT call fitContent() here — it would reset the user's
+                    // current zoom/pan position every time predictions are added/updated.
+                    // The chart should stay static and under user control.
+                    console.log(`📏 [PREDICTIONS] Predictions added without disrupting user's chart view`);
                 } else {
                     console.warn('⚠️ [PREDICTIONS] No predictions available for today after filtering');
                 }
@@ -1390,9 +1572,8 @@ export function LightWeightStockChart({
                 }
             }
 
-            if (anySeriesAdded) {
-                mainChart.timeScale().fitContent();
-            }
+            // NOTE: Do NOT call fitContent() when GTT series are added — it would
+            // reset the user's current zoom/pan. The chart should stay static.
 
             console.log(`✅ [GTT PREDICTIONS] Added ${[...indicatorSeriesRefs.current.keys()].filter(k => k.startsWith('gtt_')).length} GTT series to chart`);
         } catch (error) {
@@ -1412,6 +1593,17 @@ export function LightWeightStockChart({
         bidAskChartRef.current?.applyOptions(opts);
         buySellChartRef.current?.applyOptions(opts);
     }, [colors]);
+
+    // Apply autoScale toggle to the main chart's price scale
+    useEffect(() => {
+        if (mainChartRef.current) {
+            mainChartRef.current.applyOptions({
+                rightPriceScale: {
+                    autoScale: autoScaleLocked,
+                },
+            });
+        }
+    }, [autoScaleLocked]);
 
     return (
         <div
@@ -1439,6 +1631,8 @@ export function LightWeightStockChart({
                             key={int.id}
                             onClick={() => { 
                                 setSelectedInterval(int.id); 
+                                needsInitialFitRef.current = true; // Re-fit when interval changes
+                                setAutoScaleLocked(true); // Reset lock to auto-scale for new interval data
                                 onIntervalChange?.(int.id); 
                             }}
                             className={`px-2 py-1 text-xs rounded transition-colors hover:bg-muted/50 ${selectedInterval === int.id ? 'bg-background shadow-sm text-primary font-medium' : 'text-muted-foreground'}`}
@@ -1611,6 +1805,21 @@ export function LightWeightStockChart({
                     </PopoverContent>
                 </Popover>
 
+                {/* Auto-Scale Lock Toggle */}
+                <Button
+                    variant={autoScaleLocked ? "secondary" : "ghost"}
+                    size="sm"
+                    className={`h-8 w-8 p-0 border transition-colors ${
+                        autoScaleLocked
+                            ? 'border-primary/50 bg-primary/10 text-primary hover:bg-primary/20'
+                            : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
+                    }`}
+                    onClick={() => setAutoScaleLocked(prev => !prev)}
+                    title={autoScaleLocked ? 'Auto-scale ON — click to unlock for manual vertical control' : 'Auto-scale OFF — click to lock for auto vertical fitting'}
+                >
+                    {autoScaleLocked ? <Lock size={14} /> : <Unlock size={14} />}
+                </Button>
+
                 <div className="flex-1" />
 
                 {/* Right Side Tools */}
@@ -1673,6 +1882,29 @@ export function LightWeightStockChart({
                                 </div>
                                 <span className="text-xs" style={{ color: chartTheme === 'dark' ? '#a1a1aa' : '#71717a' }}>
                                     Loading historical data
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ★ Left-edge loading spinner — shown when scrolling into area with no data */}
+                    {isLoadingMore && (
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 z-20 pointer-events-none">
+                            <div className="flex flex-col items-center gap-2 px-3 py-3 rounded-lg backdrop-blur-md shadow-lg"
+                                style={{
+                                    backgroundColor: chartTheme === 'dark' ? 'rgba(20, 20, 25, 0.85)' : 'rgba(255, 255, 255, 0.9)',
+                                    border: chartTheme === 'dark' ? '1px solid rgba(63, 63, 70, 0.6)' : '1px solid rgba(228, 228, 231, 0.8)'
+                                }}>
+                                <div className="relative w-6 h-6">
+                                    <div className="w-6 h-6 rounded-full border-2 animate-spin"
+                                        style={{
+                                            borderColor: chartTheme === 'dark' ? 'rgba(167,139,250,0.2)' : 'rgba(124,58,237,0.15)',
+                                            borderTopColor: chartTheme === 'dark' ? '#a78bfa' : '#7c3aed',
+                                        }} />
+                                </div>
+                                <span className="text-[10px] font-medium whitespace-nowrap"
+                                    style={{ color: chartTheme === 'dark' ? '#a1a1aa' : '#71717a' }}>
+                                    Loading…
                                 </span>
                             </div>
                         </div>

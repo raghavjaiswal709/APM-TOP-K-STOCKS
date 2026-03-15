@@ -148,12 +148,18 @@ export const useClusterPattern = (options: UseClusterPatternOptions): ClusterPat
             console.log(`🎉 [CLUSTER] Successfully loaded cluster pattern for ${companyCode}`);
         } catch (err: any) {
             if (err.name === 'AbortError') {
-                console.log('🛑 [CLUSTER] Request aborted');
                 return;
             }
 
-            console.error('❌ [CLUSTER] Error:', err);
-            setError(err.message || 'Failed to fetch cluster pattern');
+            // Silently degrade when the cluster-pattern service (port 8508) is unreachable
+            const msg = err.message || 'Failed to fetch cluster pattern';
+            const isNetworkDown = msg.includes('fetch') || msg.includes('network') || msg.includes('Desirability API error');
+            if (isNetworkDown) {
+                console.warn(`⚠️ [CLUSTER] Service unavailable for ${companyCode} – showing empty state`);
+            } else {
+                console.warn(`⚠️ [CLUSTER] ${msg}`);
+            }
+            setError(msg);
             setLoading(false);
         }
     }, [enabled, symbol, exchange, method, extractCompanyCode]);

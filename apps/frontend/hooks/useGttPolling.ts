@@ -60,7 +60,8 @@ export const useGttPolling = (config: GttPollingConfig) => {
                 const errorMessage = err.message || 'Failed to fetch GTT predictions';
                 setError(errorMessage);
                 onError?.(errorMessage);
-                console.error(`❌ [useGttPolling] Error:`, errorMessage);
+                // Downgrade to warn – GTT engine being unavailable is expected in dev
+                console.warn(`⚠️ [useGttPolling] ${errorMessage}`);
             }
         } finally {
             if (mountedRef.current) {
