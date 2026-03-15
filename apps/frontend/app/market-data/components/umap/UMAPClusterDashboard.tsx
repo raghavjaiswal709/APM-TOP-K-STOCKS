@@ -177,7 +177,8 @@ export default function UMAPClusterDashboard({ initialSymbol = 'RELIANCE' }: { i
       <div className="max-w-[1800px] mx-auto px-4 py-4 space-y-4">
         {/* Row 1: Overview Metrics */}
         {a && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {/* Confidence - commented out (shows N/A)
             <MetricCard
               label="Confidence"
               value={a.confidence_consistency ? `${(a.confidence_consistency.rolling_confidence * 100).toFixed(0)}%` : 'N/A'}
@@ -185,6 +186,8 @@ export default function UMAPClusterDashboard({ initialSymbol = 'RELIANCE' }: { i
               icon={Shield}
               color="text-violet-400"
             />
+            */}
+            {/* Consistency - commented out (shows N/A)
             <MetricCard
               label="Consistency"
               value={a.confidence_consistency ? `${a.confidence_consistency.rolling_consistency_pct.toFixed(0)}%` : 'N/A'}
@@ -192,6 +195,7 @@ export default function UMAPClusterDashboard({ initialSymbol = 'RELIANCE' }: { i
               icon={Target}
               color="text-emerald-400"
             />
+            */}
             <MetricCard
               label="Noise"
               value={a.noise ? `${(a.noise.rolling_noise_fraction * 100).toFixed(0)}%` : 'N/A'}
