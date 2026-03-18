@@ -16,7 +16,8 @@ import {
     RefreshCw,
     Sparkles,
     Brain,
-    Activity
+    Activity,
+    Building2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -342,6 +343,21 @@ export function CompanyList({
         const timer = setTimeout(fetchUmapData, 1500);
         return () => clearTimeout(timer);
     }, [companies]);
+
+    // ─── Sector map: fetch once on mount (static data, never changes per session) ─
+    const [sectorMap, setSectorMap] = React.useState<Record<string, string>>({});
+    const sectorLoadedRef = React.useRef(false);
+
+    React.useEffect(() => {
+        if (sectorLoadedRef.current) return;
+        sectorLoadedRef.current = true;
+        fetch('/api/watchlist/sectors', { cache: 'force-cache' })
+            .then(r => r.ok ? r.json() : {})
+            .then((data: Record<string, string>) => {
+                setSectorMap(data);
+            })
+            .catch(() => { /* silently ignore — sector tag simply won't show */ });
+    }, []);
 
     // Merge parent-provided maps with locally fetched maps
     const mergedDesirabilityMap = React.useMemo(() => ({
@@ -709,7 +725,8 @@ export function CompanyList({
                             const companyDesirability = mergedDesirabilityMap[company.company_code];
                             const companySentiment = mergedSentimentMap[company.company_code];
                             const desirabilityStyle = getDesirabilityColor(companyDesirability?.score);
-                            
+                            const companySector = sectorMap[company.company_code] ?? null;
+
                             // Check prediction availability
                             const hasPrediction = hasRegularPrediction(company.company_code);
                             const hasGtt = hasGttPrediction(company.company_code);
@@ -853,6 +870,21 @@ export function CompanyList({
                                                 <div className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-zinc-500/20 text-zinc-400">
                                                     {company.marker}
                                                 </div>
+                                            )}
+
+                                            {/* Sector Badge */}
+                                            {companySector && (
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-violet-500/15 text-violet-300">
+                                                            <Building2 className="h-2.5 w-2.5" />
+                                                            {companySector}
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="bottom" className="text-xs">
+                                                        Sector: {companySector}
+                                                    </TooltipContent>
+                                                </Tooltip>
                                             )}
                                         </div>
 

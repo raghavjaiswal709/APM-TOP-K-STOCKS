@@ -67,9 +67,14 @@ export function usePortfolio(): UsePortfolioReturn {
     }
   }, []);
 
+  // On mount: load exclusively from backend (source of truth).
+  // Keep loading=true until backend responds so we never flash empty/stale state.
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    setLoading(true);
+    portfolioService.loadFromBackend().then(() => {
+      refresh();
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Enter market (BUY)
   const enterMarket = useCallback((entry: TradeEntry): Trade | null => {

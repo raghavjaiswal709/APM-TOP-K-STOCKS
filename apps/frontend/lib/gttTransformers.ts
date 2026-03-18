@@ -148,18 +148,25 @@ export type HorizonKey = typeof ALL_HORIZON_KEYS[number];
 /** Offset minutes for each horizon index (H1=+15, H2=+30, ..., H5=+75) */
 const HORIZON_OFFSET_MINUTES = [15, 30, 45, 60, 75];
 
-/** Display config for each horizon line */
+/** Display config for each horizon line.
+ *  Each horizon gets a DISTINCT HUE (not just shades of one colour):
+ *  H1=orange, H2=amber, H3=emerald, H4=sky-blue, H5=violet
+ *  S1 = solid,  brighter variant  (primary model)
+ *  S2 = dashed, softer variant    (secondary model)
+ */
 export const HORIZON_LINE_CONFIG: Record<string, { label: string; color: string; style: 'solid' | 'dashed' | 'dotted'; group: 'S1' | 'S2' }> = {
-    S1_H1_pred: { label: 'S1 H1 (+15m)', color: '#9c27b0', style: 'solid', group: 'S1' },
-    S1_H2_pred: { label: 'S1 H2 (+30m)', color: '#ab47bc', style: 'solid', group: 'S1' },
-    S1_H3_pred: { label: 'S1 H3 (+45m)', color: '#ba68c8', style: 'solid', group: 'S1' },
-    S1_H4_pred: { label: 'S1 H4 (+60m)', color: '#ce93d8', style: 'solid', group: 'S1' },
-    S1_H5_pred: { label: 'S1 H5 (+75m)', color: '#e1bee7', style: 'solid', group: 'S1' },
-    S2_H1_pred: { label: 'S2 H1 (+15m)', color: '#00bcd4', style: 'dashed', group: 'S2' },
-    S2_H2_pred: { label: 'S2 H2 (+30m)', color: '#26c6da', style: 'dashed', group: 'S2' },
-    S2_H3_pred: { label: 'S2 H3 (+45m)', color: '#4dd0e1', style: 'dashed', group: 'S2' },
-    S2_H4_pred: { label: 'S2 H4 (+60m)', color: '#80deea', style: 'dashed', group: 'S2' },
-    S2_H5_pred: { label: 'S2 H5 (+75m)', color: '#b2ebf2', style: 'dashed', group: 'S2' },
+    // S1 — solid lines, distinct hues at 60% opacity (clearly visible primary predictions)
+    S1_H1_pred: { label: 'S1 H1 +15m', color: 'rgba(249, 115,  22, 0.60)', style: 'solid',  group: 'S1' }, // orange
+    S1_H2_pred: { label: 'S1 H2 +30m', color: 'rgba(234, 179,   8, 0.60)', style: 'solid',  group: 'S1' }, // amber
+    S1_H3_pred: { label: 'S1 H3 +45m', color: 'rgba( 34, 197,  94, 0.60)', style: 'solid',  group: 'S1' }, // emerald
+    S1_H4_pred: { label: 'S1 H4 +60m', color: 'rgba( 56, 189, 248, 0.60)', style: 'solid',  group: 'S1' }, // sky-blue
+    S1_H5_pred: { label: 'S1 H5 +75m', color: 'rgba(168,  85, 247, 0.60)', style: 'solid',  group: 'S1' }, // violet
+    // S2 — dashed lines at 42% opacity (softer secondary reference)
+    S2_H1_pred: { label: 'S2 H1 +15m', color: 'rgba(253, 186, 116, 0.42)', style: 'dashed', group: 'S2' }, // soft orange
+    S2_H2_pred: { label: 'S2 H2 +30m', color: 'rgba(253, 224,  71, 0.42)', style: 'dashed', group: 'S2' }, // soft amber
+    S2_H3_pred: { label: 'S2 H3 +45m', color: 'rgba(134, 239, 172, 0.42)', style: 'dashed', group: 'S2' }, // soft emerald
+    S2_H4_pred: { label: 'S2 H4 +60m', color: 'rgba(125, 211, 252, 0.42)', style: 'dashed', group: 'S2' }, // soft sky-blue
+    S2_H5_pred: { label: 'S2 H5 +75m', color: 'rgba(216, 180, 254, 0.42)', style: 'dashed', group: 'S2' }, // soft violet
 };
 
 /**

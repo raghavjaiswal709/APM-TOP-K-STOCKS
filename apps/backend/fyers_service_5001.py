@@ -57,6 +57,8 @@ ohlc_data = {}                # All OHLC data for all symbols
 chart_updates = {}            # Real-time updates for all symbols
 active_symbols = set()        # All symbols currently being tracked
 symbol_subscriptions = defaultdict(int)  # Count of clients per symbol
+# Track last seen vol_traded_today per symbol to compute per-tick delta volume
+prev_vol_traded_today = {}     # symbol -> last cumulative vol_traded_today value
 
 MAX_HISTORY_POINTS = 50000    # Increased from 10000 for longer retention
 MAX_CHART_UPDATES = 5000      # Keep more chart updates
@@ -921,25 +923,36 @@ def update_ohlc_data(symbol, data_point):
 
     timestamp = data_point['timestamp']
     price = data_point['ltp']
+    # vol_traded_today is Fyers cumulative daily volume — we need the per-tick DELTA
+    cumulative_vol = data_point.get('volume', 0) or 0
+
+    # Compute delta volume vs the previous tick for this symbol
+    prev_vol = prev_vol_traded_today.get(symbol)
+    if prev_vol is None:
+        # First tick ever for this symbol — no previous reference; delta = 0
+        delta_vol = 0
+    else:
+        delta_vol = max(0, cumulative_vol - prev_vol)
+    prev_vol_traded_today[symbol] = cumulative_vol
 
     minute_timestamp = (timestamp // 60) * 60
 
     if not ohlc_data[symbol] or ohlc_data[symbol][-1]['timestamp'] < minute_timestamp:
+        # New candle — volume starts from delta_vol for this first tick
         ohlc_data[symbol].append({
             'timestamp': minute_timestamp,
             'open': price,
             'high': price,
             'low': price,
             'close': price,
-            'volume': data_point.get('volume', 0)
+            'volume': delta_vol
         })
     else:
         current_candle = ohlc_data[symbol][-1]
         current_candle['high'] = max(current_candle['high'], price)
         current_candle['low'] = min(current_candle['low'], price)
         current_candle['close'] = price
-        # ✅ CRITICAL FIX: Accumulate volume instead of replacing it
-        current_candle['volume'] += data_point.get('volume', 0)
+        current_candle['volume'] += delta_vol
 
 
 def calculate_indicators_optimized(symbol, init=False):

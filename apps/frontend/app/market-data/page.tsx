@@ -66,6 +66,8 @@ import { Zap } from 'lucide-react';
 // Prediction Integration
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
 import { useGttPolling } from '@/hooks/useGttPolling';
+import { useGttCountdown } from '@/hooks/useGttCountdown';
+import { usePredictionCountdown } from '@/hooks/usePredictionCountdown';
 import { transformGttToChartPredictions, ALL_HORIZON_KEYS, HORIZON_LINE_CONFIG } from '@/lib/gttTransformers';
 import AIPredictionsDashboard from './components/AIPredictionsDashboard';
 import { LiveDataDashboard } from './components/LiveDataDashboard';
@@ -249,6 +251,11 @@ const MarketDataPage: React.FC = () => {
   );
   const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
   const [predictionsOutdated, setPredictionsOutdated] = useState<boolean>(false);
+
+  // Live countdown to the next GTT prediction cycle (ticks every second)
+  const gttCountdown = useGttCountdown();
+  // Live countdown to the next regular prediction fetch (every 5 min, ticks every second)
+  const predCountdown = usePredictionCountdown();
 
   // Market Data State with persistence for seamless navigation
   const [marketData, setMarketData] = usePersistentState<Record<string, MarketData>>(
@@ -1159,7 +1166,14 @@ const MarketDataPage: React.FC = () => {
       if (existingCandle) {
         // Update existing candle
         // Calculate volume delta: current cumulative - cumulative at start of this minute
-        const startOfMinuteVolume = symbolVolumeMap.get(minuteTs) || cumulativeVolume;
+        if (!symbolVolumeMap.has(minuteTs)) {
+          // First real-time tick for a historically-loaded candle.
+          // Use a "virtual" start = (cumulativeVolume - historicalVolume) so that
+          // volumeDelta on this tick equals historicalVolume (preserving it), and
+          // subsequent ticks correctly accumulate on top of it.
+          symbolVolumeMap.set(minuteTs, cumulativeVolume - (existingCandle.volume ?? 0));
+        }
+        const startOfMinuteVolume = symbolVolumeMap.get(minuteTs)!;
         const volumeDelta = Math.max(0, cumulativeVolume - startOfMinuteVolume);
 
         candleMap.set(minuteTs, {
@@ -1291,13 +1305,39 @@ const MarketDataPage: React.FC = () => {
       const existingCandles = prev[data.symbol] || [];
       const candleMap = new Map<number, OHLCData>();
 
+      // Safeguard: detect cumulative (staircase) volume pattern in incoming candles.
+      // Fyers sends vol_traded_today (cumulative daily total). If the backend failed
+      // to compute deltas, volumes will be strictly monotonically increasing across
+      // candles — convert them to per-candle deltas before storing.
+      let sanitizedCandles = data.data;
+      if (data.data.length >= 5) {
+        const sorted = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
+        // Cumulative volume NEVER decreases (volume only goes up through the day).
+        // Per-candle volume goes up AND down (~40-60% of consecutive pairs decrease).
+        // Count strictly-decreasing consecutive pairs: ≤5% → cumulative; >5% → per-candle.
+        // This is far more reliable than the old "≥70% increasing" check, which failed
+        // when many zero-volume candles (equal pairs, not "increasing") were present.
+        let decreasingCount = 0;
+        for (let i = 1; i < sorted.length; i++) {
+          if ((sorted[i].volume ?? 0) < (sorted[i - 1].volume ?? 0)) decreasingCount++;
+        }
+        const isCumulative = decreasingCount <= Math.ceil(sorted.length * 0.05); // ≤5% decreasing
+        if (isCumulative) {
+          console.warn(`📊 [handleOhlcData] Detected cumulative volume pattern for ${data.symbol} (${decreasingCount}/${sorted.length - 1} decreasing pairs) — converting to deltas`);
+          sanitizedCandles = sorted.map((candle, i) => {
+            const prevVol = i === 0 ? 0 : (sorted[i - 1].volume ?? 0);
+            return { ...candle, volume: Math.max(0, (candle.volume ?? 0) - prevVol) };
+          });
+        }
+      }
+
       // Add existing candles first (historical backfill)
       existingCandles.forEach(candle => {
         candleMap.set(candle.timestamp, candle);
       });
 
-      // Add/update with new candles (real-time takes priority)
-      data.data.forEach(candle => {
+      // Add/update with sanitized candles (real-time takes priority)
+      sanitizedCandles.forEach(candle => {
         candleMap.set(candle.timestamp, candle);
       });
 
@@ -2258,7 +2298,7 @@ const MarketDataPage: React.FC = () => {
                         ? predictionsOutdated
                           ? 'bg-red-600 text-white hover:bg-red-700'
                           : 'bg-[#dbeafe] text-blue-600 hover:bg-[#cddcfe]'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
                         }`}
                     >
                       {predictionsOutdated && showPredictions ? (
@@ -2267,6 +2307,23 @@ const MarketDataPage: React.FC = () => {
                         <Activity className="h-3.5 w-3.5" />
                       )}
                       {showPredictions ? 'Predictions ON' : 'Predictions OFF'}
+                      {/* Countdown to next prediction fetch — only when server is available AND predictions are ON */}
+                      {predCountdown.inMarketHours && showPredictions && predictionServiceHealth === 'available' && (
+                        <span
+                          className={`font-mono text-[10px] tabular-nums leading-none px-1 py-0.5 rounded ${
+                            predCountdown.seconds <= 30
+                              ? 'bg-amber-400/30 text-amber-600 dark:text-amber-200'   // urgent: < 30s
+                              : predCountdown.seconds <= 90
+                              ? 'bg-blue-400/20 text-blue-500 dark:text-blue-300'      // soon: < 90s
+                              : showPredictions
+                              ? 'text-blue-500/60 dark:text-blue-300/60'               // normal, ON
+                              : 'text-gray-500 dark:text-gray-400'                     // normal, OFF
+                          }`}
+                          title={`Next prediction fetch at ${predCountdown.nextPredictionTime} IST`}
+                        >
+                          {predCountdown.formatted}
+                        </span>
+                      )}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white max-w-xs">
@@ -2327,6 +2384,23 @@ const MarketDataPage: React.FC = () => {
                 >
                   <Zap className="h-3.5 w-3.5" />
                   {isGttEnabled ? 'GTT ON' : 'GTT OFF'}
+                  {/* Countdown to next prediction — only shown during market hours */}
+                  {gttCountdown.inMarketHours && (
+                    <span
+                      className={`font-mono text-[10px] tabular-nums leading-none px-1 py-0.5 rounded ${
+                        gttCountdown.seconds <= 60
+                          ? 'bg-amber-400/30 text-amber-200'          // urgent: < 1 min
+                          : gttCountdown.seconds <= 180
+                          ? 'bg-purple-400/20 text-purple-200'        // soon: < 3 min
+                          : isGttEnabled
+                          ? 'text-purple-200/60'                      // normal, GTT ON
+                          : 'text-gray-500 dark:text-gray-400'        // normal, GTT OFF
+                      }`}
+                      title={`Next GTT prediction at ${gttCountdown.nextPredictionTime} IST`}
+                    >
+                      {gttCountdown.formatted}
+                    </span>
+                  )}
                 </button>
                 {/* Dropdown arrow — opens control panel */}
                 <Popover>
@@ -2391,7 +2465,7 @@ const MarketDataPage: React.FC = () => {
                                 ALL_HORIZON_KEYS.filter(k => k.startsWith('S1_')).forEach(k => { newVis[k] = !allS1On; });
                                 setGttHorizonVisibility(newVis);
                               }}
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 font-medium"
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 font-medium"
                             >
                               {ALL_HORIZON_KEYS.filter(k => k.startsWith('S1_')).every(k => gttHorizonVisibility[k] !== false) ? 'Hide' : 'Show'} All S1
                             </button>
@@ -2402,14 +2476,14 @@ const MarketDataPage: React.FC = () => {
                                 ALL_HORIZON_KEYS.filter(k => k.startsWith('S2_')).forEach(k => { newVis[k] = !allS2On; });
                                 setGttHorizonVisibility(newVis);
                               }}
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 font-medium"
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 font-medium"
                             >
                               {ALL_HORIZON_KEYS.filter(k => k.startsWith('S2_')).every(k => gttHorizonVisibility[k] !== false) ? 'Hide' : 'Show'} All S2
                             </button>
                           </div>
 
                           {/* S1 horizons */}
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">S1 Model (Purple)</p>
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">S1 Model — Solid</p>
                           {ALL_HORIZON_KEYS.filter(k => k.startsWith('S1_')).map(hk => {
                             const cfg = HORIZON_LINE_CONFIG[hk];
                             return (
@@ -2429,7 +2503,7 @@ const MarketDataPage: React.FC = () => {
                           })}
 
                           {/* S2 horizons */}
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-2">S2 Model (Cyan)</p>
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-2">S2 Model — Dashed</p>
                           {ALL_HORIZON_KEYS.filter(k => k.startsWith('S2_')).map(hk => {
                             const cfg = HORIZON_LINE_CONFIG[hk];
                             return (
@@ -2452,7 +2526,7 @@ const MarketDataPage: React.FC = () => {
                           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-2">Anchor</p>
                           <label className="flex items-center justify-between py-0.5 px-2 rounded hover:bg-muted/50 cursor-pointer">
                             <span className="flex items-center gap-2 text-xs">
-                              <span className="w-3 h-0.5 inline-block rounded" style={{ borderBottom: '2px dotted #4caf50' }} />
+                              <span className="w-3 h-0.5 inline-block rounded" style={{ borderBottom: '2px dotted #64748b' }} />
                               Input Close
                             </span>
                             <input
@@ -2534,7 +2608,7 @@ const MarketDataPage: React.FC = () => {
                     height="100%"
                     className="w-full h-full"
                     theme={theme === 'light' ? 'light' : 'dark'}
-                    defaultChartType="line"
+                    defaultChartType="candlestick"
                     predictions={predictionServiceHealth === 'available' ? predictions : null}
                     showPredictions={showPredictions && predictionServiceHealth === 'available'}
                     gttPredictions={gttServiceHealth === 'available' ? gttChartData : null}

@@ -20,8 +20,8 @@ import {
 } from 'lightweight-charts';
 import {
     Settings,
-    Sun,
-    Moon,
+    Eye,
+    EyeOff,
     Maximize2,
     Minimize2,
     RotateCcw,
@@ -175,7 +175,7 @@ export function LightWeightStockChart({
     error = null,
     height = '100%',
     theme = 'dark',
-    defaultChartType = 'line',
+    defaultChartType = 'candlestick',
     onThemeChange,
     onIntervalChange,
     onRangeChange,
@@ -194,7 +194,8 @@ export function LightWeightStockChart({
     const [selectedInterval, setSelectedInterval] = useState(interval);
     const [selectedDuration, setSelectedDuration] = useState('full');
     const [isFullscreen, setIsFullscreen] = useState(false);
-    const [chartTheme, setChartTheme] = useState<'light' | 'dark'>(theme);
+    // GTT labels visibility — toggles lastValueVisible on all GTT series
+    const [showGttLabels, setShowGttLabels] = useState(true);
 
     // Separate View Modal State
     const [isSeparatorModalOpen, setIsSeparatorModalOpen] = useState(false);
@@ -204,10 +205,6 @@ export function LightWeightStockChart({
         setSelectedInterval(interval);
     }, [interval]);
 
-    // Sync theme prop with local state
-    useEffect(() => {
-        setChartTheme(theme);
-    }, [theme]);
 
     // Analysis State
     const [showBidAsk, setShowBidAsk] = useState(false);
@@ -216,8 +213,9 @@ export function LightWeightStockChart({
 
     const [buySellMode, setBuySellMode] = useState<'Line' | 'Spread' | 'STD'>('Line');
 
-    // Auto-scale lock: when locked (true) = chart auto-adjusts vertical axis (default behavior)
+    // Auto-scale lock: when locked (true) = chart auto-adjusts vertical axis
     // When unlocked (false) = user has full manual control of the vertical price scale
+    // Default: true (locked) — chart auto-fits vertical scale by default
     const [autoScaleLocked, setAutoScaleLocked] = useState(true);
 
     // Tooltip State
@@ -241,6 +239,8 @@ export function LightWeightStockChart({
 
     // Indicator Series Refs need to be tracked to remove/update
     const indicatorSeriesRefs = useRef<Map<string, ISeriesApi<any>>>(new Map());
+    // Original titles for GTT series — used to restore when eye icon is toggled back on
+    const gttSeriesTitlesRef = useRef<Map<string, string>>(new Map());
     
     // Prediction markers plugin ref (LightweightCharts v5.x uses createSeriesMarkers)
     const predictionMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
@@ -261,6 +261,21 @@ export function LightWeightStockChart({
     
     // Track whether this is the first data load (or after company change) to avoid resetting user's zoom/pan on live updates
     const needsInitialFitRef = useRef<boolean>(true);
+
+    // Toggle lastValueVisible AND title on all GTT series whenever showGttLabels changes.
+    // In lightweight-charts v5, the colored title badge on the right axis is a SEPARATE
+    // visual from the price number — both must be cleared to fully hide the labels.
+    useEffect(() => {
+        indicatorSeriesRefs.current.forEach((series, key) => {
+            if (key.startsWith('gtt_')) {
+                const originalTitle = gttSeriesTitlesRef.current.get(key) ?? '';
+                series.applyOptions({
+                    lastValueVisible: showGttLabels,
+                    title: showGttLabels ? originalTitle : '',
+                });
+            }
+        });
+    }, [showGttLabels]);
 
     // Data processing helper with validation
     const processData = useCallback((rawData: StockDataPoint[]) => {
@@ -299,16 +314,16 @@ export function LightWeightStockChart({
 
     // Theme Colors
     const colors = useMemo(() => ({
-        bg: chartTheme === 'dark' ? CHART_BG_DARK : CHART_BG_LIGHT,
-        text: chartTheme === 'dark' ? TEXT_COLOR_DARK : TEXT_COLOR_LIGHT,
-        grid: chartTheme === 'dark' ? GRID_COLOR_DARK : GRID_COLOR_LIGHT,
+        bg: theme === 'dark' ? CHART_BG_DARK : CHART_BG_LIGHT,
+        text: theme === 'dark' ? TEXT_COLOR_DARK : TEXT_COLOR_LIGHT,
+        grid: theme === 'dark' ? GRID_COLOR_DARK : GRID_COLOR_LIGHT,
         up: '#26a69a',
         down: '#ef5350',
         wickUp: '#26a69a',
         wickDown: '#ef5350',
         transparent: 'rgba(0,0,0,0)',
-        border: chartTheme === 'dark' ? '#2a2e39' : '#e0e3eb',
-    }), [chartTheme]);
+        border: theme === 'dark' ? '#2a2e39' : '#e0e3eb',
+    }), [theme]);
 
     // Zoom Mode Handler - Apply visible range based on selected interval
     const applyDurationZoom = useCallback((durationId: string) => {
@@ -842,7 +857,7 @@ export function LightWeightStockChart({
                 gttPredictionMarkersRef.current = null;
             }
             // Remove overlay indicator series that live on the main chart
-            const keysToRemove = ['overlay_ma_20', 'overlay_ma_50', 'overlay_bb_upper', 'overlay_bb_lower', 'prediction_line', 'gtt_input_close_line'];
+            const keysToRemove = ['overlay_ma_20', 'overlay_ma_50', 'overlay_ema_9', 'overlay_ema_21', 'overlay_bb_upper', 'overlay_bb_lower', 'prediction_line', 'gtt_input_close_line'];
             // Also remove all per-horizon GTT series
             ALL_HORIZON_KEYS.forEach(hk => keysToRemove.push(`gtt_${hk}`));
             keysToRemove.forEach(k => {
@@ -1058,6 +1073,34 @@ export function LightWeightStockChart({
             });
         }
 
+        if (activeIndicators.includes('ema')) {
+            const emaConfigs: Array<{ period: number; color: string }> = [
+                { period: 9,  color: '#818cf8' }, // indigo
+                { period: 21, color: '#fb923c' }, // orange
+            ];
+            emaConfigs.forEach(({ period, color }) => {
+                const key = `overlay_ema_${period}`;
+                const ema = calculateEMA(closePrices, period);
+                const emaData = processedData
+                    .map((d, i) => ({ time: d.time, value: ema[i] ?? NaN }))
+                    .filter(d => !isNaN(d.value));
+                const existing = indicatorSeriesRefs.current.get(key);
+                if (existing && !needsSeriesRecreation) {
+                    existing.setData(emaData);
+                } else {
+                    if (existing) { try { mainChart.removeSeries(existing); } catch (e) { } indicatorSeriesRefs.current.delete(key); }
+                    const series = mainChart.addSeries(LineSeries, { color, lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: `EMA ${period}` });
+                    series.setData(emaData);
+                    indicatorSeriesRefs.current.set(key, series);
+                }
+            });
+        } else {
+            ['overlay_ema_9', 'overlay_ema_21'].forEach(k => {
+                const s = indicatorSeriesRefs.current.get(k);
+                if (s) { try { mainChart.removeSeries(s); } catch (e) { } indicatorSeriesRefs.current.delete(k); }
+            });
+        }
+
         if (activeIndicators.includes('bollinger')) {
             const bb = calculateBollinger(closePrices);
             const upperData = processedData.map((d, i) => ({ time: d.time, value: bb.upper[i] || NaN })).filter(d => !isNaN(d.value));
@@ -1074,8 +1117,8 @@ export function LightWeightStockChart({
                 // Create new series
                 if (existingUpper) { try { mainChart.removeSeries(existingUpper); } catch (e) { } indicatorSeriesRefs.current.delete('overlay_bb_upper'); }
                 if (existingLower) { try { mainChart.removeSeries(existingLower); } catch (e) { } indicatorSeriesRefs.current.delete('overlay_bb_lower'); }
-                const upper = mainChart.addSeries(LineSeries, { color: 'blue', lineWidth: 1, title: 'BB Upper' });
-                const lower = mainChart.addSeries(LineSeries, { color: 'blue', lineWidth: 1, title: 'BB Lower' });
+                const upper = mainChart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB Upper' });
+                const lower = mainChart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB Lower' });
                 upper.setData(upperData);
                 lower.setData(lowerData);
                 indicatorSeriesRefs.current.set('overlay_bb_upper', upper);
@@ -1521,17 +1564,20 @@ export function LightWeightStockChart({
                 const cfg = HORIZON_LINE_CONFIG[hk];
                 if (!cfg) continue;
 
+                const seriesKey = `gtt_${hk}`;
+                // Store original title so we can restore it when eye icon is toggled back on
+                gttSeriesTitlesRef.current.set(seriesKey, cfg.label);
                 const lineSeries = mainChart.addSeries(LineSeries, {
                     color: cfg.color,
-                    lineWidth: 2,
+                    lineWidth: 1,
                     lineStyle: styleMap[cfg.style] ?? LineStyle.Solid,
-                    crosshairMarkerVisible: true,
-                    lastValueVisible: false,
+                    crosshairMarkerVisible: false,
+                    lastValueVisible: showGttLabels,
                     priceLineVisible: false,
-                    title: cfg.label,
+                    title: showGttLabels ? cfg.label : '',
                 });
                 lineSeries.setData(points);
-                indicatorSeriesRefs.current.set(`gtt_${hk}`, lineSeries);
+                indicatorSeriesRefs.current.set(seriesKey, lineSeries);
                 anySeriesAdded = true;
             }
 
@@ -1539,36 +1585,20 @@ export function LightWeightStockChart({
             if (gttHorizonVisibility['input_close'] !== false && gttPredictions.inputClosePredictions) {
                 const icPoints = toChartPoints(gttPredictions.inputClosePredictions);
                 if (icPoints.length > 0) {
+                    const icKey = 'gtt_input_close_line';
+                    gttSeriesTitlesRef.current.set(icKey, 'In.Close');
                     const icSeries = mainChart.addSeries(LineSeries, {
-                        color: '#4caf50',
-                        lineWidth: 2,
+                        color: 'rgba(100, 116, 139, 0.60)',
+                        lineWidth: 1,
                         lineStyle: LineStyle.Dotted,
-                        crosshairMarkerVisible: true,
-                        lastValueVisible: false,
+                        crosshairMarkerVisible: false,
+                        lastValueVisible: showGttLabels,
                         priceLineVisible: false,
-                        title: 'Input Close',
+                        title: showGttLabels ? 'In.Close' : '',
                     });
                     icSeries.setData(icPoints);
-                    indicatorSeriesRefs.current.set('gtt_input_close_line', icSeries);
+                    indicatorSeriesRefs.current.set(icKey, icSeries);
                     anySeriesAdded = true;
-                }
-            }
-
-            // Add markers on S1_H1 (primary model) for emphasis
-            if (gttHorizonVisibility['S1_H1_pred'] !== false) {
-                const s1h1Series = indicatorSeriesRefs.current.get('gtt_S1_H1_pred');
-                if (s1h1Series && gttPredictions.horizonLines?.['S1_H1_pred']) {
-                    const pts = toChartPoints(gttPredictions.horizonLines['S1_H1_pred']);
-                    const markers = pts.map(p => ({
-                        time: p.time,
-                        position: 'inBar' as const,
-                        color: '#9c27b0',
-                        shape: 'square' as const,
-                        size: 1,
-                    }));
-                    if (markers.length > 0) {
-                        gttPredictionMarkersRef.current = createSeriesMarkers(s1h1Series, markers);
-                    }
                 }
             }
 
@@ -1834,14 +1864,6 @@ export function LightWeightStockChart({
                     <RotateCcw size={14} />
                 </Button>
 
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-                    const newTheme = chartTheme === 'dark' ? 'light' : 'dark';
-                    setChartTheme(newTheme);
-                    onThemeChange?.(newTheme);
-                }} title="Toggle Theme">
-                    {chartTheme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-                </Button>
-
                 {/* Separate View Button - Hidden when modal is already open */}
                 {!isSeparatorModalOpen && (
                 <Button
@@ -1864,23 +1886,39 @@ export function LightWeightStockChart({
             {/* Charts Layout */}
             <div className="flex-1 flex flex-col min-h-0 w-full relative">
                 <div className="flex-1 relative w-full h-full min-h-0" ref={mainChartContainerRef}>
+                    {/* GTT Labels Eye Toggle — floating overlay inside chart, top-right */}
+                    <div className="absolute top-2 right-14 z-10">
+                        <Button
+                            variant={showGttLabels ? "secondary" : "ghost"}
+                            size="sm"
+                            className={`h-7 w-7 p-0 border transition-colors shadow-sm backdrop-blur-sm ${
+                                showGttLabels
+                                    ? 'border-violet-500/50 bg-violet-500/15 text-violet-400 hover:bg-violet-500/25'
+                                    : 'border-border/40 bg-background/60 text-muted-foreground hover:border-border hover:text-foreground'
+                            }`}
+                            onClick={() => setShowGttLabels(prev => !prev)}
+                            title={showGttLabels ? 'Hide GTT right-axis labels' : 'Show GTT right-axis labels'}
+                        >
+                            {showGttLabels ? <Eye size={13} /> : <EyeOff size={13} />}
+                        </Button>
+                    </div>
                     {/* Loading status badge - minimal, non-intrusive */}
                     {loading && (
                         <div className="absolute top-3 left-3 z-20 pointer-events-none">
                             <div className="flex items-center gap-2 px-3 py-1.5 rounded-md backdrop-blur-sm"
                                 style={{
-                                    backgroundColor: chartTheme === 'dark' ? 'rgba(39, 39, 42, 0.9)' : 'rgba(244, 244, 245, 0.9)',
-                                    border: chartTheme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(228, 228, 231, 0.8)'
+                                    backgroundColor: theme === 'dark' ? 'rgba(39, 39, 42, 0.9)' : 'rgba(244, 244, 245, 0.9)',
+                                    border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(228, 228, 231, 0.8)'
                                 }}>
                                 <div className="flex gap-1">
                                     <div className="w-1.5 h-1.5 rounded-full animate-pulse"
-                                        style={{ backgroundColor: chartTheme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '0ms' }} />
+                                        style={{ backgroundColor: theme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '0ms' }} />
                                     <div className="w-1.5 h-1.5 rounded-full animate-pulse"
-                                        style={{ backgroundColor: chartTheme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '150ms' }} />
+                                        style={{ backgroundColor: theme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '150ms' }} />
                                     <div className="w-1.5 h-1.5 rounded-full animate-pulse"
-                                        style={{ backgroundColor: chartTheme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '300ms' }} />
+                                        style={{ backgroundColor: theme === 'dark' ? '#71717a' : '#a1a1aa', animationDelay: '300ms' }} />
                                 </div>
-                                <span className="text-xs" style={{ color: chartTheme === 'dark' ? '#a1a1aa' : '#71717a' }}>
+                                <span className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#71717a' }}>
                                     Loading historical data
                                 </span>
                             </div>
@@ -1892,18 +1930,18 @@ export function LightWeightStockChart({
                         <div className="absolute left-3 top-1/2 -translate-y-1/2 z-20 pointer-events-none">
                             <div className="flex flex-col items-center gap-2 px-3 py-3 rounded-lg backdrop-blur-md shadow-lg"
                                 style={{
-                                    backgroundColor: chartTheme === 'dark' ? 'rgba(20, 20, 25, 0.85)' : 'rgba(255, 255, 255, 0.9)',
-                                    border: chartTheme === 'dark' ? '1px solid rgba(63, 63, 70, 0.6)' : '1px solid rgba(228, 228, 231, 0.8)'
+                                    backgroundColor: theme === 'dark' ? 'rgba(20, 20, 25, 0.85)' : 'rgba(255, 255, 255, 0.9)',
+                                    border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.6)' : '1px solid rgba(228, 228, 231, 0.8)'
                                 }}>
                                 <div className="relative w-6 h-6">
                                     <div className="w-6 h-6 rounded-full border-2 animate-spin"
                                         style={{
-                                            borderColor: chartTheme === 'dark' ? 'rgba(167,139,250,0.2)' : 'rgba(124,58,237,0.15)',
-                                            borderTopColor: chartTheme === 'dark' ? '#a78bfa' : '#7c3aed',
+                                            borderColor: theme === 'dark' ? 'rgba(167,139,250,0.2)' : 'rgba(124,58,237,0.15)',
+                                            borderTopColor: theme === 'dark' ? '#a78bfa' : '#7c3aed',
                                         }} />
                                 </div>
                                 <span className="text-[10px] font-medium whitespace-nowrap"
-                                    style={{ color: chartTheme === 'dark' ? '#a1a1aa' : '#71717a' }}>
+                                    style={{ color: theme === 'dark' ? '#a1a1aa' : '#71717a' }}>
                                     Loading…
                                 </span>
                             </div>
@@ -1942,8 +1980,8 @@ export function LightWeightStockChart({
                     style={{
                         left: 12,
                         top: 50,
-                        backgroundColor: chartTheme === 'dark' ? 'rgba(20, 20, 25, 0.85)' : 'rgba(255, 255, 255, 0.85)',
-                        borderColor: chartTheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                        backgroundColor: theme === 'dark' ? 'rgba(20, 20, 25, 0.85)' : 'rgba(255, 255, 255, 0.85)',
+                        borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
                         padding: '8px 12px',
                         minWidth: '200px'
                     }}
@@ -2016,12 +2054,12 @@ export function LightWeightStockChart({
                             <>
                                 {Object.entries(tooltipData.gttHorizons).map(([key, value], idx) => {
                                     const cfg = key === 'input_close'
-                                        ? { label: 'Input Close', color: '#4caf50', style: 'dotted' as const }
+                                        ? { label: 'In.Close', color: '#64748b', style: 'dotted' as const }
                                         : HORIZON_LINE_CONFIG[key];
                                     if (!cfg) return null;
-                                    const shape = key === 'input_close' ? '●' : cfg.style === 'dashed' ? '◆' : '■';
+                                    const shape = key === 'input_close' ? '·' : cfg.style === 'dashed' ? '╌' : '—';
                                     return (
-                                        <div key={key} className={`col-span-2 flex justify-between ${idx === 0 ? 'mt-1 pt-1 border-t border-purple-500/30' : 'mt-0.5'}`}>
+                                        <div key={key} className={`col-span-2 flex justify-between ${idx === 0 ? 'mt-1 pt-1 border-t border-white/10' : 'mt-0.5'}`}>
                                             <span className="opacity-60 flex items-center gap-1">
                                                 <span style={{ color: cfg.color }}>{shape}</span> {cfg.label}
                                             </span>
@@ -2051,7 +2089,7 @@ export function LightWeightStockChart({
                     interval,
                     loading,
                     height: '100%',
-                    theme: chartTheme,
+                    theme: theme,
                     defaultChartType: chartType,
                 }}
                 chartMode="lightweight"

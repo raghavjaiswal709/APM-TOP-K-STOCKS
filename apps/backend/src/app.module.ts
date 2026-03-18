@@ -13,6 +13,7 @@ import { PremarketModule } from './premarket/premarket.module';
 import { MarketDataModule } from './market-data/market-data.module';
 import { GttPredictionModule } from './gtt-prediction/gtt-prediction.module';
 import { AdminModule } from './admin/admin.module';
+import { PortfolioModule } from './portfolio/portfolio.module';
 import { HttpModule } from '@nestjs/axios';
 
 @Module({
@@ -33,6 +34,7 @@ import { HttpModule } from '@nestjs/axios';
     MarketDataModule,
     GttPredictionModule,
     AdminModule,
+    PortfolioModule,
   ],
   controllers: [AppController],
   providers: [AppService],

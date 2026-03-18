@@ -1,0 +1,33 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Next.js Frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "cwd": "apps/frontend"
+    },
+    {
+      "name": "NestJS Backend API",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start:prod"],
+      "port": 5002,
+      "cwd": "apps/backend"
+    },
+    {
+      "name": "Fyers Market Data Service",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["fyers_service_5001.py"],
+      "port": 5001,
+      "cwd": "apps/backend"
+    },
+    {
+      "name": "Fyers Async Service",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["fyers_service_5010.py"],
+      "port": 5010,
+      "cwd": "apps/backend"
+    }
+  ]
+}

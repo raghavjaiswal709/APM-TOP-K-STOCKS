@@ -85,6 +85,8 @@ ohlc_data = {}
 real_time_data = {}
 chart_updates = {}
 pending_data = {}
+# Track last seen vol_traded_today per symbol to compute per-tick delta volume
+prev_vol_traded_today = {}
 MAX_HISTORY_POINTS = 10000
 MAX_COMPANIES = 6
 INDIA_TZ = pytz.timezone('Asia/Kolkata')
@@ -777,10 +779,18 @@ def onmessage(message):
             
             historical_data[symbol].append(simplified_data)
             
-            # Store OHLC data
+            # Store OHLC data — compute delta volume from cumulative vol_traded_today
             if symbol not in ohlc_data:
                 ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
-            
+
+            cumulative_vol = simplified_data['volume']  # vol_traded_today (cumulative)
+            prev_vol = prev_vol_traded_today.get(symbol)
+            if prev_vol is None:
+                delta_vol = 0  # First tick — no reference yet
+            else:
+                delta_vol = max(0, cumulative_vol - prev_vol)
+            prev_vol_traded_today[symbol] = cumulative_vol
+
             minute_timestamp = (current_time // 60) * 60
             if not ohlc_data[symbol] or ohlc_data[symbol][-1]['timestamp'] != minute_timestamp:
                 ohlc_data[symbol].append({
@@ -789,15 +799,14 @@ def onmessage(message):
                     'high': simplified_data['ltp'],
                     'low': simplified_data['ltp'],
                     'close': simplified_data['ltp'],
-                    'volume': simplified_data['volume']
+                    'volume': delta_vol
                 })
             else:
                 current_candle = ohlc_data[symbol][-1]
                 current_candle['high'] = max(current_candle['high'], simplified_data['ltp'])
                 current_candle['low'] = min(current_candle['low'], simplified_data['ltp'])
                 current_candle['close'] = simplified_data['ltp']
-                # Accumulate volume instead of replacing it
-                current_candle['volume'] += simplified_data['volume']
+                current_candle['volume'] += delta_vol
             
             # Save to file if needed
             save_to_file(symbol, simplified_data)

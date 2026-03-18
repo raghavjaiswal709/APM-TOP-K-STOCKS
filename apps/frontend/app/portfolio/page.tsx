@@ -241,8 +241,8 @@ export default function PortfolioPage() {
     // Net worth = cash on hand + market value of holdings
     const totalCapital = availableCash + currentMarketValue;
     // Lifetime totals
-    const totalBought = trades.filter(t => t.tradeType === 'BUY').reduce((s, t) => s + t.totalValue, 0);
-    const totalSold = trades.filter(t => t.tradeType === 'SELL').reduce((s, t) => s + t.totalValue, 0);
+    const totalBought = trades.filter(t => t.tradeType === 'BUY').reduce((s, t) => s + (t.totalValue || 0), 0);
+    const totalSold = trades.filter(t => t.tradeType === 'SELL').reduce((s, t) => s + (t.totalValue || 0), 0);
 
     return {
       totalTrades: trades.length,
@@ -628,7 +628,7 @@ export default function PortfolioPage() {
                             </div>
                             <div className="text-right">
                               <p className="font-medium">
-                                {trade.shares} @ ₹{trade.pricePerShare.toFixed(2)}
+                                {trade.shares} @ ₹{(trade.pricePerShare || 0).toFixed(2)}
                               </p>
                               <p className="text-xs text-muted-foreground">{trade.day}</p>
                             </div>
@@ -808,9 +808,9 @@ export default function PortfolioPage() {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">{trade.shares}</TableCell>
-                            <TableCell className="text-right">₹{trade.pricePerShare.toFixed(2)}</TableCell>
+                            <TableCell className="text-right">₹{(trade.pricePerShare || 0).toFixed(2)}</TableCell>
                             <TableCell className="text-right font-medium">
-                              ₹{trade.totalValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                              ₹{(trade.totalValue || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                             </TableCell>
                             <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
                               {trade.notes || '-'}

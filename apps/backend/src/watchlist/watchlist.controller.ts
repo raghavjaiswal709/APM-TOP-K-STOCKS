@@ -1,9 +1,22 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { WatchlistService, MergedCompany } from './watchlist.service';
+import { SectorService } from './sector.service';
 
 @Controller('api/watchlist')
 export class WatchlistController {
-  constructor(private readonly watchlistService: WatchlistService) {}
+  constructor(
+    private readonly watchlistService: WatchlistService,
+    private readonly sectorService: SectorService,
+  ) {}
+
+  /**
+   * Get full sector mapping { SYMBOL: sector }
+   * GET /api/watchlist/sectors
+   */
+  @Get('sectors')
+  getSectors(): Record<string, string> {
+    return this.sectorService.getAllSectors();
+  }
 
   /**
    * Get available dates

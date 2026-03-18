@@ -36,7 +36,7 @@ interface AIPredictionsDashboardProps {
   timeRemaining: number;
   pollCount: number;
   nextPollTime: Date | null;
-  timeUntilNextPoll: number;
+  timeUntilNextPoll?: number; // kept for prop-compatibility; timer is now in the toolbar button
   
   // Actions
   onStart: () => void;
@@ -64,7 +64,6 @@ export const AIPredictionsDashboard: React.FC<AIPredictionsDashboardProps> = ({
   timeRemaining,
   pollCount,
   nextPollTime,
-  timeUntilNextPoll,
   onStart,
   onPause,
   onStop,
@@ -79,9 +78,11 @@ export const AIPredictionsDashboard: React.FC<AIPredictionsDashboardProps> = ({
   gttError = null,
   gttData = null,
 }) => {
-  // Format time helper
+  // Format time helper — guards against Infinity/NaN which can occur when
+  // totalDuration is very large (7h) and elapsedTime is 0 (polling not started)
   const formatTime = useCallback((ms: number): string => {
-    const totalSeconds = Math.floor(Math.max(0, ms) / 1000);
+    if (!isFinite(ms) || isNaN(ms) || ms < 0) return '--:--';
+    const totalSeconds = Math.floor(ms / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
@@ -109,13 +110,6 @@ export const AIPredictionsDashboard: React.FC<AIPredictionsDashboardProps> = ({
   const priceChange = aggregated?.priceChangeFromStart ?? 0;
   const isPositive = priceChange >= 0;
 
-  // Circular progress for timer - 5 minute intervals + 20 second buffer synced with server
-  const radius = 60; // Larger circle for better visibility
-  const circumference = 2 * Math.PI * radius;
-  const maxTime = 5 * 60 * 1000 + 20 * 1000; // 5 minutes + 20 second buffer
-  const progress = Math.max(0, Math.min(100, ((maxTime - timeUntilNextPoll) / maxTime) * 100));
-  const strokeDashoffset = circumference - (progress / 100) * circumference;
-  
   // Check if within market hours (9:15 AM to 3:30 PM IST)
   const isWithinMarketHours = useMemo(() => {
     const now = new Date();
@@ -125,7 +119,7 @@ export const AIPredictionsDashboard: React.FC<AIPredictionsDashboardProps> = ({
     const marketOpen = 9 * 60 + 15; // 9:15 AM
     const marketClose = 15 * 60 + 30; // 3:30 PM
     return currentTime >= marketOpen && currentTime <= marketClose;
-  }, [timeUntilNextPoll]); // Recalculate when timer updates
+  }, []); // static check — market hours don't change mid-session
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4">
@@ -173,51 +167,6 @@ export const AIPredictionsDashboard: React.FC<AIPredictionsDashboardProps> = ({
               </Badge>
             </div>
 
-            {/* Circular Timer */}
-            <div className="flex justify-center mb-6">
-              <div className="relative w-44 h-44">
-                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 160 160">
-                  {/* Background circle */}
-                  <circle
-                    cx="80"
-                    cy="80"
-                    r={radius}
-                    stroke="currentColor"
-                    strokeWidth="6"
-                    fill="none"
-                    className="text-white/10"
-                  />
-                  {/* Progress circle */}
-                  <circle
-                    cx="80"
-                    cy="80"
-                    r={radius}
-                    stroke="url(#timerGradient)"
-                    strokeWidth="6"
-                    fill="none"
-                    strokeDasharray={circumference}
-                    strokeDashoffset={isPolling ? strokeDashoffset : circumference}
-                    strokeLinecap="round"
-                    className="transition-all duration-1000 ease-linear drop-shadow-[0_0_16px_rgba(255,255,255,0.4)]"
-                  />
-                  <defs>
-                    <linearGradient id="timerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#ffffff" />
-                      <stop offset="100%" stopColor="#e2e8f0" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-                
-                {/* Center content */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-5xl font-bold tracking-tighter tabular-nums text-white">
-                    {formatTime(timeUntilNextPoll)}
-                  </span>
-                  <span className="text-xs text-white/60 font-medium uppercase tracking-wider">until refresh</span>
-                </div>
-              </div>
-            </div>
-
             {/* Stats Row */}
             <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="bg-muted/30 rounded-xl p-3 text-center border border-border/50">
@@ -225,11 +174,15 @@ export const AIPredictionsDashboard: React.FC<AIPredictionsDashboardProps> = ({
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Updates</div>
               </div>
               <div className="bg-muted/30 rounded-xl p-3 text-center border border-border/50">
-                <div className="text-2xl font-bold font-mono text-foreground">{formatTime(elapsedTime)}</div>
+                <div className="text-2xl font-bold font-mono text-foreground">
+                  {isPolling ? formatTime(elapsedTime) : '--:--'}
+                </div>
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Elapsed</div>
               </div>
               <div className="bg-muted/30 rounded-xl p-3 text-center border border-border/50">
-                <div className="text-2xl font-bold font-mono text-muted-foreground">{formatTime(timeRemaining)}</div>
+                <div className="text-2xl font-bold font-mono text-muted-foreground">
+                  {isPolling ? formatTime(timeRemaining) : '--:--'}
+                </div>
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Remaining</div>
               </div>
             </div>
