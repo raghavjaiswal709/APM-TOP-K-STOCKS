@@ -4,13 +4,14 @@
 
 @layer base {
   :root {
-    --sidebar-background: 0 0% 98%;
+    /* Sidebar — white/neutral in light mode */
+    --sidebar-background: 0 0% 100%;          /* pure white */
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary: 240 5.9% 10%;          /* near-black for active items */
     --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent: 0 0% 94%;               /* very light gray hover */
     --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
+    --sidebar-border: 0 0% 90%;               /* light gray border */
     --sidebar-ring: 217.2 91.2% 59.8%;
     
     /* Add missing color variables */
@@ -42,13 +43,14 @@
   }
   
   .dark {
-    --sidebar-background: 0 0% 3.9%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
+    /* Sidebar — dark mode: slightly lighter than the page background, no blue */
+    --sidebar-background: 0 0% 6%;            /* slightly lighter than page #0a0a0a */
+    --sidebar-foreground: 240 4.8% 90%;
+    --sidebar-primary: 0 0% 92%;              /* near-white for active items in dark mode */
+    --sidebar-primary-foreground: 0 0% 10%;   /* dark text on white active bg */
+    --sidebar-accent: 0 0% 12%;               /* subtle dark hover */
+    --sidebar-accent-foreground: 240 4.8% 90%;
+    --sidebar-border: 0 0% 14%;               /* slightly visible border */
     --sidebar-ring: 217.2 91.2% 59.8%;
     
     /* Dark mode colors */

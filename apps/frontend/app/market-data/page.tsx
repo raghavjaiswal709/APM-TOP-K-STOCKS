@@ -2205,65 +2205,65 @@ const MarketDataPage: React.FC = () => {
             </BreadcrumbList>
           </Breadcrumb>
 
-          {/* Header Controls */}
-          <div className="flex items-center gap-2">
-            {/* Connection Status */}
-            <div className="flex items-center space-x-2">
-              <span className={`inline-block w-2 h-2 rounded-full ${socketStatus === 'Connected'
-                ? 'bg-green-500 animate-pulse'
-                : isReconnecting
+          {/* Header Controls — all items h-7, text-xs, consistent border+tint color system */}
+          <div className="flex items-center gap-1.5">
+            {/* Connection Status — compact dot + label */}
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                socketStatus === 'Connected'
+                  ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.6)]'
+                  : isReconnecting
                   ? 'bg-yellow-500 animate-pulse'
-                  : socketStatus === 'Error' || subscriptionErrors
-                    ? 'bg-orange-500'
-                    : 'bg-red-500'
-                }`}></span>
-              <span className={`text-sm ${socketStatus === 'Connected'
-                ? 'text-green-600 dark:text-green-400'
-                : isReconnecting
+                  : 'bg-red-500'
+              }`} />
+              <span className={`font-medium ${
+                socketStatus === 'Connected'
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : isReconnecting
                   ? 'text-yellow-600 dark:text-yellow-400'
                   : 'text-red-600 dark:text-red-400'
-                }`}>
-                {socketStatus === 'Connected' ? 'Connected' :
-                  socketStatus === 'Error' ? 'Connected' :
-                    isReconnecting ? 'Reconnecting...' :
-                      socketStatus.startsWith('Disconnected') ? 'Disconnected' : socketStatus}
-                {isReconnecting && ' 🔄'}
+              }`}>
+                {socketStatus === 'Connected' || socketStatus === 'Error' ? 'Live'
+                  : isReconnecting ? 'Reconnecting'
+                  : 'Offline'}
               </span>
             </div>
 
-            {/* Subscription Manager Button */}
-            <div className="flex items-center gap-2">
+            <Separator orientation="vertical" className="h-4 mx-0.5" />
+
+            {/* Subscription Manager */}
+            <div className="flex items-center gap-1">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleSubscribeAll}
                 disabled={isSubscribing || !companies.length}
-                className="h-9"
+                className="h-7 text-xs px-2.5 gap-1.5"
               >
-                {isSubscribing ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
-                ) : (
-                  <ListChecks className="mr-2 h-4 w-4 text-green-500" />
-                )}
+                {isSubscribing
+                  ? <div className="h-3 w-3 rounded-full border border-current border-t-transparent animate-spin" />
+                  : <ListChecks className="h-3 w-3 text-emerald-500" />
+                }
                 Subscribe All
               </Button>
-
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setIsSubscriptionModalOpen(true)}
                 disabled={isSubscribing}
-                className="h-9 w-9"
+                className="h-7 w-7"
                 title="Manage Subscriptions"
               >
-                <Settings2 className="h-4 w-4" />
+                <Settings2 className="h-3.5 w-3.5" />
               </Button>
             </div>
 
+            <Separator orientation="vertical" className="h-4 mx-0.5" />
+
             {/* Prediction Service Status */}
             {predictionServiceHealth === 'checking' || isCheckingHealth ? (
-              <div className="px-3 py-1 rounded text-sm font-medium bg-gray-200 text-gray-500 flex items-center gap-2">
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
+              <div className="h-7 px-2.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border flex items-center gap-1.5">
+                <div className="h-3 w-3 rounded-full border border-muted-foreground/50 border-t-transparent animate-spin" />
                 Checking...
               </div>
             ) : predictionServiceHealth === 'unavailable' ? (
@@ -2272,10 +2272,10 @@ const MarketDataPage: React.FC = () => {
                   <TooltipTrigger asChild>
                     <button
                       disabled
-                      className="px-3 py-1 rounded text-sm font-medium bg-red-100 text-red-600 cursor-not-allowed flex items-center gap-1.5"
+                      className="h-7 px-2.5 rounded-md text-xs font-medium border border-red-500/20 bg-red-500/8 text-red-500 dark:text-red-400 cursor-not-allowed inline-flex items-center gap-1.5 opacity-75"
                     >
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      Prediction Unavailable
+                      <AlertCircle className="h-3 w-3" />
+                      Predictions
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white max-w-xs">
@@ -2294,17 +2294,18 @@ const MarketDataPage: React.FC = () => {
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => setShowPredictions(!showPredictions)}
-                      className={`px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${showPredictions
-                        ? predictionsOutdated
-                          ? 'bg-red-600 text-white hover:bg-red-700'
-                          : 'bg-[#dbeafe] text-blue-600 hover:bg-[#cddcfe]'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
-                        }`}
+                      className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors inline-flex items-center gap-1.5 border ${
+                        showPredictions
+                          ? predictionsOutdated
+                            ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/25 hover:bg-red-500/15'
+                            : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25 hover:bg-blue-500/15'
+                          : 'bg-transparent text-muted-foreground border-border hover:bg-muted/60'
+                      }`}
                     >
                       {predictionsOutdated && showPredictions ? (
-                        <AlertTriangle className="h-3.5 w-3.5" />
+                        <AlertTriangle className="h-3 w-3" />
                       ) : (
-                        <Activity className="h-3.5 w-3.5" />
+                        <Activity className="h-3 w-3" />
                       )}
                       {showPredictions ? 'Predictions ON' : 'Predictions OFF'}
                       {/* Countdown to next prediction fetch — only when server is available AND predictions are ON */}
@@ -2345,8 +2346,8 @@ const MarketDataPage: React.FC = () => {
 
             {/* GTT Service Status */}
             {gttServiceHealth === 'checking' || isCheckingHealth ? (
-              <div className="px-3 py-1 rounded text-sm font-medium bg-gray-200 text-gray-500 flex items-center gap-2">
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
+              <div className="h-7 px-2.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border flex items-center gap-1.5">
+                <div className="h-3 w-3 rounded-full border border-muted-foreground/50 border-t-transparent animate-spin" />
                 GTT...
               </div>
             ) : gttServiceHealth === 'unavailable' ? (
@@ -2355,10 +2356,10 @@ const MarketDataPage: React.FC = () => {
                   <TooltipTrigger asChild>
                     <button
                       disabled
-                      className="px-3 py-1 rounded text-sm font-medium bg-orange-100 text-orange-600 cursor-not-allowed flex items-center gap-1.5"
+                      className="h-7 px-2.5 rounded-md text-xs font-medium border border-amber-500/20 bg-amber-500/8 text-amber-600 dark:text-amber-400 cursor-not-allowed inline-flex items-center gap-1.5 opacity-75"
                     >
-                      <Zap className="h-3.5 w-3.5" />
-                      GTT Unavailable
+                      <Zap className="h-3 w-3" />
+                      GTT
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 text-white max-w-xs">
@@ -2373,28 +2374,28 @@ const MarketDataPage: React.FC = () => {
               </TooltipProvider>
             ) : (
               /* Split-button: Main click = toggle GTT, Dropdown arrow = control panel */
-              <div className="flex items-stretch">
+              <div className="flex items-center">
                 {/* Main GTT toggle button */}
                 <button
                   onClick={() => setIsGttEnabled(!isGttEnabled)}
-                  className={`px-3 py-1.5 rounded-l text-sm font-medium transition-colors flex items-center gap-1.5 ${isGttEnabled
-                    ? 'bg-purple-600 text-white hover:bg-purple-700'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
-                    }`}
+                  className={`h-7 px-2.5 rounded-l-md text-xs font-medium transition-colors inline-flex items-center gap-1.5 border border-r-0 ${
+                    isGttEnabled
+                      ? 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/25 hover:bg-violet-500/15'
+                      : 'bg-transparent text-muted-foreground border-border hover:bg-muted/60'
+                  }`}
                 >
-                  <Zap className="h-3.5 w-3.5" />
+                  <Zap className="h-3 w-3" />
                   {isGttEnabled ? 'GTT ON' : 'GTT OFF'}
-                  {/* Countdown to next prediction — only shown during market hours */}
                   {gttCountdown.inMarketHours && (
                     <span
                       className={`font-mono text-[10px] tabular-nums leading-none px-1 py-0.5 rounded ${
                         gttCountdown.seconds <= 60
-                          ? 'bg-amber-400/30 text-amber-200'          // urgent: < 1 min
+                          ? 'bg-amber-400/25 text-amber-600 dark:text-amber-300'
                           : gttCountdown.seconds <= 180
-                          ? 'bg-purple-400/20 text-purple-200'        // soon: < 3 min
+                          ? 'bg-violet-400/20 text-violet-500 dark:text-violet-300'
                           : isGttEnabled
-                          ? 'text-purple-200/60'                      // normal, GTT ON
-                          : 'text-gray-500 dark:text-gray-400'        // normal, GTT OFF
+                          ? 'text-violet-500/60 dark:text-violet-400/60'
+                          : 'text-muted-foreground/60'
                       }`}
                       title={`Next GTT prediction at ${gttCountdown.nextPredictionTime} IST`}
                     >
@@ -2402,16 +2403,17 @@ const MarketDataPage: React.FC = () => {
                     </span>
                   )}
                 </button>
-                {/* Dropdown arrow — opens control panel */}
+                {/* Dropdown arrow — opens GTT control panel */}
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
-                      className={`px-1.5 rounded-r border-l transition-colors flex items-center ${isGttEnabled
-                        ? 'bg-purple-700 text-white hover:bg-purple-800 border-purple-500'
-                        : 'bg-gray-300 text-gray-700 hover:bg-gray-400 border-gray-400 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 dark:border-gray-500'
-                        }`}
+                      className={`h-7 px-1.5 rounded-r-md transition-colors inline-flex items-center border ${
+                        isGttEnabled
+                          ? 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/25 hover:bg-violet-500/20'
+                          : 'bg-transparent text-muted-foreground border-border hover:bg-muted/60'
+                      }`}
                     >
-                      <ChevronDown className="h-3.5 w-3.5" />
+                      <ChevronDown className="h-3 w-3" />
                     </button>
                   </PopoverTrigger>
                   <PopoverContent side="bottom" align="end" className="w-80 p-0" sideOffset={4}>
@@ -2544,8 +2546,10 @@ const MarketDataPage: React.FC = () => {
               </div>
             )}
 
+            <Separator orientation="vertical" className="h-4 mx-0.5" />
+
             {/* Portfolio Mode */}
-            <div className="flex items-center gap-2 border-l pl-3 ml-1">
+            <div className="flex items-center">
               <PortfolioMode
                 enabled={portfolioModeEnabled}
                 onToggle={setPortfolioModeEnabled}

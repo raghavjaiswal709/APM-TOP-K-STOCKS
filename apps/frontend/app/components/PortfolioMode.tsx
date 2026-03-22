@@ -156,20 +156,22 @@ export function PortfolioMode({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant={enabled ? "default" : "outline"}
+              variant="outline"
               size="sm"
               onClick={() => onToggle(!enabled)}
               className={cn(
-                "gap-1.5 transition-colors",
-                enabled && "bg-amber-600 hover:bg-amber-700 text-white"
+                "h-7 text-xs gap-1.5 transition-colors border",
+                enabled
+                  ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25 hover:bg-amber-500/15"
+                  : "text-muted-foreground border-border hover:bg-muted/60"
               )}
             >
-              <Briefcase className="h-4 w-4" />
+              <Briefcase className="h-3 w-3" />
               Portfolio
               {enabled && (
-                <Badge variant="secondary" className="ml-1 bg-amber-800 text-amber-100">
+                <span className="text-[10px] font-semibold bg-amber-500/20 text-amber-600 dark:text-amber-400 px-1 py-0.5 rounded">
                   ON
-                </Badge>
+                </span>
               )}
             </Button>
           </TooltipTrigger>
@@ -181,13 +183,13 @@ export function PortfolioMode({
 
       {/* IN/OUT Buttons - Only shown when Portfolio Mode is enabled */}
       {enabled && selectedCompany && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* Current Position Badge */}
           {currentPosition && currentPosition.status === 'HOLDING' && (
-            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30">
-              <Hash className="h-3 w-3 mr-1" />
+            <span className="h-7 px-2 inline-flex items-center gap-1 text-xs font-medium rounded-md border bg-blue-500/8 text-blue-600 dark:text-blue-400 border-blue-500/20">
+              <Hash className="h-2.5 w-2.5" />
               {currentPosition.shares} @ ₹{currentPosition.avgEntryPrice.toFixed(2)}
-            </Badge>
+            </span>
           )}
 
           {/* IN Button (Buy) */}
@@ -195,9 +197,9 @@ export function PortfolioMode({
             variant="outline"
             size="sm"
             onClick={() => handleOpenTrade('IN')}
-            className="gap-1.5 bg-green-500/10 text-green-600 border-green-500/30 hover:bg-green-500/20 hover:text-green-700"
+            className="h-7 text-xs gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/15"
           >
-            <LogIn className="h-4 w-4" />
+            <LogIn className="h-3 w-3" />
             IN
           </Button>
 
@@ -207,9 +209,9 @@ export function PortfolioMode({
               variant="outline"
               size="sm"
               onClick={() => handleOpenTrade('OUT')}
-              className="gap-1.5 bg-red-500/10 text-red-600 border-red-500/30 hover:bg-red-500/20 hover:text-red-700"
+              className="h-7 text-xs gap-1 bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/25 hover:bg-red-500/15"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-3 w-3" />
               OUT
             </Button>
           )}

@@ -279,6 +279,8 @@ const SidebarTrigger = React.forwardRef<
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()
+        // Also notify the new fixed-overlay sidebar (AppSidebar) to toggle its pin state
+        window.dispatchEvent(new Event("toggle-sidebar-pin"))
       }}
       {...props}
     >
@@ -326,8 +328,13 @@ const SidebarInset = React.forwardRef<
     <main
       ref={ref}
       className={cn(
-        "relative flex w-full flex-1 flex-col bg-background",
-        "md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
+        // The app sidebar is now fixed-overlay (position:fixed, z-50, 4rem collapsed).
+        // SidebarInset must always reserve that 4rem so content isn't hidden under the icon strip.
+        // `min-w-0` replaces `w-full` to prevent overflow in the parent flex container.
+        "relative flex min-w-0 flex-1 flex-col bg-background",
+        "ml-16", // 4rem — matches COLLAPSED_W of the AppSidebar icon strip
+        // Keep peer-data classes as no-ops (harmless when there's no in-flow peer sidebar)
+        "md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className
       )}
       {...props}
