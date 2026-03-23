@@ -29,7 +29,9 @@ async getStockData(
   @Query('interval') interval?: string,
   @Query('indicators') indicators?: string,
   @Query('firstFifteenMinutes') firstFifteenMinutes?: string,
-  @Query('fetchType') fetchType?: string, 
+  @Query('fetchType') fetchType?: string,
+  @Query('limit') limit?: string,
+  @Query('fetchBefore') fetchBefore?: string,
 ) {
   console.log('🎯 API Request received:', {
     companyCode,
@@ -37,7 +39,9 @@ async getStockData(
     startDate,
     endDate,
     interval,
-    fetchType
+    fetchType,
+    limit,
+    fetchBefore,
   });
 
   let startDateTime: Date | undefined;
@@ -62,14 +66,22 @@ async getStockData(
     }
   }
 
+  // fetchBefore mode: only endDate matters (fetch N candles going backwards)
+  if (fetchBefore === 'true' && endDate && !startDate) {
+    endDateTime = new Date(endDate);
+    startDateTime = undefined;
+  }
+
   const params: StockDataRequestDto = {
-    companyCode,     
+    companyCode,
     exchange,
     startDate: startDateTime,
     endDate: endDateTime,
     interval: interval || '1m',
     indicators: indicators ? indicators.split(',') : [],
     firstFifteenMinutes: firstFifteenMinutes === 'true',
+    limit: limit ? parseInt(limit, 10) : undefined,
+    fetchBefore: fetchBefore === 'true',
   };
   
   const result = await this.stockService.getStockDataFromPython(params);

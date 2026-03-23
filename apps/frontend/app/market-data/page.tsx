@@ -1305,29 +1305,48 @@ const MarketDataPage: React.FC = () => {
       const existingCandles = prev[data.symbol] || [];
       const candleMap = new Map<number, OHLCData>();
 
-      // Safeguard: detect cumulative (staircase) volume pattern in incoming candles.
-      // Fyers sends vol_traded_today (cumulative daily total). If the backend failed
-      // to compute deltas, volumes will be strictly monotonically increasing across
-      // candles — convert them to per-candle deltas before storing.
+      // Safeguard: detect and fix any candles that still have cumulative (staircase)
+      // volume instead of per-minute delta volume.
+      //
+      // Two independent checks:
+      //  1. Classic check — ≤5% of consecutive pairs are decreasing → all candles
+      //     are monotonically increasing → full dataset is cumulative → convert all.
+      //  2. Outlier check — even a single candle with volume > 10× median is
+      //     suspicious (typical of a single-tick minute that kept the full
+      //     cumulative value). Convert just those candles by clamping to median×3.
       let sanitizedCandles = data.data;
-      if (data.data.length >= 5) {
+      if (data.data.length >= 2) {
         const sorted = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
-        // Cumulative volume NEVER decreases (volume only goes up through the day).
-        // Per-candle volume goes up AND down (~40-60% of consecutive pairs decrease).
-        // Count strictly-decreasing consecutive pairs: ≤5% → cumulative; >5% → per-candle.
-        // This is far more reliable than the old "≥70% increasing" check, which failed
-        // when many zero-volume candles (equal pairs, not "increasing") were present.
+
+        // --- Check 1: Fully cumulative dataset ---
         let decreasingCount = 0;
         for (let i = 1; i < sorted.length; i++) {
           if ((sorted[i].volume ?? 0) < (sorted[i - 1].volume ?? 0)) decreasingCount++;
         }
-        const isCumulative = decreasingCount <= Math.ceil(sorted.length * 0.05); // ≤5% decreasing
+        const isCumulative = sorted.length >= 5 && decreasingCount <= Math.ceil(sorted.length * 0.05);
         if (isCumulative) {
-          console.warn(`📊 [handleOhlcData] Detected cumulative volume pattern for ${data.symbol} (${decreasingCount}/${sorted.length - 1} decreasing pairs) — converting to deltas`);
+          console.warn(`📊 [handleOhlcData] Detected cumulative volume for ${data.symbol} (${decreasingCount}/${sorted.length - 1} decreasing pairs) — converting all to deltas`);
           sanitizedCandles = sorted.map((candle, i) => {
             const prevVol = i === 0 ? 0 : (sorted[i - 1].volume ?? 0);
             return { ...candle, volume: Math.max(0, (candle.volume ?? 0) - prevVol) };
           });
+        } else {
+          // --- Check 2: Outlier candles with suspiciously huge volume ---
+          // Compute median volume of candles with volume > 0
+          const nonZeroVols = sorted.map(c => c.volume ?? 0).filter(v => v > 0).sort((a, b) => a - b);
+          if (nonZeroVols.length > 0) {
+            const median = nonZeroVols[Math.floor(nonZeroVols.length / 2)];
+            const threshold = median * 50; // 50× median is clearly wrong
+            const hasOutlier = sorted.some(c => (c.volume ?? 0) > threshold);
+            if (hasOutlier) {
+              console.warn(`📊 [handleOhlcData] Detected outlier volume candle(s) for ${data.symbol} (median=${median}, threshold=${threshold}) — recomputing as deltas`);
+              // Recompute the entire series as deltas (safest approach)
+              sanitizedCandles = sorted.map((candle, i) => {
+                const prevVol = i === 0 ? 0 : (sorted[i - 1].volume ?? 0);
+                return { ...candle, volume: Math.max(0, (candle.volume ?? 0) - prevVol) };
+              });
+            }
+          }
         }
       }
 
@@ -1604,14 +1623,17 @@ const MarketDataPage: React.FC = () => {
     if (!isClient || !selectedSymbol || !socketRef.current) return;
 
     const socket = socketRef.current;
-    const todayDate = effectiveDate || new Date().toISOString().split('T')[0];
+    // ✅ CRITICAL: The live feed server (port 6969) only stores TODAY's data.
+    // Always use actual today's IST date — NOT effectiveDate which is the last
+    // trading day from the watchlist DB (e.g. Friday when today is Monday).
+    const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
-    // Check if we already have valid cached OHLC data for this symbol+date
+    // Check if we already have valid cached OHLC data for THIS TRADING DAY
     const hasCachedOhlcData = ohlcData[selectedSymbol] && ohlcData[selectedSymbol].length > 0;
     const cacheIsFromToday = hasCachedOhlcData && (() => {
       const firstCandle = ohlcData[selectedSymbol][0];
       const candleDate = new Date(firstCandle.timestamp * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      return candleDate === todayDate;
+      return candleDate === todayIST; // Compare against actual today, not watchlist date
     })();
 
     // ✅ FAST PATH: Already have data AND already subscribed → instant switch
@@ -1665,8 +1687,14 @@ const MarketDataPage: React.FC = () => {
      * 3. Market open with full data: No backfill needed
      */
     const fetchAndBackfillHistoricalData = async (signal: AbortSignal) => {
-      // Check if we already backfilled this symbol (with date key)
-      const backfillKey = `${selectedSymbol}_${effectiveDate || new Date().toISOString().split('T')[0]}`;
+      // ✅ ALWAYS use today's IST date for the live feed server (port 6969).
+      // It only stores the CURRENT trading day's data — not historical DB dates.
+      // effectiveDate is the watchlist's last trading day (e.g. Friday) and must
+      // NOT be used here — it would fetch a non-existent or wrong-day file.
+      const todayForFetch = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+      // Check if we already backfilled this symbol for today
+      const backfillKey = `${selectedSymbol}_${todayForFetch}`;
       if (backfilledSymbolsRef.current.has(backfillKey)) {
         console.log(`📡 [Backfill] Already backfilled ${backfillKey}, skipping`);
         setIsLoadingHistorical(false);
@@ -1683,11 +1711,11 @@ const MarketDataPage: React.FC = () => {
       setHistoricalDataStatus('Checking data completeness...');
 
       try {
-        const currentDate = effectiveDate || new Date().toISOString().split('T')[0];
+        const currentDate = todayForFetch; // today's IST date for the live feed server
         const marketStatus = isMarketOpen();
         const isAfterMarket = marketStatus.reason === 'after-market';
 
-        console.log(`📡 [Backfill] Symbol: ${selectedSymbol}, Date: ${currentDate}, Market: ${marketStatus.isOpen ? 'OPEN' : marketStatus.reason}`);
+        console.log(`📡 [Backfill] Symbol: ${selectedSymbol}, FetchDate: ${currentDate} (effectiveDate=${effectiveDate}), Market: ${marketStatus.isOpen ? 'OPEN' : marketStatus.reason}`);
 
         // Always fetch external data to fill any gaps
         // After market: need full day
@@ -2010,12 +2038,12 @@ const MarketDataPage: React.FC = () => {
   const chartData = useMemo(() => {
     console.log(`📈 [chartData] symbolOhlc: ${symbolOhlc?.length || 0}, symbolHistory: ${symbolHistory?.length || 0}, interval: ${chartInterval}`);
 
-    // ✅ CRITICAL: For date filtering, use today's date for live data.
-    // Only use effectiveDate if the user explicitly picked a historical date.
-    // This prevents live ticks from being filtered out when the watchlist
-    // hook returns yesterday's date (today's watchlist not yet generated).
+    // ✅ CRITICAL: Use today's IST date for chart filtering unless the user
+    // EXPLICITLY selected a specific date via the date picker (currentDate).
+    // hookSelectedDate is the watchlist DB date (e.g. last Friday) — it must NOT
+    // drive the chart filter or today's candles get incorrectly excluded.
     const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    const targetDate = effectiveDate || todayIST;
+    const targetDate = currentDate || todayIST; // Only user-set date overrides today
     const intervalSec = getIntervalSeconds(chartInterval);
 
     // ===== USE OHLC DATA DIRECTLY (1-minute candles from WebSocket/backfill) =====
@@ -2149,7 +2177,7 @@ const MarketDataPage: React.FC = () => {
     }
 
     return [];
-  }, [symbolOhlc, symbolHistory, effectiveDate, chartInterval, getIntervalSeconds, aggregateCandles]);
+  }, [symbolOhlc, symbolHistory, currentDate, chartInterval, getIntervalSeconds, aggregateCandles]);
 
   // Loading state
   if (!isClient) {

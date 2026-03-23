@@ -6,6 +6,8 @@ export class StockDataRequestDto {
   interval: string;
   indicators: string[];
   firstFifteenMinutes?: boolean;
+  limit?: number;
+  fetchBefore?: boolean;
 }
 
 export class StockDataDto {

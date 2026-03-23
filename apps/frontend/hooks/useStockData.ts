@@ -192,18 +192,25 @@ export function useStockData({
       priority?: 'high' | 'normal';
       /** If true, fetched data will be merged into existing data + day-cache */
       appendToCache?: boolean;
+      /** If true, fetch exactly `limit` candles going backwards from endDate */
+      fetchBefore?: boolean;
+      /** Number of candles to fetch (used with fetchBefore) */
+      limit?: number;
     } = {}
   ) => {
     if (!companyCode) {
       setError('No company selected');
       return [];
     }
-    const { fetchAllData = false, merge = false, priority = 'normal', appendToCache = false } = options;
+    const { fetchAllData = false, merge = false, priority = 'normal', appendToCache = false, fetchBefore = false, limit } = options;
 
-    if (!startDate && !fetchAllData) {
+    if (!startDate && !fetchAllData && !fetchBefore) {
       setError('Either provide a start date or set fetchAllData to true');
       return [];
     }
+
+    // Show the left-edge "Fetching candles…" indicator for fetchBefore operations
+    if (fetchBefore) setIsLoadingMore(true);
 
     // ★ Capture session at start — used to bail if company changes mid-flight
     const capturedSession = sessionIdRef.current;
@@ -211,14 +218,14 @@ export function useStockData({
     const capturedExchange = exchange;
     const capturedInterval = interval;
 
-    const requestKey = `${companyCode}_${startDate?.getTime()}_${endDate?.getTime()}_${fetchAllData}`;
+    const requestKey = `${companyCode}_${startDate?.getTime()}_${endDate?.getTime()}_${fetchAllData}_${fetchBefore}_${limit}`;
     if (loadingQueueRef.current.has(requestKey)) {
       console.log('[useStockData] Request already in progress, skipping:', requestKey);
       return [];
     }
 
-    // Check incremental range cache (only for non-fetchAllData range requests)
-    if (startDate && endDate && enableIncrementalLoading && !fetchAllData) {
+    // Check incremental range cache (only for non-fetchAllData, non-fetchBefore range requests)
+    if (startDate && endDate && enableIncrementalLoading && !fetchAllData && !fetchBefore) {
       const cachedData = getCachedData(startDate, endDate);
       if (cachedData) {
         console.log('[useStockData] Returning range-cached data');
@@ -236,6 +243,9 @@ export function useStockData({
     const controller = new AbortController();
     activeAbortControllersRef.current.add(controller);
 
+    // Explicit 5-minute timeout — prevents hangs on slow/intermittent connections
+    const fetchTimeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+
     // Tag this fetch with a unique ID to detect stale responses
     const thisFetchId = ++fetchIdRef.current;
 
@@ -249,7 +259,12 @@ export function useStockData({
         interval,
         ...(indicators.length > 0 && { indicators: indicators.join(',') })
       });
-      if (startDate) {
+      if (fetchBefore && endDate) {
+        // fetchBefore mode: get N candles going backwards from endDate
+        queryParams.append('endDate', endDate.toISOString());
+        queryParams.append('fetchBefore', 'true');
+        if (limit) queryParams.append('limit', String(limit));
+      } else if (startDate) {
         queryParams.append('startDate', startDate.toISOString());
         queryParams.append('endDate', endDate?.toISOString() || new Date(startDate.getTime() + 6.25 * 60 * 60 * 1000).toISOString());
       } else {
@@ -326,12 +341,14 @@ export function useStockData({
       }
       return [];
     } finally {
+      clearTimeout(fetchTimeoutId);
       // ★ Remove this controller from the active set
       activeAbortControllersRef.current.delete(controller);
       loadingQueueRef.current.delete(requestKey);
-      // Only clear loading if this session is still current
+      // Only clear loading/indicator if this session is still current
       if (sessionIdRef.current === capturedSession) {
         setLoading(false);
+        if (fetchBefore) setIsLoadingMore(false);
       }
     }
   }, [companyCode, exchange, interval, indicators, enableIncrementalLoading, getCachedData, setCachedData, updateDataRange, setDataAndRef]);

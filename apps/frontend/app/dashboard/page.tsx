@@ -1,6 +1,6 @@
 'use client';
-import { Suspense, useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { BarChart2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import { BarChart2, ChevronLeft, ChevronRight, Loader2, Database, ChevronDown } from "lucide-react";
 import { usePersistentState, useScrollRestoration } from '@/hooks/useStateRestoration';
 import { AppSidebar } from "../components/app-sidebar";
 import {
@@ -90,8 +90,8 @@ function DashboardContent() {
     loading: stockLoading,
     error: stockError,
     isLoadingMore,
+    dataRange,
     fetchData: fetchStockData,
-    loadDataForRange,
     clearData,
     restoreFromDayCache
   } = useStockData({
@@ -122,6 +122,8 @@ function DashboardContent() {
   // Trigger Fetch on Company Change — use day-cache for instant restore, then fetch fresh
   useEffect(() => {
     if (selectedCompany) {
+      setAtDataStart(false);
+      setScrollToDataBoundary(null);
       // 1. Reset local hook state (does NOT wipe the module-level day-cache)
       clearData();
 
@@ -148,6 +150,7 @@ function DashboardContent() {
   // Refetch on Interval Change — interval change means different aggregation, must fetch fresh
   useEffect(() => {
     if (selectedCompany) {
+      setAtDataStart(false);
       clearData();
 
       // Try day-cache for the new interval
@@ -178,14 +181,42 @@ function DashboardContent() {
     setSelectedInterval(interval);
   }, []);
 
-  const handleRangeChange = useCallback(async (startDate: Date, endDate: Date) => {
-    if (!selectedCompany) return;
+  // Show "fetch more" panel when user scrolls to the left edge of loaded data
+  const [atDataStart, setAtDataStart] = useState(false);
+  // After fetchBefore completes, this tells the chart to scroll to show the new-data boundary
+  const [scrollToDataBoundary, setScrollToDataBoundary] = useState<number | null>(null);
+
+  // Interval → milliseconds mapping for manual fetch calculation
+  const INTERVAL_MS: Record<string, number> = {
+    '1m': 60_000, '5m': 300_000, '15m': 900_000,
+    '30m': 1_800_000, '1h': 3_600_000, '1d': 86_400_000,
+  };
+
+  // Called by chart on every visible range change.
+  // Instead of auto-loading, we just detect if the user is at the left edge.
+  const handleRangeChange = useCallback(async (startDate: Date, _endDate: Date) => {
+    if (!selectedCompany || !dataRange.start) return;
+    // Show panel when visible start is at or within 2 candles of the earliest loaded data
+    const bufferMs = (INTERVAL_MS[selectedInterval] || 60_000) * 2;
+    setAtDataStart(startDate.getTime() <= dataRange.start.getTime() + bufferMs);
+  }, [selectedCompany, dataRange.start, selectedInterval]);
+
+  // Manually fetch N more candles going backwards from the earliest loaded point
+  const handleFetchMoreCandles = useCallback(async (count: number) => {
+    if (!selectedCompany || !dataRange.start) return;
+    setAtDataStart(false);
+    // Capture old boundary in unix seconds so chart can scroll to the join point after load
+    const oldBoundarySec = Math.floor(dataRange.start.getTime() / 1000);
     try {
-      await loadDataForRange(startDate, endDate);
-    } catch (error) {
-      console.error('Error fetching range data:', error);
+      const result = await fetchStockData(undefined, dataRange.start, { fetchBefore: true, limit: count, merge: true });
+      if (result && result.length > 0) {
+        // New data arrived — tell chart to scroll to the old data boundary so user sees new candles
+        setScrollToDataBoundary(oldBoundarySec);
+      }
+    } catch (err) {
+      console.error('Error fetching more candles:', err);
     }
-  }, [selectedCompany, loadDataForRange]);
+  }, [selectedCompany, dataRange.start, fetchStockData]);
 
   // Handlers for Toolbar
   const handleChartRangeChange = useCallback((start: Date | undefined, end: Date | undefined) => {
@@ -278,6 +309,59 @@ function DashboardContent() {
 
           {/* LEFT: CHART AREA */}
           <div className="flex-1 flex flex-col min-w-0 bg-secondary/5 relative">
+
+            {/* ── Fetch More Candles panel — appears at left when user scrolls to data start ── */}
+            {atDataStart && selectedCompany && !stockLoading && !isAutoLoading && !isLoadingMore && (
+              <div className="absolute left-2 top-1/2 -translate-y-1/2 z-30 w-52 rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
+                {/* Header */}
+                <div className="px-3 pt-3 pb-2 border-b border-border/60">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Database className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                      Historical Data
+                    </span>
+                  </div>
+                  <div className="text-xs text-foreground">
+                    <span className="font-semibold tabular-nums">{(stockData?.length ?? 0).toLocaleString()}</span>
+                    <span className="text-muted-foreground"> candles loaded</span>
+                  </div>
+                </div>
+
+                {/* Fetch buttons */}
+                <div className="p-2 space-y-1">
+                  <p className="text-[10px] text-muted-foreground font-medium px-1 pb-0.5">Load more ←</p>
+                  {([500, 2000, 5000, 7000, 10000] as const).map(count => (
+                    <button
+                      key={count}
+                      onClick={() => handleFetchMoreCandles(count)}
+                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium border border-border/70 bg-muted/30 hover:bg-muted/60 hover:border-border transition-colors text-foreground"
+                    >
+                      <span>+ {count.toLocaleString()} candles</span>
+                      <ChevronDown className="h-3 w-3 rotate-90 text-muted-foreground" />
+                    </button>
+                  ))}
+                </div>
+
+                {/* Dismiss */}
+                <div className="px-2 pb-2">
+                  <button
+                    onClick={() => setAtDataStart(false)}
+                    className="w-full text-[10px] text-muted-foreground/60 hover:text-muted-foreground py-1 transition-colors"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Loading indicator while manual fetch runs */}
+            {isLoadingMore && selectedCompany && (
+              <div className="absolute left-2 top-1/2 -translate-y-1/2 z-30 flex items-center gap-2.5 rounded-xl border border-border bg-background shadow-xl px-4 py-3 text-xs text-foreground">
+                <div className="h-4 w-4 rounded-full border-2 border-muted border-t-blue-500 animate-spin shrink-0" />
+                Fetching candles…
+              </div>
+            )}
+
             {selectedCompany ? (
               /* Show a full loading screen while initial data is being fetched.
                  Only render the chart once we actually have data to display. */
@@ -304,6 +388,7 @@ function DashboardContent() {
                   height="100%"
                   className="w-full h-full"
                   onRangeChange={handleRangeChange}
+                  scrollToDataBoundary={scrollToDataBoundary}
                 />
               )
             ) : (

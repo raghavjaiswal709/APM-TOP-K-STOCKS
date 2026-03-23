@@ -119,6 +119,12 @@ interface StockChartProps {
     statusMessage?: string | null;  // Overlay message shown inside chart (e.g. "Historical server unavailable")
     /** True when incremental gap-fill is loading older data (shows left-edge spinner) */
     isLoadingMore?: boolean;
+    /**
+     * Unix timestamp (seconds) to scroll to after new historical data is loaded.
+     * Pass the old dataRange.start (before fetchBefore) — chart scrolls to show that boundary.
+     * Change this value each time more historical data is loaded.
+     */
+    scrollToDataBoundary?: number | null;
 }
 
 // --- Constants ---
@@ -187,6 +193,7 @@ export function LightWeightStockChart({
     gttHorizonVisibility = {},
     statusMessage = null,
     isLoadingMore = false,
+    scrollToDataBoundary = null,
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -276,6 +283,28 @@ export function LightWeightStockChart({
             }
         });
     }, [showGttLabels]);
+
+    // Seconds per candle for each interval — used for auto-scroll after fetchBefore
+    const INTERVAL_SECONDS: Record<string, number> = {
+        '1m': 60, '5m': 300, '10m': 600, '15m': 900,
+        '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '1d': 86400,
+    };
+
+    // When new historical data is loaded (fetchBefore), scroll chart to show boundary
+    useEffect(() => {
+        if (!scrollToDataBoundary || !mainChartRef.current) return;
+        const intervalSec = INTERVAL_SECONDS[selectedInterval] || 60;
+        // Show 20 candles of new data + 40 candles of existing data around the join point
+        try {
+            (mainChartRef.current as any).timeScale().setVisibleRange({
+                from: (scrollToDataBoundary - 20 * intervalSec) as any,
+                to: (scrollToDataBoundary + 40 * intervalSec) as any,
+            });
+        } catch (e) {
+            try { (mainChartRef.current as any).timeScale().fitContent(); } catch (_) { }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scrollToDataBoundary]);
 
     // Data processing helper with validation
     const processData = useCallback((rawData: StockDataPoint[]) => {

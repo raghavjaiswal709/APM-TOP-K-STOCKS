@@ -29,6 +29,9 @@ def main():
     parser.add_argument('--fetch_all_data', type=str, default='false',
                        choices=['true', 'false'],
                        help='Fetch all available data for the company (ignores date range)')
+    parser.add_argument('--fetch_before', type=str, default='false',
+                       choices=['true', 'false'],
+                       help='Fetch N candles going backwards from end_date (ignores start_date)')
     
     # Additional arguments
     parser.add_argument('--limit', type=int, default=5000, help='Maximum number of records to return')
@@ -57,6 +60,7 @@ def main():
     # Parse boolean arguments
     first_fifteen_minutes = args.first_fifteen_minutes.lower() == 'true'
     fetch_all_data = args.fetch_all_data.lower() == 'true'
+    fetch_before = args.fetch_before.lower() == 'true'
     enable_cache = args.enable_cache.lower() == 'true'
     compression = args.compression.lower() == 'true'
     validate_data = args.validate_data.lower() == 'true'
@@ -75,8 +79,8 @@ def main():
             start_date = parse_date_string(args.start_date)
             end_date = parse_date_string(args.end_date)
             
-            # Apply buffer for range optimization
-            if optimize_for_range and args.buffer_minutes > 0:
+            # Apply buffer for range optimization (not for fetch_before — boundary must be exact)
+            if optimize_for_range and args.buffer_minutes > 0 and not fetch_before:
                 buffer_delta = timedelta(minutes=args.buffer_minutes)
                 start_date = start_date - buffer_delta
                 end_date = end_date + buffer_delta
@@ -171,6 +175,18 @@ def main():
             """
             query_params = company_ids + [args.limit]
             logger.info(f"Querying RECENT {args.limit} records for company_ids: {company_ids}")
+        elif fetch_before:
+            # Fetch N raw records going BACKWARDS from end_date, then reverse to chronological
+            stock_data_query = f"""
+            SELECT timestamp, open, high, low, close, volume, company_id
+            FROM company_data
+            WHERE company_id IN ({company_id_placeholders})
+            AND timestamp < %s
+            ORDER BY timestamp DESC
+            LIMIT %s
+            """
+            query_params = company_ids + [end_date, args.limit]
+            logger.info(f"Querying {args.limit} records BEFORE {end_date} for company_ids: {company_ids}")
         else:
             if optimize_for_range:
                 # Optimized range query with indexes
@@ -212,8 +228,8 @@ def main():
                 logger.info(f"No stock data found for company_code='{args.company_code}' on exchanges={args.exchange} in date range {start_date} to {end_date}")
             sys.exit(0)
 
-        # If fetched with DESC order (fetch_all_data), reverse to chronological
-        if fetch_all_data:
+        # If fetched with DESC order (fetch_all_data or fetch_before), reverse to chronological
+        if fetch_all_data or fetch_before:
             rows = list(reversed(rows))
 
         # Data aggregation with enhanced error handling

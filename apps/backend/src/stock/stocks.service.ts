@@ -145,7 +145,21 @@ export class StockService {
         return `${year}-${month}-${day} ${hourStr}:${minuteStr}:00`;
       };
 
-      if (params.startDate && params.endDate) {
+      if (params.fetchBefore && params.endDate) {
+        // fetchBefore mode: get exactly N candles going BACKWARDS from endDate
+        // Use 9:15 so we fetch candles strictly before market open of that day
+        const endStr = formatDateForPython(params.endDate, 9, 15);
+        const intervalMultiplier = this.getIntervalMultiplier(params.interval);
+        const requestedCandles = params.limit ?? 2000;
+        const rawLimit = Math.min(requestedCandles * intervalMultiplier, 200000);
+
+        this.logger.log(`fetchBefore mode: getting ${requestedCandles} candles before ${params.endDate.toDateString()}`);
+        this.logger.log(`Sending to Python: end="${endStr}", raw_limit=${rawLimit}`);
+
+        command += ` --end_date="${endStr}"`;
+        command += ' --fetch_before=true';
+        command += ` --limit=${rawLimit}`;
+      } else if (params.startDate && params.endDate) {
         // Market hours in IST: 9:15 AM to 3:45 PM
         const startStr = formatDateForPython(params.startDate, 9, 15);
         const endStr = formatDateForPython(params.endDate, 15, 45);
@@ -429,13 +443,18 @@ export class StockService {
 
  
   private generateRequestKey(params: StockDataRequestDto): string {
-    const dateKey = params.startDate && params.endDate 
-      ? `${params.startDate.getTime()}-${params.endDate.getTime()}`
-      : 'all';
-    
+    let dateKey: string;
+    if (params.fetchBefore && params.endDate) {
+      dateKey = `before-${params.endDate.getTime()}-${params.limit ?? 'def'}`;
+    } else if (params.startDate && params.endDate) {
+      dateKey = `${params.startDate.getTime()}-${params.endDate.getTime()}`;
+    } else {
+      dateKey = 'all';
+    }
+
     const firstFifteenKey = params.firstFifteenMinutes ? '_first15' : '';
     const indicatorsKey = params.indicators?.length > 0 ? `_${params.indicators.join(',')}` : '';
-    
+
     return `${params.companyCode}_${params.interval}_${params.exchange || 'NSE-BSE'}_${dateKey}${firstFifteenKey}${indicatorsKey}`;
   }
 

@@ -635,16 +635,39 @@ def fetch_external_historical_data(symbol: str, date: str = None) -> list:
 
 
 def build_ohlc_from_external_data(symbol: str, data_points: list) -> list:
-    """Build OHLC candles from external tick data"""
+    """Build OHLC candles from external tick data.
+
+    vol_traded_today is a CUMULATIVE daily total. We compute per-tick deltas by
+    tracking prev_cumulative_vol across ALL ticks (not just within a minute).
+    This correctly handles minutes with only a single tick, which the old
+    per-minute _start_vol approach left with a huge cumulative value.
+    """
     if not data_points:
         return []
-    
+
+    # Sort by timestamp so deltas are computed in chronological order
+    sorted_points = sorted(data_points, key=lambda x: x['timestamp'])
+
     candles_by_minute = {}
-    
-    for point in data_points:
+    prev_cumulative_vol = None  # None = first tick, delta = 0
+
+    for point in sorted_points:
         timestamp = point['timestamp']
         minute_ts = (timestamp // 60) * 60
-        
+        curr_vol = point.get('volume', 0) or 0
+
+        # Delta volume for this tick
+        if prev_cumulative_vol is None:
+            # First tick ever – we don't know what came before, so set delta = 0
+            delta = 0
+        elif curr_vol >= prev_cumulative_vol:
+            delta = curr_vol - prev_cumulative_vol
+        else:
+            # Cumulative reset (new day or data gap) – treat current as delta
+            delta = curr_vol
+
+        prev_cumulative_vol = curr_vol
+
         if minute_ts not in candles_by_minute:
             candles_by_minute[minute_ts] = {
                 'timestamp': minute_ts,
@@ -652,22 +675,16 @@ def build_ohlc_from_external_data(symbol: str, data_points: list) -> list:
                 'high': point['ltp'],
                 'low': point['ltp'],
                 'close': point['ltp'],
-                'volume': point.get('volume', 0),
-                '_start_vol': point.get('volume', 0)
+                'volume': delta,  # Correct delta even for single-tick minutes
             }
         else:
             candle = candles_by_minute[minute_ts]
             candle['high'] = max(candle['high'], point['ltp'])
             candle['low'] = min(candle['low'], point['ltp'])
             candle['close'] = point['ltp']
-            # Calculate volume delta
-            curr_vol = point.get('volume', 0)
-            if curr_vol >= candle['_start_vol']:
-                candle['volume'] = curr_vol - candle['_start_vol']
-            else:
-                candle['volume'] = curr_vol
-    
-    # Convert to list and clean up internal fields
+            candle['volume'] += delta
+
+    # Convert to sorted list
     candles = []
     for minute_ts in sorted(candles_by_minute.keys()):
         candle = candles_by_minute[minute_ts]
@@ -677,9 +694,9 @@ def build_ohlc_from_external_data(symbol: str, data_points: list) -> list:
             'high': candle['high'],
             'low': candle['low'],
             'close': candle['close'],
-            'volume': candle['volume']
+            'volume': max(0, candle['volume'])
         })
-    
+
     return candles
 
 
