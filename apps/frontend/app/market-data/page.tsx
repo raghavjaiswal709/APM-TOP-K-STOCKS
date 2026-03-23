@@ -89,8 +89,8 @@ declare global {
   }
 }
 
-// Use LightWeightStockChart instead of Plotly
-const LightWeightStockChart = dynamic(() => import('@/app/components/charts/LightWeightStockChart').then(mod => ({ default: mod.LightWeightStockChart })), {
+// Market-data has its own dedicated chart component — isolated from dashboard
+const LightWeightStockChart = dynamic(() => import('./components/MarketDataStockChart').then(mod => ({ default: mod.MarketDataStockChart })), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-zinc-900">
@@ -99,14 +99,6 @@ const LightWeightStockChart = dynamic(() => import('@/app/components/charts/Ligh
   )
 });
 
-const GttPredictionChart = dynamic(() => import('./components/charts/GttPredictionChart'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full flex items-center justify-center bg-zinc-900">
-      <div className="animate-pulse text-purple-500">Loading GTT Engine...</div>
-    </div>
-  )
-});
 
 const UMAPClusterDashboard = dynamic(() => import('./components/umap/UMAPClusterDashboard'), {
   ssr: false,

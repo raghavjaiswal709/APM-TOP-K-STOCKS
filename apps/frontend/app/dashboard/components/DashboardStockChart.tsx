@@ -53,7 +53,7 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { SeparateViewModal } from './SeparateViewModal';
+import { SeparateViewModal } from '@/app/components/charts/SeparateViewModal';
 import { ALL_HORIZON_KEYS, HORIZON_LINE_CONFIG } from '@/lib/gttTransformers';
 import { attachPriceAxisWheelZoom, removePriceAxisWheelZoom } from '@/utils/chartWheelHandler';
 
@@ -170,7 +170,7 @@ const CHART_TYPES = [
     { id: 'heikenAshi', name: 'Heiken Ashi', icon: Grid },
 ];
 
-export function LightWeightStockChart({
+export function DashboardStockChart({
     companyId,
     data = [],
     startDate,
@@ -2111,7 +2111,7 @@ export function LightWeightStockChart({
                 symbol={companyId || 'Unknown'}
                 chartType={chartType as any}
                 predictions={predictions}
-                LiveChartComponent={LightWeightStockChart}
+                LiveChartComponent={DashboardStockChart}
                 liveChartProps={{
                     companyId,
                     data,

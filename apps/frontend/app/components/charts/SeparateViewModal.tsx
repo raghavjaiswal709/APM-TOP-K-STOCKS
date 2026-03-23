@@ -16,8 +16,7 @@ const UMAPClusterDashboard = dynamic(() => import('@/app/market-data/components/
   )
 });
 
-// Dynamically import Plot and ClusterChart to avoid SSR issues
-const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
+// Dynamically import ClusterChart to avoid SSR issues
 const ClusterChart = dynamic(
   () => import('@/app/market-data/components/charts/ClusterChart').then(mod => ({ default: mod.ClusterChart })),
   { ssr: false }
@@ -48,39 +47,23 @@ interface SeparateViewModalProps {
   symbol: string;
   chartType?: 'line' | 'candle';
   predictions?: CompanyPredictions | null;
-  
-  // For Plotly charts
-  createActualDataOnly?: () => any[];
-  createPredictionDataOnly?: () => any[];
-  createCombinedViewData?: () => any[];
-  
+
   // For LightWeightStockChart
   LiveChartComponent?: React.ComponentType<any>;
   liveChartProps?: any;
-  
+
   // Common props
   todayPredictionInfo?: {
     hasTodayPredictions: boolean;
   };
-  
+
   // Cluster pattern props
   exchange?: string;
   forcedXRange?: [Date, Date] | undefined;
   selectedTimeframe?: string;
   predictionRevision?: number;
   onXRangeChange?: (range: [Date, Date] | undefined) => void;
-  
-  // Combined view handlers (for Plotly)
-  combinedViewXRange?: [Date, Date] | null;
-  combinedViewY1Range?: [number, number] | null;
-  combinedViewY2Range?: [number, number] | null;
-  resetCombinedViewToDefault?: () => void;
-  handleCombinedViewRelayout?: (eventData: any) => void;
-  getDefaultMarketHoursRange?: () => [Date, Date];
   getTimeRange?: () => [Date, Date];
-  
-  // Chart rendering mode
-  chartMode: 'plotly' | 'lightweight';
 }
 
 export function SeparateViewModal({
@@ -89,9 +72,6 @@ export function SeparateViewModal({
   symbol,
   chartType = 'line',
   predictions,
-  createActualDataOnly,
-  createPredictionDataOnly,
-  createCombinedViewData,
   LiveChartComponent,
   liveChartProps,
   todayPredictionInfo = { hasTodayPredictions: true },
@@ -100,14 +80,7 @@ export function SeparateViewModal({
   selectedTimeframe = '1m',
   predictionRevision = 0,
   onXRangeChange,
-  combinedViewXRange,
-  combinedViewY1Range,
-  combinedViewY2Range,
-  resetCombinedViewToDefault,
-  handleCombinedViewRelayout,
-  getDefaultMarketHoursRange,
   getTimeRange,
-  chartMode
 }: SeparateViewModalProps) {
   const [separateViewMode, setSeparateViewMode] = useState<'live-prediction' | 'live-cluster' | 'prediction-cluster' | 'combined' | 'umap-analysis'>('live-prediction');
 
@@ -154,90 +127,15 @@ export function SeparateViewModal({
 
         {/* Modal Content - Conditional Layout */}
         {separateViewMode === 'combined' ? (
-          /* COMBINED VIEW - Single Full-Width Chart */
+          /* COMBINED VIEW - Single Full-Width Chart with predictions overlay */
           <div className="flex-1 min-h-0 p-2 bg-zinc-950">
             <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden flex flex-col">
               <div className="flex-1 min-h-0 p-2">
-                {chartMode === 'plotly' && createCombinedViewData && getDefaultMarketHoursRange ? (
-                  <Plot
-                    divId="combined-view-chart"
-                    data={createCombinedViewData()}
-                    layout={{
-                      autosize: true,
-                      height: undefined,
-                      margin: { l: 70, r: 70, t: 80, b: 60 },
-                      title: {
-                        text: `${symbol} - Complete Market Analysis (All Overlays)`,
-                        font: { size: 16, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif', weight: 600 },
-                      },
-                      xaxis: {
-                        title: 'Time (Market Hours: 9:15 AM - 3:30 PM)',
-                        type: 'date',
-                        gridcolor: '#27272a',
-                        linecolor: '#3f3f46',
-                        tickfont: { color: '#a1a1aa', size: 11 },
-                        titlefont: { color: '#d4d4d8', size: 12 },
-                        tickformat: '%H:%M',
-                        range: combinedViewXRange || getDefaultMarketHoursRange(),
-                        dtick: 30 * 60 * 1000,
-                        fixedrange: false,
-                      },
-                      yaxis: {
-                        title: 'Price (₹)',
-                        side: 'left',
-                        gridcolor: '#27272a',
-                        linecolor: '#10B981',
-                        tickfont: { color: '#10B981', size: 11 },
-                        titlefont: { color: '#10B981', size: 13 },
-                        autorange: combinedViewY1Range === null,
-                        range: combinedViewY1Range || undefined,
-                        fixedrange: false,
-                      },
-                      yaxis2: {
-                        title: 'Cluster Pattern (%)',
-                        side: 'right',
-                        overlaying: 'y',
-                        gridcolor: 'rgba(139, 92, 246, 0.1)',
-                        linecolor: '#8b5cf6',
-                        tickfont: { color: '#8b5cf6', size: 11 },
-                        titlefont: { color: '#8b5cf6', size: 13 },
-                        autorange: combinedViewY2Range === null,
-                        range: combinedViewY2Range || undefined,
-                        showgrid: false,
-                        fixedrange: false,
-                      },
-                      plot_bgcolor: '#18181b',
-                      paper_bgcolor: '#18181b',
-                      font: { family: 'Inter, system-ui, sans-serif', color: '#e4e4e7' },
-                      hovermode: 'x unified',
-                      showlegend: true,
-                      legend: {
-                        orientation: 'h',
-                        yanchor: 'bottom',
-                        y: 1.02,
-                        xanchor: 'center',
-                        x: 0.5,
-                        bgcolor: 'rgba(24, 24, 27, 0.95)',
-                        bordercolor: '#3f3f46',
-                        borderwidth: 1,
-                        font: { size: 12, color: '#e4e4e7' },
-                      },
-                    }}
-                    config={{
-                      responsive: true,
-                      displayModeBar: true,
-                      displaylogo: false,
-                      modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-                      doubleClick: 'reset+autosize',
-                    }}
-                    style={{ width: '100%', height: '100%' }}
-                    onRelayout={handleCombinedViewRelayout}
-                  />
-                ) : LiveChartComponent ? (
+                {LiveChartComponent ? (
                   <LiveChartComponent {...liveChartProps} predictions={predictions} showPredictions={true} />
                 ) : (
                   <div className="h-full flex items-center justify-center">
-                    <p className="text-zinc-400">Combined view not available for this chart type</p>
+                    <p className="text-zinc-400">Combined view not available</p>
                   </div>
                 )}
               </div>
@@ -246,49 +144,13 @@ export function SeparateViewModal({
         ) : (
           /* SIDE-BY-SIDE VIEW */
           <div className="grid grid-cols-2 gap-2 p-2 flex-1 min-h-0 bg-zinc-950">
-            
+
             {/* LEFT PANEL */}
             <div className="flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden min-h-0">
               <div className="flex-1 min-h-0 p-2">
-                {separateViewMode === 'prediction-cluster' ? (  /* LEFT: predictions for pred-cluster mode */
-                  chartMode === 'plotly' && createPredictionDataOnly && predictions && (predictions.count ?? 0) > 0 && todayPredictionInfo.hasTodayPredictions ? (
-                    <Plot
-                      data={createPredictionDataOnly()}
-                      layout={{
-                        autosize: true,
-                        height: undefined,
-                        margin: { l: 50, r: 50, t: 40, b: 40 },
-                        title: {
-                          text: `${symbol} Predictions`,
-                          font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
-                        },
-                        xaxis: {
-                          title: 'Time',
-                          type: 'date',
-                          gridcolor: '#27272a',
-                          linecolor: '#3f3f46',
-                          tickfont: { color: '#a1a1aa', size: 11 },
-                          titlefont: { color: '#d4d4d8', size: 12 },
-                        },
-                        yaxis: {
-                          title: 'Price (₹)',
-                          gridcolor: '#27272a',
-                          linecolor: '#3f3f46',
-                          tickfont: { color: '#a1a1aa', size: 11 },
-                          titlefont: { color: '#d4d4d8', size: 12 },
-                        },
-                        plot_bgcolor: '#18181b',
-                        paper_bgcolor: '#18181b',
-                        font: { family: 'Inter, system-ui, sans-serif', color: '#e4e4e7' },
-                      }}
-                      config={{
-                        responsive: true,
-                        displayModeBar: true,
-                        displaylogo: false,
-                      }}
-                      style={{ width: '100%', height: '100%' }}
-                    />
-                  ) : LiveChartComponent && predictions ? (
+                {separateViewMode === 'prediction-cluster' ? (
+                  /* LEFT: predictions panel for pred-cluster mode */
+                  LiveChartComponent && predictions ? (
                     <LiveChartComponent {...liveChartProps} data={[]} predictions={predictions} showPredictions={true} />
                   ) : (
                     <div className="h-full flex items-center justify-center">
@@ -303,44 +165,7 @@ export function SeparateViewModal({
                     </div>
                   )
                 ) : (
-                  chartMode === 'plotly' && createActualDataOnly ? (
-                    <Plot
-                      data={createActualDataOnly()}
-                      layout={{
-                        autosize: true,
-                        height: undefined,
-                        margin: { l: 50, r: 50, t: 40, b: 40 },
-                        title: {
-                          text: `${symbol} ${chartType === 'line' ? 'LTP' : 'OHLC'}`,
-                          font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
-                        },
-                        xaxis: {
-                          title: 'Time',
-                          type: 'date',
-                          gridcolor: '#27272a',
-                          linecolor: '#3f3f46',
-                          tickfont: { color: '#a1a1aa', size: 11 },
-                          titlefont: { color: '#d4d4d8', size: 12 },
-                        },
-                        yaxis: {
-                          title: 'Price (₹)',
-                          gridcolor: '#27272a',
-                          linecolor: '#3f3f46',
-                          tickfont: { color: '#a1a1aa', size: 11 },
-                          titlefont: { color: '#d4d4d8', size: 12 },
-                        },
-                        plot_bgcolor: '#18181b',
-                        paper_bgcolor: '#18181b',
-                        font: { family: 'Inter, system-ui, sans-serif', color: '#e4e4e7' },
-                      }}
-                      config={{
-                        responsive: true,
-                        displayModeBar: true,
-                        displaylogo: false,
-                      }}
-                      style={{ width: '100%', height: '100%' }}
-                    />
-                  ) : LiveChartComponent ? (
+                  LiveChartComponent ? (
                     <LiveChartComponent {...liveChartProps} predictions={null} showPredictions={false} />
                   ) : null
                 )}
@@ -356,44 +181,7 @@ export function SeparateViewModal({
                     <UMAPClusterDashboard initialSymbol={symbol} />
                   </div>
                 ) : separateViewMode === 'live-prediction' ? (
-                  chartMode === 'plotly' && createPredictionDataOnly && predictions && (predictions.count ?? 0) > 0 && todayPredictionInfo.hasTodayPredictions ? (
-                    <Plot
-                      data={createPredictionDataOnly()}
-                      layout={{
-                        autosize: true,
-                        height: undefined,
-                        margin: { l: 50, r: 50, t: 40, b: 40 },
-                        title: {
-                          text: `${symbol} Predictions`,
-                          font: { size: 14, color: '#e4e4e7', family: 'Inter, system-ui, sans-serif' },
-                        },
-                        xaxis: {
-                          title: 'Time',
-                          type: 'date',
-                          gridcolor: '#27272a',
-                          linecolor: '#3f3f46',
-                          tickfont: { color: '#a1a1aa', size: 11 },
-                          titlefont: { color: '#d4d4d8', size: 12 },
-                        },
-                        yaxis: {
-                          title: 'Price (₹)',
-                          gridcolor: '#27272a',
-                          linecolor: '#3f3f46',
-                          tickfont: { color: '#a1a1aa', size: 11 },
-                          titlefont: { color: '#d4d4d8', size: 12 },
-                        },
-                        plot_bgcolor: '#18181b',
-                        paper_bgcolor: '#18181b',
-                        font: { family: 'Inter, system-ui, sans-serif', color: '#e4e4e7' },
-                      }}
-                      config={{
-                        responsive: true,
-                        displayModeBar: true,
-                        displaylogo: false,
-                      }}
-                      style={{ width: '100%', height: '100%' }}
-                    />
-                  ) : LiveChartComponent && predictions ? (
+                  LiveChartComponent && predictions ? (
                     <LiveChartComponent {...liveChartProps} data={[]} predictions={predictions} showPredictions={true} />
                   ) : (
                     <div className="h-full flex items-center justify-center">

@@ -18,7 +18,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ModeToggle } from "../components/toggleButton";
-import { LightWeightStockChart as StockChart } from "../components/charts/LightWeightStockChart";
+import { DashboardStockChart as StockChart } from "./components/DashboardStockChart";
 import { CompanyList } from "../components/CompanyList";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useStockData } from "@/hooks/useStockData";
