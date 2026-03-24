@@ -58,7 +58,7 @@ interface AIPredictionsDashboardProps {
   gttData?: GttMultiSeriesData | null;
 }
 
-export const AIPredictionsDashboard: React.FC<AIPredictionsDashboardProps> = ({
+const AIPredictionsDashboardInner: React.FC<AIPredictionsDashboardProps> = ({
   isPolling,
   elapsedTime,
   timeRemaining,
@@ -534,4 +534,5 @@ export const AIPredictionsDashboard: React.FC<AIPredictionsDashboardProps> = ({
   );
 };
 
+export const AIPredictionsDashboard = React.memo(AIPredictionsDashboardInner);
 export default AIPredictionsDashboard;

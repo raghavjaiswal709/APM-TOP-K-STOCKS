@@ -265,6 +265,8 @@ export function MarketDataStockChart({
     
     // Track previous data length to detect meaningful data changes vs same-data re-renders
     const prevDataLengthRef = useRef<number>(0);
+    // Track the last candle's time for incremental series.update() optimisation
+    const prevLastCandleTimeRef = useRef<number | null>(null);
     
     // Track whether this is the first data load (or after company change) to avoid resetting user's zoom/pan on live updates
     const needsInitialFitRef = useRef<boolean>(true);
@@ -861,6 +863,8 @@ export function MarketDataStockChart({
             const reason = companyChanged ? `company changed to ${companyId}` : `interval changed to ${selectedInterval}`;
             console.log(`🔄 [DATA UPDATE] ${reason} — clearing all series`);
             needsInitialFitRef.current = true; // Force fit on next data load
+            prevDataLengthRef.current = 0;
+            prevLastCandleTimeRef.current = null;
             // Reset auto-scale to locked (true) on interval change for fresh data
             if (intervalChanged && !companyChanged) {
                 setAutoScaleLocked(true);
@@ -921,6 +925,10 @@ export function MarketDataStockChart({
         if (processedData.length > 0) {
             console.log(`📊 [DATA UPDATE] First point time: ${new Date(processedData[0].time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}, Last: ${new Date(processedData[processedData.length - 1].time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
         }
+
+        // isIncrementalUpdate: set inside the DATA-ONLY branch after prepareMainSeriesData() is
+        // declared; used by the volume-series update below which runs after the main-series block.
+        let isIncrementalUpdate = false;
 
         // --- Main Chart Data ---
         // OPTIMIZATION: When only data changed (background loading / incremental merge),
@@ -998,8 +1006,12 @@ export function MarketDataStockChart({
                 series = mainChart.addSeries(CandlestickSeries, candlestickOptions);
             }
 
-            series.setData(prepareMainSeriesData());
+            const createdData = prepareMainSeriesData();
+            series.setData(createdData);
             mainSeriesRef.current = series;
+            // Track for incremental updates on subsequent ticks
+            prevDataLengthRef.current = createdData.length;
+            prevLastCandleTimeRef.current = createdData.length > 0 ? (createdData[createdData.length - 1].time as number) : null;
 
             console.log(`📊 [DATA UPDATE] Created new ${chartType} series with ${processedData.length} data points`);
 
@@ -1014,10 +1026,29 @@ export function MarketDataStockChart({
                 } catch (e) { }
             }
         } else {
-            // DATA-ONLY UPDATE: Reuse existing series — just update data in place.
-            // This is the key optimization that prevents chart disruption during background data loading.
+            // DATA-ONLY UPDATE: Reuse existing series.
+            // INCREMENTAL OPTIMISATION: If only the last candle changed (live tick updating
+            // high/low/close within the current minute), call series.update() which is O(1).
+            // Only fall back to setData() when new candles are added or on first load.
             const newData = prepareMainSeriesData();
-            mainSeriesRef.current!.setData(newData);
+
+            isIncrementalUpdate = (
+                newData.length > 0 &&
+                newData.length === prevDataLengthRef.current &&
+                newData[newData.length - 1].time === prevLastCandleTimeRef.current
+            );
+
+            if (isIncrementalUpdate) {
+                // Same number of candles, same last-candle timestamp → in-progress candle update
+                mainSeriesRef.current!.update(newData[newData.length - 1]);
+            } else {
+                // New candle added, initial load, or interval/data-structure change → full replace
+                mainSeriesRef.current!.setData(newData);
+            }
+
+            // Track for next call
+            prevDataLengthRef.current = newData.length;
+            prevLastCandleTimeRef.current = newData.length > 0 ? (newData[newData.length - 1].time as number) : null;
 
             // Update line/area color dynamically based on price movement
             if (chartType === 'line') {
@@ -1072,7 +1103,14 @@ export function MarketDataStockChart({
             })
             .filter((v): v is NonNullable<typeof v> => v !== null);
 
-        volumeSeriesRef.current?.setData(volumeData);
+        // Volume: same incremental strategy as main series
+        if (volumeSeriesRef.current) {
+            if (isIncrementalUpdate && volumeData.length > 0) {
+                volumeSeriesRef.current.update(volumeData[volumeData.length - 1]);
+            } else {
+                volumeSeriesRef.current.setData(volumeData);
+            }
+        }
 
 
         // --- Indicators (optimized: reuse existing series when possible) ---

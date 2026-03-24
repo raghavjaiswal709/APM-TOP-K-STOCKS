@@ -224,7 +224,7 @@ export function AppSidebar() {
   }, [pathname])
 
   const toggleExpanded = (title: string) =>
-    setExpandedItems(prev => { const n = new Set(prev); n.has(title) ? n.delete(title) : n.add(title); return n })
+    setExpandedItems(prev => { const n = new Set(prev); if (n.has(title)) { n.delete(title); } else { n.add(title); } return n })
 
   // ── Auto-open submenu for current route ────────────────────────────────────
   useEffect(() => {

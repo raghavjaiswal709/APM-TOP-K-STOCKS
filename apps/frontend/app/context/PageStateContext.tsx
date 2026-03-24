@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef } from 'react';
 
 // Market Data Page State
 export interface MarketDataState {
@@ -68,29 +68,46 @@ export const PageStateProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [recommendationsState, setRecommendationsState] = useState<Partial<RecommendationsState>>({});
   const [portfolioState, setPortfolioState] = useState<Partial<PortfolioState>>({});
 
-  // Persist state to localStorage on change
+  // Debounced persist to localStorage — avoids blocking writes on every state change
+  const marketDataTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const watchlistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recommendationsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const portfolioTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    if (Object.keys(marketDataState).length > 0) {
+    if (Object.keys(marketDataState).length === 0) return;
+    if (marketDataTimerRef.current) clearTimeout(marketDataTimerRef.current);
+    marketDataTimerRef.current = setTimeout(() => {
       localStorage.setItem('marketDataState', JSON.stringify(marketDataState));
-    }
+    }, 2000);
+    return () => { if (marketDataTimerRef.current) clearTimeout(marketDataTimerRef.current); };
   }, [marketDataState]);
 
   useEffect(() => {
-    if (Object.keys(watchlistState).length > 0) {
+    if (Object.keys(watchlistState).length === 0) return;
+    if (watchlistTimerRef.current) clearTimeout(watchlistTimerRef.current);
+    watchlistTimerRef.current = setTimeout(() => {
       localStorage.setItem('watchlistState', JSON.stringify(watchlistState));
-    }
+    }, 2000);
+    return () => { if (watchlistTimerRef.current) clearTimeout(watchlistTimerRef.current); };
   }, [watchlistState]);
 
   useEffect(() => {
-    if (Object.keys(recommendationsState).length > 0) {
+    if (Object.keys(recommendationsState).length === 0) return;
+    if (recommendationsTimerRef.current) clearTimeout(recommendationsTimerRef.current);
+    recommendationsTimerRef.current = setTimeout(() => {
       localStorage.setItem('recommendationsState', JSON.stringify(recommendationsState));
-    }
+    }, 2000);
+    return () => { if (recommendationsTimerRef.current) clearTimeout(recommendationsTimerRef.current); };
   }, [recommendationsState]);
 
   useEffect(() => {
-    if (Object.keys(portfolioState).length > 0) {
+    if (Object.keys(portfolioState).length === 0) return;
+    if (portfolioTimerRef.current) clearTimeout(portfolioTimerRef.current);
+    portfolioTimerRef.current = setTimeout(() => {
       localStorage.setItem('portfolioState', JSON.stringify(portfolioState));
-    }
+    }, 2000);
+    return () => { if (portfolioTimerRef.current) clearTimeout(portfolioTimerRef.current); };
   }, [portfolioState]);
 
   const updateMarketDataState = useCallback((newState: Partial<MarketDataState>) => {

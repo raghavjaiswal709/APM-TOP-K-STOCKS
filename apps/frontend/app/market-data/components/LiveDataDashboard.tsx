@@ -202,7 +202,7 @@ function getReoccurrenceConfig(probability: number | null) {
   };
 }
 
-export const LiveDataDashboard: React.FC<LiveDataDashboardProps> = ({
+const LiveDataDashboardInner: React.FC<LiveDataDashboardProps> = ({
   company,
   symbol,
   currentData,
@@ -677,13 +677,13 @@ export const LiveDataDashboard: React.FC<LiveDataDashboardProps> = ({
                       <div className="bg-muted/30 rounded-lg p-2 text-center border border-border/50">
                         <div className="text-[10px] text-muted-foreground uppercase">Noise</div>
                         <div className="text-sm font-bold text-amber-400">
-                          {`${(umapAnalysis.noise.total_noise_fraction * 100).toFixed(1)}%`}
+                          {`${((umapAnalysis.noise?.total_noise_fraction ?? 0) * 100).toFixed(1)}%`}
                         </div>
                       </div>
                       <div className="bg-muted/30 rounded-lg p-2 text-center border border-border/50">
                         <div className="text-[10px] text-muted-foreground uppercase">Clusters</div>
                         <div className="text-sm font-bold text-violet-400">
-                          {umapActiveClusters?.n_active_clusters ?? umapAnalysis.active_clusters.count}
+                          {umapActiveClusters?.n_active_clusters ?? umapAnalysis.active_clusters?.count}
                         </div>
                       </div>
                     </div>
@@ -716,3 +716,5 @@ export const LiveDataDashboard: React.FC<LiveDataDashboardProps> = ({
     </div>
   );
 };
+
+export const LiveDataDashboard = React.memo(LiveDataDashboardInner);

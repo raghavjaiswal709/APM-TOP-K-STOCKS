@@ -249,26 +249,23 @@ const MarketDataPage: React.FC = () => {
   // Live countdown to the next regular prediction fetch (every 5 min, ticks every second)
   const predCountdown = usePredictionCountdown();
 
-  // Market Data State with persistence for seamless navigation
-  const [marketData, setMarketData] = usePersistentState<Record<string, MarketData>>(
-    'market-data-marketData',
-    {}
-  );
-  const [historicalData, setHistoricalData] = usePersistentState<Record<string, MarketData[]>>(
-    'market-data-historicalData',
-    {}
-  );
-  const [ohlcData, setOhlcData] = usePersistentState<Record<string, OHLCData[]>>(
-    'market-data-ohlcData',
-    {}
-  );
+  // Market Data State — plain useState (NOT persisted: live data is refreshed
+  // immediately via socket + backfill on mount; serialising MB of ticks to
+  // localStorage on every tick was the #1 performance killer).
+  const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
+  const [historicalData, setHistoricalData] = useState<Record<string, MarketData[]>>({});
+  const [ohlcData, setOhlcData] = useState<Record<string, OHLCData[]>>({});
   const [chartUpdates, setChartUpdates] = useState<Record<string, ChartUpdate[]>>({});
 
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
-  const [lastDataReceived, setLastDataReceived] = useState<Date | null>(null);
+  // lastDataReceived moved to ref — only read in the 30s health-check interval,
+  // no need to trigger re-renders on every live tick.
+  const lastDataReceivedRef = useRef<number | null>(null);
   const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
-  const [dataCount, setDataCount] = useState<number>(0);
-  const [updateFrequency, setUpdateFrequency] = useState<number>(0);
+  // dataCount / updateFrequency / activeSymbols / backgroundDataPoints are
+  // never rendered in JSX — use refs to avoid re-renders on every tick/heartbeat.
+  const dataCountRef = useRef<number>(0);
+  const updateFrequencyRef = useRef<number>(0);
   const [tradingHours, setTradingHours] = useState<TradingHours>({
     start: '',
     end: '',
@@ -276,8 +273,8 @@ const MarketDataPage: React.FC = () => {
     isActive: false
   });
 
-  const [activeSymbols, setActiveSymbols] = useState<string[]>([]);
-  const [backgroundDataPoints, setBackgroundDataPoints] = useState<number>(0);
+  const activeSymbolsRef = useRef<string[]>([]);
+  const backgroundDataPointsRef = useRef<number>(0);
   const [gradientMode, setGradientMode] = useState<'profit' | 'loss' | 'neutral'>('neutral');
   const [sentimentLoading, setSentimentLoading] = useState(false);
   const [activeTab, setActiveTab] = usePersistentState<'live' | 'predictions'>(
@@ -927,10 +924,10 @@ const MarketDataPage: React.FC = () => {
           });
 
           if (response.active_symbols) {
-            setActiveSymbols(response.active_symbols);
+            activeSymbolsRef.current = response.active_symbols;
           }
           if (response.total_data_points) {
-            setBackgroundDataPoints(response.total_data_points);
+            backgroundDataPointsRef.current = response.total_data_points;
           }
         }
       });
@@ -1089,8 +1086,8 @@ const MarketDataPage: React.FC = () => {
     if (!data || !data.symbol) return;
 
     updateCountRef.current++;
-    setLastDataReceived(new Date());
-    setDataCount(prev => prev + 1);
+    lastDataReceivedRef.current = Date.now();
+    dataCountRef.current++;
 
     setMarketData(prev => ({
       ...prev,
@@ -1181,11 +1178,15 @@ const MarketDataPage: React.FC = () => {
         // This is used to calculate delta for the entire minute
         symbolVolumeMap.set(minuteTs, cumulativeVolume);
 
-        // Clean up old minute entries (keep only last 1000 minutes)
-        const sortedMinutes = Array.from(symbolVolumeMap.keys()).sort((a, b) => a - b);
-        while (sortedMinutes.length > 1000) {
-          const oldMinute = sortedMinutes.shift();
-          if (oldMinute) symbolVolumeMap.delete(oldMinute);
+        // Clean up old minute entries (keep only last 500 minutes ≈ full trading day).
+        // Minutes are inserted chronologically so the minimum key is the oldest.
+        // Use Map.size check instead of O(N) sort+shift.
+        if (symbolVolumeMap.size > 500) {
+          let oldest = Infinity;
+          for (const k of symbolVolumeMap.keys()) {
+            if (k < oldest) oldest = k;
+          }
+          symbolVolumeMap.delete(oldest);
         }
 
         candleMap.set(minuteTs, {
@@ -1375,10 +1376,10 @@ const MarketDataPage: React.FC = () => {
     }));
 
     if (data.active_symbols && Array.isArray(data.active_symbols)) {
-      setActiveSymbols(data.active_symbols);
+      activeSymbolsRef.current = data.active_symbols;
     }
     if (typeof data.total_cached_points === 'number') {
-      setBackgroundDataPoints(data.total_cached_points);
+      backgroundDataPointsRef.current = data.total_cached_points;
     }
   }, []);
 
@@ -1404,7 +1405,7 @@ const MarketDataPage: React.FC = () => {
       const now = Date.now();
       const timeDiff = (now - lastUpdateTimeRef.current) / 1000;
       const frequency = timeDiff > 0 ? Math.round(updateCountRef.current / timeDiff) : 0;
-      setUpdateFrequency(frequency);
+      updateFrequencyRef.current = frequency; // ref only — not rendered, no re-render needed
       updateCountRef.current = 0;
       lastUpdateTimeRef.current = now;
     }, 1000);
@@ -1924,8 +1925,9 @@ const MarketDataPage: React.FC = () => {
       if (!socket) return;
 
       const isConnected = isSocketConnected();
-      const timeSinceLastData = lastDataReceived
-        ? Date.now() - lastDataReceived.getTime()
+      // Use ref — no need to re-run this effect every time a tick arrives
+      const timeSinceLastData = lastDataReceivedRef.current
+        ? Date.now() - lastDataReceivedRef.current
         : null;
 
       if (isConnected && tradingHours.isActive && timeSinceLastData && timeSinceLastData > STALE_THRESHOLD) {
@@ -1939,7 +1941,7 @@ const MarketDataPage: React.FC = () => {
     }, 30000);
 
     return () => clearInterval(healthCheckInterval);
-  }, [isClient, selectedSymbol, lastDataReceived, tradingHours.isActive]);
+  }, [isClient, selectedSymbol, tradingHours.isActive]);
 
   // Memoized data
   const currentData = useMemo(() =>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 /**
  * Saves scroll position when component unmounts and restores it when mounted
@@ -41,7 +41,7 @@ export const useScrollRestoration = (scrollContainerId?: string) => {
 
     if (storedPosition) {
       const position = parseInt(storedPosition, 10);
-      
+
       // Use setTimeout to ensure DOM is ready
       setTimeout(() => {
         const container = scrollContainerId
@@ -59,38 +59,39 @@ export const useScrollRestoration = (scrollContainerId?: string) => {
 };
 
 /**
- * Hook to manage component state persistence across navigation
- * Automatically saves and restores state from localStorage
- * Supports functional updates like React.useState
- * Only restores state during navigation, NOT on page refresh
+ * Hook to manage component state persistence across navigation.
+ * Automatically saves and restores state from localStorage.
+ * Supports functional updates like React.useState.
+ *
+ * PERFORMANCE: localStorage writes are debounced (2-second delay) to avoid
+ * blocking the main thread on high-frequency state updates (e.g. live ticks).
+ * On component unmount (navigation), the latest value is written immediately
+ * so it is always available when the user navigates back.
  */
 export const usePersistentState = <T,>(
   key: string,
   initialValue: T
 ): [T, (value: T | ((prev: T) => T)) => void] => {
-  // Initialize state from localStorage if available
+  // Initialize state from localStorage if available (only during navigation, not refresh)
   const [value, setValue] = useState<T>(() => {
     if (typeof window === 'undefined') {
       return initialValue;
     }
 
     try {
-      // Check if this is a navigation (not a refresh)
-      // sessionStorage persists during navigation but clears on refresh
+      // sessionStorage persists during tab navigation but clears on hard refresh
       const isNavigation = sessionStorage.getItem('app-navigation-active') === 'true';
-      
+
       if (isNavigation) {
-        // Restore from localStorage during navigation
         const stored = localStorage.getItem(key);
         if (stored !== null) {
-          const parsed = JSON.parse(stored);
-          return parsed;
+          return JSON.parse(stored);
         }
       } else {
-        // On refresh, clear localStorage for this key to start fresh
+        // Fresh page load — clear stale persisted state for this key
         localStorage.removeItem(key);
       }
-      
+
       return initialValue;
     } catch (error) {
       console.error(`Failed to load persisted state for key "${key}":`, error);
@@ -98,31 +99,41 @@ export const usePersistentState = <T,>(
     }
   });
 
-  // Mark navigation as active when component unmounts (user is navigating)
+  // Always-current ref used by the unmount cleanup (avoids stale closure)
+  const valueRef = useRef<T>(value);
+  valueRef.current = value;
+
+  // Debounced write: fires 2 seconds after the last change, cancelled on next change.
+  // This prevents blocking localStorage I/O on every live-data tick.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+      } catch {
+        /* ignore quota / private-mode errors */
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [key, value]);
+
+  // On unmount (user navigating away): cancel pending timer and write immediately
+  // so the state is ready when the user navigates back.
   useEffect(() => {
     return () => {
-      sessionStorage.setItem('app-navigation-active', 'true');
-    };
-  }, []);
-
-  // Save to localStorage whenever value changes
-  const setPersistentValue = (newValue: T | ((prev: T) => T)) => {
-    setValue((prevValue) => {
-      // Handle functional updates
-      const valueToStore = typeof newValue === 'function' 
-        ? (newValue as (prev: T) => T)(prevValue)
-        : newValue;
-      
-      // Save to localStorage
       try {
-        localStorage.setItem(key, JSON.stringify(valueToStore));
-      } catch (error) {
-        console.error(`Failed to save state for key "${key}":`, error);
+        sessionStorage.setItem('app-navigation-active', 'true');
+        localStorage.setItem(key, JSON.stringify(valueRef.current));
+      } catch {
+        /* ignore */
       }
-      
-      return valueToStore;
-    });
-  };
+    };
+  }, [key]);
+
+  // Plain setState wrapper — debounce handles persistence, no sync I/O here
+  const setPersistentValue = useCallback((newValue: T | ((prev: T) => T)) => {
+    setValue(newValue);
+  }, []);
 
   return [value, setPersistentValue];
 };

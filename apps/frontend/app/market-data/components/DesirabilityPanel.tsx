@@ -150,7 +150,7 @@ function getReoccurrenceConfig(probability: number | null): ScoreConfig {
     };
 }
 
-export function DesirabilityPanel({ score, classification, loading, onFetch, data }: DesirabilityPanelProps) {
+export const DesirabilityPanel = React.memo(function DesirabilityPanel({ score, classification, loading, onFetch, data }: DesirabilityPanelProps) {
     const desirabilityConfig = getScoreConfig(score);
     const reoccurrenceProbability = data?.top_pattern?.reoccurrence_probability ?? null;
     const reoccurrenceConfig = getReoccurrenceConfig(reoccurrenceProbability);
@@ -315,4 +315,4 @@ export function DesirabilityPanel({ score, classification, loading, onFetch, dat
             </CardContent>
         </Card>
     );
-}
+});

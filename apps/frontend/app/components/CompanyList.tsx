@@ -103,7 +103,7 @@ interface CompanyListProps {
     selectedSentiment?: SentimentType | null;
 }
 
-export function CompanyList({
+export const CompanyList = React.memo(function CompanyList({
     companies,
     selectedCompanyCode,
     onSelect,
@@ -930,4 +930,4 @@ export function CompanyList({
             )}
         </div>
     );
-}
+});
