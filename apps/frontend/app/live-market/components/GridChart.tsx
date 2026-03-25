@@ -1,13 +1,27 @@
 'use client';
-import React, { useState, useEffect, useMemo } from 'react';
-interface Company {
-  company_code: string;
-  name: string;
-  exchange: string;
-  marker: string;
-  symbol: string;
-}
-interface MarketData {
+
+/**
+ * GridChart — live-market mini chart using lightweight-charts v5.
+ *
+ * - Always Area/Line chart (no candlestick)
+ * - Shows a 10-minute rolling window: setVisibleRange on every tick
+ * - Seeded with historical tick data from backend
+ * - Real-time updates via series.update() — O(1)
+ * - Auto-sizes via ResizeObserver
+ */
+
+import React, { useEffect, useRef } from 'react';
+import {
+  createChart,
+  ColorType,
+  IChartApi,
+  ISeriesApi,
+  Time,
+  AreaSeries,
+} from 'lightweight-charts';
+
+/* ── Types ── */
+export interface TickData {
   symbol: string;
   ltp: number;
   change?: number;
@@ -19,153 +33,220 @@ interface MarketData {
   volume?: number;
   timestamp: number;
 }
-interface GridChartProps {
-  symbol: string;
-  data: MarketData;
-  company: Company;
+
+export interface GridChartProps {
+  company: {
+    company_code: string;
+    name: string;
+    exchange: string;
+    marker: string;
+    symbol: string;
+  };
+  data: TickData | undefined;
+  /** Historical ticks from backend — seeds the chart on mount */
+  tickHistory?: TickData[];
 }
-const GridChart: React.FC<GridChartProps> = ({ symbol, data, company }) => {
-  const [priceHistory, setPriceHistory] = useState<Array<{timestamp: number, price: number}>>([]);
+
+/* ── Helpers ── */
+
+/** Normalise a timestamp to Unix seconds */
+const toSec = (ts: number) => (ts < 1e10 ? Math.floor(ts) : Math.floor(ts / 1000));
+
+/** Convert tick array to time-sorted { time, value } pairs (monotonic) */
+function buildLinePoints(ticks: TickData[]): Array<{ time: Time; value: number }> {
+  const out: Array<{ time: Time; value: number }> = [];
+  let last = 0;
+  for (const t of ticks) {
+    let ts = toSec(t.timestamp);
+    if (ts <= last) ts = last + 1;
+    out.push({ time: ts as Time, value: t.ltp });
+    last = ts;
+  }
+  return out;
+}
+
+/* ── Component ── */
+const GridChart: React.FC<GridChartProps> = ({ company, data, tickHistory }) => {
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const chartRef      = useRef<IChartApi | null>(null);
+  const seriesRef     = useRef<ISeriesApi<'Area'> | null>(null);
+  const roRef         = useRef<ResizeObserver | null>(null);
+  const lastTimeRef   = useRef<number>(0);   // for monotonic line updates
+
+  const isPositive = (data?.change ?? 0) >= 0;
+  const lineColor  = isPositive ? '#2ca499' : '#ef4444';
+
+  /* ── Create chart on mount (once per company) ── */
   useEffect(() => {
-    if (!data?.ltp) return;
-    setPriceHistory(prev => {
-      const newPoint = { timestamp: Date.now(), price: data.ltp };
-      const updated = [...prev, newPoint];
-      return updated.slice(-30);
+    if (!containerRef.current) return;
+
+    /* Teardown any existing chart */
+    roRef.current?.disconnect();
+    try { chartRef.current?.remove(); } catch {}
+    chartRef.current = null;
+    seriesRef.current = null;
+    lastTimeRef.current = 0;
+
+    const el = containerRef.current;
+    const w  = el.clientWidth  || 300;
+    const h  = el.clientHeight || 180;
+
+    const chart = createChart(el, {
+      width:  w,
+      height: h,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor:  '#6b7280',
+        fontSize:   9,
+      },
+      grid: {
+        vertLines: { visible: false },
+        horzLines: { color: '#ffffff0a' },
+      },
+      rightPriceScale: {
+        borderVisible: false,
+        autoScale:     true,
+        scaleMargins:  { top: 0.08, bottom: 0.08 },
+        minimumWidth:  52,
+      },
+      leftPriceScale: { visible: false },
+      localization: {
+        timeFormatter: (time: number) =>
+          new Date(time * 1000).toLocaleTimeString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+          }),
+      },
+      timeScale: {
+        borderVisible:  false,
+        timeVisible:    true,
+        secondsVisible: false,
+        fixRightEdge:   false,
+        rightOffset:    3,
+        tickMarkFormatter: (time: number) =>
+          new Date(time * 1000).toLocaleTimeString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          }),
+      },
+      crosshair: { mode: 0 },
+      handleScroll: false,
+      handleScale:  false,
     });
-  }, [data?.ltp]);
-  const { pathData, gradientId } = useMemo(() => {
-    if (priceHistory.length < 2) {
-      return { pathData: '', gradientId: `gradient-${company.company_code}` };
+
+    const series = chart.addSeries(AreaSeries, {
+      lineColor,
+      topColor:               lineColor + '30',
+      bottomColor:            lineColor + '04',
+      lineWidth:              2,
+      crosshairMarkerVisible: false,
+      lastValueVisible:       false,
+      priceLineVisible:       false,
+    });
+
+    /* Seed from tick history (last 10 minutes only) */
+    const nowSec = Math.floor(Date.now() / 1000);
+    const cutoff = nowSec - 600;
+    const recent = (tickHistory ?? []).filter(t => toSec(t.timestamp) >= cutoff);
+    const pts    = buildLinePoints(recent);
+    if (pts.length > 0) {
+      series.setData(pts);
+      lastTimeRef.current = pts[pts.length - 1].time as number;
     }
-    const width = 280;
-    const height = 140;
-    const padding = 10;
-    const minPrice = Math.min(...priceHistory.map(p => p.price));
-    const maxPrice = Math.max(...priceHistory.map(p => p.price));
-    const priceRange = maxPrice - minPrice || 1;
-    const points = priceHistory.map((point, index) => {
-      const x = padding + (index / (priceHistory.length - 1)) * width;
-      const y = padding + ((maxPrice - point.price) / priceRange) * height;
-      return { x, y };
+
+    /* Seed live data point if available */
+    if (data?.ltp) {
+      const ts = toSec(data.timestamp || nowSec);
+      const safeTs = Math.max(ts, lastTimeRef.current + 1);
+      try { series.update({ time: safeTs as Time, value: data.ltp }); } catch {}
+      lastTimeRef.current = safeTs;
+    }
+
+    /* Set 10-minute visible range — only valid when data exists */
+    try {
+      if (lastTimeRef.current > 0) {
+        chart.timeScale().setVisibleRange({
+          from: (nowSec - 600) as Time,
+          to:   (nowSec + 60)  as Time,
+        });
+      } else {
+        chart.timeScale().fitContent();
+      }
+    } catch { chart.timeScale().fitContent(); }
+
+    chartRef.current  = chart;
+    seriesRef.current = series;
+
+    /* Auto-resize via ResizeObserver */
+    const ro = new ResizeObserver(entries => {
+      if (!chartRef.current) return;
+      const { width, height } = entries[0].contentRect;
+      if (width > 10 && height > 10) {
+        chartRef.current.resize(width, height);
+      }
     });
-    const pathData = `M ${points[0].x} ${points[0].y} ` + 
-                    points.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
-    return { 
-      pathData, 
-      gradientId: `gradient-${company.company_code}` 
+    ro.observe(el);
+    roRef.current = ro;
+
+    return () => {
+      ro.disconnect();
+      roRef.current = null;
+      try { chartRef.current?.remove(); } catch {}
+      chartRef.current  = null;
+      seriesRef.current = null;
     };
-  }, [priceHistory, company.company_code]);
-  const isPositive = (data?.change || 0) >= 0;
-  const primaryColor = isPositive ? '#2ca499' : '#ee5351';
-  const secondaryColor = isPositive ? '#2ca49940' : '#ee535140';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company.company_code]); // recreate only when company changes
+
+  /* ── Re-seed when historical data arrives asynchronously ── */
+  useEffect(() => {
+    if (!seriesRef.current || !tickHistory?.length) return;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const cutoff = nowSec - 600;
+    const recent = tickHistory.filter(t => toSec(t.timestamp) >= cutoff);
+    const pts    = buildLinePoints(recent);
+    if (pts.length === 0) return;
+    try {
+      seriesRef.current.setData(pts);
+      lastTimeRef.current = pts[pts.length - 1].time as number;
+      chartRef.current?.timeScale().setVisibleRange({
+        from: (nowSec - 600) as Time,
+        to:   (nowSec + 60)  as Time,
+      });
+    } catch { /* ignore */ }
+  }, [tickHistory]);
+
+  /* ── Real-time tick update — fires on every LTP change ── */
+  useEffect(() => {
+    if (!seriesRef.current || !data?.ltp) return;
+
+    const ts     = toSec(data.timestamp || Date.now() / 1000);
+    const safeTs = Math.max(ts, lastTimeRef.current + 1);
+
+    try {
+      seriesRef.current.update({ time: safeTs as Time, value: data.ltp });
+      lastTimeRef.current = safeTs;
+
+      /* Slide 10-minute window forward with each tick */
+      chartRef.current?.timeScale().setVisibleRange({
+        from: (safeTs - 600) as Time,
+        to:   (safeTs + 60)  as Time,
+      });
+    } catch { /* ignore time-ordering errors */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.ltp, data?.timestamp]);
+
   return (
-    <div className="w-full h-full bg-background border rounded overflow-hidden">
-      {}
-      <div className="p-2 bg-muted/30 border-b">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">{company.company_code}</span>
-          <span className={`text-xs font-bold ${isPositive ? 'text-[#2ca499]' : 'text-[#ee5351]'}`}>
-            ₹{data?.ltp?.toFixed(2) || '0.00'}
-          </span>
-        </div>
-      </div>
-      {}
-      <div className="relative" style={{ height: '140px' }}>
-        <svg width="100%" height="340" viewBox="0 0 300 140" className="absolute inset-0">
-          {}
-          <defs>
-            <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor={primaryColor} stopOpacity="0.3" />
-              <stop offset="100%" stopColor={primaryColor} stopOpacity="0.05" />
-            </linearGradient>
-            {}
-            <pattern id={`grid-${company.company_code}`} width="20" height="20" patternUnits="userSpaceOnUse">
-              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f1f5f9" strokeWidth="0.5"/>
-            </pattern>
-          </defs>
-          {}
-          <rect width="100%" height="100%" fill={`url(#grid-${company.company_code})`} />
-          {}
-          {pathData && (
-            <path
-              d={`${pathData} L 290 140 L 10 140 Z`}
-              fill={`url(#${gradientId})`}
-            />
-          )}
-          {}
-          {pathData && (
-            <path
-              d={pathData}
-              fill="none"
-              stroke={primaryColor}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-          {}
-          {priceHistory.length > 0 && priceHistory.map((_, index) => {
-            if (priceHistory.length < 2) return null;
-            const width = 280;
-            const height = 140;
-            const padding = 10;
-            const minPrice = Math.min(...priceHistory.map(p => p.price));
-            const maxPrice = Math.max(...priceHistory.map(p => p.price));
-            const priceRange = maxPrice - minPrice || 1;
-            const x = padding + (index / (priceHistory.length - 1)) * width;
-            const y = padding + ((maxPrice - priceHistory[index].price) / priceRange) * height;
-            return (
-              <circle
-                key={index}
-                cx={x}
-                cy={y}
-                r={index === priceHistory.length - 1 ? "3" : "1.5"}
-                fill={primaryColor}
-                opacity={index === priceHistory.length - 1 ? 1 : 0.6}
-              />
-            );
-          })}
-          {}
-          {data?.ltp && priceHistory.length > 0 && (
-            <text
-              x="250"
-              y="20"
-              fill={primaryColor}
-              fontSize="12"
-              fontWeight="600"
-              textAnchor="middle"
-            >
-              ₹{data.ltp.toFixed(2)}
-            </text>
-          )}
-        </svg>
-        {}
-        {priceHistory.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-            <div className="text-center">
-              <div className="text-sm">Waiting for data...</div>
-              <div className="text-xs mt-1">{company.name}</div>
-            </div>
-          </div>
-        )}
-      </div>
-      {}
-      {}
-    </div>
+    <div
+      ref={containerRef}
+      className="w-full h-full"
+    />
   );
 };
-export default GridChart;
-//
-//       // Dynamic import to handle different versions
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//       return updated.slice(-20);
 
+export default GridChart;

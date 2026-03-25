@@ -18,6 +18,10 @@ import {
     Brain,
     Activity,
     Building2,
+    CheckSquare,
+    Square,
+    LayoutGrid,
+    ExternalLink,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -101,6 +105,17 @@ interface CompanyListProps {
     // NEW: Selected company's detailed data (for display)
     selectedDesirability?: CompanyDesirabilityData | null;
     selectedSentiment?: SentimentType | null;
+
+    // Multi-select mode
+    multiSelectMode?: boolean;
+    onMultiAction?: (action: 'multi-chart' | 'new-tabs' | 'historical' | 'subscribe', codes: string[]) => void;
+    /** When true: multi-select is always active (no toggle), action panel shows Subscribe/Clear */
+    subscribeMode?: boolean;
+    /**
+     * Pre-select these codes the FIRST TIME this prop is non-empty.
+     * Used in live-market to show URL-subscribed companies as checked on load.
+     */
+    initialSelectedCodes?: string[];
 }
 
 export const CompanyList = React.memo(function CompanyList({
@@ -121,6 +136,10 @@ export const CompanyList = React.memo(function CompanyList({
     onShowAllCompaniesChange,
     desirabilityMap = {},
     sentimentMap = {},
+    multiSelectMode = false,
+    onMultiAction,
+    subscribeMode = false,
+    initialSelectedCodes,
 }: CompanyListProps) {
     const [searchTerm, setSearchTerm] = React.useState("");
     const [isFilterOpen, setIsFilterOpen] = React.useState(false);
@@ -168,6 +187,33 @@ export const CompanyList = React.memo(function CompanyList({
     }, [activeFilters.showAllCompanies, onShowAllCompaniesChange]);
 
     const [isCarouselOpen, setIsCarouselOpen] = React.useState(false);
+
+    // Multi-select state — always active when subscribeMode is on
+    const [isMultiSelectActive, setIsMultiSelectActive] = React.useState(subscribeMode);
+    const [multiSelectedCodes, setMultiSelectedCodes] = React.useState<Set<string>>(new Set());
+
+    const toggleMultiSelect = React.useCallback((code: string) => {
+        setMultiSelectedCodes(prev => {
+            const next = new Set(prev);
+            if (next.has(code)) next.delete(code);
+            else next.add(code);
+            return next;
+        });
+    }, []);
+
+    const handleMultiAction = React.useCallback((action: 'multi-chart' | 'new-tabs' | 'historical' | 'subscribe') => {
+        if (multiSelectedCodes.size === 0) return;
+        onMultiAction?.(action, Array.from(multiSelectedCodes));
+    }, [multiSelectedCodes, onMultiAction]);
+
+    // Pre-select provided codes ONCE — used to show URL-companies as checked on live-market load
+    const hasInitializedSelectionRef = React.useRef(false);
+    React.useEffect(() => {
+        if (hasInitializedSelectionRef.current) return;
+        if (!initialSelectedCodes?.length) return;
+        hasInitializedSelectionRef.current = true;
+        setMultiSelectedCodes(new Set(initialSelectedCodes));
+    }, [initialSelectedCodes]);
 
     // Prediction availability state
     const [regularPredictions, setRegularPredictions] = React.useState<Set<string>>(new Set());
@@ -683,6 +729,22 @@ export const CompanyList = React.memo(function CompanyList({
                         <Images size={16} />
                     </Button>
 
+                    {/* Multi-select toggle — shown when multiSelectMode is on but NOT in subscribeMode (always active) */}
+                    {multiSelectMode && !subscribeMode && (
+                        <Button
+                            variant={isMultiSelectActive ? "secondary" : "ghost"}
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => {
+                                setIsMultiSelectActive(prev => !prev);
+                                setMultiSelectedCodes(new Set());
+                            }}
+                            title={isMultiSelectActive ? "Exit multi-select" : "Select multiple companies"}
+                        >
+                            {isMultiSelectActive ? <CheckSquare size={16} /> : <Square size={16} />}
+                        </Button>
+                    )}
+
                     {/* Loading indicator for batch data */}
                     {batchDataLoading && (
                         <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -731,22 +793,46 @@ export const CompanyList = React.memo(function CompanyList({
                             const hasPrediction = hasRegularPrediction(company.company_code);
                             const hasGtt = hasGttPrediction(company.company_code);
 
+                            const isMultiChecked = multiSelectedCodes.has(company.company_code);
+
                             return (
                                 <TooltipProvider key={uniqueKey} delayDuration={300}>
                                     <div
-                                        onClick={() => onSelect(company.company_code)}
+                                        onClick={() => {
+                                            if (isMultiSelectActive) {
+                                                toggleMultiSelect(company.company_code);
+                                            } else {
+                                                onSelect(company.company_code);
+                                            }
+                                        }}
                                         className={cn(
                                             "flex flex-col gap-1.5 p-2.5 cursor-pointer hover:bg-accent/50 transition-all duration-200 border-b border-border/50 relative",
-                                            isSelected && "border-l-4 border-l-primary pl-[6px]"
+                                            isSelected && !isMultiSelectActive && "border-l-4 border-l-primary pl-[6px]",
+                                            isMultiSelectActive && "pl-8",
+                                            isMultiSelectActive && isMultiChecked && "bg-primary/5"
                                         )}
                                         style={{
-                                            backgroundColor: isSelected 
-                                                ? undefined 
+                                            backgroundColor: isSelected && !isMultiSelectActive
+                                                ? undefined
                                                 : getSentimentBgColor(companySentiment),
                                             borderRightColor: getSentimentBorderColor(companySentiment),
                                             borderRightWidth: companySentiment && companySentiment !== 'NEUTRAL' ? '2px' : '0px'
                                         }}
                                     >
+                                        {/* Multi-select checkbox overlay */}
+                                        {isMultiSelectActive && (
+                                            <div className="absolute left-2 top-1/2 -translate-y-1/2 z-10"
+                                                onClick={(e) => { e.stopPropagation(); toggleMultiSelect(company.company_code); }}
+                                            >
+                                                <div className={cn(
+                                                    "w-3.5 h-3.5 rounded border-2 flex items-center justify-center",
+                                                    isMultiChecked ? "bg-primary border-primary" : "border-muted-foreground/50 bg-background"
+                                                )}>
+                                                    {isMultiChecked && <Check className="h-2 w-2 text-primary-foreground" />}
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* Row 1: Symbol + Exchange + Refined Badge */}
                                         <div className="flex items-center justify-between w-full">
                                             <div className="flex items-center gap-1.5 min-w-0">
@@ -907,6 +993,78 @@ export const CompanyList = React.memo(function CompanyList({
                     </div>
                 )}
             </div>
+
+            {/* MULTI-SELECT ACTION PANEL */}
+            {isMultiSelectActive && multiSelectedCodes.size > 0 && (
+                <div className="border-t bg-muted/20 p-2 flex flex-col gap-1.5 shrink-0">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">
+                            {multiSelectedCodes.size} selected
+                        </span>
+                        <button
+                            onClick={() => setMultiSelectedCodes(new Set())}
+                            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            Clear
+                        </button>
+                    </div>
+
+                    {subscribeMode ? (
+                        /* Subscribe mode: shown in live-market sidebar */
+                        <>
+                            <Button
+                                size="sm"
+                                variant="default"
+                                className="h-7 text-xs w-full"
+                                onClick={() => handleMultiAction('subscribe')}
+                            >
+                                <Check className="h-3 w-3 mr-1.5" />
+                                Subscribe ({multiSelectedCodes.size})
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs w-full"
+                                onClick={() => setMultiSelectedCodes(new Set())}
+                            >
+                                <X className="h-3 w-3 mr-1.5" />
+                                Clear Selection
+                            </Button>
+                        </>
+                    ) : (
+                        /* Multi-action mode: shown in market-data sidebar */
+                        <>
+                            <Button
+                                size="sm"
+                                variant="default"
+                                className="h-7 text-xs w-full"
+                                onClick={() => handleMultiAction('multi-chart')}
+                            >
+                                <LayoutGrid className="h-3 w-3 mr-1.5" />
+                                Multi Chart
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs w-full"
+                                onClick={() => handleMultiAction('new-tabs')}
+                            >
+                                <ExternalLink className="h-3 w-3 mr-1.5" />
+                                Open in New Tabs
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs w-full"
+                                onClick={() => handleMultiAction('historical')}
+                            >
+                                <BarChart3 className="h-3 w-3 mr-1.5" />
+                                Historical Data
+                            </Button>
+                        </>
+                    )}
+                </div>
+            )}
 
             {/* MODALS */}
             <FilterModal

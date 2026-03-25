@@ -1866,12 +1866,12 @@ export function DashboardStockChart({
 
                 {/* Auto-Scale Lock Toggle */}
                 <Button
-                    variant={autoScaleLocked ? "secondary" : "ghost"}
+                    variant="ghost"
                     size="sm"
-                    className={`h-8 w-8 p-0 border transition-colors ${
+                    className={`h-8 w-8 p-0 transition-colors ${
                         autoScaleLocked
-                            ? 'border-primary/50 bg-primary/10 text-primary hover:bg-primary/20'
-                            : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
+                            ? 'text-primary hover:bg-primary/10'
+                            : 'text-muted-foreground hover:text-foreground'
                     }`}
                     onClick={() => setAutoScaleLocked(prev => !prev)}
                     title={autoScaleLocked ? 'Auto-scale ON — click to unlock for manual vertical control' : 'Auto-scale OFF — click to lock for auto vertical fitting'}
@@ -1893,20 +1893,6 @@ export function DashboardStockChart({
                     <RotateCcw size={14} />
                 </Button>
 
-                {/* Separate View Button - Hidden when modal is already open */}
-                {!isSeparatorModalOpen && (
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-2 border-blue-500 text-blue-500 hover:bg-blue-500/20 hover:border-blue-400 transition-all duration-300 font-medium"
-                    onClick={() => setIsSeparatorModalOpen(true)}
-                    title="Open Separate View - Comparative Analysis"
-                >
-                    <Maximize2 className="h-3.5 w-3.5" />
-                    Separate View
-                </Button>
-                )}
-
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsFullscreen(!isFullscreen)} title="Fullscreen">
                     {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                 </Button>
@@ -1915,22 +1901,6 @@ export function DashboardStockChart({
             {/* Charts Layout */}
             <div className="flex-1 flex flex-col min-h-0 w-full relative">
                 <div className="flex-1 relative w-full h-full min-h-0" ref={mainChartContainerRef}>
-                    {/* GTT Labels Eye Toggle — floating overlay inside chart, top-right */}
-                    <div className="absolute top-2 right-14 z-10">
-                        <Button
-                            variant={showGttLabels ? "secondary" : "ghost"}
-                            size="sm"
-                            className={`h-7 w-7 p-0 border transition-colors shadow-sm backdrop-blur-sm ${
-                                showGttLabels
-                                    ? 'border-violet-500/50 bg-violet-500/15 text-violet-400 hover:bg-violet-500/25'
-                                    : 'border-border/40 bg-background/60 text-muted-foreground hover:border-border hover:text-foreground'
-                            }`}
-                            onClick={() => setShowGttLabels(prev => !prev)}
-                            title={showGttLabels ? 'Hide GTT right-axis labels' : 'Show GTT right-axis labels'}
-                        >
-                            {showGttLabels ? <Eye size={13} /> : <EyeOff size={13} />}
-                        </Button>
-                    </div>
                     {/* Loading status badge - minimal, non-intrusive */}
                     {loading && (
                         <div className="absolute top-3 left-3 z-20 pointer-events-none">

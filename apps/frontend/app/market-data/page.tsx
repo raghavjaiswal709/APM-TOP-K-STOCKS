@@ -737,6 +737,18 @@ const MarketDataPage: React.FC = () => {
     if (companyCode && exchange) {
       console.log(`✅ [handleCompanyChange] Formatted symbol: ${newSymbol}`);
       setSelectedSymbol(newSymbol);
+
+      // Persist selected company to subscribed_companies.json
+      if (newSymbol && newSymbol !== selectedSymbol) {
+        fetch('/api/admin/subscribed-companies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols: [newSymbol] }),
+        })
+          .then(r => r.json())
+          .then(d => console.log(`💾 [subscribed] Saved ${newSymbol}:`, d))
+          .catch(err => console.warn('[subscribed] Save failed:', err));
+      }
     } else {
       setSelectedSymbol('');
     }
@@ -775,6 +787,58 @@ const MarketDataPage: React.FC = () => {
 
     setCurrentDate(date);
   }, [selectedSymbol]);
+
+  // ── URL param auto-select: ?company=RELIANCE&exchange=NSE ──
+  // Uses window.location.search (no Suspense / useSearchParams needed)
+  const urlParamAppliedRef = useRef(false);
+  useEffect(() => {
+    if (urlParamAppliedRef.current || !companies || companies.length === 0) return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const urlCompany = params.get('company');
+    if (!urlCompany) return;
+    urlParamAppliedRef.current = true;
+    const urlExchange = params.get('exchange') || undefined;
+    const urlMarker   = params.get('marker')   || undefined;
+    const found = companies.find((c: any) => c.company_code === urlCompany);
+    handleCompanyChange(
+      urlCompany,
+      urlExchange || found?.exchange || 'NSE',
+      urlMarker   || found?.marker   || 'EQ'
+    );
+  }, [companies, handleCompanyChange]);
+
+  // Multi-select action handler for CompanyList
+  const handleMultiAction = useCallback(
+    (action: 'multi-chart' | 'new-tabs' | 'historical' | 'subscribe', codes: string[]) => {
+      if (codes.length === 0) return;
+
+      if (action === 'multi-chart') {
+        // Open live-market grid with selected companies
+        // Pass codes as comma-separated param — live-market will subscribe to them
+        window.open(`/live-market?companies=${encodeURIComponent(codes.join(','))}`, '_blank');
+
+      } else if (action === 'new-tabs') {
+        // Open each company in its own market-data tab
+        codes.forEach(code => {
+          const company = companies?.find((c: any) => c.company_code === code);
+          const exchange = encodeURIComponent(company?.exchange || 'NSE');
+          const marker   = encodeURIComponent(company?.marker   || 'EQ');
+          window.open(`/market-data?company=${code}&exchange=${exchange}&marker=${marker}`, '_blank');
+        });
+
+      } else if (action === 'historical') {
+        // Open each company's historical data on the dashboard
+        codes.forEach(code => {
+          const company = companies?.find((c: any) => c.company_code === code);
+          const exchange = encodeURIComponent(company?.exchange || 'NSE');
+          const marker   = encodeURIComponent(company?.marker   || 'EQ');
+          window.open(`/?company=${code}&exchange=${exchange}&marker=${marker}`, '_blank');
+        });
+      }
+    },
+    [companies]
+  );
 
   // Subscription Handlers
   const handleSubscribeCompanies = useCallback(async (companyCodes: string[]) => {
@@ -1474,8 +1538,10 @@ const MarketDataPage: React.FC = () => {
 
       try {
         const predictionHealth = await PredictionAPIService.checkHealth({ timeout: 5000 });
-        setPredictionServiceHealth(predictionHealth ? 'available' : 'unavailable');
-        console.log('✅ [Health Check] Prediction service:', predictionHealth ? 'available' : 'unavailable');
+        // Must check running/status fields — the proxy always returns HTTP 200 even when service is down
+        const isPredAvailable = predictionHealth?.running === true || predictionHealth?.status === 'healthy';
+        setPredictionServiceHealth(isPredAvailable ? 'available' : 'unavailable');
+        console.log('✅ [Health Check] Prediction service:', isPredAvailable ? 'available' : 'unavailable', predictionHealth);
       } catch (error) {
         console.warn('❌ [Health Check] Prediction service unavailable:', error);
         setPredictionServiceHealth('unavailable');
@@ -2245,7 +2311,7 @@ const MarketDataPage: React.FC = () => {
                   ? 'text-yellow-600 dark:text-yellow-400'
                   : 'text-red-600 dark:text-red-400'
               }`}>
-                {socketStatus === 'Connected' || socketStatus === 'Error' ? 'Live'
+                {socketStatus === 'Connected' ? 'Live'
                   : isReconnecting ? 'Reconnecting'
                   : 'Offline'}
               </span>
@@ -2408,16 +2474,14 @@ const MarketDataPage: React.FC = () => {
                 >
                   <Zap className="h-3 w-3" />
                   {isGttEnabled ? 'GTT ON' : 'GTT OFF'}
-                  {gttCountdown.inMarketHours && (
+                  {isGttEnabled && gttCountdown.inMarketHours && (
                     <span
                       className={`font-mono text-[10px] tabular-nums leading-none px-1 py-0.5 rounded ${
                         gttCountdown.seconds <= 60
                           ? 'bg-amber-400/25 text-amber-600 dark:text-amber-300'
                           : gttCountdown.seconds <= 180
                           ? 'bg-violet-400/20 text-violet-500 dark:text-violet-300'
-                          : isGttEnabled
-                          ? 'text-violet-500/60 dark:text-violet-400/60'
-                          : 'text-muted-foreground/60'
+                          : 'text-violet-500/60 dark:text-violet-400/60'
                       }`}
                       title={`Next GTT prediction at ${gttCountdown.nextPredictionTime} IST`}
                     >
@@ -2847,6 +2911,8 @@ const MarketDataPage: React.FC = () => {
                 onShowAllCompaniesChange={setShowAllCompanies}
                 desirabilityMap={desirabilityMap}
                 sentimentMap={sentimentMap}
+                multiSelectMode={true}
+                onMultiAction={handleMultiAction}
               />
               </div>
             </div>

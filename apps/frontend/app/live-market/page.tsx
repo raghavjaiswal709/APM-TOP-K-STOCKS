@@ -1,6 +1,8 @@
 // @ts-nocheck
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { AppSidebar } from "../components/app-sidebar";
 import {
   Breadcrumb,
@@ -17,32 +19,22 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ModeToggle } from "../components/toggleButton";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import LiveMarketGrid from './components/LiveMarketGrid';
-import { MultiSelectWatchlistSelector } from '../components/controllers/WatchlistSelector/MultiSelectWatchlistSelector';
+import LiveMarketSidebar from './components/LiveMarketSidebar';
 import { useLiveMarket } from '../../hooks/useLiveMarket';
+import { useWatchlist } from '../../hooks/useWatchlist';
 import {
-  Info,
   Activity,
-  Users,
-  TrendingUp,
   Shield,
   AlertCircle,
   CheckCircle,
   XCircle,
-  ExternalLink
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  TrendingUp,
 } from 'lucide-react';
-
-interface Company {
-  company_id?: number;
-  company_code: string;
-  name: string;
-  exchange: string;
-  marker?: string;
-  symbol?: string;
-}
 
 interface AuthStatus {
   authenticated: boolean;
@@ -54,33 +46,40 @@ interface AuthStatus {
   jwt_expires_at?: string;
 }
 
-const LiveMarketPage: React.FC = () => {
+/* ─────────────────────────────────────────────────────────────────────────
+   Inner component — uses useSearchParams (requires Suspense wrapper)
+───────────────────────────────────────────────────────────────────────── */
+const LiveMarketInner: React.FC = () => {
+  const searchParams = useSearchParams();
+
+  /* ── Live market WebSocket hook ── */
   const {
-    availableCompanies,
-    selectedCompanies: liveMarketSelectedCompanies,
+    selectedCompanies: subscribedCompanies,
     marketData,
+    historicalData,
     marketStatus,
     connectionStatus,
     error,
     loading,
     subscribeToCompanies,
+    subscribeByCompanyCodes,
     unsubscribeAll,
-    isConnected
+    isConnected,
   } = useLiveMarket();
 
-  const [selectedCompanies, setSelectedCompanies] = useState<Company[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  /* ── Watchlist (for URL-param auto-subscribe company lookup) ── */
+  const { companies: watchlistCompanies } = useWatchlist({ showAllCompanies: true });
+
+  /* ── Auth ── */
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
   const fetchAuthStatus = useCallback(async () => {
     try {
       setAuthLoading(true);
-      const response = await fetch('/api/auth/fyers/status');
-      const data = await response.json();
-      setAuthStatus(data);
-    } catch (error) {
-      console.error('Failed to fetch auth status:', error);
+      const res = await fetch('/api/auth/fyers/status');
+      setAuthStatus(await res.json());
+    } catch {
       setAuthStatus(null);
     } finally {
       setAuthLoading(false);
@@ -89,289 +88,343 @@ const LiveMarketPage: React.FC = () => {
 
   useEffect(() => {
     fetchAuthStatus();
-    const interval = setInterval(fetchAuthStatus, 30000);
+    const interval = setInterval(fetchAuthStatus, 30_000);
     return () => clearInterval(interval);
   }, [fetchAuthStatus]);
 
-  const handleCompaniesSelect = useCallback((companies: Company[]) => {
-    console.log('🔍 Companies selected in LiveMarketPage:', companies);
+  /* ── Sidebar resize / collapse ── */
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(300);
+  const isSidebarDragging = useRef(false);
 
-    // Always update selected companies first
-    setSelectedCompanies(companies);
+  const handleSidebarMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      isSidebarDragging.current = true;
+      const startX = e.clientX;
+      const startWidth = sidebarWidth;
 
-    // Only proceed with subscription if we have valid auth AND companies
-    if (companies.length === 0) {
-      console.log('📡 No companies selected, unsubscribing from all');
-      unsubscribeAll();
-      return;
-    }
+      const onMouseMove = (e: MouseEvent) => {
+        if (!isSidebarDragging.current) return;
+        const newWidth = Math.max(240, Math.min(520, startWidth - (e.clientX - startX)));
+        setSidebarWidth(newWidth);
+      };
+      const onMouseUp = () => {
+        isSidebarDragging.current = false;
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+      };
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    },
+    [sidebarWidth]
+  );
 
-    if (!authStatus?.authenticated || !authStatus?.token_valid) {
-      console.warn('⚠️ Cannot subscribe: Fyers authentication required');
-      return;
-    }
+  /* ── FIX Bug-3 + Bug-2: URL params + sessionStorage restoration + subscription MERGING ── */
+  const STORAGE_KEY = 'live-market-subscribed-codes';
+  const autoSubscribeDoneRef = useRef(false);
 
-    console.log('📡 Subscribing to companies:', companies);
-    subscribeToCompanies(companies);
-  }, [subscribeToCompanies, unsubscribeAll, authStatus?.authenticated, authStatus?.token_valid]);
-
-  const handleDateChange = useCallback((date: string) => {
-    console.log('📅 Date changed to:', date);
-    console.log('📅 Clearing all selections and unsubscribing');
-
-    // First unsubscribe from all current subscriptions
-    unsubscribeAll();
-
-    // Then clear the selected companies
-    setSelectedCompanies([]);
-
-    // Finally set the new date
-    setSelectedDate(date);
-  }, [unsubscribeAll]);
-
-  const handleClearSelection = useCallback(() => {
-    console.log('📡 Clearing all selections');
-    setSelectedCompanies([]);
-    unsubscribeAll();
-  }, [unsubscribeAll]);
-
-  const gridSelectedCompanies = React.useMemo(() => {
-    return selectedCompanies.map(company => ({
-      ...company,
-      marker: company.marker || 'EQ',
-      symbol: company.symbol || `${company.exchange}:${company.company_code}-${company.marker || 'EQ'}`
-    }));
-  }, [selectedCompanies]);
-
+  /**
+   * Collect ALL codes to subscribe: URL params ∪ sessionStorage-saved codes.
+   * Runs once per mount (sync — no async needed).
+   */
+  const pendingCodesRef = useRef<string[]>([]);
   useEffect(() => {
-    console.log('🔍 LiveMarketPage State Update:', {
-      selectedCompanies: selectedCompanies.length,
-      liveMarketSelectedCompanies: liveMarketSelectedCompanies.length,
-      marketDataKeys: Object.keys(marketData),
-      isConnected,
-      loading,
-      error,
-      authStatus: authStatus?.authenticated,
-      selectedDate
-    });
-  }, [selectedCompanies, liveMarketSelectedCompanies, marketData, isConnected, loading, error, authStatus, selectedDate]);
+    const urlParam = searchParams.get('companies');
+    const urlCodes = urlParam
+      ? urlParam.split(',').map(c => c.trim()).filter(Boolean)
+      : [];
 
-  const getAuthStatusDisplay = () => {
-    if (authLoading) {
-      return { icon: Activity, color: 'text-blue-500', text: 'Checking...' };
-    }
-    if (!authStatus) {
-      return { icon: XCircle, color: 'text-red-500', text: 'Unknown' };
-    }
-    // Check actual expiry status from JWT
-    if (authStatus.is_expired) {
-      return { icon: XCircle, color: 'text-red-500', text: 'Expired' };
-    }
-    if (authStatus.authenticated && authStatus.token_valid) {
-      return { icon: CheckCircle, color: 'text-green-500', text: 'Active' };
-    } else if (authStatus.authenticated) {
-      return { icon: AlertCircle, color: 'text-yellow-500', text: 'Expired' };
-    } else {
-      return { icon: XCircle, color: 'text-red-500', text: 'Required' };
-    }
+    let savedCodes: string[] = [];
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (raw) savedCodes = JSON.parse(raw);
+    } catch { /* ignore */ }
+
+    // Merge URL codes FIRST (they take priority as "newly requested")
+    pendingCodesRef.current = [...new Set([...urlCodes, ...savedCodes])];
+  }, [searchParams]);
+
+  // Auto-subscribe when connection + auth are ready
+  useEffect(() => {
+    if (
+      autoSubscribeDoneRef.current ||
+      pendingCodesRef.current.length === 0 ||
+      !isConnected ||
+      !authStatus?.authenticated ||
+      !authStatus?.token_valid
+    ) return;
+
+    autoSubscribeDoneRef.current = true;
+    subscribeByCompanyCodes(pendingCodesRef.current);
+  }, [isConnected, authStatus, subscribeByCompanyCodes]);
+
+  // FIX Bug-3: Persist subscribed company codes to sessionStorage whenever they change
+  useEffect(() => {
+    if (subscribedCompanies.length === 0) return;
+    const codes = subscribedCompanies.map(c => c.company_code);
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(codes));
+    } catch { /* ignore */ }
+  }, [subscribedCompanies]);
+
+  /* ── Subscribe handler (from sidebar) — FIX Bug-2: MERGE, not replace ── */
+  const handleSubscribe = useCallback(
+    (newCodes: string[]) => {
+      if (!authStatus?.authenticated || !authStatus?.token_valid) return;
+      // Merge new codes with currently subscribed codes
+      const currentCodes = subscribedCompanies.map(c => c.company_code);
+      const merged = [...new Set([...currentCodes, ...newCodes])];
+      subscribeByCompanyCodes(merged);
+    },
+    [subscribeByCompanyCodes, authStatus, subscribedCompanies]
+  );
+
+  const handleClear = useCallback(() => {
+    unsubscribeAll();
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  }, [unsubscribeAll]);
+
+  /* ── Auth display ── */
+  const getAuthDisplay = () => {
+    if (authLoading)                                         return { icon: Activity,     color: 'text-blue-500',   text: 'Checking…' };
+    if (!authStatus)                                         return { icon: XCircle,      color: 'text-red-500',    text: 'Unknown'   };
+    if (authStatus.is_expired)                               return { icon: XCircle,      color: 'text-red-500',    text: 'Expired'   };
+    if (authStatus.authenticated && authStatus.token_valid)  return { icon: CheckCircle,  color: 'text-green-500',  text: 'Active'    };
+    if (authStatus.authenticated)                            return { icon: AlertCircle,  color: 'text-yellow-500', text: 'Expired'   };
+    return { icon: XCircle, color: 'text-red-500', text: 'Required' };
   };
 
-  const authDisplay = getAuthStatusDisplay();
-  const AuthIcon = authDisplay.icon;
+  const authDisplay   = getAuthDisplay();
+  const AuthIcon      = authDisplay.icon;
+  const isAuthenticated = !!(authStatus?.authenticated && authStatus?.token_valid);
 
+  /* ── Grid companies (ensure symbol/marker present) ── */
+  const gridCompanies = React.useMemo(
+    () =>
+      subscribedCompanies.map(c => ({
+        ...c,
+        marker: c.marker || 'EQ',
+        symbol: c.symbol || `${c.exchange}:${c.company_code}-${c.marker || 'EQ'}`,
+      })),
+    [subscribedCompanies]
+  );
+
+  /* ────────────────────────── RENDER ───────────────────────────── */
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 w-full">
-          <div className="flex items-center gap-2 px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb className="flex items-center justify-end gap-2">
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#">
-                    Real-Time Market Data
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>Live Market Grid</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-              <ModeToggle />
-            </Breadcrumb>
+      <SidebarInset className="overflow-hidden flex flex-col h-screen">
+
+        {/* ── HEADER ── */}
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-background px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+
+          <Breadcrumb className="flex-1">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink href="/dashboard">Home</BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>Live Market Grid</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+
+          <div className="flex items-center gap-2">
+            {/* Connection dot */}
+            <div className="flex items-center gap-1.5 text-xs">
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  isConnected
+                    ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.6)]'
+                    : connectionStatus === 'Reconnecting'
+                    ? 'bg-yellow-500 animate-pulse'
+                    : 'bg-red-500'
+                }`}
+              />
+              <span
+                className={`font-medium ${
+                  isConnected
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : connectionStatus === 'Reconnecting'
+                    ? 'text-yellow-600 dark:text-yellow-400'
+                    : 'text-red-600 dark:text-red-400'
+                }`}
+              >
+                {connectionStatus}
+              </span>
+            </div>
+
+            <Separator orientation="vertical" className="h-4" />
+
+            {/* Auth badge */}
+            <a href="/auth" className="flex items-center gap-1.5 text-xs hover:opacity-80 transition-opacity">
+              <Shield className="w-3.5 h-3.5 text-muted-foreground" />
+              <AuthIcon className={`w-3.5 h-3.5 ${authDisplay.color}`} />
+              <span className="font-medium hidden sm:inline">Auth: {authDisplay.text}</span>
+              <ExternalLink className="w-3 h-3 text-muted-foreground/50" />
+            </a>
+
+            <Separator orientation="vertical" className="h-4" />
+
+            {/* Market status */}
+            {marketStatus?.trading_active ? (
+              <Badge className="h-6 text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 border-0">
+                <Activity className="w-3 h-3 mr-1" />
+                Market Open
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="h-6 text-xs">
+                Market Closed
+              </Badge>
+            )}
+
+            <ModeToggle />
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <Card className="w-full">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5" />
-                    Live Market Data Grid
-                  </CardTitle>
-                  {selectedDate && (
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Showing data for {new Date(selectedDate).toLocaleDateString('en-IN', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-6">
-                  {/* Auth Status */}
-                  <a href="/auth" className="flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50 hover:bg-muted transition-colors cursor-pointer group">
-                    <Shield className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                    <AuthIcon className={`w-4 h-4 ${authDisplay.color}`} />
-                    <span className="text-sm font-medium">
-                      Auth: {authDisplay.text}
-                    </span>
-                    <ExternalLink className="w-3 h-3 text-muted-foreground opacity-50 group-hover:opacity-100 transition-opacity" />
-                  </a>
+        {/* Auth warning banner */}
+        {!isAuthenticated && !authLoading && (
+          <div className="bg-yellow-50 dark:bg-yellow-950/20 border-b border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 px-4 py-2 text-sm flex items-center gap-2 shrink-0">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>Fyers authentication required to subscribe to live market data.</span>
+            <a
+              href="/auth"
+              className="ml-auto flex items-center gap-1 font-medium text-xs"
+            >
+              Authenticate <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        )}
 
-                  {/* Connection Status */}
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'
-                      }`} />
-                    <span className="text-sm font-medium">
-                      {connectionStatus}
-                    </span>
-                  </div>
+        {/* ── MAIN ── */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
 
-                  {/* Market Status */}
-                  {marketStatus?.trading_active && (
-                    <Badge variant="default" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
-                      <Activity className="w-3 h-3 mr-1" />
-                      Market Open
-                    </Badge>
-                  )}
-                  {!marketStatus?.trading_active && !marketStatus?.is_market_day && (
-                    <Badge variant="secondary">
-                      Market Closed
-                    </Badge>
-                  )}
+          {/* Left: market grid — uses all available height */}
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+            {/* Inline messages (shrink, not grow) */}
+            {error &&
+              !error.includes('invalid_symbols') &&
+              !error.includes('-300') &&
+              !error.includes('STOPPED') && (
+                <div className="mx-4 mt-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-1.5 rounded-md text-sm shrink-0">
+                  ❌ {error}
                 </div>
+              )}
+            {loading && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mx-4 mt-2 shrink-0">
+                <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-primary" />
+                <span>Subscribing to market data…</span>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                {/* Main Content Area */}
-                <div className="lg:col-span-3 space-y-4">
-                  <div className="flex justify-between items-center">
-                    {/* Selection Stats */}
-                    {selectedCompanies.length > 0 && (
-                      <div className="flex items-center gap-4">
-                        <div className="flex flex-col items-end gap-1 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Users className="w-4 h-4" />
-                            <span>{selectedCompanies.length} companies selected</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Activity className="w-4 h-4" />
-                            <span>{Object.keys(marketData).length} receiving data</span>
-                          </div>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleClearSelection}
-                          disabled={loading}
-                        >
-                          {loading ? 'Clearing...' : 'Clear Selection'}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
+            )}
 
-                  <MultiSelectWatchlistSelector
-                    onCompaniesSelect={handleCompaniesSelect}
-                    onDateChange={handleDateChange}
-                    maxSelection={2000}
-                    selectedCompanies={selectedCompanies}
-                    showExchangeFilter={true}
-                    showMarkerFilter={true}
-                    showDateSelector={true}
-                    disabled={!authStatus?.authenticated || !authStatus?.token_valid}
-                  />
-
-                  {/* Auth Warning */}
-                  {(!authStatus?.authenticated || !authStatus?.token_valid) && (
-                    <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 px-3 py-2 rounded-md text-sm">
-                      ⚠️ Authentication required to select companies and view live data
-                    </div>
-                  )}
-
-                  {/* Loading Indicator */}
-                  {loading && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                      <span>Subscribing to market data...</span>
-                    </div>
-                  )}
-
-                  {/* Error Display - Only show non-subscription errors */}
-                  {error && !error.includes('invalid_symbols') && !error.includes('-300') && !error.includes('STOPPED') && (
-                    <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-2 rounded-md text-sm">
-                      ❌ {error}
-                    </div>
-                  )}
-                </div>
+            {/* Grid or empty state — flex-1 fills remaining height */}
+            {gridCompanies.length > 0 ? (
+              <div className="flex-1 min-h-0 p-3 flex flex-col">
+                <LiveMarketGrid
+                  selectedCompanies={gridCompanies}
+                  marketData={marketData}
+                  historicalData={historicalData}
+                  connectionStatus={connectionStatus}
+                  loading={loading}
+                  className="flex-1 min-h-0"
+                />
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Live Market Grid - When Companies Selected and Authenticated */}
-          {selectedCompanies.length > 0 && authStatus?.authenticated && authStatus?.token_valid && (
-            <LiveMarketGrid
-              selectedCompanies={gridSelectedCompanies}
-              marketData={marketData}
-              connectionStatus={connectionStatus}
-              loading={loading}
-            />
-          )}
-
-          {/* Auth Required Message */}
-          {selectedCompanies.length > 0 && (!authStatus?.authenticated || !authStatus?.token_valid) && (
-            <Card className="w-full border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20">
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <Shield className="h-12 w-12 text-yellow-500 mb-4" />
-                <h3 className="text-lg font-medium mb-2">Authentication Required</h3>
-                <p className="text-sm text-muted-foreground text-center max-w-md mb-6">
-                  You have selected {selectedCompanies.length} companies, but Fyers authentication is required to view live market data.
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4 p-8">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+                  <TrendingUp size={32} />
+                </div>
+                <h2 className="text-xl font-semibold text-foreground">No Companies Subscribed</h2>
+                <p className="text-sm text-center max-w-md">
+                  {isAuthenticated
+                    ? 'Select companies from the sidebar on the right, then click Subscribe.'
+                    : 'Authenticate with Fyers first, then select and subscribe to companies.'}
                 </p>
-                <Button
-                  onClick={() => window.location.href = '/auth'}
-                  className="bg-yellow-600 hover:bg-yellow-700 text-white"
+              </div>
+            )}
+          </div>
+
+          {/* Right: collapsible + resizable sidebar */}
+          {isSidebarVisible ? (
+            <div
+              className="relative bg-background flex flex-col shrink-0 border-l"
+              style={{ width: sidebarWidth }}
+            >
+              {/* Drag handle */}
+              <div
+                className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-primary/40 active:bg-primary/60 z-10 group"
+                onMouseDown={handleSidebarMouseDown}
+                title="Drag to resize"
+              >
+                <div className="absolute inset-y-0 -left-0.5 w-2 group-hover:bg-primary/20" />
+              </div>
+
+              {/* Sidebar header */}
+              <div className="flex items-center justify-between px-2 py-1 border-b bg-muted/20 shrink-0">
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider pl-1">
+                  Live Companies
+                </span>
+                <button
+                  onClick={() => setIsSidebarVisible(false)}
+                  className="p-0.5 rounded hover:bg-accent transition-colors"
+                  title="Collapse sidebar"
                 >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Go to Authentication
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+              </div>
 
-          {/* Empty State */}
-          {selectedCompanies.length === 0 && (
-            <Card className="w-full">
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <TrendingUp className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">No Companies Selected</h3>
-                <p className="text-sm text-muted-foreground text-center max-w-md">
-                  Select a date and choose 1-6 companies from your watchlist above to start monitoring their real-time market data in an interactive grid layout.
-                  {!authStatus?.authenticated && " Note: Fyers authentication is required for live data."}
-                </p>
-              </CardContent>
-            </Card>
+              <div className="flex-1 overflow-hidden">
+                <LiveMarketSidebar
+                  subscribedCompanies={subscribedCompanies}
+                  marketData={marketData}
+                  onSubscribe={handleSubscribe}
+                  onClear={handleClear}
+                  loading={loading}
+                  disabled={!isAuthenticated}
+                />
+              </div>
+            </div>
+          ) : (
+            /* Collapsed sidebar strip */
+            <div className="w-8 bg-background border-l flex flex-col items-center py-2 shrink-0">
+              <button
+                onClick={() => setIsSidebarVisible(true)}
+                className="p-1 rounded hover:bg-accent transition-colors"
+                title="Expand sidebar"
+              >
+                <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+              </button>
+              <div className="mt-2 flex-1 flex items-center">
+                <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
+                  Companies
+                </span>
+              </div>
+            </div>
           )}
         </div>
       </SidebarInset>
-    </SidebarProvider >
+    </SidebarProvider>
   );
 };
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Page wrapper — Suspense required for useSearchParams in Next.js App Router
+───────────────────────────────────────────────────────────────────────── */
+const LiveMarketPage: React.FC = () => (
+  <Suspense
+    fallback={
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    }
+  >
+    <LiveMarketInner />
+  </Suspense>
+);
 
 export default LiveMarketPage;

@@ -88,9 +88,12 @@ export const useLiveMarket = () => {
   const reconnectAttempts = useRef<number>(0);
   const maxReconnectAttempts = 5;
   const initializeSocket = useCallback(() => {
-    // Local Docker instance
-    const SOCKET_URL = process.env.NEXT_PUBLIC_FYERS_SOCKET_URL || 'http://localhost:5001';
-    console.log(`🔌 Connecting to LOCAL Live Market WebSocket: ${SOCKET_URL}`);
+    // Live market uses its own dedicated service (port 5010)
+    const SOCKET_URL =
+      process.env.NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL ||
+      process.env.NEXT_PUBLIC_FYERS_SOCKET_URL ||
+      'http://localhost:5010';
+    console.log(`🔌 Connecting to Live Market WebSocket (5010): ${SOCKET_URL}`);
     setConnectionStatus('Connecting');
     const socket = io(SOCKET_URL, {
       reconnectionAttempts: maxReconnectAttempts,
@@ -228,7 +231,20 @@ export const useLiveMarket = () => {
     }) => {
       console.log('💓 Heartbeat:', data);
       setIsConnected(true);
-      setMarketStatus(prev => prev ? { ...prev, trading_active: data.trading_active } : prev);
+      // Always update trading_active — even if marketStatus was never received (prev was null)
+      setMarketStatus(prev => ({
+        ...(prev ?? {
+          trading_start: '09:15',
+          trading_end: '15:30',
+          current_time: '',
+          is_market_day: true,
+          active_subscriptions: 0,
+          connected_clients: 0,
+        }),
+        trading_active: data.trading_active,
+        active_subscriptions: data.active_subscriptions ?? prev?.active_subscriptions ?? 0,
+        connected_clients: data.connected_clients ?? prev?.connected_clients ?? 0,
+      }));
     });
     socket.on('fyersConnected', (data) => {
       console.log('🔗 Fyers connected:', data);
