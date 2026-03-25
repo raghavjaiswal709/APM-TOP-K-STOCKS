@@ -51,6 +51,7 @@ real_time_data = {}
 MAX_HISTORY_POINTS = 10000
 MAX_COMPANIES = 2000
 INDIA_TZ = pytz.timezone('Asia/Kolkata')
+fyers_subscribed_symbols = set()  # Track symbols already sent to Fyers to avoid token remapping contamination
 fyers = None
 fyers_client = None
 available_symbols = []
@@ -390,19 +391,26 @@ def get_market_status(sid, data):
         sio.emit('error', {'message': f'Failed to get market status: {str(e)}'}, room=sid)
 
 def update_fyers_subscription():
-    """Update Fyers WebSocket subscription based on active subscriptions."""
+    """Subscribe ONLY NEW symbols to Fyers to prevent token remapping contamination.
+
+    Re-subscribing already-subscribed symbols causes Fyers library to re-run token
+    conversion, which can return different token→symbol mappings and swap prices
+    between companies. We only subscribe symbols not yet sent to Fyers.
+    """
+    global fyers_subscribed_symbols
     if not fyers:
         logger.warning("Fyers not initialized, cannot update subscription")
         return
-    
+
     try:
-        current_symbols = list(active_subscriptions)
-        if current_symbols:
-            logger.info(f"🔄 Updating Fyers subscription with {len(current_symbols)} symbols")
-            fyers.subscribe(symbols=current_symbols, data_type="SymbolUpdate")
-            logger.info(f"✅ Updated Fyers subscription: {current_symbols}")
+        new_symbols = [s for s in active_subscriptions if s not in fyers_subscribed_symbols]
+        if new_symbols:
+            logger.info(f"🔄 Subscribing {len(new_symbols)} NEW symbols to Fyers: {new_symbols}")
+            fyers.subscribe(symbols=new_symbols, data_type="SymbolUpdate")
+            fyers_subscribed_symbols.update(new_symbols)
+            logger.info(f"✅ Fyers now tracking {len(fyers_subscribed_symbols)} symbols total")
         else:
-            logger.info("📡 No active subscriptions, keeping minimal connection")
+            logger.info("📡 No new symbols to subscribe — all already active in Fyers")
     except Exception as e:
         logger.error(f"❌ Error updating Fyers subscription: {e}")
 
@@ -569,11 +577,24 @@ def save_to_file(symbol, data):
 
 def onopen():
     """Handle Fyers WebSocket connection opening."""
+    global fyers_subscribed_symbols
     logger.info("✅ Fyers WebSocket connected")
     sio.emit('fyersConnected', {'status': 'connected'})
-    
-    # No default subscriptions - wait for client requests
-    logger.info("📡 Fyers connection established, ready for dynamic subscriptions")
+
+    # On reconnect, clear tracked set so all active symbols get re-subscribed fresh
+    fyers_subscribed_symbols.clear()
+
+    # Re-subscribe to any existing active subscriptions
+    if active_subscriptions and hasattr(fyers, 'subscribe'):
+        try:
+            symbols_list = list(active_subscriptions)
+            fyers.subscribe(symbols=symbols_list, data_type="SymbolUpdate")
+            fyers_subscribed_symbols.update(symbols_list)
+            logger.info(f"📡 Re-subscribed to {len(symbols_list)} symbols on reconnect")
+        except Exception as e:
+            logger.error(f"❌ Error re-subscribing on open: {e}")
+    else:
+        logger.info("📡 Fyers connection established, ready for dynamic subscriptions")
 
 def onerror(error):
     """Handle Fyers WebSocket errors."""

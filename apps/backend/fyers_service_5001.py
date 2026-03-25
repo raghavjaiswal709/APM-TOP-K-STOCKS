@@ -57,6 +57,7 @@ ohlc_data = {}                # All OHLC data for all symbols
 chart_updates = {}            # Real-time updates for all symbols
 active_symbols = set()        # All symbols currently being tracked
 symbol_subscriptions = defaultdict(int)  # Count of clients per symbol
+fyers_subscribed_symbols = set()  # Symbols already sent to Fyers (prevent token remapping contamination)
 # Track last seen vol_traded_today per symbol to compute per-tick delta volume
 prev_vol_traded_today = {}     # symbol -> last cumulative vol_traded_today value
 
@@ -219,15 +220,11 @@ def auth_watcher():
                         logger.info("🔄 Auth file updated, reinitializing...")
                         if initialize_fyers() and fyers:
                             try:
+                                # Clear tracked symbols so onopen() re-subscribes all fresh
+                                fyers_subscribed_symbols.clear()
                                 ws_thread = threading.Thread(target=lambda: fyers.connect(), daemon=True)
                                 ws_thread.start()
-                                logger.info("✅ WebSocket connection started")
-                                
-                                # Resubscribe to all active symbols
-                                if active_symbols and hasattr(fyers, 'subscribe'):
-                                    symbols_list = list(active_symbols)
-                                    fyers.subscribe(symbols=symbols_list, data_type="SymbolUpdate")
-                                    logger.info(f"✅ Resubscribed to {len(symbols_list)} symbols")
+                                logger.info("✅ WebSocket connection started — onopen() will handle re-subscription")
                             except Exception as e:
                                 logger.error(f"❌ WebSocket start error: {e}")
                     last_modified = current_modified
@@ -549,14 +546,17 @@ def subscribe(sid, data):
     else:
         logger.info(f"📦 Using cached historical data for {symbol} ({len(historical_data[symbol])} points)")
 
-    # Subscribe to real-time updates if not already subscribed
-    if fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
+    # Subscribe to real-time updates only if not already sent to Fyers
+    if symbol not in fyers_subscribed_symbols and fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
         logger.info(f"📡 Subscribing to Fyers WebSocket for: '{symbol}' | Repr: {repr(symbol)}")
         try:
             fyers.subscribe(symbols=[symbol], data_type="SymbolUpdate")
+            fyers_subscribed_symbols.add(symbol)
             logger.info(f"✅ Fyers subscription successful for: {symbol}")
         except Exception as e:
             logger.error(f"❌ Error subscribing to {symbol}: {e}")
+    else:
+        logger.info(f"📦 Symbol '{symbol}' already active in Fyers — skipping re-subscription")
 
     # Send all available data to client
     if symbol in historical_data and historical_data[symbol]:
@@ -659,24 +659,26 @@ async def subscribe_companies(sid, data):
             if i + BATCH_SIZE < len(symbols):
                 await asyncio.sleep(0.1)
         
-        # Batch subscribe to Fyers with timeout
-        if fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
+        # Batch subscribe ONLY NEW symbols to Fyers to avoid token remapping
+        new_symbols = [s for s in symbols if s not in fyers_subscribed_symbols]
+        if new_symbols and fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
             try:
                 loop = asyncio.get_event_loop()
-                
+
                 # Use executor with timeout for blocking call
                 executor = ThreadPoolExecutor(max_workers=1)
                 future = loop.run_in_executor(
                     executor,
                     fyers.subscribe,
-                    symbols,
+                    new_symbols,
                     "SymbolUpdate"
                 )
-                
+
                 # 30 second timeout for Fyers subscription
                 await asyncio.wait_for(future, timeout=30.0)
-                logger.info(f"✅ Batch subscribed to {len(symbols)} symbols in Fyers")
-                
+                fyers_subscribed_symbols.update(new_symbols)
+                logger.info(f"✅ Batch subscribed {len(new_symbols)} new symbols in Fyers (skipped {len(symbols)-len(new_symbols)} already active)")
+
             except asyncio.TimeoutError:
                 logger.error("❌ Fyers subscription timed out after 30s")
                 # Don't fail the entire request - subscriptions are tracked locally
@@ -1187,14 +1189,19 @@ def onclose(message):
 
 
 def onopen():
+    global fyers_subscribed_symbols
     logger.info("Fyers WebSocket connected")
     sio.emit('fyersConnected', {'status': 'connected'})
+
+    # On reconnect, clear tracked set so all active symbols get re-subscribed fresh
+    fyers_subscribed_symbols.clear()
 
     # Subscribe to all active symbols (including background ones)
     symbols_to_subscribe = list(active_symbols) if active_symbols else []
     if symbols_to_subscribe and fyers and hasattr(fyers, 'subscribe'):
         try:
             fyers.subscribe(symbols=symbols_to_subscribe, data_type="SymbolUpdate")
+            fyers_subscribed_symbols.update(symbols_to_subscribe)
             logger.info(f"Subscribed to {len(symbols_to_subscribe)} symbols for background collection")
         except Exception as e:
             logger.error(f"Error subscribing to symbols: {e}")

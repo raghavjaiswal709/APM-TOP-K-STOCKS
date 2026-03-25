@@ -799,12 +799,12 @@ const MarketDataPage: React.FC = () => {
     if (!urlCompany) return;
     urlParamAppliedRef.current = true;
     const urlExchange = params.get('exchange') || undefined;
-    const urlMarker   = params.get('marker')   || undefined;
+    const urlMarker = params.get('marker') || undefined;
     const found = companies.find((c: any) => c.company_code === urlCompany);
     handleCompanyChange(
       urlCompany,
       urlExchange || found?.exchange || 'NSE',
-      urlMarker   || found?.marker   || 'EQ'
+      urlMarker || found?.marker || 'EQ'
     );
   }, [companies, handleCompanyChange]);
 
@@ -823,7 +823,7 @@ const MarketDataPage: React.FC = () => {
         codes.forEach(code => {
           const company = companies?.find((c: any) => c.company_code === code);
           const exchange = encodeURIComponent(company?.exchange || 'NSE');
-          const marker   = encodeURIComponent(company?.marker   || 'EQ');
+          const marker = encodeURIComponent(company?.marker || 'EQ');
           window.open(`/market-data?company=${code}&exchange=${exchange}&marker=${marker}`, '_blank');
         });
 
@@ -832,7 +832,7 @@ const MarketDataPage: React.FC = () => {
         codes.forEach(code => {
           const company = companies?.find((c: any) => c.company_code === code);
           const exchange = encodeURIComponent(company?.exchange || 'NSE');
-          const marker   = encodeURIComponent(company?.marker   || 'EQ');
+          const marker = encodeURIComponent(company?.marker || 'EQ');
           window.open(`/?company=${code}&exchange=${exchange}&marker=${marker}`, '_blank');
         });
       }
@@ -886,7 +886,7 @@ const MarketDataPage: React.FC = () => {
           console.log('✅ Subscription successful:', response);
           toast.success(`Successfully subscribed to ${response.count || fyersSymbols.length} companies`);
 
-        fyersSymbols.forEach(s => {
+          fyersSymbols.forEach(s => {
             isSubscribedRef.current.add(s);
             allSubscribedSymbolsRef.current.add(s);
           });
@@ -1001,12 +1001,12 @@ const MarketDataPage: React.FC = () => {
       // Use allSubscribedSymbolsRef because isSubscribedRef gets cleared on disconnect
       const symbolsToResubscribe = Array.from(allSubscribedSymbolsRef.current);
       const currentSymbol = selectedSymbolRef.current;
-      
+
       // Always include the currently selected symbol
       if (currentSymbol && !symbolsToResubscribe.includes(currentSymbol)) {
         symbolsToResubscribe.push(currentSymbol);
       }
-      
+
       if (symbolsToResubscribe.length > 0) {
         console.log(`🔄 Re-subscribing to ${symbolsToResubscribe.length} symbols after reconnection`);
         // Use subscribe_companies for batch re-subscription (more efficient)
@@ -1635,14 +1635,14 @@ const MarketDataPage: React.FC = () => {
     const unsubscribeReconnect = onReconnect(() => {
       console.log('🔄 Reconnection callback triggered');
       if (!socketRef.current) return;
-      
+
       // ✅ Re-subscribe ALL tracked symbols on reconnect (not just current)
       const allSymbols = Array.from(allSubscribedSymbolsRef.current);
       const currentSymbol = selectedSymbolRef.current;
       if (currentSymbol && !allSymbols.includes(currentSymbol)) {
         allSymbols.push(currentSymbol);
       }
-      
+
       if (allSymbols.length > 0) {
         console.log(`🔄 Re-subscribing to ${allSymbols.length} symbols after reconnection`);
         isSubscribedRef.current.clear();
@@ -1672,7 +1672,7 @@ const MarketDataPage: React.FC = () => {
       socket.off('heartbeat', handleHeartbeat);
       unsubscribeReconnect();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isClient, isInitialized]);
 
   // Subscribe + backfill on symbol change
@@ -2297,23 +2297,21 @@ const MarketDataPage: React.FC = () => {
           <div className="flex items-center gap-1.5">
             {/* Connection Status — compact dot + label */}
             <div className="flex items-center gap-1.5 text-xs">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                socketStatus === 'Connected'
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${socketStatus === 'Connected'
                   ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.6)]'
                   : isReconnecting
-                  ? 'bg-yellow-500 animate-pulse'
-                  : 'bg-red-500'
-              }`} />
-              <span className={`font-medium ${
-                socketStatus === 'Connected'
+                    ? 'bg-yellow-500 animate-pulse'
+                    : 'bg-red-500'
+                }`} />
+              <span className={`font-medium ${socketStatus === 'Connected'
                   ? 'text-emerald-600 dark:text-emerald-400'
                   : isReconnecting
-                  ? 'text-yellow-600 dark:text-yellow-400'
-                  : 'text-red-600 dark:text-red-400'
-              }`}>
+                    ? 'text-yellow-600 dark:text-yellow-400'
+                    : 'text-red-600 dark:text-red-400'
+                }`}>
                 {socketStatus === 'Connected' ? 'Live'
                   : isReconnecting ? 'Reconnecting'
-                  : 'Offline'}
+                    : 'Offline'}
               </span>
             </div>
 
@@ -2382,13 +2380,12 @@ const MarketDataPage: React.FC = () => {
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => setShowPredictions(!showPredictions)}
-                      className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors inline-flex items-center gap-1.5 border ${
-                        showPredictions
+                      className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors inline-flex items-center gap-1.5 border ${showPredictions
                           ? predictionsOutdated
                             ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/25 hover:bg-red-500/15'
                             : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25 hover:bg-blue-500/15'
                           : 'bg-transparent text-muted-foreground border-border hover:bg-muted/60'
-                      }`}
+                        }`}
                     >
                       {predictionsOutdated && showPredictions ? (
                         <AlertTriangle className="h-3 w-3" />
@@ -2399,15 +2396,14 @@ const MarketDataPage: React.FC = () => {
                       {/* Countdown to next prediction fetch — only when server is available AND predictions are ON */}
                       {predCountdown.inMarketHours && showPredictions && predictionServiceHealth === 'available' && (
                         <span
-                          className={`font-mono text-[10px] tabular-nums leading-none px-1 py-0.5 rounded ${
-                            predCountdown.seconds <= 30
+                          className={`font-mono text-[10px] tabular-nums leading-none px-1 py-0.5 rounded ${predCountdown.seconds <= 30
                               ? 'bg-amber-400/30 text-amber-600 dark:text-amber-200'   // urgent: < 30s
                               : predCountdown.seconds <= 90
-                              ? 'bg-blue-400/20 text-blue-500 dark:text-blue-300'      // soon: < 90s
-                              : showPredictions
-                              ? 'text-blue-500/60 dark:text-blue-300/60'               // normal, ON
-                              : 'text-gray-500 dark:text-gray-400'                     // normal, OFF
-                          }`}
+                                ? 'bg-blue-400/20 text-blue-500 dark:text-blue-300'      // soon: < 90s
+                                : showPredictions
+                                  ? 'text-blue-500/60 dark:text-blue-300/60'               // normal, ON
+                                  : 'text-gray-500 dark:text-gray-400'                     // normal, OFF
+                            }`}
                           title={`Next prediction fetch at ${predCountdown.nextPredictionTime} IST`}
                         >
                           {predCountdown.formatted}
@@ -2466,23 +2462,21 @@ const MarketDataPage: React.FC = () => {
                 {/* Main GTT toggle button */}
                 <button
                   onClick={() => setIsGttEnabled(!isGttEnabled)}
-                  className={`h-7 px-2.5 rounded-l-md text-xs font-medium transition-colors inline-flex items-center gap-1.5 border border-r-0 ${
-                    isGttEnabled
+                  className={`h-7 px-2.5 rounded-l-md text-xs font-medium transition-colors inline-flex items-center gap-1.5 border border-r-0 ${isGttEnabled
                       ? 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/25 hover:bg-violet-500/15'
                       : 'bg-transparent text-muted-foreground border-border hover:bg-muted/60'
-                  }`}
+                    }`}
                 >
                   <Zap className="h-3 w-3" />
                   {isGttEnabled ? 'GTT ON' : 'GTT OFF'}
                   {isGttEnabled && gttCountdown.inMarketHours && (
                     <span
-                      className={`font-mono text-[10px] tabular-nums leading-none px-1 py-0.5 rounded ${
-                        gttCountdown.seconds <= 60
+                      className={`font-mono text-[10px] tabular-nums leading-none px-1 py-0.5 rounded ${gttCountdown.seconds <= 60
                           ? 'bg-amber-400/25 text-amber-600 dark:text-amber-300'
                           : gttCountdown.seconds <= 180
-                          ? 'bg-violet-400/20 text-violet-500 dark:text-violet-300'
-                          : 'text-violet-500/60 dark:text-violet-400/60'
-                      }`}
+                            ? 'bg-violet-400/20 text-violet-500 dark:text-violet-300'
+                            : 'text-violet-500/60 dark:text-violet-400/60'
+                        }`}
                       title={`Next GTT prediction at ${gttCountdown.nextPredictionTime} IST`}
                     >
                       {gttCountdown.formatted}
@@ -2493,11 +2487,10 @@ const MarketDataPage: React.FC = () => {
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
-                      className={`h-7 px-1.5 rounded-r-md transition-colors inline-flex items-center border ${
-                        isGttEnabled
+                      className={`h-7 px-1.5 rounded-r-md transition-colors inline-flex items-center border ${isGttEnabled
                           ? 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/25 hover:bg-violet-500/20'
                           : 'bg-transparent text-muted-foreground border-border hover:bg-muted/60'
-                      }`}
+                        }`}
                     >
                       <ChevronDown className="h-3 w-3" />
                     </button>
@@ -2768,8 +2761,8 @@ const MarketDataPage: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div 
-                    className="flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors py-2 cursor-pointer border-t shadow-lg" 
+                  <div
+                    className="flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors py-2 cursor-pointer border-t shadow-lg"
                     onClick={() => setIsAnalysisVisible(!isAnalysisVisible)}
                   >
                     <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 opacity-80 hover:opacity-100">
@@ -2824,45 +2817,45 @@ const MarketDataPage: React.FC = () => {
                             </div>
                           </div>
                         )}
-                        </ScrollArea>
-                      </TabsContent>
-                      <TabsContent value="charts" className="h-full m-0 p-0">
-                        <div className="h-full">
-                          <ImageCarousel
-                            companyCode={selectedCompany || ''}
-                            exchange={selectedExchange || ''}
-                            gradientMode={gradientMode}
-                            onGradientModeChange={setGradientMode}
-                            onSentimentLoadingChange={setSentimentLoading}
-                            selectedDate={effectiveDate || undefined}
-                          />
-                        </div>
-                      </TabsContent>
-                      <TabsContent value="livedata" className="h-full m-0">
-                        <ScrollArea className="h-full w-full">
-                          <LiveDataDashboard
-                            company={selectedCompany || ''}
-                            symbol={selectedSymbol}
-                            currentData={currentData}
-                            desirabilityScore={desirabilityScore}
-                            desirabilityClassification={desirabilityClassification}
-                            desirabilityData={desirabilityData}
-                            desirabilityLoading={desirabilityLoading}
-                            onRefreshDesirability={handleFetchDesirabilityScore}
-                            overallSentiment={overallSentiment}
-                            isSentimentFetching={isSentimentFetching}
-                          />
-                        </ScrollArea>
-                      </TabsContent>
-                      <TabsContent value="umap" className="h-full m-0">
-                        <ScrollArea className="h-full w-full">
-                          <UMAPClusterDashboard initialSymbol={selectedCompany || selectedSymbol || 'RELIANCE'} />
-                        </ScrollArea>
-                      </TabsContent>
-                    </div>
+                      </ScrollArea>
+                    </TabsContent>
+                    <TabsContent value="charts" className="h-full m-0 p-0">
+                      <div className="h-full">
+                        <ImageCarousel
+                          companyCode={selectedCompany || ''}
+                          exchange={selectedExchange || ''}
+                          gradientMode={gradientMode}
+                          onGradientModeChange={setGradientMode}
+                          onSentimentLoadingChange={setSentimentLoading}
+                          selectedDate={effectiveDate || undefined}
+                        />
+                      </div>
+                    </TabsContent>
+                    <TabsContent value="livedata" className="h-full m-0">
+                      <ScrollArea className="h-full w-full">
+                        <LiveDataDashboard
+                          company={selectedCompany || ''}
+                          symbol={selectedSymbol}
+                          currentData={currentData}
+                          desirabilityScore={desirabilityScore}
+                          desirabilityClassification={desirabilityClassification}
+                          desirabilityData={desirabilityData}
+                          desirabilityLoading={desirabilityLoading}
+                          onRefreshDesirability={handleFetchDesirabilityScore}
+                          overallSentiment={overallSentiment}
+                          isSentimentFetching={isSentimentFetching}
+                        />
+                      </ScrollArea>
+                    </TabsContent>
+                    <TabsContent value="umap" className="h-full m-0">
+                      <ScrollArea className="h-full w-full">
+                        <UMAPClusterDashboard initialSymbol={selectedCompany || selectedSymbol || 'RELIANCE'} />
+                      </ScrollArea>
+                    </TabsContent>
                   </div>
-                )}
-              </Tabs>
+                </div>
+              )}
+            </Tabs>
           </div>
 
           {/* RIGHT: SIDEBAR (Company List) - Draggable & Collapsible */}
@@ -2895,25 +2888,25 @@ const MarketDataPage: React.FC = () => {
               </div>
               <div className="flex-1 overflow-hidden border-l">
                 <CompanyList
-                companies={companies || []}
-                selectedCompanyCode={selectedCompany}
-                onSelect={(companyCode: string) => {
-                  const company = companies?.find((c: any) => c.company_code === companyCode);
-                  if (company) {
-                    handleCompanyChange(companyCode, company.exchange, company.marker);
-                  }
-                }}
-                loading={watchlistLoading}
-                selectedWatchlistDate={effectiveDate}
-                onWatchlistDateChange={handleDateChange}
-                availableDates={availableDates}
-                showAllCompanies={showAllCompanies}
-                onShowAllCompaniesChange={setShowAllCompanies}
-                desirabilityMap={desirabilityMap}
-                sentimentMap={sentimentMap}
-                multiSelectMode={true}
-                onMultiAction={handleMultiAction}
-              />
+                  companies={companies || []}
+                  selectedCompanyCode={selectedCompany}
+                  onSelect={(companyCode: string) => {
+                    const company = companies?.find((c: any) => c.company_code === companyCode);
+                    if (company) {
+                      handleCompanyChange(companyCode, company.exchange, company.marker);
+                    }
+                  }}
+                  loading={watchlistLoading}
+                  selectedWatchlistDate={effectiveDate}
+                  onWatchlistDateChange={handleDateChange}
+                  availableDates={availableDates}
+                  showAllCompanies={showAllCompanies}
+                  onShowAllCompaniesChange={setShowAllCompanies}
+                  desirabilityMap={desirabilityMap}
+                  sentimentMap={sentimentMap}
+                  multiSelectMode={true}
+                  onMultiAction={handleMultiAction}
+                />
               </div>
             </div>
           ) : (

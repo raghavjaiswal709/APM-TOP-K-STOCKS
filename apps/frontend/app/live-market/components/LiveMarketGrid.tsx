@@ -34,16 +34,19 @@ interface LiveMarketGridProps {
   className?: string;
 }
 
-/** Resolve a value from a Record by trying multiple key formats */
+/** Resolve a value from a Record by trying multiple key formats.
+ *  Uses exact matches only — no substring fallback to prevent cross-company contamination. */
 function resolveByCompany<T>(store: Record<string, T> | undefined, company: Company): T | undefined {
   if (!store) return undefined;
-  if (company.symbol && store[company.symbol]) return store[company.symbol];
+  // 1. Try exact symbol key (most precise)
+  if (company.symbol && store[company.symbol] !== undefined) return store[company.symbol];
+  // 2. Try Fyers-format key derived from company fields
   const fyers = `${company.exchange}:${company.company_code}-${company.marker || 'EQ'}`;
-  if (store[fyers]) return store[fyers];
-  if (store[company.company_code]) return store[company.company_code];
-  const code = company.company_code.toUpperCase();
-  const key  = Object.keys(store).find(k => k.toUpperCase().includes(code));
-  return key ? store[key] : undefined;
+  if (store[fyers] !== undefined) return store[fyers];
+  // 3. Try bare company_code
+  if (store[company.company_code] !== undefined) return store[company.company_code];
+  // NOTE: No substring/includes fallback — it can match wrong companies (e.g. ADANI matches ADANIPOWER)
+  return undefined;
 }
 
 const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({

@@ -88,7 +88,8 @@ pending_data = {}
 # Track last seen vol_traded_today per symbol to compute per-tick delta volume
 prev_vol_traded_today = {}
 MAX_HISTORY_POINTS = 10000
-MAX_COMPANIES = 6
+MAX_COMPANIES = 50  # Allow up to 50 companies
+fyers_subscribed_symbols = set()  # Track symbols already sent to Fyers to avoid re-subscription token remapping
 INDIA_TZ = pytz.timezone('Asia/Kolkata')
 fyers = None
 fyers_client = None
@@ -336,15 +337,12 @@ def auth_watcher():
                         logger.info("🔄 Auth file updated, reinitializing...")
                         if initialize_fyers() and fyers:
                             try:
+                                # Clear tracked symbols so onopen() re-subscribes all fresh
+                                fyers_subscribed_symbols.clear()
                                 ws_thread = threading.Thread(target=lambda: fyers.connect(), daemon=True)
                                 ws_thread.start()
                                 logger.info("✅ WebSocket connection started")
-                                
-                                # Resubscribe to all active symbols
-                                if active_subscriptions and hasattr(fyers, 'subscribe'):
-                                    symbols_list = list(active_subscriptions)
-                                    fyers.subscribe(symbols=symbols_list, data_type="SymbolUpdate")
-                                    logger.info(f"✅ Resubscribed to {len(symbols_list)} symbols")
+                                # onopen() will handle subscription on connect
                             except Exception as e:
                                 logger.error(f"❌ WebSocket start error: {e}")
                     last_modified = current_modified
@@ -564,20 +562,28 @@ async def get_market_status(sid, data):
 
 
 async def update_fyers_subscription():
-    """Update Fyers WebSocket subscription based on active subscriptions."""
+    """Subscribe ONLY NEW symbols to Fyers to prevent token remapping contamination.
+
+    Re-subscribing already-subscribed symbols causes Fyers library to re-run token
+    conversion, which can return different token→symbol mappings and swap prices
+    between companies. We only subscribe symbols not yet sent to Fyers.
+    """
+    global fyers_subscribed_symbols
     if not fyers:
         logger.warning("Fyers not initialized, cannot update subscription")
         return
-    
+
     try:
-        current_symbols = list(active_subscriptions)
-        if current_symbols:
-            logger.info(f"🔄 Updating Fyers subscription with {len(current_symbols)} symbols")
+        # Only subscribe symbols that haven't been sent to Fyers yet
+        new_symbols = [s for s in active_subscriptions if s not in fyers_subscribed_symbols]
+        if new_symbols:
+            logger.info(f"🔄 Subscribing {len(new_symbols)} NEW symbols to Fyers: {new_symbols}")
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(executor, fyers.subscribe, current_symbols, "SymbolUpdate")
-            logger.info(f"✅ Updated Fyers subscription: {current_symbols}")
+            await loop.run_in_executor(executor, fyers.subscribe, new_symbols, "SymbolUpdate")
+            fyers_subscribed_symbols.update(new_symbols)
+            logger.info(f"✅ Fyers now tracking {len(fyers_subscribed_symbols)} symbols total")
         else:
-            logger.info("📡 No active subscriptions, keeping minimal connection")
+            logger.info("📡 No new symbols to subscribe — all already active in Fyers")
     except Exception as e:
         logger.error(f"❌ Error updating Fyers subscription: {e}")
 
@@ -841,14 +847,19 @@ def save_to_file(symbol, data):
 
 def onopen():
     """Handle Fyers WebSocket connection opening."""
+    global fyers_subscribed_symbols
     logger.info("✅ Fyers WebSocket connected")
     sio.emit('fyersConnected', {'status': 'connected'})
-    
+
+    # On reconnect, clear tracked set so ALL active symbols get re-subscribed fresh
+    fyers_subscribed_symbols.clear()
+
     # Subscribe to active symbols if any
     if active_subscriptions and fyers and hasattr(fyers, 'subscribe'):
         try:
             symbols_list = list(active_subscriptions)
             fyers.subscribe(symbols=symbols_list, data_type="SymbolUpdate")
+            fyers_subscribed_symbols.update(symbols_list)
             logger.info(f"📡 Subscribed to {len(symbols_list)} symbols on reconnection")
         except Exception as e:
             logger.error(f"❌ Error subscribing on open: {e}")
@@ -1008,16 +1019,13 @@ async def auth_watcher():
                         logger.info("🔄 Auth file updated, reinitializing...")
                         if initialize_fyers() and fyers:
                             try:
+                                # Clear tracked symbols so onopen() re-subscribes all fresh
+                                fyers_subscribed_symbols.clear()
                                 # Start WebSocket in asyncio executor
                                 loop = asyncio.get_event_loop()
                                 loop.run_in_executor(executor, fyers.connect)
                                 logger.info("✅ WebSocket connection started")
-                                
-                                # Resubscribe to all active symbols
-                                if active_subscriptions and hasattr(fyers, 'subscribe'):
-                                    symbols_list = list(active_subscriptions)
-                                    await loop.run_in_executor(executor, fyers.subscribe, symbols_list, "SymbolUpdate")
-                                    logger.info(f"✅ Resubscribed to {len(symbols_list)} symbols")
+                                # onopen() will handle re-subscription on connect
                             except Exception as e:
                                 logger.error(f"❌ WebSocket start error: {e}")
                     last_modified = current_modified
