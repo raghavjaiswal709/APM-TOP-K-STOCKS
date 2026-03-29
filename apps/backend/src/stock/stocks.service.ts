@@ -145,15 +145,32 @@ export class StockService {
         return `${year}-${month}-${day} ${hourStr}:${minuteStr}:00`;
       };
 
-      if (params.fetchBefore && params.endDate) {
-        // fetchBefore mode: get exactly N candles going BACKWARDS from endDate
+      if (params.fetchBefore && params.startDate && params.endDate) {
+        // Days-based fetchBefore: explicit date range going backwards.
+        // Use standard date range query (not --fetch_before) since Python ignores start_date in fetch_before mode.
+        const startStr = formatDateForPython(params.startDate, 9, 15);
+        const endStr = formatDateForPython(params.endDate, 9, 15);
+        const daysDiff = Math.ceil((params.endDate.getTime() - params.startDate.getTime()) / (1000 * 60 * 60 * 24));
+        const intervalMultiplier = this.getIntervalMultiplier(params.interval);
+        // Allow up to 390 trading candles/day × days (capped at 500000 raw records for safety)
+        const rawLimit = Math.min(daysDiff * 390 * intervalMultiplier, 500000);
+
+        this.logger.log(`fetchBefore (days) mode: ${daysDiff} days — ${params.startDate.toDateString()} → ${params.endDate.toDateString()}`);
+        this.logger.log(`Sending to Python: start="${startStr}", end="${endStr}", raw_limit=${rawLimit}`);
+
+        command += ` --start_date="${startStr}" --end_date="${endStr}"`;
+        command += ' --optimize_for_range=true';
+        command += ` --limit=${rawLimit}`;
+
+      } else if (params.fetchBefore && params.endDate) {
+        // Legacy candle-count fetchBefore: get exactly N candles going BACKWARDS from endDate
         // Use 9:15 so we fetch candles strictly before market open of that day
         const endStr = formatDateForPython(params.endDate, 9, 15);
         const intervalMultiplier = this.getIntervalMultiplier(params.interval);
         const requestedCandles = params.limit ?? 2000;
         const rawLimit = Math.min(requestedCandles * intervalMultiplier, 200000);
 
-        this.logger.log(`fetchBefore mode: getting ${requestedCandles} candles before ${params.endDate.toDateString()}`);
+        this.logger.log(`fetchBefore (candles) mode: getting ${requestedCandles} candles before ${params.endDate.toDateString()}`);
         this.logger.log(`Sending to Python: end="${endStr}", raw_limit=${rawLimit}`);
 
         command += ` --end_date="${endStr}"`;

@@ -19,7 +19,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ModeToggle } from "../components/toggleButton";
-import { BarChart2, Database, PanelBottomOpen, PanelBottomClose, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { BarChart2, Database, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, BarChart3, Cpu, Network, Clock } from 'lucide-react';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -27,10 +27,11 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 // Components
-import { LightWeightStockChart as StockChart } from "../components/charts/LightWeightStockChart";
+import { TimeMachineStockChart as StockChart } from "./components/TimeMachineStockChart";
 import { CompanyList } from "../components/CompanyList";
 import { AnalysisPanel } from "./components/AnalysisPanel";
 import { HistoricalChartCarousel } from "./components/HistoricalChartCarousel";
+import { ClosedPriceDashboard } from "./components/ClosedPriceDashboard";
 
 // Hooks & Services
 import { parseFullHistoricalData, convertToOHLC } from '@/lib/historicalTimeMachine';
@@ -415,79 +416,129 @@ const RecommendationListPage: React.FC = () => {
               )}
             </div>
 
-            {/* Unified Tabs Component */}
-            {selectedCompany && (
-              <Tabs defaultValue="analysis" className="flex-1 flex flex-col min-h-0">
-                {/* Toggle Button with TabsList */}
-                <div className="flex-none bg-background z-10">
-                  {isAnalysisVisible ? (
-                    <div className="flex items-center justify-between px-4 py-1 border-b bg-muted/20">
-                      {/* Tabs on the left */}
-                      <TabsList className="h-7 bg-muted/50 p-0.5">
-                        <TabsTrigger value="analysis" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Sentiment & Prediction</TabsTrigger>
-                        <TabsTrigger value="charts" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Historical Charts</TabsTrigger>
-                      </TabsList>
-                      {/* Drag handle and hide button on the right */}
-                      <div
-                        className="flex items-center gap-2 cursor-ns-resize group"
-                        onMouseDown={handleMouseDown}
-                        title="Drag to resize analysis panel"
+            {/* Bottom Analysis Panel — same 4-tab structure as market-data, adapted for Time Machine */}
+            <Tabs defaultValue="closedprice" className="flex flex-col min-h-0" style={{ flex: isAnalysisVisible ? `0 0 ${analysisHeight}%` : '0 0 auto' }}>
+              {/* Toggle Button with TabsList — ALWAYS VISIBLE */}
+              <div className="flex-none bg-background z-20 border-t sticky bottom-0">
+                {isAnalysisVisible ? (
+                  <div className="flex items-center justify-between px-4 py-1.5 border-b bg-muted/30">
+                    {/* Tabs on the left */}
+                    <TabsList className="h-7 bg-muted/50 p-0.5">
+                      <TabsTrigger value="closedprice" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                        <Clock className="h-3 w-3 mr-1" />Closed Price
+                      </TabsTrigger>
+                      <TabsTrigger value="predictions" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                        <Cpu className="h-3 w-3 mr-1" />AI Predictions &amp; GTT
+                      </TabsTrigger>
+                      <TabsTrigger value="metrices" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                        <BarChart3 className="h-3 w-3 mr-1" />Metrices
+                      </TabsTrigger>
+                      <TabsTrigger value="umap" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                        <Network className="h-3 w-3 mr-1" />UMAP Clustering
+                      </TabsTrigger>
+                    </TabsList>
+                    {/* Drag handle and hide button on the right */}
+                    <div
+                      className="flex items-center gap-2 cursor-ns-resize group"
+                      onMouseDown={handleMouseDown}
+                      title="Drag to resize analysis panel"
+                    >
+                      <div className="h-0.5 w-6 rounded-full bg-muted-foreground/30 group-hover:bg-primary/50 transition-colors"></div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 text-xs gap-1 opacity-60 hover:opacity-100 pointer-events-auto px-2 py-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsAnalysisVisible(!isAnalysisVisible);
+                        }}
                       >
-                        <div className="h-0.5 w-6 rounded-full bg-muted-foreground/30 group-hover:bg-primary/50 transition-colors"></div>
-                        <Button variant="ghost" size="sm" className="h-5 text-xs gap-1 opacity-60 hover:opacity-100 pointer-events-auto px-2 py-0"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setIsAnalysisVisible(!isAnalysisVisible);
-                          }}
-                        >
-                          <ChevronDown className="h-3 w-3" />
-                          Hide Analysis
-                        </Button>
-                        <div className="h-0.5 w-6 rounded-full bg-muted-foreground/30 group-hover:bg-primary/50 transition-colors"></div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center bg-muted/20 hover:bg-muted/40 transition-colors py-1 cursor-pointer border-b" onClick={() => setIsAnalysisVisible(!isAnalysisVisible)}>
-                      <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 opacity-70 hover:opacity-100">
-                        <ChevronUp className="h-3 w-3" />
-                        Show Analysis
+                        <ChevronDown className="h-3 w-3" />
+                        Hide Analysis
                       </Button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Analysis Panel with TabsContent */}
-                {isAnalysisVisible && (
-                  <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden">
-                    <div className="flex-1 overflow-hidden relative">
-                      <TabsContent value="analysis" className="h-full m-0 p-0">
-                        <div className="h-full w-full">
-                          <AnalysisPanel
-                            selectedCompany={selectedCompany}
-                            currentData={currentData}
-                            overallSentiment={overallSentiment}
-                            sthitiPrediction={sthitiPrediction}
-                            loadingSthitiPrediction={loadingSthitiPrediction}
-                            sthitiPositiveClusters={sthitiPositiveClusters}
-                            sthitiNegativeClusters={sthitiNegativeClusters}
-                            sthitiNeutralClusters={sthitiNeutralClusters}
-                            loadingSthitiClusters={loadingSthitiClusters}
-                            selectedDate={selectedDate}
-                          />
-                        </div>
-                      </TabsContent>
-                      <TabsContent value="charts" className="h-full m-0 p-4 overflow-y-auto">
-                        <HistoricalChartCarousel
-                          companyCode={selectedCompany}
-                          selectedDate={selectedDate || ''}
-                          overallSentiment={overallSentiment as 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL'}
-                        />
-                      </TabsContent>
+                      <div className="h-0.5 w-6 rounded-full bg-muted-foreground/30 group-hover:bg-primary/50 transition-colors"></div>
                     </div>
                   </div>
+                ) : (
+                  <div
+                    className="flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors py-2 cursor-pointer border-t shadow-lg"
+                    onClick={() => setIsAnalysisVisible(!isAnalysisVisible)}
+                  >
+                    <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 opacity-80 hover:opacity-100">
+                      <ChevronUp className="h-3 w-3" />
+                      Show Analysis Panel
+                    </Button>
+                  </div>
                 )}
-              </Tabs>
-            )}
+              </div>
+
+              {/* Tab Contents — only rendered when panel is visible and a company is selected */}
+              {isAnalysisVisible && selectedCompany && (
+                <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden">
+                  <div className="flex-1 overflow-hidden relative">
+
+                    {/* TAB 1: Closed Price — historical snapshot of the selected session */}
+                    <TabsContent value="closedprice" className="h-full m-0">
+                      <ScrollArea className="h-full w-full">
+                        <ClosedPriceDashboard
+                          company={selectedCompany}
+                          selectedDate={selectedDate}
+                          currentData={currentData}
+                          overallSentiment={overallSentiment}
+                          totalDataPoints={historicalDataPoints.length}
+                        />
+                      </ScrollArea>
+                    </TabsContent>
+
+                    {/* TAB 2: AI Predictions & GTT — not available in Time Machine */}
+                    <TabsContent value="predictions" className="h-full m-0">
+                      <div className="flex items-center justify-center h-full py-12 text-muted-foreground">
+                        <div className="text-center space-y-3 max-w-sm">
+                          <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto">
+                            <Cpu className="h-8 w-8 opacity-30" />
+                          </div>
+                          <h3 className="text-sm font-semibold text-foreground">Not Available in Time Machine</h3>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            AI Predictions &amp; GTT require a live market connection. This feature is unavailable for historical replay sessions.
+                          </p>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    {/* TAB 3: Metrices — not available in Time Machine */}
+                    <TabsContent value="metrices" className="h-full m-0">
+                      <div className="flex items-center justify-center h-full py-12 text-muted-foreground">
+                        <div className="text-center space-y-3 max-w-sm">
+                          <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto">
+                            <BarChart3 className="h-8 w-8 opacity-30" />
+                          </div>
+                          <h3 className="text-sm font-semibold text-foreground">Not Available in Time Machine</h3>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            Live metric images are generated from real-time feeds and are unavailable for historical sessions.
+                          </p>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    {/* TAB 4: UMAP Clustering — not available in Time Machine */}
+                    <TabsContent value="umap" className="h-full m-0">
+                      <div className="flex items-center justify-center h-full py-12 text-muted-foreground">
+                        <div className="text-center space-y-3 max-w-sm">
+                          <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto">
+                            <Network className="h-8 w-8 opacity-30" />
+                          </div>
+                          <h3 className="text-sm font-semibold text-foreground">Not Available in Time Machine</h3>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            UMAP Clustering analysis runs against live market data. Historical clustering is not supported in this mode.
+                          </p>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                  </div>
+                </div>
+              )}
+            </Tabs>
           </div>
 
           {/* RIGHT: SIDEBAR (COMPANY LIST) - Draggable & Collapsible */}

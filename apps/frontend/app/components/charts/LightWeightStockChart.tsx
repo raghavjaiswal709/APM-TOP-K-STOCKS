@@ -125,6 +125,10 @@ interface StockChartProps {
      * Change this value each time more historical data is loaded.
      */
     scrollToDataBoundary?: number | null;
+    /** Hide the "Separate View" comparative analysis button (default: false) */
+    hideSeparateView?: boolean;
+    /** Hide the GTT eye/EyeOff toggle overlay button (default: false) */
+    hideGttEyeToggle?: boolean;
 }
 
 // --- Constants ---
@@ -194,6 +198,8 @@ export function LightWeightStockChart({
     statusMessage = null,
     isLoadingMore = false,
     scrollToDataBoundary = null,
+    hideSeparateView = false,
+    hideGttEyeToggle = false,
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -1015,9 +1021,27 @@ export function LightWeightStockChart({
             }
         } else {
             // DATA-ONLY UPDATE: Reuse existing series — just update data in place.
-            // This is the key optimization that prevents chart disruption during background data loading.
+            // Save visible range BEFORE setData() — lightweight-charts shifts the logical index
+            // when data is prepended (new earlier timestamps), which drifts the visible window.
+            // Restoring after setData() keeps the user's view exactly where it was.
+            let savedRange: { from: number; to: number } | null = null;
+            try {
+                const vr = mainChart.timeScale().getVisibleRange();
+                if (vr) savedRange = { from: vr.from as number, to: vr.to as number };
+            } catch (e) {}
+
             const newData = prepareMainSeriesData();
             mainSeriesRef.current!.setData(newData);
+
+            // Restore exact visible range so the user's position is unchanged
+            if (savedRange && !needsInitialFitRef.current) {
+                try {
+                    mainChart.timeScale().setVisibleRange({
+                        from: savedRange.from as UTCTimestamp,
+                        to: savedRange.to as UTCTimestamp,
+                    });
+                } catch (e) {}
+            }
 
             // Update line/area color dynamically based on price movement
             if (chartType === 'line') {
@@ -1893,8 +1917,8 @@ export function LightWeightStockChart({
                     <RotateCcw size={14} />
                 </Button>
 
-                {/* Separate View Button - Hidden when modal is already open */}
-                {!isSeparatorModalOpen && (
+                {/* Separate View Button - Hidden when modal is already open or hideSeparateView prop is set */}
+                {!isSeparatorModalOpen && !hideSeparateView && (
                 <Button
                     variant="outline"
                     size="sm"
@@ -1916,6 +1940,7 @@ export function LightWeightStockChart({
             <div className="flex-1 flex flex-col min-h-0 w-full relative">
                 <div className="flex-1 relative w-full h-full min-h-0" ref={mainChartContainerRef}>
                     {/* GTT Labels Eye Toggle — floating overlay inside chart, top-right */}
+                    {!hideGttEyeToggle && (
                     <div className="absolute top-2 right-14 z-10">
                         <Button
                             variant={showGttLabels ? "secondary" : "ghost"}
@@ -1931,6 +1956,7 @@ export function LightWeightStockChart({
                             {showGttLabels ? <Eye size={13} /> : <EyeOff size={13} />}
                         </Button>
                     </div>
+                    )}
                     {/* Loading status badge - minimal, non-intrusive */}
                     {loading && (
                         <div className="absolute top-3 left-3 z-20 pointer-events-none">

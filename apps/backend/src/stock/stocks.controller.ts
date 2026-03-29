@@ -66,11 +66,12 @@ async getStockData(
     }
   }
 
-  // fetchBefore mode: only endDate matters (fetch N candles going backwards)
+  // fetchBefore mode (legacy, no startDate): only endDate matters
   if (fetchBefore === 'true' && endDate && !startDate) {
     endDateTime = new Date(endDate);
     startDateTime = undefined;
   }
+  // fetchBefore mode (days-based, with startDate): both dates are already set above — no override needed
 
   const params: StockDataRequestDto = {
     companyCode,

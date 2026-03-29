@@ -192,9 +192,9 @@ export function useStockData({
       priority?: 'high' | 'normal';
       /** If true, fetched data will be merged into existing data + day-cache */
       appendToCache?: boolean;
-      /** If true, fetch exactly `limit` candles going backwards from endDate */
+      /** If true, fetch data going backwards. Pass startDate+endDate for days-based range. */
       fetchBefore?: boolean;
-      /** Number of candles to fetch (used with fetchBefore) */
+      /** Number of candles to fetch (legacy, used with fetchBefore when no startDate is given) */
       limit?: number;
     } = {}
   ) => {
@@ -260,10 +260,16 @@ export function useStockData({
         ...(indicators.length > 0 && { indicators: indicators.join(',') })
       });
       if (fetchBefore && endDate) {
-        // fetchBefore mode: get N candles going backwards from endDate
+        // fetchBefore mode: going backwards from endDate
         queryParams.append('endDate', endDate.toISOString());
         queryParams.append('fetchBefore', 'true');
-        if (limit) queryParams.append('limit', String(limit));
+        if (startDate) {
+          // Days-based: include explicit start date so backend uses date-range query
+          queryParams.append('startDate', startDate.toISOString());
+        } else if (limit) {
+          // Legacy candle-count mode (backward compat)
+          queryParams.append('limit', String(limit));
+        }
       } else if (startDate) {
         queryParams.append('startDate', startDate.toISOString());
         queryParams.append('endDate', endDate?.toISOString() || new Date(startDate.getTime() + 6.25 * 60 * 60 * 1000).toISOString());

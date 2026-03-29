@@ -201,20 +201,27 @@ function DashboardContent() {
     setAtDataStart(startDate.getTime() <= dataRange.start.getTime() + bufferMs);
   }, [selectedCompany, dataRange.start, selectedInterval]);
 
-  // Manually fetch N more candles going backwards from the earliest loaded point
-  const handleFetchMoreCandles = useCallback(async (count: number) => {
+  // Day range options shown in the "load more" panel
+  const DAY_OPTIONS = [
+    { label: '10 Days',  days: 10  },
+    { label: '15 Days',  days: 15  },
+    { label: '1 Month',  days: 30  },
+    { label: '3 Months', days: 90  },
+    { label: '1 Year',   days: 365 },
+  ] as const;
+
+  // Manually fetch N more days going backwards from the earliest loaded point.
+  // The chart view is intentionally NOT changed — the user stays exactly where they are.
+  const handleFetchMoreDays = useCallback(async (days: number) => {
     if (!selectedCompany || !dataRange.start) return;
     setAtDataStart(false);
-    // Capture old boundary in unix seconds so chart can scroll to the join point after load
-    const oldBoundarySec = Math.floor(dataRange.start.getTime() / 1000);
+    // Calculate explicit start date by going back `days` calendar days
+    const newStartDate = new Date(dataRange.start.getTime() - days * 24 * 60 * 60 * 1000);
     try {
-      const result = await fetchStockData(undefined, dataRange.start, { fetchBefore: true, limit: count, merge: true });
-      if (result && result.length > 0) {
-        // New data arrived — tell chart to scroll to the old data boundary so user sees new candles
-        setScrollToDataBoundary(oldBoundarySec);
-      }
+      await fetchStockData(newStartDate, dataRange.start, { fetchBefore: true, merge: true });
+      // Do NOT set scrollToDataBoundary — preserve the user's current view position exactly
     } catch (err) {
-      console.error('Error fetching more candles:', err);
+      console.error('Error fetching more days:', err);
     }
   }, [selectedCompany, dataRange.start, fetchStockData]);
 
@@ -310,7 +317,7 @@ function DashboardContent() {
           {/* LEFT: CHART AREA */}
           <div className="flex-1 flex flex-col min-w-0 bg-secondary/5 relative">
 
-            {/* ── Fetch More Candles panel — appears at left when user scrolls to data start ── */}
+            {/* ── Load More Days panel — appears at left when user scrolls to data start ── */}
             {atDataStart && selectedCompany && !stockLoading && !isAutoLoading && !isLoadingMore && (
               <div className="absolute left-2 top-1/2 -translate-y-1/2 z-30 w-52 rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
                 {/* Header */}
@@ -325,18 +332,23 @@ function DashboardContent() {
                     <span className="font-semibold tabular-nums">{(stockData?.length ?? 0).toLocaleString()}</span>
                     <span className="text-muted-foreground"> candles loaded</span>
                   </div>
+                  {dataRange.start && (
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      From {dataRange.start.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </div>
+                  )}
                 </div>
 
-                {/* Fetch buttons */}
+                {/* Load More Days buttons */}
                 <div className="p-2 space-y-1">
-                  <p className="text-[10px] text-muted-foreground font-medium px-1 pb-0.5">Load more ←</p>
-                  {([500, 2000, 5000, 7000, 10000] as const).map(count => (
+                  <p className="text-[10px] text-muted-foreground font-medium px-1 pb-0.5">Load more days ←</p>
+                  {DAY_OPTIONS.map(({ label, days }) => (
                     <button
-                      key={count}
-                      onClick={() => handleFetchMoreCandles(count)}
+                      key={days}
+                      onClick={() => handleFetchMoreDays(days)}
                       className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium border border-border/70 bg-muted/30 hover:bg-muted/60 hover:border-border transition-colors text-foreground"
                     >
-                      <span>+ {count.toLocaleString()} candles</span>
+                      <span>+ {label}</span>
                       <ChevronDown className="h-3 w-3 rotate-90 text-muted-foreground" />
                     </button>
                   ))}
@@ -358,7 +370,7 @@ function DashboardContent() {
             {isLoadingMore && selectedCompany && (
               <div className="absolute left-2 top-1/2 -translate-y-1/2 z-30 flex items-center gap-2.5 rounded-xl border border-border bg-background shadow-xl px-4 py-3 text-xs text-foreground">
                 <div className="h-4 w-4 rounded-full border-2 border-muted border-t-blue-500 animate-spin shrink-0" />
-                Fetching candles…
+                Fetching historical data…
               </div>
             )}
 
