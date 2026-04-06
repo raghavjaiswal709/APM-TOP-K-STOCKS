@@ -5,6 +5,9 @@ import { getSocket, onReconnect, isSocketConnected } from '@/lib/socket';
 import dynamic from 'next/dynamic';
 import { usePersistentState, useScrollRestoration } from '@/hooks/useStateRestoration';
 import { usePageState } from '@/app/context/PageStateContext';
+import { useIntradayShapes } from '@/hooks/useClusteringV2';
+import type { IntradayShapePattern } from '@/types/clustering';
+import { ARCHETYPE_COLORS } from '@/types/clustering';
 import { AppSidebar } from "@/app/components/app-sidebar";
 import { CompanyList } from "@/app/components/CompanyList";
 
@@ -39,7 +42,7 @@ import {
 import { ModeToggle } from "@/app/components/toggleButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelector2/WatchlistSelector";
-import { ImageCarousel } from "./components/ImageCarousel";
+import { ImageCarousel } from "../market-data/components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity, Calendar as CalendarIcon, Images, ChevronDown, ChevronUp, PanelBottomOpen, PanelBottomClose, AlertTriangle, ChevronLeft, ChevronRight, ShieldAlert } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
@@ -54,9 +57,9 @@ import {
   OHLCCandle
 } from "@/lib/historicalDataFetcher";
 import { useDesirability } from "@/hooks/useDesirability";
-import { DesirabilityPanel } from "./components/DesirabilityPanel";
+import { DesirabilityPanel } from "../market-data/components/DesirabilityPanel";
 import { sentimentService } from '@/app/services/sentimentService';
-import { SubscriptionManagerModal } from "./components/SubscriptionManagerModal";
+import { SubscriptionManagerModal } from "../market-data/components/SubscriptionManagerModal";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ListChecks, Settings2, Briefcase } from 'lucide-react';
@@ -69,8 +72,8 @@ import { useGttPolling } from '@/hooks/useGttPolling';
 import { useGttCountdown } from '@/hooks/useGttCountdown';
 import { usePredictionCountdown } from '@/hooks/usePredictionCountdown';
 import { transformGttToChartPredictions, ALL_HORIZON_KEYS, HORIZON_LINE_CONFIG } from '@/lib/gttTransformers';
-import AIPredictionsDashboard from './components/AIPredictionsDashboard';
-import { LiveDataDashboard } from './components/LiveDataDashboard';
+import AIPredictionsDashboard from '../market-data/components/AIPredictionsDashboard';
+import { LiveDataDashboard } from '../market-data/components/LiveDataDashboard';
 import PredictionAPIService from '@/lib/predictionService';
 import { useTheme } from "next-themes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
@@ -89,8 +92,8 @@ declare global {
   }
 }
 
-// Market-data has its own dedicated chart component — isolated from dashboard
-const LightWeightStockChart = dynamic(() => import('./components/MarketDataStockChart').then(mod => ({ default: mod.MarketDataStockChart })), {
+// Cluster overlay uses the shared chart component from market-data
+const LightWeightStockChart = dynamic(() => import('../market-data/components/MarketDataStockChart').then(mod => ({ default: mod.MarketDataStockChart })), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-zinc-900">
@@ -100,7 +103,7 @@ const LightWeightStockChart = dynamic(() => import('./components/MarketDataStock
 });
 
 
-const UMAPClusterDashboard = dynamic(() => import('./components/umap/UMAPClusterDashboard'), {
+const UMAPClusterDashboard = dynamic(() => import('../market-data/components/umap/UMAPClusterDashboard'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-zinc-900">
@@ -161,73 +164,73 @@ interface Company {
   marker?: string;
 }
 
-const MarketDataPage: React.FC = () => {
+const ClusterOverlayPage: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
   const { theme } = useTheme();
   const { updateMarketDataState } = usePageState();
 
   // Use persistent state for key UI state (load directly from localStorage)
   const [selectedSymbol, setSelectedSymbol] = usePersistentState<string>(
-    'market-data-selectedSymbol',
+    'cluster-overlay-selectedSymbol',
     ''
   );
   const [selectedCompany, setSelectedCompany] = usePersistentState<string | null>(
-    'market-data-selectedCompany',
+    'cluster-overlay-selectedCompany',
     null
   );
   const [selectedExchange, setSelectedExchange] = usePersistentState<string | null>(
-    'market-data-selectedExchange',
+    'cluster-overlay-selectedExchange',
     null
   );
   const [selectedWatchlist, setSelectedWatchlist] = usePersistentState<string>(
-    'market-data-selectedWatchlist',
+    'cluster-overlay-selectedWatchlist',
     ''
   );
 
   // UI state preservation
   const [isAnalysisVisible, setIsAnalysisVisible] = usePersistentState<boolean>(
-    'market-data-isAnalysisVisible',
+    'cluster-overlay-isAnalysisVisible',
     true  // Default to visible so users can see the analysis tab
   );
 
   // Portfolio Mode State
   const [portfolioModeEnabled, setPortfolioModeEnabled] = usePersistentState<boolean>(
-    'market-data-portfolioModeEnabled',
+    'cluster-overlay-portfolioModeEnabled',
     false
   );
 
   // Prediction Integration State
   const [showPredictions, setShowPredictions] = usePersistentState<boolean>(
-    'market-data-showPredictions',
+    'cluster-overlay-showPredictions',
     true
   );
   const [predictionMode, setPredictionMode] = usePersistentState<'overlay' | 'comparison'>(
-    'market-data-predictionMode',
+    'cluster-overlay-predictionMode',
     'overlay'
   );
   const [gttChartType, setGttChartType] = usePersistentState<'candlestick' | 'line'>(
-    'market-data-gttChartType',
+    'cluster-overlay-gttChartType',
     'candlestick'
   );
   const [isGttEnabled, setIsGttEnabled] = usePersistentState<boolean>(
-    'market-data-isGttEnabled',
+    'cluster-overlay-isGttEnabled',
     false
   );
   // GTT per-horizon visibility: each of the 10 horizons + input_close can be toggled
   const [gttHorizonVisibility, setGttHorizonVisibility] = usePersistentState<Record<string, boolean>>(
-    'market-data-gttHorizonVisibility',
+    'cluster-overlay-gttHorizonVisibility',
     // Default: all visible
     Object.fromEntries([...ALL_HORIZON_KEYS.map(k => [k, true]), ['input_close', true]])
   );
 
   // Chart interval for candle aggregation (1m = 1 candle per minute, 5m = 1 candle per 5 min, etc.)
   const [chartInterval, setChartInterval] = usePersistentState<string>(
-    'market-data-chartInterval',
+    'cluster-overlay-chartInterval',
     '1m'
   );
 
   // Scroll restoration for main page
-  useScrollRestoration('market-data-main-scroll');
+  useScrollRestoration('cluster-overlay-main-scroll');
 
   // Track if we've already loaded data (to prevent re-fetching on navigation)
   const hasLoadedDataRef = useRef<boolean>(false);
@@ -278,7 +281,7 @@ const MarketDataPage: React.FC = () => {
   const [gradientMode, setGradientMode] = useState<'profit' | 'loss' | 'neutral'>('neutral');
   const [sentimentLoading, setSentimentLoading] = useState(false);
   const [activeTab, setActiveTab] = usePersistentState<'live' | 'predictions'>(
-    'market-data-activeTab',
+    'cluster-overlay-activeTab',
     'live'
   );
   const [marketOpen, setMarketOpen] = useState<boolean>(true);
@@ -315,21 +318,31 @@ const MarketDataPage: React.FC = () => {
 
   // Date synchronization (persistent)
   const [currentDate, setCurrentDate] = usePersistentState<string | null>(
-    'market-data-currentDate',
+    'cluster-overlay-currentDate',
     null
   );
   const [filteredCompanies, setFilteredCompanies] = useState<any[]>([]);
 
   // Show all companies filter state (persistent)
   const [showAllCompanies, setShowAllCompanies] = usePersistentState<boolean>(
-    'market-data-showAllCompanies',
+    'cluster-overlay-showAllCompanies',
     false
   );
 
   // Fullscreen mode state for chart section (persistent)
   const [isChartFullscreen, setIsChartFullscreen] = usePersistentState<boolean>(
-    'market-data-isChartFullscreen',
+    'cluster-overlay-isChartFullscreen',
     false
+  );
+
+  // ─── Intraday Shape Overlay State ──────────────────────────────────────────
+  const [showIntradayOverlay, setShowIntradayOverlay] = usePersistentState<boolean>(
+    'cluster-overlay-showIntradayOverlay',
+    false
+  );
+  const [selectedUmapPattern, setSelectedUmapPattern] = usePersistentState<string>(
+    'cluster-overlay-selectedUmapPattern',
+    'P0'
   );
 
   // Shared X-Axis state for chart synchronization
@@ -603,6 +616,44 @@ const MarketDataPage: React.FC = () => {
     refetch: refetchDesirability,
   } = useDesirability(selectedSymbol);
 
+  // ─── Intraday Shapes for Overlay ────────────────────────────────────────────
+  // Derive plain company code (e.g. "RELIANCE") from the full symbol (e.g. "NSE:RELIANCE-EQ")
+  const overlaySymbol = useMemo(() => {
+    if (!selectedSymbol) return '';
+    if (selectedSymbol.includes(':')) return selectedSymbol.split(':')[1]?.split('-')[0] || '';
+    return selectedSymbol.split('-')[0];
+  }, [selectedSymbol]);
+
+  const {
+    data: intradayShapesData,
+    loading: intradayShapesLoading,
+  } = useIntradayShapes(overlaySymbol, 30, showIntradayOverlay && !!overlaySymbol);
+
+  // Resolved pattern object for the currently selected P-label
+  const activeIntradayPattern = useMemo((): IntradayShapePattern | null => {
+    if (!intradayShapesData || !selectedUmapPattern) return null;
+    return intradayShapesData.patterns[selectedUmapPattern] ?? null;
+  }, [intradayShapesData, selectedUmapPattern]);
+
+  // All available pattern keys sorted, for the selector UI
+  const intradayPatternKeys = useMemo(() => {
+    if (!intradayShapesData) return [];
+    return Object.keys(intradayShapesData.patterns).sort();
+  }, [intradayShapesData]);
+
+  // Today's open price (first candle's open of the day)
+  const todayOpenPrice = useMemo(() => {
+    if (!selectedSymbol) return 0;
+    const candles = ohlcData[selectedSymbol];
+    if (!candles || candles.length === 0) return 0;
+    const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const todayCandles = candles.filter(c => {
+      const d = new Date(c.timestamp * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      return d === todayIST;
+    }).sort((a, b) => a.timestamp - b.timestamp);
+    return todayCandles[0]?.open ?? 0;
+  }, [selectedSymbol, ohlcData]);
+
   const isLoadingDesirability = desirabilityLoading;
 
   const handleFetchDesirabilityScore = useCallback(() => {
@@ -808,38 +859,6 @@ const MarketDataPage: React.FC = () => {
     );
   }, [companies, handleCompanyChange]);
 
-  // Multi-select action handler for CompanyList
-  const handleMultiAction = useCallback(
-    (action: 'multi-chart' | 'new-tabs' | 'historical' | 'subscribe', codes: string[]) => {
-      if (codes.length === 0) return;
-
-      if (action === 'multi-chart') {
-        // Open live-market grid with selected companies
-        // Pass codes as comma-separated param — live-market will subscribe to them
-        window.open(`/live-market?companies=${encodeURIComponent(codes.join(','))}`, '_blank');
-
-      } else if (action === 'new-tabs') {
-        // Open each company in its own market-data tab
-        codes.forEach(code => {
-          const company = companies?.find((c: any) => c.company_code === code);
-          const exchange = encodeURIComponent(company?.exchange || 'NSE');
-          const marker = encodeURIComponent(company?.marker || 'EQ');
-          window.open(`/market-data?company=${code}&exchange=${exchange}&marker=${marker}`, '_blank');
-        });
-
-      } else if (action === 'historical') {
-        // Open each company's historical data on the dashboard
-        codes.forEach(code => {
-          const company = companies?.find((c: any) => c.company_code === code);
-          const exchange = encodeURIComponent(company?.exchange || 'NSE');
-          const marker = encodeURIComponent(company?.marker || 'EQ');
-          window.open(`/?company=${code}&exchange=${exchange}&marker=${marker}`, '_blank');
-        });
-      }
-    },
-    [companies]
-  );
-
   // Subscription Handlers
   const handleSubscribeCompanies = useCallback(async (companyCodes: string[]) => {
     if (!companyCodes || companyCodes.length === 0) return;
@@ -876,8 +895,8 @@ const MarketDataPage: React.FC = () => {
 
       console.log(`📤 Converted to Fyers symbols:`, fyersSymbols.slice(0, 5), `... (${fyersSymbols.length} total)`);
 
-      // ✅ Pre-register symbols BEFORE emitting to avoid race where historical data
-      // arrives before the callback fires and gets rejected by symbol guards
+      // ✅ Pre-register symbols BEFORE emitting so data arriving during/before callback
+      // is accepted by handlers (avoids race where historical data arrives before callback fires)
       fyersSymbols.forEach(s => {
         allSubscribedSymbolsRef.current.add(s);
       });
@@ -960,6 +979,32 @@ const MarketDataPage: React.FC = () => {
       setIsSubscribing(false);
     }
   }, [companies]);
+
+  const handleMultiAction = useCallback(
+    (action: 'multi-chart' | 'new-tabs' | 'historical' | 'subscribe', codes: string[]) => {
+      if (codes.length === 0) return;
+      if (action === 'subscribe') {
+        handleSubscribeCompanies(codes);
+      } else if (action === 'multi-chart') {
+        window.open(`/live-market?companies=${encodeURIComponent(codes.join(','))}`, '_blank');
+      } else if (action === 'new-tabs') {
+        codes.forEach(code => {
+          const company = companies?.find((c: any) => c.company_code === code);
+          const exchange = encodeURIComponent(company?.exchange || 'NSE');
+          const marker = encodeURIComponent(company?.marker || 'EQ');
+          window.open(`/market-data?company=${code}&exchange=${exchange}&marker=${marker}`, '_blank');
+        });
+      } else if (action === 'historical') {
+        codes.forEach(code => {
+          const company = companies?.find((c: any) => c.company_code === code);
+          const exchange = encodeURIComponent(company?.exchange || 'NSE');
+          const marker = encodeURIComponent(company?.marker || 'EQ');
+          window.open(`/?company=${code}&exchange=${exchange}&marker=${marker}`, '_blank');
+        });
+      }
+    },
+    [companies, handleSubscribeCompanies]
+  );
 
   const handleSubscribeAll = useCallback(() => {
     if (isSubscribing) {
@@ -1160,7 +1205,8 @@ const MarketDataPage: React.FC = () => {
   const handleMarketDataUpdate = useCallback((data: MarketData) => {
     if (!data || !data.symbol) return;
 
-    // ✅ Strict symbol guard: reject data for symbols we never subscribed to
+    // ✅ Strict symbol guard: reject data for symbols we never subscribed to.
+    // This prevents stale/leaked data from corrupting state after reconnects.
     if (
       allSubscribedSymbolsRef.current.size > 0 &&
       !allSubscribedSymbolsRef.current.has(data.symbol) &&
@@ -1204,7 +1250,7 @@ const MarketDataPage: React.FC = () => {
   const handleChartUpdate = useCallback((update: ChartUpdate) => {
     if (!update || !update.symbol) return;
 
-    // ✅ Strict symbol guard
+    // ✅ Strict symbol guard: only process updates for subscribed symbols
     if (
       allSubscribedSymbolsRef.current.size > 0 &&
       !allSubscribedSymbolsRef.current.has(update.symbol) &&
@@ -1401,7 +1447,7 @@ const MarketDataPage: React.FC = () => {
       return;
     }
 
-    // ✅ Strict symbol guard
+    // ✅ Strict symbol guard: only process OHLC for subscribed symbols
     if (
       allSubscribedSymbolsRef.current.size > 0 &&
       !allSubscribedSymbolsRef.current.has(data.symbol) &&
@@ -1780,7 +1826,7 @@ const MarketDataPage: React.FC = () => {
       setHistoricalDataStatus('');
       // Subscribe for real-time updates (don't block rendering)
       if (!isSubscribedRef.current.has(selectedSymbol)) {
-        // ✅ Pre-register before emit so handlers accept data immediately
+        // ✅ Pre-register so handlers accept data immediately (before callback fires)
         allSubscribedSymbolsRef.current.add(selectedSymbol);
         socket.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
           if (response && response.success) {
@@ -1796,7 +1842,7 @@ const MarketDataPage: React.FC = () => {
     console.log(`📡 [Data] No cache for ${selectedSymbol} — subscribing + fetching...`);
 
     if (!isSubscribedRef.current.has(selectedSymbol)) {
-      // ✅ Pre-register before emit so handlers accept data immediately
+      // ✅ Pre-register so handlers accept data immediately (before callback fires)
       allSubscribedSymbolsRef.current.add(selectedSymbol);
       socket.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
         if (response && response.success) {
@@ -2329,7 +2375,7 @@ const MarketDataPage: React.FC = () => {
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
-                  <BreadcrumbPage>Live Market Data</BreadcrumbPage>
+                  <BreadcrumbPage>Cluster Overlay</BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
@@ -2343,7 +2389,7 @@ const MarketDataPage: React.FC = () => {
     );
   }
 
-  const pageTitle = selectedCompany ? `${selectedCompany} - Live Market` : "Live Market Data";
+  const pageTitle = selectedCompany ? `${selectedCompany} - Cluster Overlay` : "Cluster Overlay";
 
   // Main render - using recommendations page layout
   return (
@@ -2773,7 +2819,73 @@ const MarketDataPage: React.FC = () => {
                     gttHorizonVisibility={gttHorizonVisibility}
                     onIntervalChange={setChartInterval}
                     statusMessage={historicalDataStatus && !isLoadingHistorical && historicalDataStatus.includes('unavailable') ? historicalDataStatus : null}
+                    intradayShapePattern={showIntradayOverlay ? activeIntradayPattern : null}
+                    showIntradayOverlay={showIntradayOverlay}
+                    todayOpenPrice={todayOpenPrice}
                   />
+
+                  {/* ── Intraday Shape Overlay Panel ──────────────────────── */}
+                  <div className="absolute bottom-3 left-3 z-20 bg-background/90 border border-border/60 rounded-lg shadow-lg backdrop-blur-sm p-2 max-w-[420px]">
+                    {/* Header row */}
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Intraday Shape Overlay</span>
+                      <button
+                        onClick={() => setShowIntradayOverlay(!showIntradayOverlay)}
+                        className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ml-auto ${showIntradayOverlay ? 'bg-violet-600' : 'bg-gray-400 dark:bg-gray-600'}`}
+                        title={showIntradayOverlay ? 'Disable overlay' : 'Enable overlay'}
+                      >
+                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform shadow-sm ${showIntradayOverlay ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                      </button>
+                      {intradayShapesLoading && showIntradayOverlay && (
+                        <div className="h-3 w-3 rounded-full border border-violet-500 border-t-transparent animate-spin" />
+                      )}
+                    </div>
+
+                    {/* Pattern selector — only when overlay is on */}
+                    {showIntradayOverlay && (
+                      <div className="flex flex-wrap gap-1">
+                        {(intradayPatternKeys.length > 0 ? intradayPatternKeys : ['P0','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','P11','P12']).map((key) => {
+                          const pat = intradayShapesData?.patterns[key];
+                          const isActive = key === selectedUmapPattern;
+                          const archetypeColor = pat?.archetype ? (ARCHETYPE_COLORS[pat.archetype] || '#8b5cf6') : '#8b5cf6';
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => setSelectedUmapPattern(key)}
+                              className={`px-2 py-0.5 text-[10px] rounded font-medium transition-colors border ${
+                                isActive
+                                  ? 'bg-violet-500/20 border-violet-500/50 text-violet-300'
+                                  : 'bg-muted/50 border-border/40 text-muted-foreground hover:bg-accent hover:text-foreground'
+                              }`}
+                              style={isActive ? { borderColor: archetypeColor + '80', color: archetypeColor } : {}}
+                              title={pat?.archetype || key}
+                            >
+                              {key}
+                              {pat?.archetype && (
+                                <span className="ml-0.5 opacity-60">({pat.archetype.replace(/_/g, ' ')})</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Active pattern info */}
+                    {showIntradayOverlay && activeIntradayPattern && (
+                      <div className="mt-1.5 pt-1.5 border-t border-border/40 flex items-center gap-3 text-[10px] text-muted-foreground">
+                        <span style={{ color: ARCHETYPE_COLORS[activeIntradayPattern.archetype] || '#8b5cf6' }} className="font-semibold">
+                          {activeIntradayPattern.h_label}
+                        </span>
+                        <span>{activeIntradayPattern.archetype?.replace(/_/g, ' ')}</span>
+                        <span className="ml-auto">{activeIntradayPattern.n_core} core · {activeIntradayPattern.n_noise} noise days</span>
+                      </div>
+                    )}
+
+                    {/* No data message */}
+                    {showIntradayOverlay && !intradayShapesLoading && !intradayShapesData && overlaySymbol && (
+                      <p className="text-[10px] text-muted-foreground mt-1">No shape data for {overlaySymbol}</p>
+                    )}
+                  </div>
                 </div>
               ) : !selectedCompany ? (
                 <div className="flex h-full items-center justify-center text-muted-foreground p-8 text-center flex-col gap-4">
@@ -2979,6 +3091,7 @@ const MarketDataPage: React.FC = () => {
                   desirabilityMap={desirabilityMap}
                   sentimentMap={sentimentMap}
                   multiSelectMode={true}
+                  showSubscribeButton={true}
                   onMultiAction={handleMultiAction}
                 />
               </div>
@@ -3020,4 +3133,4 @@ const MarketDataPage: React.FC = () => {
   );
 };
 
-export default MarketDataPage;
+export default ClusterOverlayPage;

@@ -21,6 +21,7 @@ import {
   Pin,
   PinOff,
   ChevronRight,
+  Layers,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -70,10 +71,11 @@ const NAV_MAIN: NavItem[] = [
       { title: "Sector Performance", url: "#" },
     ],
   },
-  { title: "Live Market",         url: "/market-data",     icon: LineChart },
-  { title: "Multiple Live Chart", url: "/live-market",     icon: LayoutGrid },
-  { title: "Recommendations",     url: "/recommendations", icon: Sparkles },
-  { title: "UMAP Clustering",     url: "/umap-clustering", icon: BrainCircuit },
+  { title: "Live Market",         url: "/market-data",      icon: LineChart },
+  { title: "Cluster Overlay",     url: "/cluster-overlay",  icon: Layers },
+  { title: "Multiple Live Chart", url: "/live-market",      icon: LayoutGrid },
+  { title: "Recommendations",     url: "/recommendations",  icon: Sparkles },
+  { title: "UMAP Clustering",     url: "/umap-clustering",  icon: BrainCircuit },
   {
     title: "Watchlist",
     url: "/watchlist",

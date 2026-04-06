@@ -58,6 +58,8 @@ import { ALL_HORIZON_KEYS, HORIZON_LINE_CONFIG } from '@/lib/gttTransformers';
 import { attachPriceAxisWheelZoom, removePriceAxisWheelZoom } from '@/utils/chartWheelHandler';
 
 // --- Types ---
+import type { IntradayShapePattern } from '@/types/clustering';
+import { ARCHETYPE_COLORS } from '@/types/clustering';
 
 // Prediction data interface - matches actual API response structure
 // API returns: { "2026-02-03 09:15": { "close": 415.26, "predicted_at": "2026-02-03 09:15:00" } }
@@ -125,6 +127,12 @@ interface StockChartProps {
      * Change this value each time more historical data is loaded.
      */
     scrollToDataBoundary?: number | null;
+    /** Intraday shape pattern from UMAP clustering to overlay on the chart */
+    intradayShapePattern?: IntradayShapePattern | null;
+    /** Whether to show the intraday shape overlay */
+    showIntradayOverlay?: boolean;
+    /** Today's open price — used to scale the normalized intraday shape to actual prices */
+    todayOpenPrice?: number;
 }
 
 // --- Constants ---
@@ -194,6 +202,9 @@ export function MarketDataStockChart({
     statusMessage = null,
     isLoadingMore = false,
     scrollToDataBoundary = null,
+    intradayShapePattern = null,
+    showIntradayOverlay = false,
+    todayOpenPrice = 0,
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -253,7 +264,12 @@ export function MarketDataStockChart({
     const predictionMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
     // GTT Prediction markers plugin ref
     const gttPredictionMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
-    
+
+    // Intraday shape overlay series refs (median + p25 + p75)
+    const intradayMedianSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+    const intradayP25SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+    const intradayP75SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+
     // Track previous companyId for detecting company switches in the data effect
     const prevCompanyIdRef = useRef<string | null>(null);
     
@@ -307,6 +323,126 @@ export function MarketDataStockChart({
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [scrollToDataBoundary]);
+
+    // ─── Intraday Shape Overlay Effect ───────────────────────────────────────
+    // Renders median / P25 / P75 lines on the main chart scaled to today's open.
+    useEffect(() => {
+        const chart = mainChartRef.current;
+
+        // Helper: remove existing overlay series
+        const clearOverlay = () => {
+            if (intradayMedianSeriesRef.current && chart) {
+                try { chart.removeSeries(intradayMedianSeriesRef.current); } catch (_) {}
+                intradayMedianSeriesRef.current = null;
+            }
+            if (intradayP25SeriesRef.current && chart) {
+                try { chart.removeSeries(intradayP25SeriesRef.current); } catch (_) {}
+                intradayP25SeriesRef.current = null;
+            }
+            if (intradayP75SeriesRef.current && chart) {
+                try { chart.removeSeries(intradayP75SeriesRef.current); } catch (_) {}
+                intradayP75SeriesRef.current = null;
+            }
+        };
+
+        if (!showIntradayOverlay || !intradayShapePattern || !chart || todayOpenPrice <= 0) {
+            clearOverlay();
+            return;
+        }
+
+        clearOverlay();
+
+        // Build today's UTC timestamps for each minute (market: 9:15–15:29 IST)
+        // IST = UTC+5:30  →  9:15 IST = 3:45 UTC
+        const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        const [y, mo, d] = todayIST.split('-').map(Number);
+        const todayMidnightUTC = Date.UTC(y, mo - 1, d) / 1000; // seconds
+        const marketOpenUTC = todayMidnightUTC + 3 * 3600 + 45 * 60; // 03:45 UTC
+
+        // Convert a normalized return (% from open) or shape value to actual price
+        const hasReturnData = !!(intradayShapePattern.median_return_from_open?.length);
+
+        const toPrice = (shapeVal: number, idx: number): number => {
+            if (hasReturnData) {
+                // median_return_from_open is % return from open
+                return todayOpenPrice * (1 + shapeVal / 100);
+            }
+            // median_shape is normalized — treat as relative to 1.0 (open = 1.0)
+            // Scale by open price; shape values near 1 → near open price
+            return todayOpenPrice * shapeVal;
+        };
+
+        const nMin = intradayShapePattern.n_minutes || 374;
+        const archetypeColor = ARCHETYPE_COLORS[intradayShapePattern.archetype] || '#8b5cf6';
+
+        // Build series data arrays
+        const medianData = (hasReturnData
+            ? intradayShapePattern.median_return_from_open!
+            : intradayShapePattern.median_shape
+        ).slice(0, nMin).map((v, i) => ({
+            time: (marketOpenUTC + i * 60) as any,
+            value: toPrice(v, i),
+        }));
+
+        const p25Src = hasReturnData ? intradayShapePattern.p25_return_from_open : intradayShapePattern.p25_shape;
+        const p75Src = hasReturnData ? intradayShapePattern.p75_return_from_open : intradayShapePattern.p75_shape;
+
+        const p25Data = p25Src?.slice(0, nMin).map((v, i) => ({
+            time: (marketOpenUTC + i * 60) as any,
+            value: toPrice(v, i),
+        })) ?? [];
+
+        const p75Data = p75Src?.slice(0, nMin).map((v, i) => ({
+            time: (marketOpenUTC + i * 60) as any,
+            value: toPrice(v, i),
+        })) ?? [];
+
+        // Create and add series
+        try {
+            if (p25Data.length) {
+                const s = chart.addSeries(LineSeries, {
+                    color: archetypeColor + '50',
+                    lineWidth: 1,
+                    lineStyle: 2, // dashed
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                    title: '',
+                });
+                s.setData(p25Data);
+                intradayP25SeriesRef.current = s;
+            }
+
+            if (p75Data.length) {
+                const s = chart.addSeries(LineSeries, {
+                    color: archetypeColor + '50',
+                    lineWidth: 1,
+                    lineStyle: 2,
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                    title: '',
+                });
+                s.setData(p75Data);
+                intradayP75SeriesRef.current = s;
+            }
+
+            if (medianData.length) {
+                const s = chart.addSeries(LineSeries, {
+                    color: archetypeColor,
+                    lineWidth: 2,
+                    lastValueVisible: true,
+                    priceLineVisible: false,
+                    title: `${intradayShapePattern.h_label} Shape`,
+                });
+                s.setData(medianData);
+                intradayMedianSeriesRef.current = s;
+            }
+        } catch (err) {
+            console.warn('[IntradayOverlay] Failed to add series:', err);
+        }
+
+        return () => { clearOverlay(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showIntradayOverlay, intradayShapePattern, todayOpenPrice]);
 
     // Data processing helper with validation
     const processData = useCallback((rawData: StockDataPoint[]) => {

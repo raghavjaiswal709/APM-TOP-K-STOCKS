@@ -1208,6 +1208,10 @@ async def send_batch_historical_data(sid, symbols):
                 # Emit data if available
                 if symbol in historical_data and len(historical_data[symbol]) > 0:
                     hist_data_list = list(historical_data[symbol])
+                    # ✅ Ensure every data point's symbol field matches this symbol key
+                    for dp in hist_data_list:
+                        if isinstance(dp, dict) and dp.get('symbol') != symbol:
+                            dp['symbol'] = symbol
                     await sio.emit('historicalData', {
                         'symbol': symbol,
                         'data': hist_data_list
@@ -1667,7 +1671,16 @@ def update_ohlc_data(symbol, data_point):
         current_candle['low'] = min(current_candle['low'], price)
         current_candle['close'] = price
         # ✅ FIX: Calculate delta volume (current cumulative - starting cumulative for this candle)
-        start_vol = current_candle.get('_start_cumulative_vol', 0)
+        start_vol = current_candle.get('_start_cumulative_vol', None)
+        if start_vol is None:
+            # History candle (loaded from Fyers API, no _start_cumulative_vol set).
+            # Initialize it so the existing per-minute volume is preserved and
+            # subsequent ticks accumulate correctly on top of it.
+            # Formula: start_vol = current_cumulative - existing_volume
+            # → delta for this tick = current_cumulative - start_vol = existing_volume ✓
+            existing_volume = current_candle.get('volume', 0) or 0
+            start_vol = max(0, current_cumulative_volume - existing_volume)
+            current_candle['_start_cumulative_vol'] = start_vol
         if current_cumulative_volume >= start_vol:
             current_candle['volume'] = current_cumulative_volume - start_vol
         else:
@@ -1765,6 +1778,13 @@ async def emit_real_time_data():
                 if symbol in pending_data:
                     data = pending_data[symbol].copy()
 
+                    # ✅ STRICT SYMBOL CONSISTENCY: Ensure the data's symbol field
+                    # always matches the loop key. Prevents cross-symbol data leakage
+                    # if pending_data ever gets an inconsistent state.
+                    if data.get('symbol') != symbol:
+                        logger.warning(f"Symbol mismatch corrected: data.symbol={data.get('symbol')} != key={symbol}")
+                        data['symbol'] = symbol
+
                     if symbol in symbol_to_clients and symbol_to_clients[symbol]:
                         if current_time - last_emit_time[symbol] >= REAL_TIME_INTERVAL:
                             for sid in list(symbol_to_clients[symbol]):
@@ -1801,6 +1821,8 @@ def onmessage(message):
         return
 
     symbol = message['symbol']
+    if not symbol or not isinstance(symbol, str):
+        return
 
     if message.get('type') == 'sub':
         logger.info(f"Subscription confirmation: {symbol}")

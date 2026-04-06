@@ -111,6 +111,8 @@ interface CompanyListProps {
     onMultiAction?: (action: 'multi-chart' | 'new-tabs' | 'historical' | 'subscribe', codes: string[]) => void;
     /** When true: multi-select is always active (no toggle), action panel shows Subscribe/Clear */
     subscribeMode?: boolean;
+    /** When true: adds a Subscribe button to the non-subscribeMode multi-action panel */
+    showSubscribeButton?: boolean;
     /**
      * Pre-select these codes the FIRST TIME this prop is non-empty.
      * Used in live-market to show URL-subscribed companies as checked on load.
@@ -139,6 +141,7 @@ export const CompanyList = React.memo(function CompanyList({
     multiSelectMode = false,
     onMultiAction,
     subscribeMode = false,
+    showSubscribeButton = false,
     initialSelectedCodes,
 }: CompanyListProps) {
     const [searchTerm, setSearchTerm] = React.useState("");
@@ -581,6 +584,19 @@ export const CompanyList = React.memo(function CompanyList({
         return result;
     }, [companies, searchTerm, activeFilters, regularPredictions, gttPredictions, mergedSentimentMap, mergedDesirabilityMap, umapSymbolsSet, umapAnalysisMap]);
 
+    const selectAllFiltered = React.useCallback(() => {
+        setMultiSelectedCodes(new Set(filteredCompanies.map(c => c.company_code)));
+    }, [filteredCompanies]);
+
+    const deselectAll = React.useCallback(() => {
+        setMultiSelectedCodes(new Set());
+    }, []);
+
+    const allFilteredSelected = React.useMemo(() =>
+        filteredCompanies.length > 0 && filteredCompanies.every(c => multiSelectedCodes.has(c.company_code)),
+        [filteredCompanies, multiSelectedCodes]
+    );
+
     // Selected company object for ImageCarousel
     const selectedCompanyObj = React.useMemo(() =>
         companies.find(c => c.company_code === selectedCompanyCode),
@@ -742,6 +758,23 @@ export const CompanyList = React.memo(function CompanyList({
                             title={isMultiSelectActive ? "Exit multi-select" : "Select multiple companies"}
                         >
                             {isMultiSelectActive ? <CheckSquare size={16} /> : <Square size={16} />}
+                        </Button>
+                    )}
+
+                    {/* Select All / Deselect All — shown when multi-select is active */}
+                    {(isMultiSelectActive || subscribeMode) && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-[10px] font-medium"
+                            onClick={allFilteredSelected ? deselectAll : selectAllFiltered}
+                            title={allFilteredSelected ? "Deselect all" : `Select all ${filteredCompanies.length} companies`}
+                        >
+                            {allFilteredSelected ? (
+                                <><CheckSquare size={12} className="mr-1" />Deselect All</>
+                            ) : (
+                                <><Square size={12} className="mr-1" />Select All ({filteredCompanies.length})</>
+                            )}
                         </Button>
                     )}
 
@@ -1032,11 +1065,22 @@ export const CompanyList = React.memo(function CompanyList({
                             </Button>
                         </>
                     ) : (
-                        /* Multi-action mode: shown in market-data sidebar */
+                        /* Multi-action mode: shown in cluster-overlay / market-data sidebar */
                         <>
+                            {showSubscribeButton && (
+                                <Button
+                                    size="sm"
+                                    variant="default"
+                                    className="h-7 text-xs w-full"
+                                    onClick={() => handleMultiAction('subscribe')}
+                                >
+                                    <Check className="h-3 w-3 mr-1.5" />
+                                    Subscribe ({multiSelectedCodes.size})
+                                </Button>
+                            )}
                             <Button
                                 size="sm"
-                                variant="default"
+                                variant={showSubscribeButton ? "outline" : "default"}
                                 className="h-7 text-xs w-full"
                                 onClick={() => handleMultiAction('multi-chart')}
                             >
