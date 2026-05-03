@@ -67,7 +67,7 @@ const NAV_MAIN: NavItem[] = [
     items: [
       { title: "Historical Data", url: "/" },
       { title: "Overview", url: "#" },
-      { title: "Market Movers", url: "#" },
+      { title: "Market Movers", url: "/market-movers" },
       { title: "Sector Performance", url: "#" },
     ],
   },
