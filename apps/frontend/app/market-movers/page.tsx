@@ -168,26 +168,25 @@ const CompanyTile: React.FC<TileProps> = ({ company, data, color }) => {
   return (
     <div
       className={cn(
-        'flex items-center gap-2.5 px-3 py-2.5 rounded-xl border bg-card transition-colors cursor-default select-none',
+        'flex items-center gap-4 px-5 py-4 rounded-2xl border-2 bg-card transition-colors cursor-default select-none w-full',
         TILE_BORDER_CLASS[color]
       )}
-      style={{ minWidth: '220px', width: '220px' }}
     >
       {/* ① Color indicator circle */}
       <div
         className={cn(
-          'w-3 h-3 rounded-full shrink-0 transition-colors',
+          'w-4 h-4 rounded-full shrink-0 transition-colors',
           CIRCLE_CLASS[color]
         )}
       />
 
-      {/* ③ Company name */}
+      {/* ③ Company name + price */}
       <div className="flex-1 min-w-0">
-        <div className="font-semibold text-xs leading-tight truncate">
+        <div className="font-bold text-base leading-tight truncate tracking-wide">
           {company.company_code}
         </div>
         {hasData && ltp !== undefined && (
-          <div className="text-[10px] text-muted-foreground tabular-nums leading-none mt-0.5">
+          <div className="text-sm text-muted-foreground tabular-nums leading-none mt-1">
             ₹{ltp.toFixed(2)}
           </div>
         )}
@@ -197,26 +196,26 @@ const CompanyTile: React.FC<TileProps> = ({ company, data, color }) => {
       {hasData ? (
         <div
           className={cn(
-            'text-[11px] font-semibold tabular-nums shrink-0 text-right leading-tight',
+            'text-sm font-bold tabular-nums shrink-0 text-right leading-tight',
             CHANGE_TEXT_CLASS[color]
           )}
         >
-          <div className="flex items-center gap-0.5 justify-end">
+          <div className="flex items-center gap-1 justify-end">
             {change === 0 ? (
-              <Minus className="h-2.5 w-2.5" />
+              <Minus className="h-3.5 w-3.5" />
             ) : change > 0 ? (
-              <TrendingUp className="h-2.5 w-2.5" />
+              <TrendingUp className="h-3.5 w-3.5" />
             ) : (
-              <TrendingDown className="h-2.5 w-2.5" />
+              <TrendingDown className="h-3.5 w-3.5" />
             )}
             <span>{change >= 0 ? '+' : ''}{change.toFixed(2)}</span>
           </div>
-          <div className="text-[9px] font-medium opacity-80">
+          <div className="text-xs font-semibold opacity-80 mt-0.5">
             ({changePercent >= 0 ? '+' : ''}{changePercent.toFixed(2)}%)
           </div>
         </div>
       ) : (
-        <WifiOff className="h-3 w-3 text-muted-foreground shrink-0" />
+        <WifiOff className="h-4 w-4 text-muted-foreground shrink-0" />
       )}
     </div>
   );
@@ -516,7 +515,8 @@ const MarketMoversPage: React.FC = () => {
               ) : (
                 <motion.div
                   layout
-                  className="flex flex-wrap gap-2.5 content-start"
+                  className="grid gap-3"
+                  style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}
                 >
                   <AnimatePresence mode="popLayout">
                     {sortedCompanies.map(company => {
@@ -528,9 +528,9 @@ const MarketMoversPage: React.FC = () => {
                           key={company.company_code}
                           layout
                           layoutId={company.company_code}
-                          initial={{ opacity: 0, scale: 0.85 }}
+                          initial={{ opacity: 0, scale: 0.9 }}
                           animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.85 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
                           transition={{
                             layout: { type: 'spring', stiffness: 300, damping: 30 },
                             opacity: { duration: 0.2 },
