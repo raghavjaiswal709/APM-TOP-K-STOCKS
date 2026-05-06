@@ -39,8 +39,14 @@ services:
       # Client-side: Browser uses localhost (host machine perspective)
       - NEXT_PUBLIC_API_URL=http://100.93.172.21:5002
       - NEXT_PUBLIC_BACKEND_URL=http://100.93.172.21:5002
+      - NEXT_PUBLIC_MARKET_DATA_API=http://100.93.172.21:5002/api
       - NEXT_PUBLIC_GTT_API_URL=http://100.93.172.21:5002
-      # Server-side: Node.js uses Docker network
+    
+      - NEXT_PUBLIC_SOCKET_URL=http://100.93.172.21:5001
+      - NEXT_PUBLIC_FYERS_SOCKET_URL=http://100.93.172.21:5001
+      - NEXT_PUBLIC_FYERS_SERVICE_5001_URL=http://100.93.172.21:5001
+      - NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://100.93.172.21:5010
+    
       - BACKEND_URL=http://backend:5002
     env_file:
       - apps/frontend/.env
