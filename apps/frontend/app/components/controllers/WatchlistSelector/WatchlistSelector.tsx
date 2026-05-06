@@ -20,15 +20,15 @@ interface WatchlistSelectorProps {
   externalSelectedDate?: string | null;
   externalSetSelectedDate?: (date: string) => void;
   externalAvailableDates?: string[];
-  externalCompanies?: Array<{ company_code: string; name: string; exchange: string; marker?: string; refined?: boolean }>;
+  externalCompanies?: Array<{ company_code: string; name: string; exchange: string; marker?: string /*, refined?: boolean — removed, not in watchlist_quant */ }>;
   externalLoading?: boolean;
   externalError?: string | null;
   externalExists?: boolean;
   externalAvailableExchanges?: string[];
   externalAvailableMarkers?: string[];
   externalTotalCompanies?: number;
-  // NEW: Allow parent to control refined filter for synchronized API calls
-  externalSetRefinedFilter?: (refined: boolean | null) => void;
+  // REMOVED: externalSetRefinedFilter — watchlist_quant has no refined column
+  // externalSetRefinedFilter?: (refined: boolean | null) => void;
   externalSetShowAllCompanies?: (showAll: boolean) => void;
 }
 
@@ -49,7 +49,7 @@ export const WatchlistSelector = React.memo(({
   externalAvailableExchanges,
   externalAvailableMarkers,
   externalTotalCompanies,
-  externalSetRefinedFilter,
+  // externalSetRefinedFilter, // REMOVED: not in watchlist_quant
   externalSetShowAllCompanies,
 }: WatchlistSelectorProps) => {
   
@@ -58,7 +58,7 @@ export const WatchlistSelector = React.memo(({
   const [activeFilters, setActiveFilters] = React.useState({
     exchanges: [] as string[],
     markers: [] as string[],
-    refined: null as boolean | null,
+    // refined: null as boolean | null, // REMOVED: not in watchlist_quant
     showAllCompanies: false,
     hasPrediction: null as boolean | null,
     hasGtt: null as boolean | null,
@@ -89,7 +89,8 @@ export const WatchlistSelector = React.memo(({
   const showAllCompanies = internalHook.showAllCompanies;
   // Use external setters when provided, otherwise fall back to internal hook
   const setShowAllCompanies = externalSetShowAllCompanies ?? internalHook.setShowAllCompanies;
-  const setRefinedFilter = externalSetRefinedFilter ?? internalHook.setRefinedFilter;
+  // REMOVED: setRefinedFilter — not in watchlist_quant
+  // const setRefinedFilter = externalSetRefinedFilter ?? internalHook.setRefinedFilter;
 
   const handleDateSelect = React.useCallback((date: Date | undefined) => {
     if (date) {
@@ -120,9 +121,9 @@ export const WatchlistSelector = React.memo(({
     // Update showAllCompanies state
     setShowAllCompanies(filters.showAllCompanies);
     
-    // Update refined filter for API calls
-    setRefinedFilter(filters.refined);
-  }, [setShowAllCompanies, setRefinedFilter]);
+    // OLD: refined filter removed — not in watchlist_quant
+    // setRefinedFilter(filters.refined);
+  }, [setShowAllCompanies]);
 
   const filteredCompanies = React.useMemo(() => {
     let filtered = [...companies];
@@ -137,23 +138,22 @@ export const WatchlistSelector = React.memo(({
       filtered = filtered.filter(c => c.marker && activeFilters.markers.includes(c.marker));
     }
     
-    // Apply refined filter (client-side filtering for immediate feedback)
-    if (activeFilters.refined !== null) {
-      filtered = filtered.filter(c => {
-        // Handle both boolean and undefined/null values
-        const isRefined = c.refined === true;
-        return activeFilters.refined ? isRefined : !isRefined;
-      });
-    }
+    // OLD: refined filter removed — watchlist_quant has no refined column
+    // if (activeFilters.refined !== null) {
+    //   filtered = filtered.filter(c => {
+    //     const isRefined = c.refined === true;
+    //     return activeFilters.refined ? isRefined : !isRefined;
+    //   });
+    // }
     
     return filtered;
   }, [companies, activeFilters]);
 
   const getActiveFilterCount = React.useCallback(() => {
     if (activeFilters.showAllCompanies) return 1;
+    // OLD: refined removed from count — not in watchlist_quant
     return activeFilters.exchanges.length + 
-           activeFilters.markers.length + 
-           (activeFilters.refined !== null ? 1 : 0);
+           activeFilters.markers.length; // + (activeFilters.refined !== null ? 1 : 0);
   }, [activeFilters]);
 
   const availableDateObjects = React.useMemo(() => 

@@ -7,13 +7,15 @@ import { SectorService } from './sector.service';
 import { Companies } from './entities/companies.entity';
 import { DailyWatchlist } from './entities/daily-watchlist.entity';
 import { DailyWatchlistMetrics } from './entities/daily-watchlist-metrics.entity';
+import { WatchlistQuant } from './entities/watchlist-quant.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Companies,
       DailyWatchlist,
-      DailyWatchlistMetrics
+      DailyWatchlistMetrics,
+      WatchlistQuant,
     ])
   ],
   controllers: [WatchlistController],

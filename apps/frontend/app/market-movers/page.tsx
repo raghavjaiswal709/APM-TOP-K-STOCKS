@@ -112,6 +112,15 @@ function isBeforeOrAt10AMIST(): boolean {
   return istTotalMinutes <= 10 * 60; // <= 10:00 AM
 }
 
+/** Get today's date string in IST (YYYY-MM-DD) – used as localStorage key suffix */
+function getTodayISTDate(): string {
+  const now = new Date();
+  const istMs = now.getTime() + (5 * 60 + 30) * 60 * 1000;
+  return new Date(istMs).toISOString().split('T')[0];
+}
+
+const BLUE_FLAGS_STORAGE_PREFIX = 'mm_blue_';
+
 /** Determine tile color for a company */
 function getTileColor(
   companyCode: string,
@@ -271,6 +280,26 @@ const MarketMoversPage: React.FC = () => {
   const blueFlagsRef = useRef<Set<string>>(new Set());
   const [blueFlags, setBlueFlags] = useState<Set<string>>(new Set());
 
+  /* ── Load persisted blue flags for today from localStorage on mount ── */
+  useEffect(() => {
+    const todayKey = BLUE_FLAGS_STORAGE_PREFIX + getTodayISTDate();
+    try {
+      // Remove stale keys from previous trading days
+      Object.keys(localStorage)
+        .filter(k => k.startsWith(BLUE_FLAGS_STORAGE_PREFIX) && k !== todayKey)
+        .forEach(k => localStorage.removeItem(k));
+
+      const stored = localStorage.getItem(todayKey);
+      if (stored) {
+        const flags = new Set<string>(JSON.parse(stored) as string[]);
+        blueFlagsRef.current = flags;
+        setBlueFlags(flags);
+      }
+    } catch {
+      // localStorage unavailable (private browsing, etc.) – graceful fallback
+    }
+  }, []); // runs once on mount
+
   /* ── Right sidebar width/collapse ── */
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(300);
@@ -322,7 +351,17 @@ const MarketMoversPage: React.FC = () => {
     });
 
     if (changed) {
-      setBlueFlags(new Set(blueFlagsRef.current));
+      const newSet = new Set(blueFlagsRef.current);
+      // Persist so flags survive page refreshes for the rest of the trading day
+      try {
+        localStorage.setItem(
+          BLUE_FLAGS_STORAGE_PREFIX + getTodayISTDate(),
+          JSON.stringify([...newSet])
+        );
+      } catch {
+        // ignore write errors
+      }
+      setBlueFlags(newSet);
     }
   }, [marketData]);
 

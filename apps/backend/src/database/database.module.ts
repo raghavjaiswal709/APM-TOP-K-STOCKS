@@ -4,6 +4,7 @@ import { StockData } from '../stock/entities/stock.entity';
 import { Companies } from '../watchlist/entities/companies.entity';
 import { DailyWatchlist } from '../watchlist/entities/daily-watchlist.entity';
 import { DailyWatchlistMetrics } from '../watchlist/entities/daily-watchlist-metrics.entity';
+import { WatchlistQuant } from '../watchlist/entities/watchlist-quant.entity';
 
 @Module({
   imports: [
@@ -18,7 +19,8 @@ import { DailyWatchlistMetrics } from '../watchlist/entities/daily-watchlist-met
         StockData,
         Companies,
         DailyWatchlist,
-        DailyWatchlistMetrics
+        DailyWatchlistMetrics,
+        WatchlistQuant,
       ],
       synchronize: false,
       ssl: false,

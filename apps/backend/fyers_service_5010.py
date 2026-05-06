@@ -88,7 +88,7 @@ pending_data = {}
 # Track last seen vol_traded_today per symbol to compute per-tick delta volume
 prev_vol_traded_today = {}
 MAX_HISTORY_POINTS = 10000
-MAX_COMPANIES = 50  # Allow up to 50 companies
+MAX_COMPANIES = 500  # Allow up to 500 companies (watchlist can have 300+)
 fyers_subscribed_symbols = set()  # Track symbols already sent to Fyers to avoid re-subscription token remapping
 INDIA_TZ = pytz.timezone('Asia/Kolkata')
 fyers = None
@@ -567,6 +567,8 @@ async def update_fyers_subscription():
     Re-subscribing already-subscribed symbols causes Fyers library to re-run token
     conversion, which can return different token→symbol mappings and swap prices
     between companies. We only subscribe symbols not yet sent to Fyers.
+
+    Fyers WebSocket accepts up to 200 symbols per subscribe() call, so we batch.
     """
     global fyers_subscribed_symbols
     if not fyers:
@@ -577,10 +579,15 @@ async def update_fyers_subscription():
         # Only subscribe symbols that haven't been sent to Fyers yet
         new_symbols = [s for s in active_subscriptions if s not in fyers_subscribed_symbols]
         if new_symbols:
-            logger.info(f"🔄 Subscribing {len(new_symbols)} NEW symbols to Fyers: {new_symbols}")
+            FYERS_BATCH_SIZE = 200  # Fyers WS limit per subscribe() call
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(executor, fyers.subscribe, new_symbols, "SymbolUpdate")
-            fyers_subscribed_symbols.update(new_symbols)
+            for i in range(0, len(new_symbols), FYERS_BATCH_SIZE):
+                batch = new_symbols[i:i + FYERS_BATCH_SIZE]
+                logger.info(f"🔄 Subscribing batch {i//FYERS_BATCH_SIZE + 1}: {len(batch)} symbols to Fyers")
+                await loop.run_in_executor(executor, fyers.subscribe, batch, "SymbolUpdate")
+                fyers_subscribed_symbols.update(batch)
+                if i + FYERS_BATCH_SIZE < len(new_symbols):
+                    await asyncio.sleep(0.3)  # brief pause between batches
             logger.info(f"✅ Fyers now tracking {len(fyers_subscribed_symbols)} symbols total")
         else:
             logger.info("📡 No new symbols to subscribe — all already active in Fyers")
@@ -854,13 +861,19 @@ def onopen():
     # On reconnect, clear tracked set so ALL active symbols get re-subscribed fresh
     fyers_subscribed_symbols.clear()
 
-    # Subscribe to active symbols if any
+    # Subscribe to active symbols in batches of 200 (Fyers WS limit per call)
     if active_subscriptions and fyers and hasattr(fyers, 'subscribe'):
         try:
+            FYERS_BATCH_SIZE = 200
             symbols_list = list(active_subscriptions)
-            fyers.subscribe(symbols=symbols_list, data_type="SymbolUpdate")
-            fyers_subscribed_symbols.update(symbols_list)
-            logger.info(f"📡 Subscribed to {len(symbols_list)} symbols on reconnection")
+            for i in range(0, len(symbols_list), FYERS_BATCH_SIZE):
+                batch = symbols_list[i:i + FYERS_BATCH_SIZE]
+                fyers.subscribe(symbols=batch, data_type="SymbolUpdate")
+                fyers_subscribed_symbols.update(batch)
+                logger.info(f"📡 Subscribed batch {i//FYERS_BATCH_SIZE + 1}: {len(batch)} symbols on reconnection")
+                if i + FYERS_BATCH_SIZE < len(symbols_list):
+                    time.sleep(0.3)  # brief pause between batches (sync context)
+            logger.info(f"✅ Total {len(fyers_subscribed_symbols)} symbols subscribed on reconnection")
         except Exception as e:
             logger.error(f"❌ Error subscribing on open: {e}")
 

@@ -21,9 +21,10 @@ export class LiveMarketService {
         marker: company.marker,
         symbol: `${company.exchange}:${company.company_code}-${company.marker}`,
         metadata: {
-          total_valid_days: company.total_valid_days,
-          avg_daily_high_low_range: company.avg_daily_high_low_range,
-          median_daily_volume: company.median_daily_volume,
+          // OLD fields removed — not in watchlist_quant
+          // total_valid_days: company.total_valid_days,
+          // avg_daily_high_low_range: company.avg_daily_high_low_range,
+          // median_daily_volume: company.median_daily_volume,
           pe_ratio: company.pe_ratio
         }
       }));

@@ -115,7 +115,8 @@ export function FilterModal({
   const getActiveFilterCount = () => {
     let count = 0;
     if (!tempFilters.showAllCompanies) {
-      count = tempFilters.exchanges.length + tempFilters.markers.length + tempFilters.sentiments.length + (tempFilters.refined !== null ? 1 : 0);
+      // OLD: refined removed from count — not in watchlist_quant
+      count = tempFilters.exchanges.length + tempFilters.markers.length + tempFilters.sentiments.length; // + (tempFilters.refined !== null ? 1 : 0);
     }
     if (tempFilters.showAllCompanies) count++;
     return count;
@@ -271,7 +272,8 @@ export function FilterModal({
               </div>
             </div>
 
-            {/* Refined Filter */}
+            {/* Refined Filter — COMMENTED OUT: watchlist_quant has no refined column */}
+            {/*
             <div className="space-y-3">
               <h4 className="font-medium text-sm">Quality Filter</h4>
               <div className="grid grid-cols-3 gap-2">
@@ -332,10 +334,8 @@ export function FilterModal({
                   <span className="text-sm font-medium">Non-Refined</span>
                 </div>
               </div>
-              {/* <div className="text-xs text-muted-foreground px-1">
-                Refined stocks are premium quality selections based on advanced analysis
-              </div> */}
             </div>
+            */}
           </CardContent>
 
           {/* Footer */}

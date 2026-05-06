@@ -30,47 +30,46 @@ export class WatchlistController {
 
   /**
    * Get watchlist companies
-   * GET /api/watchlist?date=YYYY-MM-DD&exchange=NSE,BSE&refined=true
    * GET /api/watchlist?date=YYYY-MM-DD&exchange=NSE,BSE
    * 
    * @param date - The date to fetch watchlist for (YYYY-MM-DD)
    * @param exchange - Comma-separated list of exchanges (e.g., 'NSE,BSE')
-   * @param refined - Filter by refined status: 'true' for refined only, 'false' for non-refined only, undefined for all
-   * Note: Since your DB doesn't have A/B/C concept, we removed that parameter
+   * NOTE: refined param removed — watchlist_quant table has no refined column
    */
   @Get()
   async getWatchlist(
     @Query('date') date?: string,
     @Query('exchange') exchange?: string,
-    @Query('refined') refinedParam?: string,
+    // OLD: refined param removed — not in watchlist_quant
+    // @Query('refined') refinedParam?: string,
   ): Promise<{ companies: MergedCompany[], exists: boolean, total: number, date: string }> {
     try {
-      // Parse refined parameter: 'true' -> true, 'false' -> false, undefined/other -> undefined
-      let refinedFilter: boolean | undefined;
-      if (refinedParam === 'true') {
-        refinedFilter = true;
-      } else if (refinedParam === 'false') {
-        refinedFilter = false;
-      }
-      
+      // OLD: refined filter parsing removed
+      // let refinedFilter: boolean | undefined;
+      // if (refinedParam === 'true') {
+      //   refinedFilter = true;
+      // } else if (refinedParam === 'false') {
+      //   refinedFilter = false;
+      // }
+
       const companies = await this.watchlistService.getAllCompaniesWithExchange(
-        date, 
-        exchange, 
-        refinedFilter
+        date,
+        exchange,
+        // OLD: refinedFilter removed
       );
-      
-      console.log(`Retrieved ${companies.length} companies for exchanges: ${exchange || 'ALL'}, refined: ${refinedFilter !== undefined ? refinedFilter : 'ALL'}`);
-      return { 
-        companies, 
-        exists: true, 
+
+      console.log(`Retrieved ${companies.length} companies for exchanges: ${exchange || 'ALL'}`);
+      return {
+        companies,
+        exists: true,
         total: companies.length,
         date: date || new Date().toISOString().split('T')[0]
       };
     } catch (error) {
       console.error(`Error fetching watchlist:`, error);
-      return { 
-        companies: [], 
-        exists: false, 
+      return {
+        companies: [],
+        exists: false,
         total: 0,
         date: date || new Date().toISOString().split('T')[0]
       };
@@ -143,17 +142,14 @@ export class WatchlistController {
     return { company };
   }
 
-  /**
-   * Get company metrics
-   * GET /api/watchlist/company/:companyCode/metrics?exchange=NSE&date=YYYY-MM-DD
-   */
-  @Get('company/:companyCode/metrics')
-  async getCompanyMetrics(
-    @Param('companyCode') companyCode: string,
-    @Query('exchange') exchange: string,
-    @Query('date') date: string,
-  ): Promise<{ data: any }> {
-    const data = await this.watchlistService.getCompanyMetrics(companyCode, exchange, date);
-    return { data };
-  }
+  // OLD ENDPOINT — removed: getCompanyMetrics used DailyWatchlistMetrics which is replaced by watchlist_quant
+  // @Get('company/:companyCode/metrics')
+  // async getCompanyMetrics(
+  //   @Param('companyCode') companyCode: string,
+  //   @Query('exchange') exchange: string,
+  //   @Query('date') date: string,
+  // ): Promise<{ data: any }> {
+  //   const data = await this.watchlistService.getCompanyMetrics(companyCode, exchange, date);
+  //   return { data };
+  // }
 }

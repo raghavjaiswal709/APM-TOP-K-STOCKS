@@ -24,7 +24,7 @@ interface ActiveFilters {
   exchanges: string[];
   markers: string[];
   sentiments: string[];
-  refined: boolean | null;
+  // refined: boolean | null; // REMOVED: not in watchlist_quant
   showAllCompanies: boolean;
 }
 
@@ -45,7 +45,7 @@ export const WatchlistSelector = React.memo(({
     exchanges: [],
     markers: [],
     sentiments: [],
-    refined: null,
+    // refined: null, // REMOVED: not in watchlist_quant
     showAllCompanies: false
   });
 
@@ -61,8 +61,8 @@ export const WatchlistSelector = React.memo(({
     availableMarkers,
     totalCompanies,
     getFilteredCompanies,
-    refinedFilter,
-    setRefinedFilter,
+    // refinedFilter, // REMOVED: not in watchlist_quant
+    // setRefinedFilter, // REMOVED: not in watchlist_quant
     showAllCompanies,
     setShowAllCompanies
   } = useWatchlist();
@@ -87,12 +87,12 @@ export const WatchlistSelector = React.memo(({
         exchanges: [],
         markers: [],
         sentiments: [],
-        refined: null,
+        // refined: null, // REMOVED: not in watchlist_quant
         showAllCompanies: false
       });
 
-      // Reset refined filter in hook
-      setRefinedFilter(null);
+      // OLD: Reset refined filter in hook — removed, not in watchlist_quant
+      // setRefinedFilter(null);
 
       // Notify parent that company selection is cleared
       if (onCompanySelect) {
@@ -103,7 +103,7 @@ export const WatchlistSelector = React.memo(({
         onDateChange(dateStr);
       }
     }
-  }, [setSelectedDate, onDateChange, onCompanySelect, setRefinedFilter]);
+  }, [setSelectedDate, onDateChange, onCompanySelect]);
 
   const handleCompanySelect = React.useCallback((companyCode: string | null) => {
     console.log(`[WatchlistSelector] handleCompanySelect called with: ${companyCode}`);
@@ -166,13 +166,14 @@ export const WatchlistSelector = React.memo(({
     // Update showAllCompanies state
     setShowAllCompanies(filters.showAllCompanies);
 
-    // Update refined filter in the hook to trigger API call
-    setRefinedFilter(filters.refined);
-  }, [setRefinedFilter, setShowAllCompanies]);
+    // OLD: refined filter removed — not in watchlist_quant
+    // setRefinedFilter(filters.refined);
+  }, [setShowAllCompanies]);
 
   const getActiveFilterCount = () => {
     if (activeFilters.showAllCompanies) return 1;
-    return activeFilters.exchanges.length + activeFilters.markers.length + activeFilters.sentiments.length + (activeFilters.refined !== null ? 1 : 0);
+    // OLD: refined removed from count — not in watchlist_quant
+    return activeFilters.exchanges.length + activeFilters.markers.length + activeFilters.sentiments.length; // + (activeFilters.refined !== null ? 1 : 0);
   };
 
   const filterOptions = React.useMemo(() => ({

@@ -46,19 +46,19 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
   const [search, setSearch] = useState('');
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
-  // Watchlist state — default to Refined
+  // Watchlist state — no refined filter (watchlist_quant has no refined column)
   const {
     companies,
     loading,
     availableDates,
     selectedDate,
     setSelectedDate,
-    refinedFilter,
-    setRefinedFilter,
+    // refinedFilter, // REMOVED: watchlist_quant has no refined column
+    // setRefinedFilter, // REMOVED: watchlist_quant has no refined column
     showAllCompanies,
     setShowAllCompanies,
     availableExchanges,
-  } = useWatchlist({ refinedFilter: true });
+  } = useWatchlist();
 
   // Hydration guard
   useEffect(() => setMounted(true), []);
@@ -144,8 +144,8 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
 
         {/* Filter toggles */}
         <div className="flex items-center gap-1 flex-wrap">
-          {/* Refined toggle */}
-          <button
+          {/* Refined toggle — COMMENTED OUT: watchlist_quant has no refined column */}
+          {/* <button
             onClick={() => setRefinedFilter(refinedFilter === true ? null : true)}
             className={cn(
               'text-[10px] px-2 py-0.5 rounded-full border font-medium transition-colors',
@@ -155,7 +155,7 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
             )}
           >
             Refined
-          </button>
+          </button> */}
 
           {/* All companies toggle */}
           <button

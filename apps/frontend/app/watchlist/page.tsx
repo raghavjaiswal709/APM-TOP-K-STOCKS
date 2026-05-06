@@ -78,7 +78,7 @@ export default function WatchlistPage() {
     setSelectedDate,
     availableDates,
     totalCompanies,
-    setRefinedFilter,
+    // setRefinedFilter, // REMOVED: not in watchlist_quant
     setShowAllCompanies,
   } = useWatchlist();
 
@@ -223,8 +223,8 @@ export default function WatchlistPage() {
                   externalAvailableExchanges={availableExchanges}
                   externalAvailableMarkers={availableMarkers}
                   externalTotalCompanies={totalCompanies}
-                  // Pass filter setters to sync refined filter with API calls
-                  externalSetRefinedFilter={setRefinedFilter}
+                  // externalSetRefinedFilter removed — not in watchlist_quant
+                  // externalSetRefinedFilter={setRefinedFilter}
                   externalSetShowAllCompanies={setShowAllCompanies}
                 />
                 

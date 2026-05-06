@@ -6,16 +6,32 @@ interface MergedCompany {
   company_code: string;
   name: string;
   exchange: string;
-  refined?: boolean;
+  // REMOVED: refined not in watchlist_quant
+  // refined?: boolean;
   marker?: string;
-  total_valid_days?: number;
-  avg_daily_high_low_range?: number;
-  median_daily_volume?: number;
-  avg_trading_capital?: number;
-  latest_close_price?: number;
+  // NEW fields from watchlist_quant
+  rank?: number;
+  last_close?: number;
+  median_daily_tv_10d?: number;
+  atr_pct_10d?: number;
+  iv_10d?: number;
+  vol_rank_xs?: number;
+  dist_from_high_20d?: number;
+  vol_ratio_t1_vs_10d?: number;
+  median_tradable_ratio_10d?: number;
+  min_tradable_ratio_10d?: number;
+  median_p25_window_tv_10d?: number;
+  max_position_inr?: number;
+  days_capital_data?: number;
   pe_ratio?: number;
-  suggested_capital_deployment?: number;
-  hourly_median_volume?: number;
+  // OLD fields (commented out - no longer in watchlist_quant)
+  // total_valid_days?: number;
+  // avg_daily_high_low_range?: number;
+  // median_daily_volume?: number;
+  // avg_trading_capital?: number;
+  // latest_close_price?: number;
+  // suggested_capital_deployment?: number;
+  // hourly_median_volume?: number;
 }
 
 interface WatchlistResponse {
@@ -28,7 +44,8 @@ interface WatchlistResponse {
 interface UseWatchlistOptions {
   date?: string;
   showAllCompanies?: boolean;
-  refinedFilter?: boolean | null;
+  // REMOVED: refined filter — watchlist_quant has no refined column
+  // refinedFilter?: boolean | null;
 }
 
 export function useWatchlist(options: UseWatchlistOptions = {}) {
@@ -57,7 +74,8 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
     []
   );
   const [showAllCompanies, setShowAllCompanies] = useState(options.showAllCompanies || false);
-  const [refinedFilter, setRefinedFilter] = useState<boolean | null>(options.refinedFilter !== undefined ? options.refinedFilter : null);
+  // REMOVED: refinedFilter — watchlist_quant has no refined column
+  // const [refinedFilter, setRefinedFilter] = useState<boolean | null>(options.refinedFilter !== undefined ? options.refinedFilter : null);
   
   const activeDate = options.date || selectedDate;
   
@@ -115,13 +133,14 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
         } else {
           // Fetch date-specific companies
           const dateParam = activeDate || new Date().toISOString().split('T')[0];
-          console.log(`[useWatchlist] Fetching watchlist for date: ${dateParam}, refined: ${refinedFilter}`);
-          
-          // Build URL with refined parameter
+          console.log(`[useWatchlist] Fetching watchlist for date: ${dateParam}`);
+
+          // Build URL — refined param removed (not in watchlist_quant)
           apiUrl = `${BASE_URL}/api/watchlist?date=${dateParam}`;
-          if (refinedFilter !== null && refinedFilter !== undefined) {
-            apiUrl += `&refined=${refinedFilter}`;
-          }
+          // OLD: refined param removed
+          // if (refinedFilter !== null && refinedFilter !== undefined) {
+          //   apiUrl += `&refined=${refinedFilter}`;
+          // }
         }
         
         console.log(`[useWatchlist] Fetching from: ${apiUrl}`);
@@ -152,7 +171,8 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
           companiesCount: data.companies?.length || 0,
           total: data.total,
           exists: data.exists,
-          refinedFilterApplied: refinedFilter
+          // OLD: refined filter removed
+          // refinedFilterApplied: refinedFilter
         });
 
         if (!Array.isArray(data.companies)) {
@@ -169,15 +189,15 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
           company.company_code && company.name && company.exchange
         );
 
-        // Debug: Check refined status distribution
-        const refinedCount = validCompanies.filter((c: MergedCompany) => c.refined === true).length;
-        const nonRefinedCount = validCompanies.filter((c: MergedCompany) => c.refined === false || !c.refined).length;
-        console.log('[useWatchlist] 📊 Companies breakdown:', {
-          total: validCompanies.length,
-          refined: refinedCount,
-          nonRefined: nonRefinedCount,
-          filterActive: refinedFilter !== null ? (refinedFilter ? 'refined-only' : 'non-refined-only') : 'all'
-        });
+        // OLD: refined count debug removed — no refined field in watchlist_quant
+        // const refinedCount = validCompanies.filter((c: MergedCompany) => c.refined === true).length;
+        // const nonRefinedCount = validCompanies.filter((c: MergedCompany) => c.refined === false || !c.refined).length;
+        // console.log('[useWatchlist] 📊 Companies breakdown:', {
+        //   total: validCompanies.length,
+        //   refined: refinedCount,
+        //   nonRefined: nonRefinedCount,
+        //   filterActive: refinedFilter !== null ? (refinedFilter ? 'refined-only' : 'non-refined-only') : 'all'
+        // });
 
         setCompanies(validCompanies);
         setExists(showAllCompanies ? true : (data.exists !== false));
@@ -215,7 +235,7 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
     return () => {
       isCancelled = true;
     };
-  }, [activeDate, BASE_URL, showAllCompanies, availableDates.length, refinedFilter]);
+  }, [activeDate, BASE_URL, showAllCompanies, availableDates.length]);
 
   const getFilteredCompanies = useCallback((filters: {
     exchange?: string;
@@ -250,7 +270,8 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
     getFilteredCompanies,
     showAllCompanies,
     setShowAllCompanies,
-    refinedFilter,
-    setRefinedFilter
+    // REMOVED: refined filter — watchlist_quant has no refined column
+    // refinedFilter,
+    // setRefinedFilter
   };
 }
