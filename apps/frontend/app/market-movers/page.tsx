@@ -70,14 +70,7 @@ interface MarketData {
   timestamp: number;
 }
 
-type TileColor = 'blue' | 'green' | 'yellow' | 'red';
-
-const COLOR_ORDER: Record<TileColor, number> = {
-  blue: 0,
-  green: 1,
-  yellow: 2,
-  red: 3,
-};
+type TileColor = 'blue' | 'green' | 'yellow' | 'red' | 'grey';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Helpers
@@ -96,67 +89,98 @@ function resolveMarketData(
   return undefined;
 }
 
-/** Extract company_code from a Fyers symbol string (e.g. "NSE:ADANIGREEN-EQ" → "ADANIGREEN") */
+/** Extract company_code from a Fyers symbol (e.g. "NSE:ADANIGREEN-EQ" → "ADANIGREEN") */
 function codeFromSymbol(symbol: string): string | null {
   const parts = symbol.split(':');
   if (parts.length !== 2) return null;
   return parts[1].split('-')[0] || null;
 }
 
-/** Returns true if the current UTC time is at or before 10:00 AM IST */
-function isBeforeOrAt10AMIST(): boolean {
+/** IST minutes since midnight for the current moment */
+function getISTMinutes(): number {
   const now = new Date();
-  // IST = UTC + 5 hours 30 minutes = 330 minutes
-  const utcTotalMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const istTotalMinutes = (utcTotalMinutes + 330) % (24 * 60);
-  return istTotalMinutes <= 10 * 60; // <= 10:00 AM
+  return (now.getUTCHours() * 60 + now.getUTCMinutes() + 330) % (24 * 60);
 }
 
-/** Get today's date string in IST (YYYY-MM-DD) – used as localStorage key suffix */
-function getTodayISTDate(): string {
-  const now = new Date();
-  const istMs = now.getTime() + (5 * 60 + 30) * 60 * 1000;
-  return new Date(istMs).toISOString().split('T')[0];
+/** True if current IST wall-clock time is past 10:00 AM */
+function isAfter10AMIST(): boolean {
+  return getISTMinutes() > 10 * 60;
 }
 
-const BLUE_FLAGS_STORAGE_PREFIX = 'mm_blue_';
+const LOCKED_COLORS_API = '/api/market-movers/locked-colors';
+/** Only these colors are frozen after 10 AM. Green + red always stay live. */
+const FROZEN_COLORS = new Set<TileColor>(['blue', 'yellow']);
 
-/** Determine tile color for a company */
+/**
+ * Compute tile color from today's open vs current LTP.
+ *   Blue   = LTP ≥ 2% above open
+ *   Green  = LTP 1% to <2% above open
+ *   Yellow = LTP 0% to <1% above open
+ *   Red    = LTP below open
+ *   Grey   = no live data or open price unavailable
+ */
+function computeColorFromOpen(data: MarketData): TileColor {
+  if (!data.open || data.open === 0 || data.ltp == null) return 'grey';
+  const pct = ((data.ltp - data.open) / data.open) * 100;
+  if (pct >= 2) return 'blue';
+  if (pct >= 1) return 'green';
+  if (pct >= 0) return 'yellow';
+  return 'red';
+}
+
+/**
+ * Effective tile color for a company.
+ *   Blue / Yellow after 10 AM → frozen from the 9:15–10 AM window.
+ *   Green / Red after 10 AM   → always live (never frozen).
+ *   Before 10 AM             → fully live.
+ *   No data                  → grey.
+ */
 function getTileColor(
   companyCode: string,
   data: MarketData | undefined,
-  blueFlags: Set<string>
+  frozenAfter10AM: boolean,
+  lockedColors: Map<string, TileColor>
 ): TileColor {
-  if (blueFlags.has(companyCode)) return 'blue';
-  if (!data) return 'yellow';
-  const change = data.change ?? 0;
-  if (change > 0) return 'green';
-  if (change < 0) return 'red';
-  return 'yellow';
+  if (frozenAfter10AM) {
+    const locked = lockedColors.get(companyCode);
+    // Only honour the lock if it is a freezable color (blue / yellow).
+    if (locked && FROZEN_COLORS.has(locked)) return locked;
+  }
+  if (!data) return 'grey';
+  return computeColorFromOpen(data);
+}
+
+/** % change from today's open for sorting (returns 0 when open not available) */
+function pctFromOpen(data: MarketData | undefined): number {
+  if (!data || !data.open || data.open === 0 || data.ltp == null) return 0;
+  return ((data.ltp - data.open) / data.open) * 100;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Tile color styles
 ───────────────────────────────────────────────────────────────────────────── */
 const CIRCLE_CLASS: Record<TileColor, string> = {
-  blue: 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]',
-  green: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]',
+  blue:   'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]',
+  green:  'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]',
   yellow: 'bg-yellow-400 shadow-[0_0_8px_rgba(234,179,8,0.8)]',
-  red: 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]',
+  red:    'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]',
+  grey:   'bg-slate-400 shadow-[0_0_8px_rgba(148,163,184,0.3)]',
 };
 
 const CHANGE_TEXT_CLASS: Record<TileColor, string> = {
-  blue: 'text-blue-500 dark:text-blue-400',
-  green: 'text-emerald-500 dark:text-emerald-400',
+  blue:   'text-blue-500 dark:text-blue-400',
+  green:  'text-emerald-500 dark:text-emerald-400',
   yellow: 'text-yellow-500 dark:text-yellow-400',
-  red: 'text-red-500 dark:text-red-400',
+  red:    'text-red-500 dark:text-red-400',
+  grey:   'text-slate-400 dark:text-slate-500',
 };
 
 const TILE_BORDER_CLASS: Record<TileColor, string> = {
-  blue: 'border-blue-500/30 hover:border-blue-500/60',
-  green: 'border-emerald-500/20 hover:border-emerald-500/50',
+  blue:   'border-blue-500/30 hover:border-blue-500/60',
+  green:  'border-emerald-500/20 hover:border-emerald-500/50',
   yellow: 'border-yellow-400/20 hover:border-yellow-400/50',
-  red: 'border-red-500/20 hover:border-red-500/50',
+  red:    'border-red-500/20 hover:border-red-500/50',
+  grey:   'border-slate-400/15 hover:border-slate-400/35',
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -237,10 +261,11 @@ const LegendRow: React.FC = () => (
   <div className="flex items-center gap-4 px-1 text-[10px] text-muted-foreground">
     {(
       [
-        { color: 'blue', label: 'Early spike ≥2% by 10 AM IST' },
-        { color: 'green', label: 'Positive change' },
-        { color: 'yellow', label: 'Flat / no data' },
-        { color: 'red', label: 'Negative change' },
+        { color: 'blue',   label: '≥2% above open at 10 AM (frozen)' },
+        { color: 'green',  label: '1–2% above open (live)' },
+        { color: 'yellow', label: '0–1% above open at 10 AM (frozen)' },
+        { color: 'red',    label: 'Below open (live)' },
+        { color: 'grey',   label: 'No data / pre-market' },
       ] as { color: TileColor; label: string }[]
     ).map(({ color, label }) => (
       <div key={color} className="flex items-center gap-1.5">
@@ -276,29 +301,58 @@ const MarketMoversPage: React.FC = () => {
   const subscribedCodesRef = useRef<string>('');
   const hasAutoSelectedRef = useRef(false);
 
-  /* ── Blue flag tracking ── */
-  const blueFlagsRef = useRef<Set<string>>(new Set());
-  const [blueFlags, setBlueFlags] = useState<Set<string>>(new Set());
+  /* ── Locked colors: built live during 9:15–10 AM, only blue+yellow frozen after ── */
+  const lockedColorsRef = useRef<Map<string, TileColor>>(new Map());
+  const [lockedColors, setLockedColors] = useState<Map<string, TileColor>>(new Map());
+  const [frozenAfter10AM, setFrozenAfter10AM] = useState<boolean>(() => isAfter10AMIST());
 
-  /* ── Load persisted blue flags for today from localStorage on mount ── */
+  /* ── Load persisted locked colors from backend on mount ── */
   useEffect(() => {
-    const todayKey = BLUE_FLAGS_STORAGE_PREFIX + getTodayISTDate();
-    try {
-      // Remove stale keys from previous trading days
-      Object.keys(localStorage)
-        .filter(k => k.startsWith(BLUE_FLAGS_STORAGE_PREFIX) && k !== todayKey)
-        .forEach(k => localStorage.removeItem(k));
+    fetch(LOCKED_COLORS_API)
+      .then(r => r.ok ? r.json() : {})
+      .then((data: Record<string, TileColor>) => {
+        const map = new Map<string, TileColor>(
+          Object.entries(data).filter(([, v]) => FROZEN_COLORS.has(v as TileColor))
+        );
+        lockedColorsRef.current = map;
+        setLockedColors(new Map(map));
+      })
+      .catch(() => { /* backend unreachable — silent */ });
+    setFrozenAfter10AM(isAfter10AMIST());
+  }, []);
 
-      const stored = localStorage.getItem(todayKey);
-      if (stored) {
-        const flags = new Set<string>(JSON.parse(stored) as string[]);
-        blueFlagsRef.current = flags;
-        setBlueFlags(flags);
+  /* ── Build/update locked colors on each market tick ── */
+  useEffect(() => {
+    // Once frozen and already populated, nothing left to update.
+    if (frozenAfter10AM && lockedColorsRef.current.size > 0) return;
+
+    let changed = false;
+    Object.values(marketData).forEach((data: MarketData) => {
+      const code = codeFromSymbol(data.symbol) ?? data.symbol;
+      const color = computeColorFromOpen(data);
+      // Only persist blue + yellow (the freezable colors)
+      if (!FROZEN_COLORS.has(color)) return;
+      if (lockedColorsRef.current.get(code) !== color) {
+        lockedColorsRef.current.set(code, color);
+        changed = true;
       }
-    } catch {
-      // localStorage unavailable (private browsing, etc.) – graceful fallback
+    });
+
+    const nowPast10 = isAfter10AMIST();
+    if (changed || nowPast10) {
+      const snapshot = new Map(lockedColorsRef.current);
+      // Persist to backend/data (fire-and-forget)
+      fetch(LOCKED_COLORS_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.fromEntries(snapshot)),
+      }).catch(() => { /* silent */ });
+      setLockedColors(snapshot);
     }
-  }, []); // runs once on mount
+    if (nowPast10 && !frozenAfter10AM) {
+      setFrozenAfter10AM(true);
+    }
+  }, [marketData, frozenAfter10AM]);
 
   /* ── Right sidebar width/collapse ── */
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
@@ -331,40 +385,6 @@ const MarketMoversPage: React.FC = () => {
     subscribeByCompanyCodes(allSidebarCompanies.map(c => c.company_code));
   }, [isConnected, allSidebarCompanies, subscribeByCompanyCodes]);
 
-  /* ── Blue flag detection ── */
-  useEffect(() => {
-    // Blue flags can only be set at/before 10 AM IST; after that, existing flags are kept
-    if (!isBeforeOrAt10AMIST() && blueFlagsRef.current.size > 0) return;
-    if (!isBeforeOrAt10AMIST()) return;
-
-    let changed = false;
-    Object.values(marketData).forEach((data: MarketData) => {
-      if (!data.open || data.open === 0) return;
-      const code = codeFromSymbol(data.symbol);
-      if (!code || blueFlagsRef.current.has(code)) return;
-
-      const spikeFromOpen = (data.ltp - data.open) / data.open;
-      if (spikeFromOpen >= 0.02) {
-        blueFlagsRef.current.add(code);
-        changed = true;
-      }
-    });
-
-    if (changed) {
-      const newSet = new Set(blueFlagsRef.current);
-      // Persist so flags survive page refreshes for the rest of the trading day
-      try {
-        localStorage.setItem(
-          BLUE_FLAGS_STORAGE_PREFIX + getTodayISTDate(),
-          JSON.stringify([...newSet])
-        );
-      } catch {
-        // ignore write errors
-      }
-      setBlueFlags(newSet);
-    }
-  }, [marketData]);
-
   /* ── Compute sorted tile list ── */
   const sortedCompanies = useMemo(() => {
     const visible = allSidebarCompanies.filter(c =>
@@ -374,29 +394,14 @@ const MarketMoversPage: React.FC = () => {
     return [...visible].sort((a, b) => {
       const dataA = resolveMarketData(marketData, a);
       const dataB = resolveMarketData(marketData, b);
-      const colorA = getTileColor(a.company_code, dataA, blueFlags);
-      const colorB = getTileColor(b.company_code, dataB, blueFlags);
-
-      // Primary: color priority
-      if (COLOR_ORDER[colorA] !== COLOR_ORDER[colorB]) {
-        return COLOR_ORDER[colorA] - COLOR_ORDER[colorB];
-      }
-
-      const changeA = dataA?.change ?? 0;
-      const changeB = dataB?.change ?? 0;
-
-      // Secondary: within green/blue → largest positive first
-      if (colorA === 'green' || colorA === 'blue') {
-        return changeB - changeA;
-      }
-      // Within red → most negative last (ascending by change value)
-      if (colorA === 'red') {
-        return changeA - changeB;
-      }
-      // Within yellow → alphabetical
+      // Sort by % change from today's open, descending (highest performer at top)
+      const pA = pctFromOpen(dataA);
+      const pB = pctFromOpen(dataB);
+      if (pB !== pA) return pB - pA;
+      // Tiebreaker: alphabetical
       return a.company_code.localeCompare(b.company_code);
     });
-  }, [allSidebarCompanies, selectedCodes, marketData, blueFlags]);
+  }, [allSidebarCompanies, selectedCodes, marketData]);
 
   /* ── Sidebar drag resize ── */
   const handleSidebarMouseDown = useCallback(
@@ -440,20 +445,13 @@ const MarketMoversPage: React.FC = () => {
 
   /* ── Stats ── */
   const stats = useMemo(() => {
-    const blue = sortedCompanies.filter(c => blueFlags.has(c.company_code)).length;
-    const green = sortedCompanies.filter(c => {
-      if (blueFlags.has(c.company_code)) return false;
+    const counts: Record<TileColor, number> = { blue: 0, green: 0, yellow: 0, red: 0, grey: 0 };
+    sortedCompanies.forEach(c => {
       const d = resolveMarketData(marketData, c);
-      return (d?.change ?? 0) > 0;
-    }).length;
-    const red = sortedCompanies.filter(c => {
-      if (blueFlags.has(c.company_code)) return false;
-      const d = resolveMarketData(marketData, c);
-      return (d?.change ?? 0) < 0;
-    }).length;
-    const yellow = sortedCompanies.length - blue - green - red;
-    return { blue, green, red, yellow };
-  }, [sortedCompanies, marketData, blueFlags]);
+      counts[getTileColor(c.company_code, d, frozenAfter10AM, lockedColors)]++;
+    });
+    return counts;
+  }, [sortedCompanies, marketData, frozenAfter10AM, lockedColors]);
 
   /* ─────────────────────────────── RENDER ────────────────────────────────── */
   return (
@@ -486,18 +484,28 @@ const MarketMoversPage: React.FC = () => {
                 {stats.blue}
               </Badge>
             )}
-            <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-emerald-500/50 text-emerald-500 gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              {stats.green}
-            </Badge>
-            <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-yellow-500/50 text-yellow-500 gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
-              {stats.yellow}
-            </Badge>
+            {stats.green > 0 && (
+              <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-emerald-500/50 text-emerald-500 gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                {stats.green}
+              </Badge>
+            )}
+            {stats.yellow > 0 && (
+              <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-yellow-500/50 text-yellow-500 gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
+                {stats.yellow}
+              </Badge>
+            )}
             <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-red-500/50 text-red-500 gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
               {stats.red}
             </Badge>
+            {stats.grey > 0 && (
+              <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-slate-400/50 text-slate-400 gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                {stats.grey}
+              </Badge>
+            )}
           </div>
 
           <Separator orientation="vertical" className="h-4" />
@@ -560,7 +568,7 @@ const MarketMoversPage: React.FC = () => {
                   <AnimatePresence mode="popLayout">
                     {sortedCompanies.map(company => {
                       const data = resolveMarketData(marketData, company);
-                      const color = getTileColor(company.company_code, data, blueFlags);
+                      const color = getTileColor(company.company_code, data, frozenAfter10AM, lockedColors);
 
                       return (
                         <motion.div
