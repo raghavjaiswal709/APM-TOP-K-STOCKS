@@ -58,7 +58,7 @@ Thumbs.db
 # Package manager locks (optional - typically these should be committed)
 # package-lock.json
 # yarn.lock
-
+docker-compose.yml
 # Debug files
 .log
 *.log

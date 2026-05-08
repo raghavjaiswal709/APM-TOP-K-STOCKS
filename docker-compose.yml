@@ -46,6 +46,12 @@ services:
       - NEXT_PUBLIC_FYERS_SOCKET_URL=http://100.93.172.21:5001
       - NEXT_PUBLIC_FYERS_SERVICE_5001_URL=http://100.93.172.21:5001
       - NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://100.93.172.21:5010
+
+
+      # - NEXT_PUBLIC_SOCKET_URL=http://localhost:5001
+      # - NEXT_PUBLIC_FYERS_SOCKET_URL=http://localhost:5001
+      # - NEXT_PUBLIC_FYERS_SERVICE_5001_URL=http://localhost:5001
+      # - NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://100.93.172.21:5010
     
       - BACKEND_URL=http://backend:5002
     env_file:

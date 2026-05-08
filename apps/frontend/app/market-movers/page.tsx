@@ -42,7 +42,7 @@ import {
   WifiOff,
   Zap,
 } from 'lucide-react';
-import { useLiveMarket } from '@/hooks/useLiveMarket';
+import { getSocket } from '@/lib/socket';
 import MarketMoversSidebar from './components/MarketMoversSidebar';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -159,7 +159,12 @@ async function fetchOpenPrice6969(companyCode: string): Promise<number | null> {
  * `externalOpen` is the open_price from port 6969; used when WebSocket `open` is absent/zero.
  */
 function computeColorFromOpen(data: MarketData, externalOpen?: number): TileColor {
-  const open = (data.open && data.open > 0) ? data.open : (externalOpen ?? 0);
+  const raw = data as any;
+  // Priority: normalised open → raw Fyers open_price → port-6969 fallback
+  const open =
+    (data.open > 0)        ? data.open :
+    (raw.open_price > 0)   ? raw.open_price :
+    (externalOpen > 0)     ? externalOpen : 0;
   if (!open || data.ltp == null) return 'grey';
   const pct = ((data.ltp - open) / open) * 100;
   if (pct >= 2) return 'blue';
@@ -194,7 +199,11 @@ function getTileColor(
 /** % change from today's open for sorting (returns 0 when open not available) */
 function pctFromOpen(data: MarketData | undefined, externalOpen?: number): number {
   if (!data || data.ltp == null) return 0;
-  const open = (data.open && data.open > 0) ? data.open : (externalOpen ?? 0);
+  const raw = data as any;
+  const open =
+    (data.open > 0)      ? data.open :
+    (raw.open_price > 0) ? raw.open_price :
+    (externalOpen > 0)   ? externalOpen : 0;
   if (!open) return 0;
   return ((data.ltp - open) / open) * 100;
 }
@@ -323,16 +332,12 @@ const LegendRow: React.FC = () => (
    Main Page
 ───────────────────────────────────────────────────────────────────────────── */
 const MarketMoversPage: React.FC = () => {
-  /* ── Live market WebSocket ── */
-  const {
-    marketData,
-    connectionStatus,
-    isConnected,
-    loading: wsLoading,
-    subscribeByCompanyCodes,
-    unsubscribeAll,
-    error: wsError,
-  } = useLiveMarket();
+  /* ── Live market state (port 5001 via shared getSocket singleton) ── */
+  const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
+  const [connectionStatus, setConnectionStatus] = useState<'Connecting' | 'Connected' | 'Disconnected' | 'Reconnecting'>('Connecting');
+  const [isConnected, setIsConnected] = useState(false);
+  const [wsLoading, setWsLoading] = useState(true);
+  const [wsError, setWsError] = useState<string | null>(null);
 
   /* ── Selected companies from sidebar checkboxes ── */
   const [selectedCodes, setSelectedCodes] = useState<Set<string>>(new Set());
@@ -367,6 +372,79 @@ const MarketMoversPage: React.FC = () => {
       })
       .catch(() => { /* backend unreachable — silent */ });
     setFrozenAfter1030AM(isAfter1030AMIST());
+  }, []);
+
+  /* ── Port 5001 socket: connect, receive marketDataUpdate, update state ── */
+  useEffect(() => {
+    const socket = getSocket();
+
+    const onConnect = () => {
+      setConnectionStatus('Connected');
+      setIsConnected(true);
+      setWsLoading(false);
+      setWsError(null);
+      // Re-subscribe on reconnect so we don't miss ticks
+      if (subscribedCodesRef.current) {
+        const companyCodes = subscribedCodesRef.current.split(',');
+        socket.emit('subscribe_companies', { companyCodes });
+      }
+    };
+
+    const onDisconnect = () => {
+      setConnectionStatus('Disconnected');
+      setIsConnected(false);
+    };
+
+    const onReconnectAttempt = () => setConnectionStatus('Reconnecting');
+
+    const onMarketDataUpdate = (data: any) => {
+      if (!data?.symbol) return;
+      setMarketData(prev => {
+        const existing = prev[data.symbol];
+        // Resolve open: prefer open_price > 0 from this tick, then previous open
+        const open =
+          (data.open_price > 0) ? data.open_price :
+          (data.open > 0)       ? data.open :
+          (existing?.open > 0)  ? existing.open : 0;
+        return {
+          ...prev,
+          [data.symbol]: {
+            ...existing,   // preserve any previous-tick fields not resent
+            ...data,       // raw Fyers fields (open_price, high_price, etc.)
+            // Normalised / merged fields that computeColorFromOpen reads:
+            symbol:        data.symbol,
+            ltp:           data.ltp,
+            change:        data.change,
+            changePercent: data.change_percent ?? data.chp ?? data.changePercent,
+            open,
+            high:          data.high_price  > 0 ? data.high_price  : data.high  ?? existing?.high,
+            low:           data.low_price   > 0 ? data.low_price   : data.low   ?? existing?.low,
+            close:         data.prev_close_price > 0 ? data.prev_close_price : data.close ?? existing?.close,
+            volume:        data.vol_traded_today ?? data.volume ?? existing?.volume,
+            timestamp:     data.timestamp ?? Date.now(),
+          },
+        };
+      });
+    };
+
+    socket.on('connect',           onConnect);
+    socket.on('disconnect',        onDisconnect);
+    socket.on('reconnect_attempt', onReconnectAttempt);
+    socket.on('marketDataUpdate',  onMarketDataUpdate);
+
+    // Sync initial socket state
+    if (socket.connected) {
+      setConnectionStatus('Connected');
+      setIsConnected(true);
+      setWsLoading(false);
+    }
+
+    return () => {
+      socket.off('connect',           onConnect);
+      socket.off('disconnect',        onDisconnect);
+      socket.off('reconnect_attempt', onReconnectAttempt);
+      socket.off('marketDataUpdate',  onMarketDataUpdate);
+    };
   }, []);
 
   /* ── Fetch opening prices from port 6969 for all sidebar companies ── */
@@ -465,8 +543,12 @@ const MarketMoversPage: React.FC = () => {
       .join(',');
     if (codeKey === subscribedCodesRef.current) return;
     subscribedCodesRef.current = codeKey;
-    subscribeByCompanyCodes(allSidebarCompanies.map(c => c.company_code));
-  }, [isConnected, allSidebarCompanies, subscribeByCompanyCodes]);
+    const companyCodes = allSidebarCompanies.map(c => c.company_code);
+    const symbols = allSidebarCompanies.map(
+      c => `${c.exchange}:${c.company_code}-${c.marker || 'EQ'}`
+    );
+    getSocket().emit('subscribe_companies', { companyCodes, symbols });
+  }, [isConnected, allSidebarCompanies]);
 
   /* ── Compute sorted tile list ── */
   const sortedCompanies = useMemo(() => {

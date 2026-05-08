@@ -661,6 +661,14 @@ const ClusterOverlayPage: React.FC = () => {
     'cluster-overlay-showPatternOverlay',
     true
   );
+  const [showTop3Lines, setShowTop3Lines] = usePersistentState<boolean>(
+    'cluster-overlay-showTop3Lines',
+    true
+  );
+  const [showBeyondTop3Lines, setShowBeyondTop3Lines] = usePersistentState<boolean>(
+    'cluster-overlay-showBeyondTop3Lines',
+    false
+  );
 
   const patternOverlayState = usePatternOverlay({
     symbol: overlaySymbol,
@@ -2884,6 +2892,8 @@ const ClusterOverlayPage: React.FC = () => {
                     todayOpenPrice={todayOpenPrice}
                     patternCurves={showPatternOverlay ? patternOverlayState.curves : null}
                     showPatternOverlay={showPatternOverlay}
+                    showTop3PatternLines={showTop3Lines}
+                    showBeyondTop3PatternLines={showBeyondTop3Lines}
                     lockToMarketHours={true}
                   />
 
@@ -2903,7 +2913,7 @@ const ClusterOverlayPage: React.FC = () => {
                     }}
                     className="bg-background/90 border border-border/60 rounded-lg shadow-xl backdrop-blur-sm flex flex-col overflow-hidden"
                   >
-                    {/* Header — drag handle + collapse + overlay toggle */}
+                    {/* Header — drag handle + collapse + group toggles + master toggle */}
                     <div
                       className="flex-none flex items-center gap-1.5 px-2.5 py-1.5 border-b border-border/50 cursor-grab active:cursor-grabbing select-none"
                       onMouseDown={handlePatternPanelDragStart}
@@ -2922,6 +2932,34 @@ const ClusterOverlayPage: React.FC = () => {
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                         Pattern Overlay
                       </span>
+
+                      {/* ── Per-group line toggles ── */}
+                      {/* Top-3 toggle (#1–#3) */}
+                      <div className="flex items-center gap-0.5 ml-1.5" title="Show/hide top-3 pattern lines (#1–#3)">
+                        <span className="text-[9px] text-muted-foreground font-mono select-none">#1-3</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowTop3Lines(!showTop3Lines); }}
+                          disabled={!showPatternOverlay}
+                          className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${showTop3Lines && showPatternOverlay ? 'bg-violet-600' : 'bg-gray-400 dark:bg-gray-600'}`}
+                          title={showTop3Lines ? 'Hide #1–#3 lines' : 'Show #1–#3 lines'}
+                        >
+                          <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform shadow-sm ${showTop3Lines ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
+                        </button>
+                      </div>
+
+                      {/* Bands toggle — confidence band lines (faint upper/lower bounds) */}
+                      <div className="flex items-center gap-0.5" title="Show/hide confidence band lines (faint upper & lower bounds)">
+                        <span className="text-[9px] text-muted-foreground font-mono select-none">Bands</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowBeyondTop3Lines(!showBeyondTop3Lines); }}
+                          disabled={!showPatternOverlay}
+                          className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${showBeyondTop3Lines && showPatternOverlay ? 'bg-cyan-600' : 'bg-gray-400 dark:bg-gray-600'}`}
+                          title={showBeyondTop3Lines ? 'Hide confidence bands' : 'Show confidence bands'}
+                        >
+                          <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform shadow-sm ${showBeyondTop3Lines ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
+                        </button>
+                      </div>
+
                       {/* Collapse/expand panel body */}
                       <button
                         onClick={(e) => { e.stopPropagation(); setIsPanelExpanded(!isPanelExpanded); }}
@@ -2930,11 +2968,11 @@ const ClusterOverlayPage: React.FC = () => {
                       >
                         <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 ${isPanelExpanded ? '' : 'rotate-180'}`} />
                       </button>
-                      {/* Chart overlay lines toggle — independent of panel collapse */}
+                      {/* Master toggle — turns all chart overlay lines on/off */}
                       <button
                         onClick={(e) => { e.stopPropagation(); setShowPatternOverlay(!showPatternOverlay); }}
                         className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${showPatternOverlay ? 'bg-violet-600' : 'bg-gray-400 dark:bg-gray-600'}`}
-                        title={showPatternOverlay ? 'Hide chart overlay lines' : 'Show chart overlay lines'}
+                        title={showPatternOverlay ? 'Hide all chart overlay lines' : 'Show all chart overlay lines'}
                       >
                         <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform shadow-sm ${showPatternOverlay ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
                       </button>

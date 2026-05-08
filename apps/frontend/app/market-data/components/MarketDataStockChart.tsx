@@ -134,10 +134,14 @@ interface StockChartProps {
     showIntradayOverlay?: boolean;
     /** Today's open price — used to scale the normalized intraday shape to actual prices */
     todayOpenPrice?: number;
-    /** PatternPool Overlay API curves data — centroid + bands for top-3 patterns */
+    /** PatternPool Overlay API curves data — centroid + bands for all ranked patterns */
     patternCurves?: PatternCurvesData | null;
     /** Whether to show the PatternPool overlay on the chart */
     showPatternOverlay?: boolean;
+    /** Show cluster lines for patterns ranked #1–#3 */
+    showTop3PatternLines?: boolean;
+    /** Show cluster lines for patterns ranked #4 and beyond */
+    showBeyondTop3PatternLines?: boolean;
     /** Lock the X-axis to 09:15–15:30 IST and disable horizontal scroll/pan */
     lockToMarketHours?: boolean;
 }
@@ -214,6 +218,8 @@ export function MarketDataStockChart({
     todayOpenPrice = 0,
     patternCurves = null,
     showPatternOverlay = false,
+    showTop3PatternLines = true,
+    showBeyondTop3PatternLines = false,
     lockToMarketHours = false,
 }: StockChartProps) {
     // State
@@ -284,9 +290,15 @@ export function MarketDataStockChart({
     const intradayP75SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
 
     // PatternPool Overlay series refs: 3 centroids + 3 band-uppers + 3 band-lowers + live curve + current-slot line
-    const patternCentroidSeriesRefs = useRef<Array<ISeriesApi<'Line'> | null>>([null, null, null]);
-    const patternBandUpperRefs = useRef<Array<ISeriesApi<'Line'> | null>>([null, null, null]);
-    const patternBandLowerRefs = useRef<Array<ISeriesApi<'Line'> | null>>([null, null, null]);
+    const patternCentroidSeriesRefs = useRef<Array<ISeriesApi<'Line'> | null>>([]);
+    const patternCentroidLabelsRef = useRef<Array<string>>([]);
+    const patternBandUpperRefs = useRef<Array<ISeriesApi<'Line'> | null>>([]);
+    const patternBandLowerRefs = useRef<Array<ISeriesApi<'Line'> | null>>([]);
+    // Refs to read current toggle values inside render effects without adding them as dependencies
+    const showTop3LinesRef = useRef(showTop3PatternLines);
+    const showBeyondTop3LinesRef = useRef(showBeyondTop3PatternLines);
+    showTop3LinesRef.current = showTop3PatternLines;
+    showBeyondTop3LinesRef.current = showBeyondTop3PatternLines;
     const patternLiveCurveRef = useRef<ISeriesApi<'Line'> | null>(null);
     const patternCurrentSlotRef = useRef<ISeriesApi<'Line'> | null>(null);
 
@@ -307,10 +319,11 @@ export function MarketDataStockChart({
     // Track whether this is the first data load (or after company change) to avoid resetting user's zoom/pan on live updates
     const needsInitialFitRef = useRef<boolean>(true);
 
-    // Toggle lastValueVisible AND title on all GTT series whenever showGttLabels changes.
+    // Toggle lastValueVisible AND title on all GTT series + cluster centroid series whenever showGttLabels changes.
     // In lightweight-charts v5, the colored title badge on the right axis is a SEPARATE
     // visual from the price number — both must be cleared to fully hide the labels.
     useEffect(() => {
+        // GTT series
         indicatorSeriesRefs.current.forEach((series, key) => {
             if (key.startsWith('gtt_')) {
                 const originalTitle = gttSeriesTitlesRef.current.get(key) ?? '';
@@ -320,7 +333,35 @@ export function MarketDataStockChart({
                 });
             }
         });
+        // Cluster overlay centroid series
+        patternCentroidSeriesRefs.current.forEach((series, idx) => {
+            if (!series) return;
+            const originalLabel = patternCentroidLabelsRef.current[idx] ?? '';
+            series.applyOptions({
+                lastValueVisible: showGttLabels,
+                title: showGttLabels ? originalLabel : '',
+            });
+        });
     }, [showGttLabels]);
+
+    // Toggle visibility of pattern lines without full series teardown.
+    // showTop3PatternLines    → centroid lines (the bright main pattern lines)
+    // showBeyondTop3PatternLines → confidence band lines (faint upper/lower bounds)
+    // Uses applyOptions({ visible }) so the chart layout and scale stay unchanged.
+    useEffect(() => {
+        patternCentroidSeriesRefs.current.forEach(series => {
+            if (!series) return;
+            try { series.applyOptions({ visible: showTop3PatternLines }); } catch (_) {}
+        });
+        patternBandUpperRefs.current.forEach(series => {
+            if (!series) return;
+            try { series.applyOptions({ visible: showBeyondTop3PatternLines }); } catch (_) {}
+        });
+        patternBandLowerRefs.current.forEach(series => {
+            if (!series) return;
+            try { series.applyOptions({ visible: showBeyondTop3PatternLines }); } catch (_) {}
+        });
+    }, [showTop3PatternLines, showBeyondTop3PatternLines]);
 
     // Seconds per candle for each interval — used for auto-scroll after fetchBefore
     const INTERVAL_SECONDS: Record<string, number> = {
@@ -465,29 +506,29 @@ export function MarketDataStockChart({
     }, [showIntradayOverlay, intradayShapePattern, todayOpenPrice]);
 
     // ─── PatternPool Overlay Effect ──────────────────────────────────────────
-    // Renders the top-3 pattern centroid lines + confidence bands + live curve
+    // Renders all pattern centroid lines + confidence bands + live curve
     // on a fixed 09:15–15:30 IST X-axis for the cluster-overlay page.
     useEffect(() => {
         const chart = mainChartRef.current;
 
-        // Colour palette for rank 1/2/3 patterns
-        const RANK_COLORS = ['#c084fc', '#f59e0b', '#6ee7b7']; // violet, amber, emerald
+        // Colour palettes: top-3 get vivid rank colours, #4+ get muted grays
+        const RANK_COLORS  = ['#c084fc', '#f59e0b', '#6ee7b7']; // violet, amber, emerald
+        const EXTRA_COLORS = ['#64748b', '#94a3b8', '#6b7280', '#9ca3af', '#475569', '#a8b4be'];
 
         const clearPatternOverlay = () => {
-            for (let i = 0; i < 3; i++) {
-                if (patternCentroidSeriesRefs.current[i] && chart) {
-                    try { chart.removeSeries(patternCentroidSeriesRefs.current[i]!); } catch (_) {}
-                    patternCentroidSeriesRefs.current[i] = null;
-                }
-                if (patternBandUpperRefs.current[i] && chart) {
-                    try { chart.removeSeries(patternBandUpperRefs.current[i]!); } catch (_) {}
-                    patternBandUpperRefs.current[i] = null;
-                }
-                if (patternBandLowerRefs.current[i] && chart) {
-                    try { chart.removeSeries(patternBandLowerRefs.current[i]!); } catch (_) {}
-                    patternBandLowerRefs.current[i] = null;
-                }
-            }
+            [...patternCentroidSeriesRefs.current].forEach(s => {
+                if (s && chart) { try { chart.removeSeries(s); } catch (_) {} }
+            });
+            patternCentroidSeriesRefs.current = [];
+            patternCentroidLabelsRef.current = [];
+            [...patternBandUpperRefs.current].forEach(s => {
+                if (s && chart) { try { chart.removeSeries(s); } catch (_) {} }
+            });
+            patternBandUpperRefs.current = [];
+            [...patternBandLowerRefs.current].forEach(s => {
+                if (s && chart) { try { chart.removeSeries(s); } catch (_) {} }
+            });
+            patternBandLowerRefs.current = [];
             if (patternLiveCurveRef.current && chart) {
                 try { chart.removeSeries(patternLiveCurveRef.current); } catch (_) {}
                 patternLiveCurveRef.current = null;
@@ -584,12 +625,20 @@ export function MarketDataStockChart({
         };
 
         try {
-            // --- Plot each pattern (rank 1, 2, 3) ---
-            patterns.slice(0, 3).forEach((pat, idx) => {
-                const color = RANK_COLORS[idx] || '#8b5cf6';
+            // --- Plot ALL ranked patterns (#1–#last) ---
+            // centroid lines  → controlled by showTop3PatternLines (#1-3 toggle)
+            // band lines      → controlled by showBeyondTop3PatternLines (Bands toggle)
+            patterns.forEach((pat, idx) => {
+                const isTop3 = idx < 3;
+                const color = isTop3
+                    ? (RANK_COLORS[idx] || '#8b5cf6')
+                    : (EXTRA_COLORS[idx - 3] || '#64748b');
+                // Centroid and band lines have separate initial visibility
+                const centroidVisible = showTop3LinesRef.current;
+                const bandsVisible    = showBeyondTop3LinesRef.current;
                 const { centroid, band_upper, band_lower, cluster, meta } = pat;
 
-                // Band lower (faint dashed — same overlay scale)
+                // Band lower (faint dashed — least-visible, controlled by Bands toggle)
                 if (band_lower && band_lower.length === timeAxisUTC.length) {
                     const s = chart.addSeries(LineSeries, {
                         color: color + '40',
@@ -599,13 +648,14 @@ export function MarketDataStockChart({
                         priceLineVisible: false,
                         priceScaleId: OVERLAY_SCALE_ID,
                         title: '',
+                        visible: bandsVisible,
                     });
                     const sparseLower = band_lower.map((v, i) => ({ time: timeAxisUTC[i], value: v }));
                     s.setData(interpToMin(sparseLower).map(p => ({ time: p.time as any, value: p.value })));
                     patternBandLowerRefs.current[idx] = s;
                 }
 
-                // Band upper (faint dashed — same overlay scale)
+                // Band upper (faint dashed — least-visible, controlled by Bands toggle)
                 if (band_upper && band_upper.length === timeAxisUTC.length) {
                     const s = chart.addSeries(LineSeries, {
                         color: color + '40',
@@ -615,25 +665,28 @@ export function MarketDataStockChart({
                         priceLineVisible: false,
                         priceScaleId: OVERLAY_SCALE_ID,
                         title: '',
+                        visible: bandsVisible,
                     });
                     const sparseUpper = band_upper.map((v, i) => ({ time: timeAxisUTC[i], value: v }));
                     s.setData(interpToMin(sparseUpper).map(p => ({ time: p.time as any, value: p.value })));
                     patternBandUpperRefs.current[idx] = s;
                 }
 
-                // Centroid line (dashed, with label)
+                // Centroid line (bright dashed, with label — controlled by #1-3 toggle)
                 if (centroid && centroid.length === timeAxisUTC.length) {
                     const wr = meta?.win_rate != null ? `wr=${(meta.win_rate * 100).toFixed(0)}%` : '';
                     const ret = meta?.avg_return != null ? `ret=${meta.avg_return >= 0 ? '+' : ''}${(meta.avg_return * 100).toFixed(2)}%` : '';
                     const label = `#${idx + 1} ${cluster} ${wr}${wr && ret ? ' ' : ''}${ret}`;
+                    patternCentroidLabelsRef.current[idx] = label;
                     const s = chart.addSeries(LineSeries, {
                         color,
                         lineWidth: idx === 0 ? 2 : 1,
                         lineStyle: LineStyle.Dashed,
-                        lastValueVisible: true,
+                        lastValueVisible: showGttLabels,
                         priceLineVisible: false,
                         priceScaleId: OVERLAY_SCALE_ID,
-                        title: label,
+                        title: showGttLabels ? label : '',
+                        visible: centroidVisible,
                     });
                     const sparseCentroid = centroid.map((v, i) => ({ time: timeAxisUTC[i], value: v }));
                     s.setData(interpToMin(sparseCentroid).map(p => ({ time: p.time as any, value: p.value })));
@@ -650,7 +703,7 @@ export function MarketDataStockChart({
 
         return () => { clearPatternOverlay(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [showPatternOverlay, patternCurves]);
+    }, [showPatternOverlay, patternCurves, chartReadyVersion]);
 
     // ─── Market-hours UTC range helper ───────────────────────────────────────
     // Returns { open, close } as UTC seconds for 09:15–15:30 IST on the given
@@ -2377,7 +2430,7 @@ export function MarketDataStockChart({
                                     : 'border-border/40 bg-background/60 text-muted-foreground hover:border-border hover:text-foreground'
                             }`}
                             onClick={() => setShowGttLabels(prev => !prev)}
-                            title={showGttLabels ? 'Hide GTT right-axis labels' : 'Show GTT right-axis labels'}
+                            title={showGttLabels ? 'Hide GTT & cluster labels' : 'Show GTT & cluster labels'}
                         >
                             {showGttLabels ? <Eye size={13} /> : <EyeOff size={13} />}
                         </Button>
