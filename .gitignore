@@ -62,3 +62,13 @@ Thumbs.db
 # Debug files
 .log
 *.log
+.code-review-graph/
+
+.claude/
+.cursor/
+.opencode.json
+.windsurfrules
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.cursorrules

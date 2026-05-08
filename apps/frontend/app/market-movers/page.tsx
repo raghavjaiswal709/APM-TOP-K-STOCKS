@@ -102,26 +102,66 @@ function getISTMinutes(): number {
   return (now.getUTCHours() * 60 + now.getUTCMinutes() + 330) % (24 * 60);
 }
 
-/** True if current IST wall-clock time is past 10:00 AM */
-function isAfter10AMIST(): boolean {
-  return getISTMinutes() > 10 * 60;
+/** True if current IST wall-clock time is past 10:30 AM (end of blue-detection window) */
+function isAfter1030AMIST(): boolean {
+  return getISTMinutes() > 10 * 60 + 30;
 }
 
 const LOCKED_COLORS_API = '/api/market-movers/locked-colors';
-/** Only these colors are frozen after 10 AM. Green + red always stay live. */
-const FROZEN_COLORS = new Set<TileColor>(['blue', 'yellow']);
+/** Only blue is frozen after 10:30 AM. Green, yellow, red are always live. */
+const FROZEN_COLORS = new Set<TileColor>(['blue']);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Port 6969 opening price helpers
+───────────────────────────────────────────────────────────────────────────── */
+
+/** Today's date in IST as the port-6969 folder format, e.g. "LD_08-05-2026" */
+function getTodayLDFormat(): string {
+  const now = new Date(Date.now() + 330 * 60 * 1000); // shift UTC → IST
+  const d = String(now.getUTCDate()).padStart(2, '0');
+  const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const y = now.getUTCFullYear();
+  return `LD_${d}-${m}-${y}`;
+}
+
+/** Parse `open_price` from a port-6969 NDJSON file (first valid JSON line wins). */
+function parseOpenPrice6969(rawText: string): number | null {
+  const lines = rawText.trim().split('\n');
+  for (const line of lines) {
+    try {
+      const obj = JSON.parse(line);
+      if (typeof obj.open_price === 'number' && obj.open_price > 0) return obj.open_price;
+    } catch { continue; }
+  }
+  return null;
+}
+
+/** Fetch today's opening price for a single company from port 6969 via the time-machine proxy. */
+async function fetchOpenPrice6969(companyCode: string): Promise<number | null> {
+  try {
+    const url = `/api/time-machine/Live/${getTodayLDFormat()}/${companyCode}-NSE.json`;
+    const res = await fetch(url, { cache: 'no-cache' });
+    if (!res.ok) return null;
+    return parseOpenPrice6969(await res.text());
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Compute tile color from today's open vs current LTP.
- *   Blue   = LTP ≥ 2% above open
- *   Green  = LTP 1% to <2% above open
- *   Yellow = LTP 0% to <1% above open
- *   Red    = LTP below open
+ *   Blue   = LTP ≥ 2% above open  (only this is frozen after 10:30 AM)
+ *   Green  = LTP 1% to <2% above open  (always live)
+ *   Yellow = LTP 0% to <1% above open  (always live)
+ *   Red    = LTP below open             (always live)
  *   Grey   = no live data or open price unavailable
+ *
+ * `externalOpen` is the open_price from port 6969; used when WebSocket `open` is absent/zero.
  */
-function computeColorFromOpen(data: MarketData): TileColor {
-  if (!data.open || data.open === 0 || data.ltp == null) return 'grey';
-  const pct = ((data.ltp - data.open) / data.open) * 100;
+function computeColorFromOpen(data: MarketData, externalOpen?: number): TileColor {
+  const open = (data.open && data.open > 0) ? data.open : (externalOpen ?? 0);
+  if (!open || data.ltp == null) return 'grey';
+  const pct = ((data.ltp - open) / open) * 100;
   if (pct >= 2) return 'blue';
   if (pct >= 1) return 'green';
   if (pct >= 0) return 'yellow';
@@ -130,30 +170,33 @@ function computeColorFromOpen(data: MarketData): TileColor {
 
 /**
  * Effective tile color for a company.
- *   Blue / Yellow after 10 AM → frozen from the 9:15–10 AM window.
- *   Green / Red after 10 AM   → always live (never frozen).
- *   Before 10 AM             → fully live.
- *   No data                  → grey.
+ *   Blue after 10:30 AM  → frozen (locked during 9:15–10:30 AM window).
+ *   Green / Yellow / Red → always live, update in real-time.
+ *   Before 10:30 AM      → fully live for all colors.
+ *   No data              → grey.
  */
 function getTileColor(
   companyCode: string,
   data: MarketData | undefined,
-  frozenAfter10AM: boolean,
-  lockedColors: Map<string, TileColor>
+  frozenAfter1030AM: boolean,
+  lockedColors: Map<string, TileColor>,
+  externalOpen?: number
 ): TileColor {
-  if (frozenAfter10AM) {
+  if (frozenAfter1030AM) {
     const locked = lockedColors.get(companyCode);
-    // Only honour the lock if it is a freezable color (blue / yellow).
+    // Only honour the lock if it is blue (the only freezable color).
     if (locked && FROZEN_COLORS.has(locked)) return locked;
   }
   if (!data) return 'grey';
-  return computeColorFromOpen(data);
+  return computeColorFromOpen(data, externalOpen);
 }
 
 /** % change from today's open for sorting (returns 0 when open not available) */
-function pctFromOpen(data: MarketData | undefined): number {
-  if (!data || !data.open || data.open === 0 || data.ltp == null) return 0;
-  return ((data.ltp - data.open) / data.open) * 100;
+function pctFromOpen(data: MarketData | undefined, externalOpen?: number): number {
+  if (!data || data.ltp == null) return 0;
+  const open = (data.open && data.open > 0) ? data.open : (externalOpen ?? 0);
+  if (!open) return 0;
+  return ((data.ltp - open) / open) * 100;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -261,9 +304,9 @@ const LegendRow: React.FC = () => (
   <div className="flex items-center gap-4 px-1 text-[10px] text-muted-foreground">
     {(
       [
-        { color: 'blue',   label: '≥2% above open at 10 AM (frozen)' },
+        { color: 'blue',   label: '≥2% above open by 10:30 AM (frozen)' },
         { color: 'green',  label: '1–2% above open (live)' },
-        { color: 'yellow', label: '0–1% above open at 10 AM (frozen)' },
+        { color: 'yellow', label: '0–1% above open (live)' },
         { color: 'red',    label: 'Below open (live)' },
         { color: 'grey',   label: 'No data / pre-market' },
       ] as { color: TileColor; label: string }[]
@@ -301,10 +344,15 @@ const MarketMoversPage: React.FC = () => {
   const subscribedCodesRef = useRef<string>('');
   const hasAutoSelectedRef = useRef(false);
 
-  /* ── Locked colors: built live during 9:15–10 AM, only blue+yellow frozen after ── */
+  /* ── Opening prices from port 6969 (keyed by company_code) ── */
+  const openingPricesRef = useRef<Record<string, number>>({});
+  const fetchedCodesRef = useRef<Set<string>>(new Set());
+  const [openingPrices, setOpeningPrices] = useState<Record<string, number>>({});
+
+  /* ── Locked colors: built live during 9:15–10:30 AM, only blue frozen after ── */
   const lockedColorsRef = useRef<Map<string, TileColor>>(new Map());
   const [lockedColors, setLockedColors] = useState<Map<string, TileColor>>(new Map());
-  const [frozenAfter10AM, setFrozenAfter10AM] = useState<boolean>(() => isAfter10AMIST());
+  const [frozenAfter1030AM, setFrozenAfter1030AM] = useState<boolean>(() => isAfter1030AMIST());
 
   /* ── Load persisted locked colors from backend on mount ── */
   useEffect(() => {
@@ -318,19 +366,54 @@ const MarketMoversPage: React.FC = () => {
         setLockedColors(new Map(map));
       })
       .catch(() => { /* backend unreachable — silent */ });
-    setFrozenAfter10AM(isAfter10AMIST());
+    setFrozenAfter1030AM(isAfter1030AMIST());
   }, []);
 
-  /* ── Build/update locked colors on each market tick ── */
+  /* ── Fetch opening prices from port 6969 for all sidebar companies ── */
+  useEffect(() => {
+    if (allSidebarCompanies.length === 0) return;
+
+    const codesToFetch = allSidebarCompanies
+      .map(c => c.company_code)
+      .filter(code => !fetchedCodesRef.current.has(code));
+
+    if (codesToFetch.length === 0) return;
+
+    // Mark as fetched immediately to avoid duplicate requests
+    codesToFetch.forEach(code => fetchedCodesRef.current.add(code));
+
+    const run = async () => {
+      const BATCH = 15;
+      for (let i = 0; i < codesToFetch.length; i += BATCH) {
+        const batch = codesToFetch.slice(i, i + BATCH);
+        const results = await Promise.allSettled(
+          batch.map(code => fetchOpenPrice6969(code).then(price => ({ code, price })))
+        );
+        let updated = false;
+        results.forEach(r => {
+          if (r.status === 'fulfilled' && r.value.price !== null) {
+            openingPricesRef.current[r.value.code] = r.value.price;
+            updated = true;
+          }
+        });
+        if (updated) setOpeningPrices({ ...openingPricesRef.current });
+      }
+    };
+
+    run();
+  }, [allSidebarCompanies]);
+
+  /* ── Build/update locked blue companies on each market tick (9:15–10:30 AM window) ── */
   useEffect(() => {
     // Once frozen and already populated, nothing left to update.
-    if (frozenAfter10AM && lockedColorsRef.current.size > 0) return;
+    if (frozenAfter1030AM && lockedColorsRef.current.size > 0) return;
 
     let changed = false;
     Object.values(marketData).forEach((data: MarketData) => {
       const code = codeFromSymbol(data.symbol) ?? data.symbol;
-      const color = computeColorFromOpen(data);
-      // Only persist blue + yellow (the freezable colors)
+      const externalOpen = openingPricesRef.current[code];
+      const color = computeColorFromOpen(data, externalOpen);
+      // Only lock blue (the sole freezable color).
       if (!FROZEN_COLORS.has(color)) return;
       if (lockedColorsRef.current.get(code) !== color) {
         lockedColorsRef.current.set(code, color);
@@ -338,10 +421,10 @@ const MarketMoversPage: React.FC = () => {
       }
     });
 
-    const nowPast10 = isAfter10AMIST();
-    if (changed || nowPast10) {
+    const nowPast1030 = isAfter1030AMIST();
+    if (changed || nowPast1030) {
       const snapshot = new Map(lockedColorsRef.current);
-      // Persist to backend/data (fire-and-forget)
+      // Persist to backend (fire-and-forget)
       fetch(LOCKED_COLORS_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -349,10 +432,10 @@ const MarketMoversPage: React.FC = () => {
       }).catch(() => { /* silent */ });
       setLockedColors(snapshot);
     }
-    if (nowPast10 && !frozenAfter10AM) {
-      setFrozenAfter10AM(true);
+    if (nowPast1030 && !frozenAfter1030AM) {
+      setFrozenAfter1030AM(true);
     }
-  }, [marketData, frozenAfter10AM]);
+  }, [marketData, frozenAfter1030AM]);
 
   /* ── Right sidebar width/collapse ── */
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
@@ -395,13 +478,13 @@ const MarketMoversPage: React.FC = () => {
       const dataA = resolveMarketData(marketData, a);
       const dataB = resolveMarketData(marketData, b);
       // Sort by % change from today's open, descending (highest performer at top)
-      const pA = pctFromOpen(dataA);
-      const pB = pctFromOpen(dataB);
+      const pA = pctFromOpen(dataA, openingPrices[a.company_code]);
+      const pB = pctFromOpen(dataB, openingPrices[b.company_code]);
       if (pB !== pA) return pB - pA;
       // Tiebreaker: alphabetical
       return a.company_code.localeCompare(b.company_code);
     });
-  }, [allSidebarCompanies, selectedCodes, marketData]);
+  }, [allSidebarCompanies, selectedCodes, marketData, openingPrices]);
 
   /* ── Sidebar drag resize ── */
   const handleSidebarMouseDown = useCallback(
@@ -448,10 +531,10 @@ const MarketMoversPage: React.FC = () => {
     const counts: Record<TileColor, number> = { blue: 0, green: 0, yellow: 0, red: 0, grey: 0 };
     sortedCompanies.forEach(c => {
       const d = resolveMarketData(marketData, c);
-      counts[getTileColor(c.company_code, d, frozenAfter10AM, lockedColors)]++;
+      counts[getTileColor(c.company_code, d, frozenAfter1030AM, lockedColors, openingPrices[c.company_code])]++;
     });
     return counts;
-  }, [sortedCompanies, marketData, frozenAfter10AM, lockedColors]);
+  }, [sortedCompanies, marketData, frozenAfter1030AM, lockedColors, openingPrices]);
 
   /* ─────────────────────────────── RENDER ────────────────────────────────── */
   return (
@@ -568,7 +651,7 @@ const MarketMoversPage: React.FC = () => {
                   <AnimatePresence mode="popLayout">
                     {sortedCompanies.map(company => {
                       const data = resolveMarketData(marketData, company);
-                      const color = getTileColor(company.company_code, data, frozenAfter10AM, lockedColors);
+                      const color = getTileColor(company.company_code, data, frozenAfter1030AM, lockedColors, openingPrices[company.company_code]);
 
                       return (
                         <motion.div
