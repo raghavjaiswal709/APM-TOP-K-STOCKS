@@ -60,6 +60,7 @@ import { attachPriceAxisWheelZoom, removePriceAxisWheelZoom } from '@/utils/char
 // --- Types ---
 import type { IntradayShapePattern } from '@/types/clustering';
 import { ARCHETYPE_COLORS } from '@/types/clustering';
+import type { PatternCurvesData } from '@/hooks/usePatternOverlay';
 
 // Prediction data interface - matches actual API response structure
 // API returns: { "2026-02-03 09:15": { "close": 415.26, "predicted_at": "2026-02-03 09:15:00" } }
@@ -133,6 +134,12 @@ interface StockChartProps {
     showIntradayOverlay?: boolean;
     /** Today's open price — used to scale the normalized intraday shape to actual prices */
     todayOpenPrice?: number;
+    /** PatternPool Overlay API curves data — centroid + bands for top-3 patterns */
+    patternCurves?: PatternCurvesData | null;
+    /** Whether to show the PatternPool overlay on the chart */
+    showPatternOverlay?: boolean;
+    /** Lock the X-axis to 09:15–15:30 IST and disable horizontal scroll/pan */
+    lockToMarketHours?: boolean;
 }
 
 // --- Constants ---
@@ -205,6 +212,9 @@ export function MarketDataStockChart({
     intradayShapePattern = null,
     showIntradayOverlay = false,
     todayOpenPrice = 0,
+    patternCurves = null,
+    showPatternOverlay = false,
+    lockToMarketHours = false,
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -235,6 +245,9 @@ export function MarketDataStockChart({
     // When unlocked (false) = user has full manual control of the vertical price scale
     // Default: true (locked) — chart auto-fits vertical scale by default
     const [autoScaleLocked, setAutoScaleLocked] = useState(true);
+    // Incremented once after the chart DOM element is created so the lock effect
+    // can re-fire with a valid mainChartRef (it fires before chart creation on mount).
+    const [chartReadyVersion, setChartReadyVersion] = useState(0);
 
     // Tooltip State
     const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
@@ -269,6 +282,13 @@ export function MarketDataStockChart({
     const intradayMedianSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
     const intradayP25SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
     const intradayP75SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+
+    // PatternPool Overlay series refs: 3 centroids + 3 band-uppers + 3 band-lowers + live curve + current-slot line
+    const patternCentroidSeriesRefs = useRef<Array<ISeriesApi<'Line'> | null>>([null, null, null]);
+    const patternBandUpperRefs = useRef<Array<ISeriesApi<'Line'> | null>>([null, null, null]);
+    const patternBandLowerRefs = useRef<Array<ISeriesApi<'Line'> | null>>([null, null, null]);
+    const patternLiveCurveRef = useRef<ISeriesApi<'Line'> | null>(null);
+    const patternCurrentSlotRef = useRef<ISeriesApi<'Line'> | null>(null);
 
     // Track previous companyId for detecting company switches in the data effect
     const prevCompanyIdRef = useRef<string | null>(null);
@@ -443,6 +463,238 @@ export function MarketDataStockChart({
         return () => { clearOverlay(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [showIntradayOverlay, intradayShapePattern, todayOpenPrice]);
+
+    // ─── PatternPool Overlay Effect ──────────────────────────────────────────
+    // Renders the top-3 pattern centroid lines + confidence bands + live curve
+    // on a fixed 09:15–15:30 IST X-axis for the cluster-overlay page.
+    useEffect(() => {
+        const chart = mainChartRef.current;
+
+        // Colour palette for rank 1/2/3 patterns
+        const RANK_COLORS = ['#c084fc', '#f59e0b', '#6ee7b7']; // violet, amber, emerald
+
+        const clearPatternOverlay = () => {
+            for (let i = 0; i < 3; i++) {
+                if (patternCentroidSeriesRefs.current[i] && chart) {
+                    try { chart.removeSeries(patternCentroidSeriesRefs.current[i]!); } catch (_) {}
+                    patternCentroidSeriesRefs.current[i] = null;
+                }
+                if (patternBandUpperRefs.current[i] && chart) {
+                    try { chart.removeSeries(patternBandUpperRefs.current[i]!); } catch (_) {}
+                    patternBandUpperRefs.current[i] = null;
+                }
+                if (patternBandLowerRefs.current[i] && chart) {
+                    try { chart.removeSeries(patternBandLowerRefs.current[i]!); } catch (_) {}
+                    patternBandLowerRefs.current[i] = null;
+                }
+            }
+            if (patternLiveCurveRef.current && chart) {
+                try { chart.removeSeries(patternLiveCurveRef.current); } catch (_) {}
+                patternLiveCurveRef.current = null;
+            }
+            if (patternCurrentSlotRef.current && chart) {
+                try { chart.removeSeries(patternCurrentSlotRef.current); } catch (_) {}
+                patternCurrentSlotRef.current = null;
+            }
+        };
+
+        if (!showPatternOverlay || !patternCurves || !chart) {
+            clearPatternOverlay();
+            return;
+        }
+
+        clearPatternOverlay();
+
+        const { time_axis, patterns, live_curve } = patternCurves;
+        if (!time_axis || !patterns || patterns.length === 0) return;
+
+        // Build UTC timestamps from IST slot-end times (e.g. "09:30" → UTC seconds)
+        // The date comes from patternCurves.date (YYYY-MM-DD in IST)
+        const dateStr = patternCurves.date; // "2026-05-07"
+        const [yr, mo, dy] = dateStr.split('-').map(Number);
+
+        // Convert IST "HH:MM" → UTC timestamp (seconds)
+        const istSlotToUTC = (timeStr: string): number => {
+            const [h, m] = timeStr.split(':').map(Number);
+            // IST = UTC+5:30; so UTC = IST - 5:30
+            const istMinutes = h * 60 + m;
+            const utcMinutes = istMinutes - 5 * 60 - 30;
+            const baseUTC = Date.UTC(yr, mo - 1, dy) / 1000;
+            return baseUTC + utcMinutes * 60;
+        };
+
+        const timeAxisUTC = time_axis.map(istSlotToUTC);
+
+        // ── 1-minute interpolation helper ──────────────────────────────────
+        // WHY THIS EXISTS: lightweight-charts x-axis distributes space by BAR
+        // COUNT (logical indices), NOT by real time. The overlay API returns
+        // only 25 sparse data points at 15-minute intervals. If we plot those
+        // directly, the future region (13:00–15:30) only gets ~10 bar-width
+        // pixels while the past has 225 1-minute candle slots → severe
+        // right-side compression. Fix: resample every overlay series to
+        // 1-minute resolution so the full market day has uniform bar density.
+        const baseUTC = Date.UTC(yr, mo - 1, dy) / 1000;
+        const mktOpenUTC  = baseUTC + (9 * 60 + 15 - 330) * 60;  // 09:15 IST
+        const mktCloseUTC = baseUTC + (15 * 60 + 30 - 330) * 60; // 15:30 IST
+        const totalMktMin = Math.round((mktCloseUTC - mktOpenUTC) / 60); // 375
+
+        /** Linearly interpolate sparse (time, value) pairs to 1-minute UTC.
+         *  @param sparse   sorted array of {time (UTC sec), value}
+         *  @param maxTime  if set, stop at this UTC timestamp (inclusive) */
+        const interpToMin = (
+            sparse: Array<{ time: number; value: number }>,
+            maxTime?: number,
+        ): Array<{ time: number; value: number }> => {
+            if (sparse.length === 0) return [];
+            const result: Array<{ time: number; value: number }> = [];
+            for (let i = 0; i <= totalMktMin; i++) {
+                const t = mktOpenUTC + i * 60;
+                if (maxTime !== undefined && t > maxTime + 1) break;
+                let value: number;
+                if (t <= sparse[0].time) {
+                    value = sparse[0].value;
+                } else if (t >= sparse[sparse.length - 1].time) {
+                    value = sparse[sparse.length - 1].value;
+                } else {
+                    const idx = sparse.findIndex(p => p.time > t);
+                    const p0 = sparse[idx - 1];
+                    const p1 = sparse[idx];
+                    const frac = (t - p0.time) / (p1.time - p0.time);
+                    value = p0.value + frac * (p1.value - p0.value);
+                }
+                result.push({ time: t, value });
+            }
+            return result;
+        };
+
+        // ── Shared overlay scale configuration ───────────────────────────
+        // All pattern overlay series share 'pattern-overlay' priceScaleId so
+        // they auto-scale to their own value range and visually fill the chart
+        // area, independent of the main candlestick price axis.
+        const OVERLAY_SCALE_ID = 'pattern-overlay';
+
+        const configureOverlayScale = () => {
+            try {
+                chart.priceScale(OVERLAY_SCALE_ID).applyOptions({
+                    scaleMargins: { top: 0.05, bottom: 0.05 },
+                    visible: false, // hide the right-axis numbers for the overlay
+                    autoScale: true,
+                });
+            } catch (_) {}
+        };
+
+        try {
+            // --- Plot each pattern (rank 1, 2, 3) ---
+            patterns.slice(0, 3).forEach((pat, idx) => {
+                const color = RANK_COLORS[idx] || '#8b5cf6';
+                const { centroid, band_upper, band_lower, cluster, meta } = pat;
+
+                // Band lower (faint dashed — same overlay scale)
+                if (band_lower && band_lower.length === timeAxisUTC.length) {
+                    const s = chart.addSeries(LineSeries, {
+                        color: color + '40',
+                        lineWidth: 1,
+                        lineStyle: LineStyle.Dashed,
+                        lastValueVisible: false,
+                        priceLineVisible: false,
+                        priceScaleId: OVERLAY_SCALE_ID,
+                        title: '',
+                    });
+                    const sparseLower = band_lower.map((v, i) => ({ time: timeAxisUTC[i], value: v }));
+                    s.setData(interpToMin(sparseLower).map(p => ({ time: p.time as any, value: p.value })));
+                    patternBandLowerRefs.current[idx] = s;
+                }
+
+                // Band upper (faint dashed — same overlay scale)
+                if (band_upper && band_upper.length === timeAxisUTC.length) {
+                    const s = chart.addSeries(LineSeries, {
+                        color: color + '40',
+                        lineWidth: 1,
+                        lineStyle: LineStyle.Dashed,
+                        lastValueVisible: false,
+                        priceLineVisible: false,
+                        priceScaleId: OVERLAY_SCALE_ID,
+                        title: '',
+                    });
+                    const sparseUpper = band_upper.map((v, i) => ({ time: timeAxisUTC[i], value: v }));
+                    s.setData(interpToMin(sparseUpper).map(p => ({ time: p.time as any, value: p.value })));
+                    patternBandUpperRefs.current[idx] = s;
+                }
+
+                // Centroid line (dashed, with label)
+                if (centroid && centroid.length === timeAxisUTC.length) {
+                    const wr = meta?.win_rate != null ? `wr=${(meta.win_rate * 100).toFixed(0)}%` : '';
+                    const ret = meta?.avg_return != null ? `ret=${meta.avg_return >= 0 ? '+' : ''}${(meta.avg_return * 100).toFixed(2)}%` : '';
+                    const label = `#${idx + 1} ${cluster} ${wr}${wr && ret ? ' ' : ''}${ret}`;
+                    const s = chart.addSeries(LineSeries, {
+                        color,
+                        lineWidth: idx === 0 ? 2 : 1,
+                        lineStyle: LineStyle.Dashed,
+                        lastValueVisible: true,
+                        priceLineVisible: false,
+                        priceScaleId: OVERLAY_SCALE_ID,
+                        title: label,
+                    });
+                    const sparseCentroid = centroid.map((v, i) => ({ time: timeAxisUTC[i], value: v }));
+                    s.setData(interpToMin(sparseCentroid).map(p => ({ time: p.time as any, value: p.value })));
+                    patternCentroidSeriesRefs.current[idx] = s;
+                }
+            });
+
+            // Configure scale after series are added
+            configureOverlayScale();
+
+        } catch (err) {
+            console.warn('[PatternOverlay] Failed to add series:', err);
+        }
+
+        return () => { clearPatternOverlay(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showPatternOverlay, patternCurves]);
+
+    // ─── Market-hours UTC range helper ───────────────────────────────────────
+    // Returns { open, close } as UTC seconds for 09:15–15:30 IST on the given
+    // YYYY-MM-DD date (or today's IST date when dateStr is null/undefined).
+    const getMarketUTCRange = (dateStr?: string | null) => {
+        const d = dateStr ?? new Date().toLocaleDateString('sv', { timeZone: 'Asia/Kolkata' });
+        const [yr, mo, dy] = d.split('-').map(Number);
+        const base = Date.UTC(yr, mo - 1, dy) / 1000;
+        return {
+            open:  base + (9 * 60 + 15 - 330) * 60,   // 09:15 IST → 03:45 UTC
+            close: base + (15 * 60 + 30 - 330) * 60,  // 15:30 IST → 10:00 UTC
+        };
+    };
+
+    // ─── Lock X-axis to market hours (09:15–15:30 IST) ───────────────────────
+    // Fires as soon as lockToMarketHours=true and re-fires when patternCurves.date
+    // changes (replay mode). Does NOT require patternCurves to be loaded.
+    useEffect(() => {
+        const chart = mainChartRef.current;
+        if (!chart || !lockToMarketHours) return;
+
+        const { open, close } = getMarketUTCRange(patternCurves?.date);
+
+        try {
+            const ts = (chart as any).timeScale();
+            ts.setVisibleRange({ from: open as any, to: (close + 30 * 60) as any });
+            // Disable horizontal scroll / scale so the window stays pinned
+            chart.applyOptions({
+                handleScroll: {
+                    horzTouchDrag: false,
+                    mouseWheel: false,
+                    pressedMouseMove: false,
+                    vertTouchDrag: true,
+                },
+                handleScale: {
+                    mouseWheel: false,
+                    pinch: false,
+                    axisPressedMouseMove: { time: false, price: true },
+                    axisDoubleClickReset: { time: false, price: true },
+                },
+            });
+        } catch (_) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [lockToMarketHours, patternCurves?.date, chartReadyVersion]);
 
     // Data processing helper with validation
     const processData = useCallback((rawData: StockDataPoint[]) => {
@@ -700,6 +952,20 @@ export function MarketDataStockChart({
         });
 
         mainChartRef.current = chart;
+
+        // Pin the time axis to market hours immediately so the very first frame
+        // shows 09:15–15:30 IST instead of the default empty/fit view.
+        if (lockToMarketHours) {
+            const { open, close } = getMarketUTCRange();
+            try {
+                (chart as any).timeScale().setVisibleRange({
+                    from: open as any,
+                    to: (close + 30 * 60) as any,
+                });
+            } catch (_) {}
+        }
+        // Signal the lock effect to re-fire now that the chart exists.
+        setChartReadyVersion(v => v + 1);
 
         // ✅ Attach price-axis wheel zoom (scroll on price axis = vertical zoom)
         const removePriceWheelZoom = attachPriceAxisWheelZoom(
@@ -1484,7 +1750,18 @@ export function MarketDataStockChart({
         // ✅ CRITICAL: Only fit/zoom on FIRST data load or company change.
         // On subsequent live updates, preserve the user's manual zoom/pan.
         if (processedData.length > 0 && mainChartRef.current && needsInitialFitRef.current) {
-            if (selectedDuration === 'full') {
+            if (lockToMarketHours) {
+                // ─ Market-hours lock: NEVER call fitContent — always pin 09:15–15:30 IST─
+                // This prevents candle data arriving AFTER the lock effect from
+                // overriding the locked range back to first-candle→last-candle.
+                const { open, close } = getMarketUTCRange(patternCurves?.date);
+                try {
+                    mainChartRef.current.timeScale().setVisibleRange({
+                        from: open as any,
+                        to: (close + 30 * 60) as any,
+                    });
+                } catch (_) {}
+            } else if (selectedDuration === 'full') {
                 mainChartRef.current.timeScale().fitContent();
             } else {
                 // Apply duration zoom inline (avoid circular dep with applyDurationZoom)

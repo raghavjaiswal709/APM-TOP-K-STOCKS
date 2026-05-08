@@ -8,6 +8,8 @@ import { usePageState } from '@/app/context/PageStateContext';
 import { useIntradayShapes } from '@/hooks/useClusteringV2';
 import type { IntradayShapePattern } from '@/types/clustering';
 import { ARCHETYPE_COLORS } from '@/types/clustering';
+import { usePatternOverlay } from '@/hooks/usePatternOverlay';
+import { PatternOverlayPanel } from './PatternOverlayPanel';
 import { AppSidebar } from "@/app/components/app-sidebar";
 import { CompanyList } from "@/app/components/CompanyList";
 
@@ -190,7 +192,7 @@ const ClusterOverlayPage: React.FC = () => {
   // UI state preservation
   const [isAnalysisVisible, setIsAnalysisVisible] = usePersistentState<boolean>(
     'cluster-overlay-isAnalysisVisible',
-    true  // Default to visible so users can see the analysis tab
+    false  // Collapsed by default
   );
 
   // Portfolio Mode State
@@ -654,7 +656,65 @@ const ClusterOverlayPage: React.FC = () => {
     return todayCandles[0]?.open ?? 0;
   }, [selectedSymbol, ohlcData]);
 
+  // ─── PatternPool Overlay (port 8765) ─────────────────────────────────────────
+  const [showPatternOverlay, setShowPatternOverlay] = usePersistentState<boolean>(
+    'cluster-overlay-showPatternOverlay',
+    true
+  );
+
+  const patternOverlayState = usePatternOverlay({
+    symbol: overlaySymbol,
+    // Start fetching as soon as overlaySymbol is available (don't wait for isClient).
+    // usePatternOverlay only calls window.fetch inside useEffect, so it's SSR-safe.
+    enabled: !!overlaySymbol,
+  });
+
+  // ── Pattern overlay floating panel: expand/collapse + drag ───────────────
+  const [isPanelExpanded, setIsPanelExpanded] = usePersistentState<boolean>(
+    'cluster-overlay-patternPanelExpanded', true
+  );
+  const [patternPanelPos, setPatternPanelPos] = useState<{ left: number; top: number } | null>(null);
+  const patternPanelRef = useRef<HTMLDivElement | null>(null);
+  const patternDragRef = useRef({ dragging: false, startX: 0, startY: 0, origLeft: 0, origTop: 0 });
+
   const isLoadingDesirability = desirabilityLoading;
+
+  // Drag handler for the pattern overlay floating panel
+  const handlePatternPanelDragStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Let button clicks through without starting drag
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    const el = patternPanelRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    patternDragRef.current = {
+      dragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      origLeft: rect.left,
+      origTop: rect.top,
+    };
+    const onMove = (me: MouseEvent) => {
+      if (!patternDragRef.current.dragging || !patternPanelRef.current) return;
+      const dx = me.clientX - patternDragRef.current.startX;
+      const dy = me.clientY - patternDragRef.current.startY;
+      const newLeft = Math.max(0, Math.min(window.innerWidth - 200, patternDragRef.current.origLeft + dx));
+      const newTop = Math.max(0, Math.min(window.innerHeight - 40, patternDragRef.current.origTop + dy));
+      patternPanelRef.current.style.left = `${newLeft}px`;
+      patternPanelRef.current.style.top = `${newTop}px`;
+      patternPanelRef.current.style.bottom = 'auto';
+    };
+    const onUp = () => {
+      if (!patternDragRef.current.dragging || !patternPanelRef.current) return;
+      patternDragRef.current.dragging = false;
+      const r = patternPanelRef.current.getBoundingClientRect();
+      setPatternPanelPos({ left: r.left, top: r.top });
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, []);
 
   const handleFetchDesirabilityScore = useCallback(() => {
     refetchDesirability();
@@ -2822,68 +2882,70 @@ const ClusterOverlayPage: React.FC = () => {
                     intradayShapePattern={showIntradayOverlay ? activeIntradayPattern : null}
                     showIntradayOverlay={showIntradayOverlay}
                     todayOpenPrice={todayOpenPrice}
+                    patternCurves={showPatternOverlay ? patternOverlayState.curves : null}
+                    showPatternOverlay={showPatternOverlay}
+                    lockToMarketHours={true}
                   />
 
-                  {/* ── Intraday Shape Overlay Panel ──────────────────────── */}
-                  <div className="absolute bottom-3 left-3 z-20 bg-background/90 border border-border/60 rounded-lg shadow-lg backdrop-blur-sm p-2 max-w-[420px]">
-                    {/* Header row */}
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Intraday Shape Overlay</span>
+                  {/* ── PatternPool Overlay Panel (draggable, fixed, collapsible) ── */}
+                  <div
+                    ref={patternPanelRef}
+                    style={{
+                      position: 'fixed',
+                      ...(patternPanelPos
+                        ? { left: patternPanelPos.left, top: patternPanelPos.top }
+                        : { left: 'calc(50vw - 220px)', top: 12 }
+                      ),
+                      zIndex: 9999,
+                      width: 440,
+                      maxWidth: 'calc(100vw - 24px)',
+                      maxHeight: isPanelExpanded ? 'min(60vh, 520px)' : 'none',
+                    }}
+                    className="bg-background/90 border border-border/60 rounded-lg shadow-xl backdrop-blur-sm flex flex-col overflow-hidden"
+                  >
+                    {/* Header — drag handle + collapse + overlay toggle */}
+                    <div
+                      className="flex-none flex items-center gap-1.5 px-2.5 py-1.5 border-b border-border/50 cursor-grab active:cursor-grabbing select-none"
+                      onMouseDown={handlePatternPanelDragStart}
+                    >
+                      {/* Drag grip */}
+                      <div className="flex flex-col gap-[3px] mr-0.5 opacity-30 shrink-0">
+                        <div className="flex gap-[3px]">
+                          <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
+                          <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
+                        </div>
+                        <div className="flex gap-[3px]">
+                          <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
+                          <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Pattern Overlay
+                      </span>
+                      {/* Collapse/expand panel body */}
                       <button
-                        onClick={() => setShowIntradayOverlay(!showIntradayOverlay)}
-                        className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ml-auto ${showIntradayOverlay ? 'bg-violet-600' : 'bg-gray-400 dark:bg-gray-600'}`}
-                        title={showIntradayOverlay ? 'Disable overlay' : 'Enable overlay'}
+                        onClick={(e) => { e.stopPropagation(); setIsPanelExpanded(!isPanelExpanded); }}
+                        className="ml-auto p-0.5 rounded hover:bg-accent transition-colors"
+                        title={isPanelExpanded ? 'Collapse panel' : 'Expand panel'}
                       >
-                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform shadow-sm ${showIntradayOverlay ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 ${isPanelExpanded ? '' : 'rotate-180'}`} />
                       </button>
-                      {intradayShapesLoading && showIntradayOverlay && (
-                        <div className="h-3 w-3 rounded-full border border-violet-500 border-t-transparent animate-spin" />
-                      )}
+                      {/* Chart overlay lines toggle — independent of panel collapse */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowPatternOverlay(!showPatternOverlay); }}
+                        className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${showPatternOverlay ? 'bg-violet-600' : 'bg-gray-400 dark:bg-gray-600'}`}
+                        title={showPatternOverlay ? 'Hide chart overlay lines' : 'Show chart overlay lines'}
+                      >
+                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform shadow-sm ${showPatternOverlay ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                      </button>
                     </div>
-
-                    {/* Pattern selector — only when overlay is on */}
-                    {showIntradayOverlay && (
-                      <div className="flex flex-wrap gap-1">
-                        {(intradayPatternKeys.length > 0 ? intradayPatternKeys : ['P0','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','P11','P12']).map((key) => {
-                          const pat = intradayShapesData?.patterns[key];
-                          const isActive = key === selectedUmapPattern;
-                          const archetypeColor = pat?.archetype ? (ARCHETYPE_COLORS[pat.archetype] || '#8b5cf6') : '#8b5cf6';
-                          return (
-                            <button
-                              key={key}
-                              onClick={() => setSelectedUmapPattern(key)}
-                              className={`px-2 py-0.5 text-[10px] rounded font-medium transition-colors border ${
-                                isActive
-                                  ? 'bg-violet-500/20 border-violet-500/50 text-violet-300'
-                                  : 'bg-muted/50 border-border/40 text-muted-foreground hover:bg-accent hover:text-foreground'
-                              }`}
-                              style={isActive ? { borderColor: archetypeColor + '80', color: archetypeColor } : {}}
-                              title={pat?.archetype || key}
-                            >
-                              {key}
-                              {pat?.archetype && (
-                                <span className="ml-0.5 opacity-60">({pat.archetype.replace(/_/g, ' ')})</span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Active pattern info */}
-                    {showIntradayOverlay && activeIntradayPattern && (
-                      <div className="mt-1.5 pt-1.5 border-t border-border/40 flex items-center gap-3 text-[10px] text-muted-foreground">
-                        <span style={{ color: ARCHETYPE_COLORS[activeIntradayPattern.archetype] || '#8b5cf6' }} className="font-semibold">
-                          {activeIntradayPattern.h_label}
-                        </span>
-                        <span>{activeIntradayPattern.archetype?.replace(/_/g, ' ')}</span>
-                        <span className="ml-auto">{activeIntradayPattern.n_core} core · {activeIntradayPattern.n_noise} noise days</span>
-                      </div>
-                    )}
-
-                    {/* No data message */}
-                    {showIntradayOverlay && !intradayShapesLoading && !intradayShapesData && overlaySymbol && (
-                      <p className="text-[10px] text-muted-foreground mt-1">No shape data for {overlaySymbol}</p>
+                    {/* Body — shown when expanded, chart overlay unaffected */}
+                    {isPanelExpanded && (
+                      <PatternOverlayPanel
+                        state={patternOverlayState}
+                        symbol={overlaySymbol}
+                        className="flex-1 min-h-0"
+                      />
                     )}
                   </div>
                 </div>

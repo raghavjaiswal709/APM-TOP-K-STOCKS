@@ -37,6 +37,12 @@ const nextConfig = {
         destination: `http://${SERVER_IP}:6968/health`,
       },
 
+      // PatternPool Overlay API (port 8765)
+      {
+        source: '/api/pattern-overlay/:path*',
+        destination: `http://${SERVER_IP}:8765/:path*`,
+      },
+
       // ⚠️ CATCH-ALL: Proxy remaining /api/* to NestJS backend (port 5002)
       // This excludes paths already matched above AND Next.js API routes like /api/time-machine
       // Uses BACKEND_URL env var for Docker compatibility (defaults to localhost for local dev)

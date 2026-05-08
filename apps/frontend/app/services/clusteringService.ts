@@ -22,6 +22,9 @@ import type {
 
 const BASE_PATH = '/api/v2/clustering';
 
+/** Encode a symbol for safe use in a URL path segment (handles GVT&D, NSE:X-EQ, etc.) */
+const encSym = (symbol: string) => symbol.split('/').map(encodeURIComponent).join('/');
+
 class ClusteringV2Error extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -85,7 +88,7 @@ export const clusteringV2Service = {
     const hit = getCached<ClusteringAnalysisResponse>(key);
     if (hit) return hit;
     const data = await fetchJSON<ClusteringAnalysisResponse>(
-      `${BASE_PATH}/${symbol}/analysis?window=${window}`,
+      `${BASE_PATH}/${encSym(symbol)}/analysis?window=${window}`,
       signal
     );
     setCache(key, data);
@@ -98,7 +101,7 @@ export const clusteringV2Service = {
     window = 7,
     signal?: AbortSignal
   ): Promise<ClusteringConfidenceResponse> {
-    return fetchJSON(`${BASE_PATH}/${symbol}/confidence?window=${window}`, signal);
+    return fetchJSON(`${BASE_PATH}/${encSym(symbol)}/confidence?window=${window}`, signal);
   },
 
   /** Noise metrics + 30-day density timeseries */
@@ -107,7 +110,7 @@ export const clusteringV2Service = {
     rollingWindow = 7,
     signal?: AbortSignal
   ): Promise<ClusteringNoiseResponse> {
-    return fetchJSON(`${BASE_PATH}/${symbol}/noise?rolling_window=${rollingWindow}`, signal);
+    return fetchJSON(`${BASE_PATH}/${encSym(symbol)}/noise?rolling_window=${rollingWindow}`, signal);
   },
 
   /** Active clusters in the given window */
@@ -116,7 +119,7 @@ export const clusteringV2Service = {
     window = 7,
     signal?: AbortSignal
   ): Promise<ActiveClustersResponse> {
-    return fetchJSON(`${BASE_PATH}/${symbol}/active-clusters?window=${window}`, signal);
+    return fetchJSON(`${BASE_PATH}/${encSym(symbol)}/active-clusters?window=${window}`, signal);
   },
 
   /** Core vs noise day counts per pattern */
@@ -124,7 +127,7 @@ export const clusteringV2Service = {
     symbol: string,
     signal?: AbortSignal
   ): Promise<PatternNoiseDistributionResponse> {
-    return fetchJSON(`${BASE_PATH}/${symbol}/pattern-noise-distribution`, signal);
+    return fetchJSON(`${BASE_PATH}/${encSym(symbol)}/pattern-noise-distribution`, signal);
   },
 
   /** Return, volatility, win rate, RAR per pattern */
@@ -132,7 +135,7 @@ export const clusteringV2Service = {
     symbol: string,
     signal?: AbortSignal
   ): Promise<PatternRiskReturnResponse> {
-    return fetchJSON(`${BASE_PATH}/${symbol}/pattern-risk-return`, signal);
+    return fetchJSON(`${BASE_PATH}/${encSym(symbol)}/pattern-risk-return`, signal);
   },
 
   /** Volatility and trend regime breakdown per pattern */
@@ -140,7 +143,7 @@ export const clusteringV2Service = {
     symbol: string,
     signal?: AbortSignal
   ): Promise<PatternRegimeDistributionResponse> {
-    return fetchJSON(`${BASE_PATH}/${symbol}/pattern-regime-distribution`, signal);
+    return fetchJSON(`${BASE_PATH}/${encSym(symbol)}/pattern-regime-distribution`, signal);
   },
 
   /** Quality metrics + per-cluster confidence */
@@ -148,7 +151,7 @@ export const clusteringV2Service = {
     symbol: string,
     signal?: AbortSignal
   ): Promise<PatternConfidenceResponse> {
-    return fetchJSON(`${BASE_PATH}/${symbol}/pattern-confidence`, signal);
+    return fetchJSON(`${BASE_PATH}/${encSym(symbol)}/pattern-confidence`, signal);
   },
 
   /** Intraday price shapes with median, p25/p75 bands */
@@ -158,7 +161,7 @@ export const clusteringV2Service = {
     signal?: AbortSignal
   ): Promise<IntradayShapesResponse> {
     return fetchJSON(
-      `${BASE_PATH}/${symbol}/intraday-shapes?max_days_per_pattern=${maxDaysPerPattern}`,
+      `${BASE_PATH}/${encSym(symbol)}/intraday-shapes?max_days_per_pattern=${maxDaysPerPattern}`,
       signal
     );
   },
@@ -168,7 +171,7 @@ export const clusteringV2Service = {
     symbol: string,
     signal?: AbortSignal
   ): Promise<PatternProfilesResponse> {
-    return fetchJSON(`${BASE_PATH}/${symbol}/pattern-profiles`, signal);
+    return fetchJSON(`${BASE_PATH}/${encSym(symbol)}/pattern-profiles`, signal);
   },
 
   /** Raw lineage registry: canonical clusters, retired clusters, events */
@@ -176,7 +179,7 @@ export const clusteringV2Service = {
     symbol: string,
     signal?: AbortSignal
   ): Promise<LineageRegistryResponse> {
-    return fetchJSON(`${BASE_PATH}/${symbol}/lineage-registry`, signal);
+    return fetchJSON(`${BASE_PATH}/${encSym(symbol)}/lineage-registry`, signal);
   },
 
   /** Clear the in-memory cache */
