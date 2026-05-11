@@ -9,7 +9,7 @@ import React, {
   useMemo,
   Suspense,
 } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { AppSidebar } from '../components/app-sidebar';
 import {
   Breadcrumb,
@@ -29,6 +29,15 @@ import { ModeToggle } from '../components/toggleButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   TrendingUp,
   TrendingDown,
@@ -41,6 +50,14 @@ import {
   ChevronRight,
   WifiOff,
   Zap,
+  Info,
+  LayoutGrid,
+  Layers,
+  AlignJustify,
+  Grid3X3,
+  Star,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import { getSocket, onSocketSourceChange, getSocketSourceLabel } from '@/lib/socket';
 import MarketMoversSidebar from './components/MarketMoversSidebar';
@@ -455,48 +472,76 @@ const CompanyTile: React.FC<TileProps> = ({ company, data, color, gttColor, devP
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Legend Row (Logic 1 — unchanged)
+   Legend — tooltip popover (Logic 1)
 ───────────────────────────────────────────────────────────────────────────── */
-const LegendRow: React.FC = () => (
-  <div className="flex items-center gap-4 px-1 text-[10px] text-muted-foreground">
-    {(
-      [
-        { color: 'blue',   label: '≥2% above open at 10:30 AM (frozen for day)' },
-        { color: 'green',  label: '≥1.5% above open (live)' },
-        { color: 'yellow', label: '0–1.5% above open (live)' },
-        { color: 'red',    label: 'Below open (live)' },
-        { color: 'grey',   label: 'No data / pre-market' },
-      ] as { color: TileColor; label: string }[]
-    ).map(({ color, label }) => (
-      <div key={color} className="flex items-center gap-1.5">
-        <div className={cn('w-2 h-2 rounded-full shrink-0', CIRCLE_CLASS[color])} />
-        <span>{label}</span>
+const LEGEND_ITEMS: { color: TileColor; label: string; description: string }[] = [
+  { color: 'blue',   label: '≥2% above open at 10:30 AM', description: 'Confirmed at exactly 10:30 AM — frozen for the rest of the trading day' },
+  { color: 'green',  label: '≥1.5% above open',           description: 'Live signal — currently trading ≥1.5% above today\'s opening price' },
+  { color: 'yellow', label: '0–1.5% above open',          description: 'Live signal — trading between 0% and 1.5% above the opening price' },
+  { color: 'red',    label: 'Below open',                 description: 'Live signal — currently trading below today\'s opening price' },
+  { color: 'grey',   label: 'No data / pre-market',       description: 'No live tick received yet — pre-market or data subscription gap' },
+];
+
+const LegendInfoButton: React.FC = () => (
+  <Popover>
+    <PopoverTrigger asChild>
+      <button className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted/60 border border-transparent hover:border-border">
+        <Info className="h-3 w-3 shrink-0" />
+        <span>Signal Legend</span>
+      </button>
+    </PopoverTrigger>
+    <PopoverContent className="w-80 p-4" align="start">
+      <p className="text-xs font-semibold mb-3 text-foreground">Signal Color Legend</p>
+      <div className="space-y-2.5">
+        {LEGEND_ITEMS.map(({ color, label, description }) => (
+          <div key={color} className="flex items-start gap-2.5">
+            <div className={cn('w-2.5 h-2.5 rounded-full shrink-0 mt-0.5', CIRCLE_CLASS[color])} />
+            <div>
+              <p className="text-xs font-medium text-foreground leading-none mb-0.5">{label}</p>
+              <p className="text-[10px] text-muted-foreground leading-tight">{description}</p>
+            </div>
+          </div>
+        ))}
       </div>
-    ))}
-  </div>
+    </PopoverContent>
+  </Popover>
 );
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Logic B Legend Row (GTT Aligned)
+   Logic B Legend — tooltip popover (GTT Aligned)
 ───────────────────────────────────────────────────────────────────────────── */
-const GttLegendRow: React.FC = () => (
-  <div className="flex items-center gap-4 px-1 text-[10px] text-muted-foreground">
-    {(
-      [
-        { color: 'blue'  as GttTileColor, label: '>+2% above GTT path' },
-        { color: 'green' as GttTileColor, label: '0–+2% above GTT path' },
-        { color: 'yellow'as GttTileColor, label: '-5–0% below GTT path' },
-        { color: 'red'   as GttTileColor, label: '-10–-5% below GTT path' },
-        { color: 'black' as GttTileColor, label: '<-10% below GTT path' },
-        { color: 'gray'  as GttTileColor, label: 'No snapshot / expired' },
-      ]
-    ).map(({ color, label }) => (
-      <div key={color} className="flex items-center gap-1.5">
-        <div className={cn('w-2 h-2 rounded-full shrink-0', GTT_CIRCLE_CLASS[color])} />
-        <span>{label}</span>
+const GTT_LEGEND_ITEMS: { color: GttTileColor; label: string; description: string }[] = [
+  { color: 'blue',   label: '>+2% above GTT path',    description: 'Stock is significantly outperforming its GTT forecast path' },
+  { color: 'green',  label: '0–+2% above GTT path',   description: 'Stock is tracking above the predicted GTT path (bullish deviation)' },
+  { color: 'yellow', label: '-5–0% below GTT path',   description: 'Minor negative deviation below the predicted GTT path' },
+  { color: 'red',    label: '-10–-5% below GTT path', description: 'Moderate underperformance vs the predicted GTT path' },
+  { color: 'black',  label: '<-10% below GTT path',   description: 'Severe underperformance — stock far below GTT forecast' },
+  { color: 'gray',   label: 'No snapshot / expired',  description: 'GTT prediction unavailable or published more than 15 minutes ago' },
+];
+
+const GttLegendInfoButton: React.FC = () => (
+  <Popover>
+    <PopoverTrigger asChild>
+      <button className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted/60 border border-transparent hover:border-border">
+        <Info className="h-3 w-3 shrink-0" />
+        <span>GTT Signal Legend</span>
+      </button>
+    </PopoverTrigger>
+    <PopoverContent className="w-80 p-4" align="start">
+      <p className="text-xs font-semibold mb-3 text-foreground">GTT Path Deviation Legend</p>
+      <div className="space-y-2.5">
+        {GTT_LEGEND_ITEMS.map(({ color, label, description }) => (
+          <div key={color} className="flex items-start gap-2.5">
+            <div className={cn('w-2.5 h-2.5 rounded-full shrink-0 mt-0.5', GTT_CIRCLE_CLASS[color])} />
+            <div>
+              <p className="text-xs font-medium text-foreground leading-none mb-0.5">{label}</p>
+              <p className="text-[10px] text-muted-foreground leading-tight">{description}</p>
+            </div>
+          </div>
+        ))}
       </div>
-    ))}
-  </div>
+    </PopoverContent>
+  </Popover>
 );
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -782,10 +827,32 @@ const MarketMoversPage: React.FC = () => {
     });
   }, [allSidebarCompanies, selectedCodes, marketData, openingPrices, blueCheckDone, lockedColors]);
 
-  /* ─────────────────────────────────────────────────────────────────────────
-     Logic B (GTT Aligned) — state (completely independent from Logic 1)
+  /* -- Cluster-view groups: sorted companies split by live signal color -- */
+  const clusterGroups = useMemo(() => {
+    const groups: Record<'green' | 'yellow' | 'red', Company[]> = { green: [], yellow: [], red: [] };
+    sortedCompanies.forEach(c => {
+      const d = resolveMarketData(marketData, c);
+      const col = getTileColor(c.company_code, d, blueCheckDone, lockedColors, openingPrices[c.company_code]);
+      if (col === 'green' || col === 'yellow' || col === 'red') groups[col].push(c);
+    });
+    return groups;
+  }, [sortedCompanies, marketData, blueCheckDone, lockedColors, openingPrices]);
+
+  /* -- Momentum-view groups: top ~25% spotlighted, rest below -- */
+  const momentumGroups = useMemo(() => {
+    const spotCount = Math.max(3, Math.min(6, Math.ceil(sortedCompanies.length * 0.25)));
+    return {
+      spotlight: sortedCompanies.slice(0, spotCount),
+      rest:      sortedCompanies.slice(spotCount),
+    };
+  }, [sortedCompanies]);
+
+  /* -- Logic B (GTT Aligned) state (completely independent from Logic 1) --
   ───────────────────────────────────────────────────────────────────────────*/
   const [gttAligned, setGttAligned] = useState(false);
+  /* Tile layout view for Logic 1 (no effect when gttAligned is ON) */
+  type TileView = 'grid' | 'cluster' | 'ranked' | 'compact' | 'momentum';
+  const [tileView, setTileView] = useState<TileView>('cluster');
   const [gttSnapshots, setGttSnapshots] = useState<Map<string, GttSnapshot>>(new Map());
   const gttFetchingRef  = useRef(false);
   const gttIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -874,6 +941,28 @@ const MarketMoversPage: React.FC = () => {
     });
     return counts;
   }, [gttAligned, gttSortedCompanies, gttSnapshots, marketData]);
+
+  /* -- GTT Cluster-view groups: split by GTT signal color -- */
+  const gttClusterGroups = useMemo(() => {
+    const now = new Date();
+    const groups: Record<'blue' | 'green' | 'yellow' | 'red', Company[]> = { blue: [], green: [], yellow: [], red: [] };
+    gttSortedCompanies.forEach(c => {
+      const data = resolveMarketData(marketData, c);
+      const snap = gttSnapshots.get(c.company_code) ?? null;
+      const { color } = colorForTickGtt(snap, data?.ltp, now);
+      if (color === 'blue' || color === 'green' || color === 'yellow' || color === 'red') groups[color].push(c);
+    });
+    return groups;
+  }, [gttSortedCompanies, marketData, gttSnapshots]);
+
+  /* -- GTT Momentum-view groups: top ~25% spotlighted, rest below -- */
+  const gttMomentumGroups = useMemo(() => {
+    const spotCount = Math.max(3, Math.min(6, Math.ceil(gttSortedCompanies.length * 0.25)));
+    return {
+      spotlight: gttSortedCompanies.slice(0, spotCount),
+      rest:      gttSortedCompanies.slice(spotCount),
+    };
+  }, [gttSortedCompanies]);
 
   /* ── Sidebar drag resize ── */
   const handleSidebarMouseDown = useCallback(
@@ -1073,7 +1162,7 @@ const MarketMoversPage: React.FC = () => {
 
           {/* ── Main tile area ── */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Legend */}
+            {/* Legend + View Switcher */}
             <div className="px-4 pt-3 pb-2 shrink-0 border-b">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-sm font-semibold flex items-center gap-2">
@@ -1088,8 +1177,42 @@ const MarketMoversPage: React.FC = () => {
                     </Badge>
                   )}
                 </h2>
+                {/* View switcher */}
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 gap-1.5 text-[11px] font-medium shrink-0">
+                        {tileView === 'grid'     && <LayoutGrid    className="h-3 w-3" />}
+                        {tileView === 'cluster'  && <Layers        className="h-3 w-3" />}
+                        {tileView === 'ranked'   && <AlignJustify  className="h-3 w-3" />}
+                        {tileView === 'compact'  && <Grid3X3       className="h-3 w-3" />}
+                        {tileView === 'momentum' && <Star          className="h-3 w-3" />}
+                        {{ grid: 'Grid', cluster: 'Cluster', ranked: 'Ranked', compact: 'Compact', momentum: 'Momentum' }[tileView]}
+                        <ChevronDown className="h-3 w-3 opacity-60" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">Layout View</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {([
+                        { key: 'grid',     Icon: LayoutGrid,   label: 'Grid',     desc: '3-column mixed layout' },
+                        { key: 'cluster',  Icon: Layers,       label: 'Cluster',  desc: 'Grouped by signal color' },
+                        { key: 'ranked',   Icon: AlignJustify, label: 'Ranked',   desc: 'List sorted by % change' },
+                        { key: 'compact',  Icon: Grid3X3,      label: 'Compact',  desc: '5-column dense grid' },
+                        { key: 'momentum', Icon: Star,         label: 'Momentum', desc: 'Top movers spotlighted' },
+                      ] as { key: TileView; Icon: React.ComponentType<any>; label: string; desc: string }[]).map(({ key, Icon, label, desc }) => (
+                        <DropdownMenuItem key={key} onClick={() => setTileView(key)} className="flex items-start gap-2 py-2 cursor-pointer">
+                          <Icon className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium leading-none">{label}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">{desc}</p>
+                          </div>
+                          {tileView === key && <Check className="h-3 w-3 ml-auto mt-0.5 text-primary shrink-0" />}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-              {gttAligned ? <GttLegendRow /> : <LegendRow />}
+              {gttAligned ? <GttLegendInfoButton /> : <LegendInfoButton />}
             </div>
 
             {/* Tile grid + Blue frozen section — all in one scrollable container */}
@@ -1127,90 +1250,219 @@ const MarketMoversPage: React.FC = () => {
                   Logic B — GTT Aligned (rendered only when toggle is ON)
                   Logic 1 state is completely untouched here.
               ══════════════════════════════════════════════════════════════ */}
+              {/* ══════════════════════════════════════════════════════════════
+                  Logic B — GTT Aligned (all 5 views, mirrors Logic 1)
+              ══════════════════════════════════════════════════════════════ */}
               {gttAligned && (
-                <>
+                <LayoutGroup id="gtt-tiles">
                   {gttSortedCompanies.length === 0 ? (
                     <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
                       No companies selected. Check companies in the sidebar.
                     </div>
                   ) : (
-                    <motion.div
-                      layout
-                      className="grid gap-3"
-                      style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}
-                    >
-                      <AnimatePresence mode="popLayout">
-                        {gttSortedCompanies.map(company => {
-                          const data      = resolveMarketData(marketData, company);
-                          const snap      = gttSnapshots.get(company.company_code) ?? null;
-                          const { color: gttC, devPct } = colorForTickGtt(snap, data?.ltp, new Date());
-                          return (
-                            <motion.div
-                              key={company.company_code}
-                              layout
-                              layoutId={`gtt-${company.company_code}`}
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.9 }}
-                              transition={{
-                                layout: { type: 'spring', stiffness: 300, damping: 30 },
-                                opacity: { duration: 0.2 },
-                                scale: { duration: 0.2 },
-                              }}
-                            >
-                              <CompanyTile
-                                company={company}
-                                data={data}
-                                color="grey"
-                                gttColor={gttC}
-                                devPct={devPct}
-                              />
-                            </motion.div>
-                          );
-                        })}
-                      </AnimatePresence>
-                    </motion.div>
+                    <>
+                      {/* GTT GRID */}
+                      {tileView === 'grid' && (
+                        <motion.div layout className="grid gap-3" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                          <AnimatePresence mode="popLayout">
+                            {gttSortedCompanies.map(company => {
+                              const data = resolveMarketData(marketData, company);
+                              const snap = gttSnapshots.get(company.company_code) ?? null;
+                              const { color: gttC, devPct } = colorForTickGtt(snap, data?.ltp, new Date());
+                              return (
+                                <motion.div key={company.company_code} layout layoutId={`gtt-${company.company_code}`}
+                                  initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                                  transition={{ layout: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.2 }, scale: { duration: 0.2 } }}>
+                                  <CompanyTile company={company} data={data} color="grey" gttColor={gttC} devPct={devPct} />
+                                </motion.div>
+                              );
+                            })}
+                          </AnimatePresence>
+                        </motion.div>
+                      )}
+
+                      {/* GTT CLUSTER: green / yellow / red columns */}
+                      {tileView === 'cluster' && (
+                        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                          {(['green', 'yellow', 'red'] as const).map(col => {
+                            const companies = gttClusterGroups[col];
+                            const labelMap  = { green: 'Above Path ≥0%', yellow: 'Near Path −5% to 0', red: 'Below Path −10% to −5%' };
+                            const borderMap = { green: 'border-green-500/25 bg-green-500/5', yellow: 'border-yellow-500/25 bg-yellow-500/5', red: 'border-red-500/25 bg-red-500/5' };
+                            const textMap   = { green: 'text-green-500 dark:text-green-400', yellow: 'text-yellow-500 dark:text-yellow-400', red: 'text-red-500 dark:text-red-400' };
+                            return (
+                              <div key={col} className={cn('border rounded-2xl p-3 flex flex-col', borderMap[col])}>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', GTT_CIRCLE_CLASS[col])} />
+                                  <span className={cn('text-xs font-semibold', textMap[col])}>{labelMap[col]}</span>
+                                  <Badge variant="outline" className="text-[10px] h-4 px-1.5 ml-auto">{companies.length}</Badge>
+                                </div>
+                                <AnimatePresence mode="popLayout">
+                                  <motion.div layout className="flex flex-col gap-2">
+                                    {companies.length === 0
+                                      ? <p className="text-[10px] text-muted-foreground text-center py-4">No companies</p>
+                                      : companies.map(company => {
+                                          const data = resolveMarketData(marketData, company);
+                                          const snap = gttSnapshots.get(company.company_code) ?? null;
+                                          const { color: gttC, devPct } = colorForTickGtt(snap, data?.ltp, new Date());
+                                          return (
+                                            <motion.div key={company.company_code} layout layoutId={`gtt-${company.company_code}`}
+                                              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+                                              transition={{ layout: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.18 } }}>
+                                              <CompanyTile company={company} data={data} color="grey" gttColor={gttC} devPct={devPct} />
+                                            </motion.div>
+                                          );
+                                        })
+                                    }
+                                  </motion.div>
+                                </AnimatePresence>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* GTT RANKED */}
+                      {tileView === 'ranked' && (
+                        <motion.div layout className="flex flex-col gap-2">
+                          <AnimatePresence mode="popLayout">
+                            {gttSortedCompanies.map((company, idx) => {
+                              const data = resolveMarketData(marketData, company);
+                              const snap = gttSnapshots.get(company.company_code) ?? null;
+                              const { color: gttC, devPct } = colorForTickGtt(snap, data?.ltp, new Date());
+                              return (
+                                <motion.div key={company.company_code} layout layoutId={`gtt-${company.company_code}`}
+                                  className="flex items-center gap-3"
+                                  initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}
+                                  transition={{ layout: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.18 } }}>
+                                  <span className="text-[10px] font-mono text-muted-foreground w-6 text-right shrink-0">#{idx + 1}</span>
+                                  <div className="flex-1">
+                                    <CompanyTile company={company} data={data} color="grey" gttColor={gttC} devPct={devPct} />
+                                  </div>
+                                </motion.div>
+                              );
+                            })}
+                          </AnimatePresence>
+                        </motion.div>
+                      )}
+
+                      {/* GTT COMPACT */}
+                      {tileView === 'compact' && (
+                        <motion.div layout className="grid gap-2" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+                          <AnimatePresence mode="popLayout">
+                            {gttSortedCompanies.map(company => {
+                              const data = resolveMarketData(marketData, company);
+                              const snap = gttSnapshots.get(company.company_code) ?? null;
+                              const { color: gttC, devPct } = colorForTickGtt(snap, data?.ltp, new Date());
+                              return (
+                                <motion.div key={company.company_code} layout layoutId={`gtt-${company.company_code}`}
+                                  initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                                  transition={{ layout: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.2 }, scale: { duration: 0.2 } }}>
+                                  <CompanyTile company={company} data={data} color="grey" gttColor={gttC} devPct={devPct} />
+                                </motion.div>
+                              );
+                            })}
+                          </AnimatePresence>
+                        </motion.div>
+                      )}
+
+                      {/* GTT MOMENTUM */}
+                      {tileView === 'momentum' && (
+                        <div className="space-y-6">
+                          {gttMomentumGroups.spotlight.length > 0 && (
+                            <div>
+                              <div className="flex items-center gap-2 mb-3">
+                                <Star className="h-3.5 w-3.5 text-yellow-500" />
+                                <span className="text-xs font-semibold text-foreground">Top Movers</span>
+                                <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{gttMomentumGroups.spotlight.length}</Badge>
+                              </div>
+                              <motion.div layout className="grid gap-3" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                                <AnimatePresence mode="popLayout">
+                                  {gttMomentumGroups.spotlight.map(company => {
+                                    const data = resolveMarketData(marketData, company);
+                                    const snap = gttSnapshots.get(company.company_code) ?? null;
+                                    const { color: gttC, devPct } = colorForTickGtt(snap, data?.ltp, new Date());
+                                    return (
+                                      <motion.div key={company.company_code} layout layoutId={`gtt-${company.company_code}`}
+                                        initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                                        transition={{ layout: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.2 }, scale: { duration: 0.2 } }}>
+                                        <CompanyTile company={company} data={data} color="grey" gttColor={gttC} devPct={devPct} />
+                                      </motion.div>
+                                    );
+                                  })}
+                                </AnimatePresence>
+                              </motion.div>
+                            </div>
+                          )}
+                          {gttMomentumGroups.rest.length > 0 && (
+                            <div>
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className="text-xs font-medium text-muted-foreground">Tracking</span>
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5">{gttMomentumGroups.rest.length}</Badge>
+                              </div>
+                              <motion.div layout className="grid gap-2" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                                <AnimatePresence mode="popLayout">
+                                  {gttMomentumGroups.rest.map(company => {
+                                    const data = resolveMarketData(marketData, company);
+                                    const snap = gttSnapshots.get(company.company_code) ?? null;
+                                    const { color: gttC, devPct } = colorForTickGtt(snap, data?.ltp, new Date());
+                                    return (
+                                      <motion.div key={company.company_code} layout layoutId={`gtt-${company.company_code}`}
+                                        initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                                        transition={{ layout: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.2 }, scale: { duration: 0.2 } }}>
+                                        <CompanyTile company={company} data={data} color="grey" gttColor={gttC} devPct={devPct} />
+                                      </motion.div>
+                                    );
+                                  })}
+                                </AnimatePresence>
+                              </motion.div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* GTT BLUE — always at bottom across all views */}
+                      {gttClusterGroups.blue.length > 0 && (
+                        <div className="border border-blue-500/25 rounded-2xl p-4 bg-blue-500/5">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', GTT_CIRCLE_CLASS.blue)} />
+                            <span className="text-sm font-semibold text-blue-500 dark:text-blue-400">Blue — Strongly Above GTT Path</span>
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-blue-500/50 text-blue-500">{gttClusterGroups.blue.length}</Badge>
+                            <span className="text-xs text-muted-foreground ml-1">≥2% above the GTT forecast path</span>
+                          </div>
+                          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                            {gttClusterGroups.blue.map(company => {
+                              const data = resolveMarketData(marketData, company);
+                              const snap = gttSnapshots.get(company.company_code) ?? null;
+                              const { devPct } = colorForTickGtt(snap, data?.ltp, new Date());
+                              return <CompanyTile key={company.company_code} company={company} data={data} color="grey" gttColor="blue" devPct={devPct} />;
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
-                </>
+                </LayoutGroup>
               )}
 
               {/* ══════════════════════════════════════════════════════════════
                   Logic 1 — original open-price signals (rendered only when
-                  toggle is OFF). Nothing in this block has been changed.
+                  toggle is OFF). Multi-view support via tileView state.
               ══════════════════════════════════════════════════════════════ */}
               {!gttAligned && (
-                <>
-                  {/* Live companies — Red / Yellow / Green only (Blue excluded) */}
-                  {sortedCompanies.length > 0 && (
-                    <motion.div
-                      layout
-                      className="grid gap-3"
-                      style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}
-                    >
+                <LayoutGroup id="l1-tiles">
+                  <>
+                  {/* ── GRID view (default): 3-column mixed layout ── */}
+                  {tileView === 'grid' && sortedCompanies.length > 0 && (
+                    <motion.div layout className="grid gap-3" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
                       <AnimatePresence mode="popLayout">
                         {sortedCompanies.map(company => {
                           const data = resolveMarketData(marketData, company);
                           const color = getTileColor(company.company_code, data, blueCheckDone, lockedColors, openingPrices[company.company_code]);
-
                           return (
-                            <motion.div
-                              key={company.company_code}
-                              layout
-                              layoutId={company.company_code}
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.9 }}
-                              transition={{
-                                layout: { type: 'spring', stiffness: 300, damping: 30 },
-                                opacity: { duration: 0.2 },
-                                scale: { duration: 0.2 },
-                              }}
-                            >
-                              <CompanyTile
-                                company={company}
-                                data={data}
-                                color={color}
-                              />
+                            <motion.div key={company.company_code} layout layoutId={company.company_code}
+                              initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                              transition={{ layout: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.2 }, scale: { duration: 0.2 } }}>
+                              <CompanyTile company={company} data={data} color={color} />
                             </motion.div>
                           );
                         })}
@@ -1218,7 +1470,140 @@ const MarketMoversPage: React.FC = () => {
                     </motion.div>
                   )}
 
-                  {/* ── Blue Frozen Section — confirmed ≥2% above open at 10:30 AM ── */}
+                  {/* ── CLUSTER view: 3 colour columns side by side ── */}
+                  {tileView === 'cluster' && (
+                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                      {(['green', 'yellow', 'red'] as const).map(col => {
+                        const companies = clusterGroups[col];
+                        const labelMap  = { green: 'Above Open ≥1.5%', yellow: 'Above Open 0–1.5%', red: 'Below Open' };
+                        const borderMap = { green: 'border-green-500/25 bg-green-500/5', yellow: 'border-yellow-500/25 bg-yellow-500/5', red: 'border-red-500/25 bg-red-500/5' };
+                        const textMap   = { green: 'text-green-500 dark:text-green-400', yellow: 'text-yellow-500 dark:text-yellow-400', red: 'text-red-500 dark:text-red-400' };
+                        return (
+                          <div key={col} className={cn('border rounded-2xl p-3 flex flex-col', borderMap[col])}>
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', CIRCLE_CLASS[col])} />
+                              <span className={cn('text-xs font-semibold', textMap[col])}>{labelMap[col]}</span>
+                              <Badge variant="outline" className="text-[10px] h-4 px-1.5 ml-auto">{companies.length}</Badge>
+                            </div>
+                            <AnimatePresence mode="popLayout">
+                              <motion.div layout className="flex flex-col gap-2">
+                                {companies.length === 0
+                                  ? <p className="text-[10px] text-muted-foreground text-center py-4">No companies</p>
+                                  : companies.map(company => {
+                                      const data = resolveMarketData(marketData, company);
+                                      return (
+                                        <motion.div key={company.company_code} layout layoutId={company.company_code}
+                                          initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+                                          transition={{ layout: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.18 } }}>
+                                          <CompanyTile company={company} data={data} color={col} />
+                                        </motion.div>
+                                      );
+                                    })
+                                }
+                              </motion.div>
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* ── RANKED view: 1-column sorted list ── */}
+                  {tileView === 'ranked' && sortedCompanies.length > 0 && (
+                    <motion.div layout className="flex flex-col gap-2">
+                      <AnimatePresence mode="popLayout">
+                        {sortedCompanies.map((company, idx) => {
+                          const data  = resolveMarketData(marketData, company);
+                          const color = getTileColor(company.company_code, data, blueCheckDone, lockedColors, openingPrices[company.company_code]);
+                          return (
+                            <motion.div key={company.company_code} layout layoutId={company.company_code}
+                              className="flex items-center gap-3"
+                              initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}
+                              transition={{ layout: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.18 } }}>
+                              <span className="text-[10px] font-mono text-muted-foreground w-6 text-right shrink-0">#{idx + 1}</span>
+                              <div className="flex-1">
+                                <CompanyTile company={company} data={data} color={color} />
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
+                    </motion.div>
+                  )}
+
+                  {/* ── COMPACT view: 5-column dense grid ── */}
+                  {tileView === 'compact' && sortedCompanies.length > 0 && (
+                    <motion.div layout className="grid gap-2" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+                      <AnimatePresence mode="popLayout">
+                        {sortedCompanies.map(company => {
+                          const data  = resolveMarketData(marketData, company);
+                          const color = getTileColor(company.company_code, data, blueCheckDone, lockedColors, openingPrices[company.company_code]);
+                          return (
+                            <motion.div key={company.company_code} layout layoutId={company.company_code}
+                              initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                              transition={{ layout: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.2 }, scale: { duration: 0.2 } }}>
+                              <CompanyTile company={company} data={data} color={color} />
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
+                    </motion.div>
+                  )}
+
+                  {/* ── MOMENTUM view: spotlight top movers + rest below ── */}
+                  {tileView === 'momentum' && (
+                    <div className="space-y-6">
+                      {momentumGroups.spotlight.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <Star className="h-3.5 w-3.5 text-yellow-500" />
+                            <span className="text-xs font-semibold text-foreground">Top Movers</span>
+                            <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{momentumGroups.spotlight.length}</Badge>
+                          </div>
+                          <motion.div layout className="grid gap-3" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                            <AnimatePresence mode="popLayout">
+                              {momentumGroups.spotlight.map(company => {
+                                const data  = resolveMarketData(marketData, company);
+                                const color = getTileColor(company.company_code, data, blueCheckDone, lockedColors, openingPrices[company.company_code]);
+                                return (
+                                  <motion.div key={company.company_code} layout layoutId={company.company_code}
+                                    initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                                    transition={{ layout: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.2 }, scale: { duration: 0.2 } }}>
+                                    <CompanyTile company={company} data={data} color={color} />
+                                  </motion.div>
+                                );
+                              })}
+                            </AnimatePresence>
+                          </motion.div>
+                        </div>
+                      )}
+                      {momentumGroups.rest.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-xs font-medium text-muted-foreground">Tracking</span>
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5">{momentumGroups.rest.length}</Badge>
+                          </div>
+                          <motion.div layout className="grid gap-2" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                            <AnimatePresence mode="popLayout">
+                              {momentumGroups.rest.map(company => {
+                                const data  = resolveMarketData(marketData, company);
+                                const color = getTileColor(company.company_code, data, blueCheckDone, lockedColors, openingPrices[company.company_code]);
+                                return (
+                                  <motion.div key={company.company_code} layout layoutId={company.company_code}
+                                    initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                                    transition={{ layout: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.2 }, scale: { duration: 0.2 } }}>
+                                    <CompanyTile company={company} data={data} color={color} />
+                                  </motion.div>
+                                );
+                              })}
+                            </AnimatePresence>
+                          </motion.div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Blue Frozen Section — always at bottom for all views ── */}
                   {blueCheckDone && lockedColors.size > 0 && (
                     <div className="border border-blue-500/25 rounded-2xl p-4 bg-blue-500/5">
                       <div className="flex items-center gap-2 mb-3">
@@ -1251,7 +1636,8 @@ const MarketMoversPage: React.FC = () => {
                       </div>
                     </div>
                   )}
-                </>
+                  </>
+                </LayoutGroup>
               )}
             </div>
           </div>
