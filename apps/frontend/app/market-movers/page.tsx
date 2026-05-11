@@ -42,7 +42,7 @@ import {
   WifiOff,
   Zap,
 } from 'lucide-react';
-import { getSocket } from '@/lib/socket';
+import { getSocket, onSocketSourceChange, getSocketSourceLabel } from '@/lib/socket';
 import MarketMoversSidebar from './components/MarketMoversSidebar';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -102,14 +102,25 @@ function getISTMinutes(): number {
   return (now.getUTCHours() * 60 + now.getUTCMinutes() + 330) % (24 * 60);
 }
 
-/** True if current IST wall-clock time is past 10:30 AM (end of blue-detection window) */
+/** True if current IST wall-clock time is at or past 10:30 AM */
 function isAfter1030AMIST(): boolean {
-  return getISTMinutes() > 10 * 60 + 30;
+  return getISTMinutes() >= 10 * 60 + 30;
+}
+
+/** Milliseconds until 10:30 AM IST today (negative if already past) */
+function getMsUntil1030IST(): number {
+  const now = Date.now();
+  const istNow = new Date(now + 330 * 60 * 1000);
+  const target = Date.UTC(
+    istNow.getUTCFullYear(),
+    istNow.getUTCMonth(),
+    istNow.getUTCDate(),
+    5, 0, 0   // 10:30 AM IST = 05:00 UTC
+  );
+  return target - now;
 }
 
 const LOCKED_COLORS_API = '/api/market-movers/locked-colors';
-/** Only blue is frozen after 10:30 AM. Green, yellow, red are always live. */
-const FROZEN_COLORS = new Set<TileColor>(['blue']);
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Port 6969 opening price helpers
@@ -149,25 +160,36 @@ async function fetchOpenPrice6969(companyCode: string): Promise<number | null> {
 }
 
 /**
- * Compute tile color from today's open vs current LTP.
- *   Blue   = LTP ≥ 2% above open  (only this is frozen after 10:30 AM)
- *   Green  = LTP 1% to <2% above open  (always live)
- *   Yellow = LTP 0% to <1% above open  (always live)
- *   Red    = LTP below open             (always live)
- *   Grey   = no live data or open price unavailable
+ * Compute live tile color.
+ * Uses `data.changePercent` (Fyers chp — same value displayed in the tile) so the
+ * signal always matches the number the user sees.
+ * Falls back to manual ltp-vs-open calculation only when chp is unavailable.
  *
- * `externalOpen` is the open_price from port 6969; used when WebSocket `open` is absent/zero.
+ * Blue is NEVER returned here — it is only assigned by the 10:30 AM snapshot check.
+ *   Green  = ≥ 1% above reference  (live)
+ *   Yellow = 0% to <1% above reference  (live)
+ *   Red    = below reference  (live)
+ *   Grey   = no live data yet
  */
 function computeColorFromOpen(data: MarketData, externalOpen?: number): TileColor {
-  const raw = data as any;
-  // Priority: normalised open → raw Fyers open_price → port-6969 fallback
-  const open =
-    (data.open > 0)        ? data.open :
-    (raw.open_price > 0)   ? raw.open_price :
-    (externalOpen > 0)     ? externalOpen : 0;
-  if (!open || data.ltp == null) return 'grey';
-  const pct = ((data.ltp - open) / open) * 100;
-  if (pct >= 2) return 'blue';
+  if (data.ltp == null) return 'grey';
+
+  let pct: number;
+
+  // Prefer Fyers chp (matches the % shown in the tile exactly)
+  if (data.changePercent != null) {
+    pct = data.changePercent;
+  } else {
+    // Fallback: compute manually from today's open
+    const raw = data as any;
+    const open =
+      (data.open > 0)      ? data.open :
+      (raw.open_price > 0) ? raw.open_price :
+      (externalOpen > 0)   ? externalOpen : 0;
+    if (!open) return 'grey';
+    pct = ((data.ltp - open) / open) * 100;
+  }
+
   if (pct >= 1) return 'green';
   if (pct >= 0) return 'yellow';
   return 'red';
@@ -175,30 +197,26 @@ function computeColorFromOpen(data: MarketData, externalOpen?: number): TileColo
 
 /**
  * Effective tile color for a company.
- *   Blue after 10:30 AM  → frozen (locked during 9:15–10:30 AM window).
- *   Green / Yellow / Red → always live, update in real-time.
- *   Before 10:30 AM      → fully live for all colors.
- *   No data              → grey.
+ *   Blue  → only after the 10:30 AM snapshot check confirms ≥2% above open.
+ *   Green / Yellow / Red → always live from computeColorFromOpen.
+ *   No data → grey.
  */
 function getTileColor(
   companyCode: string,
   data: MarketData | undefined,
-  frozenAfter1030AM: boolean,
+  blueCheckDone: boolean,
   lockedColors: Map<string, TileColor>,
   externalOpen?: number
 ): TileColor {
-  if (frozenAfter1030AM) {
-    const locked = lockedColors.get(companyCode);
-    // Only honour the lock if it is blue (the only freezable color).
-    if (locked && FROZEN_COLORS.has(locked)) return locked;
-  }
+  if (blueCheckDone && lockedColors.get(companyCode) === 'blue') return 'blue';
   if (!data) return 'grey';
   return computeColorFromOpen(data, externalOpen);
 }
 
-/** % change from today's open for sorting (returns 0 when open not available) */
+/** % change for sorting — uses same reference as computeColorFromOpen */
 function pctFromOpen(data: MarketData | undefined, externalOpen?: number): number {
   if (!data || data.ltp == null) return 0;
+  if (data.changePercent != null) return data.changePercent;
   const raw = data as any;
   const open =
     (data.open > 0)      ? data.open :
@@ -313,8 +331,8 @@ const LegendRow: React.FC = () => (
   <div className="flex items-center gap-4 px-1 text-[10px] text-muted-foreground">
     {(
       [
-        { color: 'blue',   label: '≥2% above open by 10:30 AM (frozen)' },
-        { color: 'green',  label: '1–2% above open (live)' },
+        { color: 'blue',   label: '≥2% above open at 10:30 AM (frozen for day)' },
+        { color: 'green',  label: '≥1% above open (live)' },
         { color: 'yellow', label: '0–1% above open (live)' },
         { color: 'red',    label: 'Below open (live)' },
         { color: 'grey',   label: 'No data / pre-market' },
@@ -335,6 +353,7 @@ const MarketMoversPage: React.FC = () => {
   /* ── Live market state (port 5001 via shared getSocket singleton) ── */
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
   const [connectionStatus, setConnectionStatus] = useState<'Connecting' | 'Connected' | 'Disconnected' | 'Reconnecting'>('Connecting');
+  const [socketSource, setSocketSource] = useState<'server' | 'localhost'>('server');
   const [isConnected, setIsConnected] = useState(false);
   const [wsLoading, setWsLoading] = useState(true);
   const [wsError, setWsError] = useState<string | null>(null);
@@ -348,30 +367,45 @@ const MarketMoversPage: React.FC = () => {
   /* ── Track which companies we subscribed to (to avoid re-subscribing) ── */
   const subscribedCodesRef = useRef<string>('');
   const hasAutoSelectedRef = useRef(false);
+  /* ── Stable ref mirror of allSidebarCompanies — used inside the 10:30 AM timer callback ── */
+  const allSidebarCompaniesRef = useRef<Company[]>([]);
 
   /* ── Opening prices from port 6969 (keyed by company_code) ── */
   const openingPricesRef = useRef<Record<string, number>>({});
   const fetchedCodesRef = useRef<Set<string>>(new Set());
   const [openingPrices, setOpeningPrices] = useState<Record<string, number>>({});
 
-  /* ── Locked colors: built live during 9:15–10:30 AM, only blue frozen after ── */
+  /* ── Locked (Blue) colors: set at the 10:30 AM snapshot, frozen for the day ── */
   const lockedColorsRef = useRef<Map<string, TileColor>>(new Map());
   const [lockedColors, setLockedColors] = useState<Map<string, TileColor>>(new Map());
-  const [frozenAfter1030AM, setFrozenAfter1030AM] = useState<boolean>(() => isAfter1030AMIST());
+  /* blueCheckDone = true once the 10:30 AM snapshot check has run (or loaded from persisted file) */
+  const [blueCheckDone, setBlueCheckDone] = useState(false);
+  const [blueCheckRunning, setBlueCheckRunning] = useState(false);
+  const blueCheckRunningRef = useRef(false);
 
-  /* ── Load persisted locked colors from backend on mount ── */
+  /* ── Load persisted Blue colors from backend on mount ── */
   useEffect(() => {
     fetch(LOCKED_COLORS_API)
-      .then(r => r.ok ? r.json() : {})
-      .then((data: Record<string, TileColor>) => {
-        const map = new Map<string, TileColor>(
-          Object.entries(data).filter(([, v]) => FROZEN_COLORS.has(v as TileColor))
-        );
+      .then(async r => {
+        if (r.status === 404) {
+          // File doesn't exist yet — check has never run today. Leave blueCheckDone = false.
+          return null;
+        }
+        if (!r.ok) return null;
+        return r.json() as Promise<Record<string, string>>;
+      })
+      .then((data) => {
+        if (data === null) return; // no file — timer effect will run the check
+        const map = new Map<string, TileColor>();
+        for (const [code, color] of Object.entries(data)) {
+          if (color === 'blue') map.set(code, 'blue');
+        }
         lockedColorsRef.current = map;
         setLockedColors(new Map(map));
+        // File exists → check was already run today (result may be zero blue companies).
+        setBlueCheckDone(true);
       })
       .catch(() => { /* backend unreachable — silent */ });
-    setFrozenAfter1030AM(isAfter1030AMIST());
   }, []);
 
   /* ── Port 5001 socket: connect, receive marketDataUpdate, update state ── */
@@ -383,6 +417,7 @@ const MarketMoversPage: React.FC = () => {
       setIsConnected(true);
       setWsLoading(false);
       setWsError(null);
+      setSocketSource(getSocketSourceLabel());
       // Re-subscribe on reconnect so we don't miss ticks
       if (subscribedCodesRef.current) {
         const companyCodes = subscribedCodesRef.current.split(',');
@@ -439,11 +474,15 @@ const MarketMoversPage: React.FC = () => {
       setWsLoading(false);
     }
 
+    const unsubscribeSource = onSocketSourceChange(label => setSocketSource(label));
+    setSocketSource(getSocketSourceLabel());
+
     return () => {
       socket.off('connect',           onConnect);
       socket.off('disconnect',        onDisconnect);
       socket.off('reconnect_attempt', onReconnectAttempt);
       socket.off('marketDataUpdate',  onMarketDataUpdate);
+      unsubscribeSource();
     };
   }, []);
 
@@ -481,39 +520,59 @@ const MarketMoversPage: React.FC = () => {
     run();
   }, [allSidebarCompanies]);
 
-  /* ── Build/update locked blue companies on each market tick (9:15–10:30 AM window) ── */
+  /* ── 10:30 AM snapshot Blue check — runs ONCE at exactly 10:30 AM IST ── */
   useEffect(() => {
-    // Once frozen and already populated, nothing left to update.
-    if (frozenAfter1030AM && lockedColorsRef.current.size > 0) return;
+    if (blueCheckDone) return; // already done (loaded from file or just ran)
 
-    let changed = false;
-    Object.values(marketData).forEach((data: MarketData) => {
-      const code = codeFromSymbol(data.symbol) ?? data.symbol;
-      const externalOpen = openingPricesRef.current[code];
-      const color = computeColorFromOpen(data, externalOpen);
-      // Only lock blue (the sole freezable color).
-      if (!FROZEN_COLORS.has(color)) return;
-      if (lockedColorsRef.current.get(code) !== color) {
-        lockedColorsRef.current.set(code, color);
-        changed = true;
+    const runBlueSnapshotCheck = async () => {
+      if (blueCheckRunningRef.current) return;
+      blueCheckRunningRef.current = true;
+      setBlueCheckRunning(true);
+
+      const codes = allSidebarCompaniesRef.current.map(c => c.company_code);
+      const BATCH = 8;
+      const newBlue = new Map<string, TileColor>();
+
+      for (let i = 0; i < codes.length; i += BATCH) {
+        const batch = codes.slice(i, i + BATCH);
+        await Promise.allSettled(
+          batch.map(async code => {
+            try {
+              const res = await fetch(`/api/market-movers/snapshot-1030?code=${encodeURIComponent(code)}`);
+              if (!res.ok) return;
+              const json = await res.json();
+              if (typeof json.pct === 'number' && json.pct >= 2) {
+                newBlue.set(code, 'blue');
+              }
+            } catch { /* silent */ }
+          })
+        );
       }
-    });
 
-    const nowPast1030 = isAfter1030AMIST();
-    if (changed || nowPast1030) {
-      const snapshot = new Map(lockedColorsRef.current);
-      // Persist to backend (fire-and-forget)
+      lockedColorsRef.current = newBlue;
+      setLockedColors(new Map(newBlue));
+      setBlueCheckDone(true);
+      blueCheckRunningRef.current = false;
+      setBlueCheckRunning(false);
+
+      // Persist result to backend data folder (file existing = check was run today)
       fetch(LOCKED_COLORS_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.fromEntries(snapshot)),
+        body: JSON.stringify(Object.fromEntries(newBlue)),
       }).catch(() => { /* silent */ });
-      setLockedColors(snapshot);
+    };
+
+    const msUntil = getMsUntil1030IST();
+    if (msUntil <= 0) {
+      // Past 10:30 AM — run immediately (first page load today after the cutoff)
+      runBlueSnapshotCheck();
+      return;
     }
-    if (nowPast1030 && !frozenAfter1030AM) {
-      setFrozenAfter1030AM(true);
-    }
-  }, [marketData, frozenAfter1030AM]);
+    // Schedule for exactly 10:30 AM IST
+    const timer = setTimeout(runBlueSnapshotCheck, msUntil);
+    return () => clearTimeout(timer);
+  }, [blueCheckDone]);
 
   /* ── Right sidebar width/collapse ── */
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
@@ -523,6 +582,7 @@ const MarketMoversPage: React.FC = () => {
   /* ── When sidebar companies load, auto-select all + subscribe ── */
   const handleCompaniesChange = useCallback(
     (companies: Company[]) => {
+      allSidebarCompaniesRef.current = companies;
       setAllSidebarCompanies(companies);
 
       // Auto-select all on first load
@@ -550,10 +610,11 @@ const MarketMoversPage: React.FC = () => {
     getSocket().emit('subscribe_companies', { companyCodes, symbols });
   }, [isConnected, allSidebarCompanies]);
 
-  /* ── Compute sorted tile list ── */
+  /* ── Compute sorted tile list (live: Red/Yellow/Green only — Blue goes to frozen section) ── */
   const sortedCompanies = useMemo(() => {
     const visible = allSidebarCompanies.filter(c =>
-      selectedCodes.has(c.company_code)
+      selectedCodes.has(c.company_code) &&
+      !(blueCheckDone && lockedColors.get(c.company_code) === 'blue')
     );
 
     return [...visible].sort((a, b) => {
@@ -566,7 +627,7 @@ const MarketMoversPage: React.FC = () => {
       // Tiebreaker: alphabetical
       return a.company_code.localeCompare(b.company_code);
     });
-  }, [allSidebarCompanies, selectedCodes, marketData, openingPrices]);
+  }, [allSidebarCompanies, selectedCodes, marketData, openingPrices, blueCheckDone, lockedColors]);
 
   /* ── Sidebar drag resize ── */
   const handleSidebarMouseDown = useCallback(
@@ -611,12 +672,15 @@ const MarketMoversPage: React.FC = () => {
   /* ── Stats ── */
   const stats = useMemo(() => {
     const counts: Record<TileColor, number> = { blue: 0, green: 0, yellow: 0, red: 0, grey: 0 };
+    // Blue companies are in the frozen section — count directly from lockedColors
+    if (blueCheckDone) counts.blue = lockedColors.size;
+    // Non-blue (live) companies
     sortedCompanies.forEach(c => {
       const d = resolveMarketData(marketData, c);
-      counts[getTileColor(c.company_code, d, frozenAfter1030AM, lockedColors, openingPrices[c.company_code])]++;
+      counts[getTileColor(c.company_code, d, blueCheckDone, lockedColors, openingPrices[c.company_code])]++;
     });
     return counts;
-  }, [sortedCompanies, marketData, frozenAfter1030AM, lockedColors, openingPrices]);
+  }, [sortedCompanies, marketData, blueCheckDone, lockedColors, openingPrices]);
 
   /* ─────────────────────────────── RENDER ────────────────────────────────── */
   return (
@@ -678,8 +742,23 @@ const MarketMoversPage: React.FC = () => {
           {/* Connection status */}
           <div className="flex items-center gap-1.5 text-xs">
             <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', connDisplay.dot)} />
-            <span className={cn('font-medium hidden sm:block', connDisplay.color)}>
-              {connDisplay.label}
+            <span
+              className={cn('font-medium hidden sm:block cursor-default select-none', connDisplay.color)}
+              title={
+                connectionStatus === 'Connected'
+                  ? socketSource === 'server'
+                    ? 'Connected to remote server (100.93.172.21:5001)'
+                    : 'Connected to localhost:5001 (remote server unreachable)'
+                  : connectionStatus
+              }
+            >
+              {connectionStatus === 'Connected'
+                ? <>{connDisplay.label} <span className={`text-[10px] font-normal opacity-70 ml-0.5 ${
+                    socketSource === 'server'
+                      ? 'text-emerald-500 dark:text-emerald-400'
+                      : 'text-amber-500 dark:text-amber-400'
+                  }`}>({socketSource})</span></>
+                : connDisplay.label}
             </span>
           </div>
 
@@ -705,14 +784,16 @@ const MarketMoversPage: React.FC = () => {
               <LegendRow />
             </div>
 
-            {/* Tile grid */}
-            <div className="flex-1 overflow-auto p-4">
-              {wsLoading && sortedCompanies.length === 0 ? (
+            {/* Tile grid + Blue frozen section — all in one scrollable container */}
+            <div className="flex-1 overflow-auto p-4 space-y-4">
+
+              {/* Loading / empty states */}
+              {wsLoading && sortedCompanies.length === 0 && !blueCheckDone ? (
                 <div className="flex items-center justify-center h-40 gap-3 text-muted-foreground text-sm">
                   <Activity className="h-4 w-4 animate-pulse" />
                   <span>Connecting to live feed…</span>
                 </div>
-              ) : !isConnected && sortedCompanies.length === 0 ? (
+              ) : !isConnected && sortedCompanies.length === 0 && !blueCheckDone ? (
                 <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground text-sm">
                   <WifiOff className="h-6 w-6" />
                   <span>Waiting for connection…</span>
@@ -720,11 +801,22 @@ const MarketMoversPage: React.FC = () => {
                     <span className="text-xs text-red-400">{wsError}</span>
                   )}
                 </div>
-              ) : sortedCompanies.length === 0 ? (
+              ) : sortedCompanies.length === 0 && lockedColors.size === 0 ? (
                 <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
                   No companies selected. Check companies in the sidebar to show tiles.
                 </div>
-              ) : (
+              ) : null}
+
+              {/* Blue snapshot check in progress */}
+              {blueCheckRunning && (
+                <div className="flex items-center gap-2 px-1 text-xs text-blue-500">
+                  <Activity className="h-3.5 w-3.5 animate-pulse" />
+                  <span>Running 10:30 AM Blue snapshot check…</span>
+                </div>
+              )}
+
+              {/* Live companies — Red / Yellow / Green only (Blue excluded) */}
+              {sortedCompanies.length > 0 && (
                 <motion.div
                   layout
                   className="grid gap-3"
@@ -733,7 +825,7 @@ const MarketMoversPage: React.FC = () => {
                   <AnimatePresence mode="popLayout">
                     {sortedCompanies.map(company => {
                       const data = resolveMarketData(marketData, company);
-                      const color = getTileColor(company.company_code, data, frozenAfter1030AM, lockedColors, openingPrices[company.company_code]);
+                      const color = getTileColor(company.company_code, data, blueCheckDone, lockedColors, openingPrices[company.company_code]);
 
                       return (
                         <motion.div
@@ -759,6 +851,40 @@ const MarketMoversPage: React.FC = () => {
                     })}
                   </AnimatePresence>
                 </motion.div>
+              )}
+
+              {/* ── Blue Frozen Section — confirmed ≥2% above open at 10:30 AM ── */}
+              {blueCheckDone && lockedColors.size > 0 && (
+                <div className="border border-blue-500/25 rounded-2xl p-4 bg-blue-500/5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', CIRCLE_CLASS.blue)} />
+                    <span className="text-sm font-semibold text-blue-500 dark:text-blue-400">
+                      Blue — Confirmed at 10:30 AM
+                    </span>
+                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-blue-500/50 text-blue-500">
+                      {lockedColors.size}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground ml-1">
+                      ≥2% above opening price — frozen for the day
+                    </span>
+                  </div>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                    {[...lockedColors.keys()].sort().map(code => {
+                      const company = allSidebarCompanies.find(c => c.company_code === code) ?? {
+                        company_code: code, name: code, exchange: 'NSE', marker: 'EQ',
+                      } as Company;
+                      const data = resolveMarketData(marketData, company);
+                      return (
+                        <CompanyTile
+                          key={code}
+                          company={company}
+                          data={data}
+                          color="blue"
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
           </div>

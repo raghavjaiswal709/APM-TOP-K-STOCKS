@@ -59,6 +59,7 @@ const LiveMarketInner: React.FC = () => {
     historicalData,
     marketStatus,
     connectionStatus,
+    socketSource,
     error,
     loading,
     subscribeToCompanies,
@@ -246,15 +247,28 @@ const LiveMarketInner: React.FC = () => {
                 }`}
               />
               <span
-                className={`font-medium ${
+                className={`font-medium cursor-default select-none ${
                   isConnected
                     ? 'text-emerald-600 dark:text-emerald-400'
                     : connectionStatus === 'Reconnecting'
                     ? 'text-yellow-600 dark:text-yellow-400'
                     : 'text-red-600 dark:text-red-400'
                 }`}
+                title={
+                  isConnected
+                    ? socketSource === 'server'
+                      ? 'Connected to remote server (100.93.172.21:5010)'
+                      : 'Connected to localhost:5010 (remote server unreachable)'
+                    : connectionStatus
+                }
               >
-                {connectionStatus}
+                {isConnected
+                  ? <>Live <span className={`text-[10px] font-normal opacity-70 ml-0.5 ${
+                      socketSource === 'server'
+                        ? 'text-emerald-500 dark:text-emerald-400'
+                        : 'text-amber-500 dark:text-amber-400'
+                    }`}>({socketSource})</span></>
+                  : connectionStatus}
               </span>
             </div>
 

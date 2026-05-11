@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo, useRef, useTransition } from 'react';
-import { getSocket, onReconnect, isSocketConnected } from '@/lib/socket';
+import { getSocket, onReconnect, isSocketConnected, onSocketSourceChange, getSocketSourceLabel } from '@/lib/socket';
 import dynamic from 'next/dynamic';
 import { usePersistentState, useScrollRestoration } from '@/hooks/useStateRestoration';
 import { usePageState } from '@/app/context/PageStateContext';
@@ -263,6 +263,7 @@ const ClusterOverlayPage: React.FC = () => {
   const [chartUpdates, setChartUpdates] = useState<Record<string, ChartUpdate[]>>({});
 
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
+  const [socketSource, setSocketSource] = useState<'server' | 'localhost'>('server');
   // lastDataReceived moved to ref — only read in the 30s health-check interval,
   // no need to trigger re-renders on every live tick.
   const lastDataReceivedRef = useRef<number | null>(null);
@@ -1100,6 +1101,7 @@ const ClusterOverlayPage: React.FC = () => {
     console.log('✅ Connected to server');
     setSocketStatus('Connected');
     setIsReconnecting(false);
+    setSocketSource(getSocketSourceLabel());
 
     if (socketRef.current) {
       socketRef.current.emit('get_trading_status', {}, (response: any) => {
@@ -1840,6 +1842,10 @@ const ClusterOverlayPage: React.FC = () => {
       }
     });
 
+    // Track which server (primary/fallback) is active and update the UI badge
+    const unsubscribeSource = onSocketSourceChange(label => setSocketSource(label));
+    setSocketSource(getSocketSourceLabel());
+
     // Cleanup only runs on unmount (deps are stable after init)
     return () => {
       socket.off('connect', handleConnect);
@@ -1853,6 +1859,7 @@ const ClusterOverlayPage: React.FC = () => {
       socket.off('ohlcData', handleOhlcData);
       socket.off('heartbeat', handleHeartbeat);
       unsubscribeReconnect();
+      unsubscribeSource();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isClient, isInitialized]);
@@ -2483,7 +2490,7 @@ const ClusterOverlayPage: React.FC = () => {
 
           {/* Header Controls — all items h-7, text-xs, consistent border+tint color system */}
           <div className="flex items-center gap-1.5">
-            {/* Connection Status — compact dot + label */}
+            {/* Connection Status — compact dot + label + source tooltip */}
             <div className="flex items-center gap-1.5 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${socketStatus === 'Connected'
                   ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.6)]'
@@ -2491,13 +2498,27 @@ const ClusterOverlayPage: React.FC = () => {
                     ? 'bg-yellow-500 animate-pulse'
                     : 'bg-red-500'
                 }`} />
-              <span className={`font-medium ${socketStatus === 'Connected'
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : isReconnecting
-                    ? 'text-yellow-600 dark:text-yellow-400'
-                    : 'text-red-600 dark:text-red-400'
-                }`}>
-                {socketStatus === 'Connected' ? 'Live'
+              <span
+                className={`font-medium cursor-default select-none ${socketStatus === 'Connected'
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : isReconnecting
+                      ? 'text-yellow-600 dark:text-yellow-400'
+                      : 'text-red-600 dark:text-red-400'
+                  }`}
+                title={
+                  socketStatus === 'Connected'
+                    ? socketSource === 'server'
+                      ? 'Connected to remote server (100.93.172.21:5001)'
+                      : 'Connected to localhost:5001 (remote server unreachable)'
+                    : socketStatus
+                }
+              >
+                {socketStatus === 'Connected'
+                  ? <>Live <span className={`text-[10px] font-normal opacity-70 ml-0.5 ${
+                      socketSource === 'server'
+                        ? 'text-emerald-500 dark:text-emerald-400'
+                        : 'text-amber-500 dark:text-amber-400'
+                    }`}>({socketSource})</span></>
                   : isReconnecting ? 'Reconnecting'
                     : 'Offline'}
               </span>

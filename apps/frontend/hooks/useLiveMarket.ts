@@ -1,5 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
+
+const PRIMARY_5010_URL  = 'http://100.93.172.21:5010';
+const FALLBACK_5010_URL = 'http://localhost:5010';
+
+function probePrimary5010(): Promise<boolean> {
+  return new Promise(resolve => {
+    const probe = io(PRIMARY_5010_URL, {
+      transports: ['websocket', 'polling'],
+      reconnection: false,
+      timeout: 4000,
+      forceNew: true,
+    });
+    const timer = setTimeout(() => { probe.disconnect(); resolve(false); }, 4000);
+    probe.once('connect', () => { clearTimeout(timer); probe.disconnect(); resolve(true); });
+    probe.once('connect_error', () => { clearTimeout(timer); probe.disconnect(); resolve(false); });
+  });
+}
 interface Company {
   company_code: string;
   name: string;
@@ -81,18 +98,16 @@ export const useLiveMarket = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [socketSource, setSocketSource] = useState<'server' | 'localhost'>('server');
   const [maxCompanies, setMaxCompanies] = useState<number>(999); // ✅ Unlimited companies
   const [tradingHours, setTradingHours] = useState<TradingHours | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const subscribedCompanyCodes = useRef<Set<string>>(new Set());
   const reconnectAttempts = useRef<number>(0);
   const maxReconnectAttempts = 5;
-  const initializeSocket = useCallback(() => {
+  const initializeSocket = useCallback((resolvedUrl: string) => {
     // Live market uses its own dedicated service (port 5010)
-    const SOCKET_URL =
-      process.env.NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL ||
-      process.env.NEXT_PUBLIC_FYERS_SOCKET_URL ||
-      'http://localhost:5010';
+    const SOCKET_URL = resolvedUrl;
     console.log(`🔌 Connecting to Live Market WebSocket (5010): ${SOCKET_URL}`);
     setConnectionStatus('Connecting');
     const socket = io(SOCKET_URL, {
@@ -291,14 +306,40 @@ export const useLiveMarket = () => {
     return socket;
   }, []);
   useEffect(() => {
-    const socket = initializeSocket();
-    socketRef.current = socket;
-    return () => {
-      console.log('🧹 Cleaning up Live Market WebSocket connection');
-      if (subscribedCompanyCodes.current.size > 0) {
-        socket.emit('unsubscribe_all', {});
+    let cancelled = false;
+    let socketInstance: Socket | null = null;
+
+    const envOverride =
+      process.env.NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL ||
+      process.env.NEXT_PUBLIC_FYERS_SOCKET_URL;
+
+    const boot = async () => {
+      let url: string;
+      if (envOverride) {
+        url = envOverride;
+        setSocketSource('server');
+      } else {
+        const primary = await probePrimary5010();
+        if (cancelled) return;
+        url = primary ? PRIMARY_5010_URL : FALLBACK_5010_URL;
+        setSocketSource(primary ? 'server' : 'localhost');
       }
-      socket.disconnect();
+      if (cancelled) return;
+      const socket = initializeSocket(url);
+      socketInstance = socket;
+      socketRef.current = socket;
+    };
+
+    boot();
+    return () => {
+      cancelled = true;
+      console.log('🧹 Cleaning up Live Market WebSocket connection');
+      if (socketInstance) {
+        if (subscribedCompanyCodes.current.size > 0) {
+          socketInstance.emit('unsubscribe_all', {});
+        }
+        socketInstance.disconnect();
+      }
       socketRef.current = null;
     };
   }, [initializeSocket]);
@@ -399,8 +440,15 @@ export const useLiveMarket = () => {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
-    const socket = initializeSocket();
-    socketRef.current = socket;
+    const envOverride =
+      process.env.NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL ||
+      process.env.NEXT_PUBLIC_FYERS_SOCKET_URL;
+    probePrimary5010().then(primary => {
+      const url = envOverride || (primary ? PRIMARY_5010_URL : FALLBACK_5010_URL);
+      setSocketSource(primary || !!envOverride ? 'server' : 'localhost');
+      const socket = initializeSocket(url);
+      socketRef.current = socket;
+    });
   }, [initializeSocket]);
   const getSubscribedCompanyCodes = useCallback(() => {
     return Array.from(subscribedCompanyCodes.current);
@@ -414,6 +462,7 @@ export const useLiveMarket = () => {
     tradingHours,
     maxCompanies,
     connectionStatus,
+    socketSource,
     error,
     loading,
     isConnected,

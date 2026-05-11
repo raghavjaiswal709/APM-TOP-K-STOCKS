@@ -1,114 +1,214 @@
 
 import { io, Socket } from 'socket.io-client';
 
+// ─── Server priority ─────────────────────────────────────────────────────────
+// 1. Primary  → remote server  http://100.93.172.21:5001
+// 2. Fallback → local machine  http://localhost:5001
+// ─────────────────────────────────────────────────────────────────────────────
+const PRIMARY_URL  = 'http://100.93.172.21:5001';
+const FALLBACK_URL = 'http://localhost:5001';
+
+// Track which URL is actually in use (exported for display in UI)
+let _activeSocketUrl: string = PRIMARY_URL;
+
+export const getActiveSocketUrl = (): string => _activeSocketUrl;
+
+/** Returns 'server' | 'localhost' label for the tooltip */
+export const getSocketSourceLabel = (): 'server' | 'localhost' =>
+  _activeSocketUrl === PRIMARY_URL ? 'server' : 'localhost';
+
 let socket: Socket | null = null;
 let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 10; // Increased from 5 to 10
+const MAX_RECONNECT_ATTEMPTS = 10;
 const INITIAL_RECONNECT_DELAY = 1000;
 const MAX_RECONNECT_DELAY = 10000;
 
 // Reconnection callbacks
 const reconnectionCallbacks: Set<() => void> = new Set();
 
-/**
- * Register reconnection callback
- */
 export const onReconnect = (callback: () => void): (() => void) => {
   reconnectionCallbacks.add(callback);
-  // Return unsubscribe function
   return () => reconnectionCallbacks.delete(callback);
 };
 
-/**
- * Get or create socket instance
- */
-export const getSocket = (): Socket => {
-  if (!socket) {
-    // Local Docker instance
-    const SOCKET_URL = process.env.NEXT_PUBLIC_FYERS_SOCKET_URL || 'http://localhost:5001';
-    console.log(`🔌 Connecting to LOCAL WebSocket server at ${SOCKET_URL}`);
-    
-    socket = io(SOCKET_URL, {
-      reconnection: true,
-      reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
-      reconnectionDelay: INITIAL_RECONNECT_DELAY,
-      reconnectionDelayMax: MAX_RECONNECT_DELAY,
-      timeout: 20000, // Increased from 10s to 20s
-      transports: ['websocket', 'polling'],
-      // Enable automatic reconnection on network issues
-      autoConnect: true,
-    });
+// ─── Source-change callbacks ─────────────────────────────────────────────────
+// Notified whenever the active URL (primary ↔ fallback) changes, so the UI
+// can update its tooltip without needing to poll.
+const sourceChangeCallbacks: Set<(label: 'server' | 'localhost') => void> = new Set();
 
-    socket.on('connect', () => {
-      console.log(`✅ Connected to WebSocket server with ID: ${socket?.id}`);
-      reconnectAttempts = 0;
-      
-      // Execute reconnection callbacks
-      console.log(`🔄 Executing ${reconnectionCallbacks.size} reconnection callbacks...`);
-      reconnectionCallbacks.forEach(callback => {
-        try {
-          callback();
-        } catch (error) {
-          console.error('❌ Error in reconnection callback:', error);
-        }
-      });
-    });
+export const onSocketSourceChange = (
+  callback: (label: 'server' | 'localhost') => void
+): (() => void) => {
+  sourceChangeCallbacks.add(callback);
+  return () => sourceChangeCallbacks.delete(callback);
+};
 
-    socket.on('connect_error', (error) => {
-      reconnectAttempts++;
-      const delay = Math.min(INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY);
-      console.error(`❌ Socket connection error (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}):`, error.message);
-      console.log(`⏳ Next retry in ${delay}ms...`);
-    });
+function notifySourceChange(label: 'server' | 'localhost') {
+  sourceChangeCallbacks.forEach(cb => {
+    try { cb(label); } catch { /* ignore */ }
+  });
+}
 
-    socket.on('disconnect', (reason) => {
-      console.log(`🔌 Disconnected from WebSocket server. Reason: ${reason}`);
-      
-      // Auto-reconnect for all reasons except manual disconnect
-      if (reason === 'io server disconnect') {
-        console.log('🔄 Server disconnected, attempting to reconnect...');
-        socket?.connect();
-      } else if (reason === 'io client disconnect') {
-        console.log('ℹ️ Client disconnected manually');
-      } else {
-        console.log('🔄 Connection lost, automatic reconnection will attempt...');
-      }
-    });
+// ─── Core socket factory ─────────────────────────────────────────────────────
 
-    socket.on('error', (error) => {
-      // Transient socket errors are expected when the Fyers service restarts – warn, don't error
-      const msg = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-      console.warn(`⚠️ Socket error (will auto-reconnect): ${msg || 'unknown'}`);
+function attachBaseListeners(s: Socket) {
+  s.on('connect', () => {
+    console.log(`✅ Connected to ${_activeSocketUrl} (ID: ${s.id})`);
+    reconnectAttempts = 0;
+    reconnectionCallbacks.forEach(cb => {
+      try { cb(); } catch (e) { console.error('❌ reconnect callback error:', e); }
     });
+  });
 
-    socket.on('reconnect', (attemptNumber) => {
-      console.log(`✅ Reconnected successfully after ${attemptNumber} attempts`);
-    });
+  s.on('connect_error', (error) => {
+    reconnectAttempts++;
+    const delay = Math.min(INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY);
+    console.error(`❌ Socket error (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}):`, error.message, `— retry in ${delay}ms`);
+  });
 
-    socket.on('reconnect_attempt', (attemptNumber) => {
-      console.log(`🔄 Reconnection attempt ${attemptNumber}/${MAX_RECONNECT_ATTEMPTS}...`);
-    });
+  s.on('disconnect', (reason) => {
+    console.log(`🔌 Disconnected from ${_activeSocketUrl}. Reason: ${reason}`);
+    if (reason === 'io server disconnect') s.connect();
+  });
 
-    socket.on('reconnect_error', (error) => {
-      console.error('❌ Reconnection error:', error.message);
-    });
+  s.on('error', (error) => {
+    const msg = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+    console.warn(`⚠️ Socket error (will auto-reconnect): ${msg || 'unknown'}`);
+  });
 
-    socket.on('reconnect_failed', () => {
-      console.error('❌ Failed to reconnect after maximum attempts');
-      console.log('💡 Please refresh the page to reconnect');
-    });
+  s.on('reconnect',         n   => console.log(`✅ Reconnected after ${n} attempts`));
+  s.on('reconnect_attempt', n   => console.log(`🔄 Reconnect attempt ${n}/${MAX_RECONNECT_ATTEMPTS}...`));
+  s.on('reconnect_error',   err => console.error('❌ Reconnect error:', err.message));
+  s.on('reconnect_failed',  ()  => console.error('❌ Max reconnect attempts reached — please refresh'));
+  s.on('heartbeat',         d   => console.log('💓 Heartbeat:', d));
+}
 
-    socket.on('heartbeat', (data) => {
-      console.log('💓 Heartbeat received:', data);
-    });
-  }
-  
-  return socket;
+const SOCKET_OPTIONS = {
+  reconnection: true,
+  reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+  reconnectionDelay: INITIAL_RECONNECT_DELAY,
+  reconnectionDelayMax: MAX_RECONNECT_DELAY,
+  timeout: 20000,
+  transports: ['websocket', 'polling'] as ('websocket' | 'polling')[],
+  autoConnect: true,
 };
 
 /**
- * Force reconnect the socket
+ * Probe PRIMARY_URL with a short-lived socket.
+ * Resolves true if it connects within 4 s, false otherwise.
  */
+function probePrimary(): Promise<boolean> {
+  return new Promise(resolve => {
+    const probe = io(PRIMARY_URL, {
+      ...SOCKET_OPTIONS,
+      reconnection: false,
+      timeout: 4000,
+      autoConnect: true,
+    });
+    let settled = false;
+
+    const done = (result: boolean) => {
+      if (settled) return;
+      settled = true;
+      probe.removeAllListeners();
+      probe.disconnect();
+      resolve(result);
+    };
+
+    probe.once('connect',       () => done(true));
+    probe.once('connect_error', () => done(false));
+
+    // Safety-net timer (slightly longer than socket timeout)
+    setTimeout(() => done(false), 5000);
+  });
+}
+
+/**
+ * Create the persistent socket, choosing PRIMARY_URL when reachable,
+ * otherwise FALLBACK_URL.
+ */
+async function createSocket(): Promise<Socket> {
+  const primaryAvailable = await probePrimary();
+  _activeSocketUrl = primaryAvailable ? PRIMARY_URL : FALLBACK_URL;
+
+  console.log(
+    primaryAvailable
+      ? `🌐 Primary server reachable — connecting to ${PRIMARY_URL}`
+      : `⚠️ Primary server unreachable — falling back to ${FALLBACK_URL}`
+  );
+
+  notifySourceChange(getSocketSourceLabel());
+
+  const s = io(_activeSocketUrl, SOCKET_OPTIONS);
+  attachBaseListeners(s);
+  return s;
+}
+
+// Lazily initialised — holds the promise so concurrent callers share one probe
+let _socketPromise: Promise<Socket> | null = null;
+
+/**
+ * Async version: resolves once the socket has been created (after the probe).
+ */
+export const getSocketAsync = (): Promise<Socket> => {
+  if (!_socketPromise) {
+    _socketPromise = createSocket().then(s => {
+      socket = s;
+      return s;
+    });
+  }
+  return _socketPromise;
+};
+
+/**
+ * Synchronous accessor — returns the socket immediately.
+ * On first call it kicks off an async probe in the background and returns a
+ * temporary socket to PRIMARY_URL.  Once the probe finishes the caller's
+ * event listeners will be migrated automatically.
+ *
+ * Prefer getSocketAsync() in React effects where you can await.
+ */
+export const getSocket = (): Socket => {
+  if (socket) return socket;
+
+  // Return a placeholder to PRIMARY_URL immediately so callers can attach
+  // listeners right away.  We'll replace it once the probe settles.
+  const placeholder = io(PRIMARY_URL, { ...SOCKET_OPTIONS, autoConnect: false });
+  socket = placeholder;
+  _activeSocketUrl = PRIMARY_URL;
+
+  // Kick off the real probe; swap socket when done
+  (async () => {
+    const real = await getSocketAsync();
+    if (real === placeholder) return; // already the same socket (primary worked)
+
+    // Migrate: clone all listeners from placeholder → real socket
+    const events = ['connect', 'disconnect', 'error', 'subscriptionError',
+                    'fyersError', 'marketDataUpdate', 'chartUpdate',
+                    'historicalData', 'ohlcData', 'ohlc', 'heartbeat',
+                    'authStatus', 'fyersConnected', 'fyersDisconnected',
+                    'subscriptionConfirm', 'afterMarketDataLoaded',
+                    'reconnect', 'reconnect_attempt', 'reconnect_error',
+                    'reconnect_failed'];
+
+    for (const event of events) {
+      // @ts-ignore – accessing internal listeners map
+      const listeners = placeholder.listeners(event) as ((...args: any[]) => void)[];
+      for (const fn of listeners) {
+        real.on(event as any, fn);
+      }
+    }
+
+    placeholder.removeAllListeners();
+    placeholder.disconnect();
+    socket = real;
+  })();
+
+  return socket;
+};
+
+export const isSocketConnected = (): boolean => socket?.connected || false;
+
 export const reconnectSocket = (): void => {
   if (socket) {
     console.log('🔄 Forcing socket reconnection...');
@@ -117,22 +217,14 @@ export const reconnectSocket = (): void => {
   }
 };
 
-/**
- * Check if socket is connected
- */
-export const isSocketConnected = (): boolean => {
-  return socket?.connected || false;
-};
-
-/**
- * Disconnect and cleanup socket
- */
 export const disconnectSocket = (): void => {
   if (socket) {
     console.log('🔌 Manually disconnecting socket');
     reconnectionCallbacks.clear();
+    sourceChangeCallbacks.clear();
     socket.disconnect();
     socket = null;
+    _socketPromise = null;
   }
 };
 

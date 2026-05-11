@@ -9,6 +9,7 @@ import asyncio
 import numpy as np
 import os
 import requests
+import threading
 from collections import deque, defaultdict
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from fyers_apiv3 import fyersModel
@@ -94,6 +95,53 @@ REAL_TIME_INTERVAL = 0.2
 CHART_UPDATE_INTERVAL = 0.1
 last_emit_time = defaultdict(float)
 pending_data = {}
+
+# ============ Fyers Subscribe Thread-Safety ============
+# The Fyers SDK's internal symbol→token mapping is NOT thread-safe.
+# fyers.subscribe() is called from multiple threads concurrently:
+#   - onopen()            → Fyers WebSocket callback thread
+#   - subscribe_companies() → ThreadPoolExecutor thread
+#   - subscribe()         → ThreadPoolExecutor thread
+#   - auth_watcher()      → asyncio event loop
+# Concurrent calls corrupt the token mapping, causing tick data to arrive
+# labeled with the WRONG symbol — the "data swapping" bug.
+#
+# Fix: serialize ALL fyers.subscribe() calls through a single threading.Lock
+# and track already-subscribed symbols to avoid redundant re-subscription.
+_fyers_subscribe_lock = threading.Lock()
+_fyers_subscribed_symbols: Set[str] = set()  # cleared on WebSocket disconnect
+
+
+def fyers_subscribe_safe(symbols: list, data_type: str = "SymbolUpdate") -> None:
+    """
+    Thread-safe, dedup-aware wrapper for fyers.subscribe().
+
+    Guarantees:
+    - Only ONE call to fyers.subscribe() executes at any moment (lock).
+    - Symbols already submitted to Fyers in this session are skipped
+      so we never trigger a redundant token-remap (dedup via _fyers_subscribed_symbols).
+    - On WebSocket reconnect, onclose() clears _fyers_subscribed_symbols so
+      all active symbols get re-submitted once and only once.
+    """
+    global fyers, _fyers_subscribed_symbols
+
+    if not fyers or not hasattr(fyers, 'subscribe') or not callable(fyers.subscribe):
+        return
+
+    with _fyers_subscribe_lock:
+        new_symbols = [s for s in symbols if s not in _fyers_subscribed_symbols]
+        if not new_symbols:
+            logger.debug(f"[fyers_subscribe_safe] All {len(symbols)} symbol(s) already subscribed — skipping.")
+            return
+        try:
+            fyers.subscribe(symbols=new_symbols, data_type=data_type)
+            _fyers_subscribed_symbols.update(new_symbols)
+            logger.info(
+                f"[fyers_subscribe_safe] ✅ Subscribed {len(new_symbols)} new symbol(s) "
+                f"(total in-session: {len(_fyers_subscribed_symbols)})"
+            )
+        except Exception as e:
+            logger.error(f"[fyers_subscribe_safe] ❌ fyers.subscribe() failed: {e}")
 
 
 # Persistent data management
@@ -435,11 +483,12 @@ async def auth_watcher():
                                 loop.run_in_executor(executor, fyers.connect)
                                 logger.info("✅ WebSocket connection started")
                                 
-                                # Resubscribe to all active symbols
-                                if active_symbols and hasattr(fyers, 'subscribe'):
+                                # Resubscribe to all active symbols via thread-safe wrapper.
+                                # Run in executor so we don't block the asyncio event loop.
+                                if active_symbols:
                                     symbols_list = list(active_symbols)
-                                    fyers.subscribe(symbols=symbols_list, data_type="SymbolUpdate")
-                                    logger.info(f"✅ Resubscribed to {len(symbols_list)} symbols")
+                                    loop.run_in_executor(executor, fyers_subscribe_safe, symbols_list, "SymbolUpdate")
+                                    logger.info(f"✅ Queued resubscription for {len(symbols_list)} symbols")
                             except Exception as e:
                                 logger.error(f"❌ WebSocket start error: {e}")
                     last_modified = current_modified
@@ -953,11 +1002,11 @@ async def subscribe(sid, data):
         logger.info(f"Using cached historical data for {symbol} ({len(historical_data[symbol])} points)")
 
     # Subscribe to real-time updates (only during market hours with auth)
-    if is_market_open and auth_initialized and fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
+    if is_market_open and auth_initialized:
         logger.info(f"Subscribing to real-time updates for: {symbol}")
         try:
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(executor, fyers.subscribe, [symbol], "SymbolUpdate")
+            await loop.run_in_executor(executor, fyers_subscribe_safe, [symbol], "SymbolUpdate")
         except Exception as e:
             logger.error(f"Error subscribing to {symbol}: {e}")
 
@@ -1115,23 +1164,23 @@ async def subscribe_companies(sid, data):
             # After market hours: Fetch from external server (port 6969)
             logger.info(f"📡 After-market mode: Fetching historical data from external server for {len(valid_symbols)} symbols")
             asyncio.create_task(send_batch_external_historical_data(sid, valid_symbols))
-        elif fyers and hasattr(fyers, 'subscribe') and callable(fyers.subscribe):
-            # Market open: Use Fyers real-time
+        elif auth_initialized:
+            # Market open: Use Fyers real-time via thread-safe wrapper
             try:
                 loop = asyncio.get_event_loop()
-                
-                # Use executor with timeout for blocking call
+
+                # fyers_subscribe_safe serialises concurrent calls and deduplicates symbols.
                 future = loop.run_in_executor(
                     executor,
-                    fyers.subscribe,
+                    fyers_subscribe_safe,
                     valid_symbols,
                     "SymbolUpdate"
                 )
-                
+
                 # 30 second timeout for Fyers subscription
                 await asyncio.wait_for(future, timeout=30.0)
                 logger.info(f"✅ Batch subscribed to {len(valid_symbols)} symbols in Fyers")
-                
+
             except asyncio.TimeoutError:
                 logger.error("❌ Fyers subscription timed out after 30s")
             except Exception as e:
@@ -1890,6 +1939,13 @@ def onclose(message):
     if main_loop and main_loop.is_running():
         asyncio.run_coroutine_threadsafe(sio.emit('fyersDisconnected', {'message': str(message)}), main_loop)
 
+    # Clear subscribed-symbol tracking so onopen() will re-subscribe everything.
+    # This is necessary because the Fyers WebSocket loses all subscriptions on disconnect.
+    global _fyers_subscribed_symbols
+    with _fyers_subscribe_lock:
+        _fyers_subscribed_symbols.clear()
+    logger.info("[onclose] Cleared _fyers_subscribed_symbols — will re-subscribe on reconnect")
+
 
 def onopen():
     logger.info("Fyers WebSocket connected")
@@ -1897,12 +1953,12 @@ def onopen():
         asyncio.run_coroutine_threadsafe(sio.emit('fyersConnected', {'status': 'connected'}), main_loop)
 
     symbols_to_subscribe = list(active_symbols) if active_symbols else []
-    if symbols_to_subscribe and fyers and hasattr(fyers, 'subscribe'):
-        try:
-            fyers.subscribe(symbols=symbols_to_subscribe, data_type="SymbolUpdate")
-            logger.info(f"Subscribed to {len(symbols_to_subscribe)} symbols for background collection")
-        except Exception as e:
-            logger.error(f"Error subscribing to symbols: {e}")
+    if symbols_to_subscribe:
+        # fyers_subscribe_safe holds the lock and skips already-subscribed symbols.
+        # _fyers_subscribed_symbols was cleared in onclose(), so on reconnect ALL
+        # active symbols will be re-submitted exactly once.
+        fyers_subscribe_safe(symbols_to_subscribe, "SymbolUpdate")
+        logger.info(f"[onopen] Subscribed to {len(symbols_to_subscribe)} symbols for background collection")
 
 
 async def heartbeat_task():
