@@ -190,7 +190,7 @@ function computeColorFromOpen(data: MarketData, externalOpen?: number): TileColo
     pct = ((data.ltp - open) / open) * 100;
   }
 
-  if (pct >= 1) return 'green';
+  if (pct >= 1.5) return 'green';
   if (pct >= 0) return 'yellow';
   return 'red';
 }
@@ -332,8 +332,8 @@ const LegendRow: React.FC = () => (
     {(
       [
         { color: 'blue',   label: '≥2% above open at 10:30 AM (frozen for day)' },
-        { color: 'green',  label: '≥1% above open (live)' },
-        { color: 'yellow', label: '0–1% above open (live)' },
+        { color: 'green',  label: '≥1.5% above open (live)' },
+        { color: 'yellow', label: '0–1.5% above open (live)' },
         { color: 'red',    label: 'Below open (live)' },
         { color: 'grey',   label: 'No data / pre-market' },
       ] as { color: TileColor; label: string }[]
