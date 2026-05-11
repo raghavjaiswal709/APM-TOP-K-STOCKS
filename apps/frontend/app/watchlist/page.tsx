@@ -31,14 +31,21 @@ interface Company {
   name: string;
   exchange: string;
   marker?: string;
-  total_valid_days?: number;
-  avg_daily_high_low_range?: number;
-  median_daily_volume?: number;
-  avg_trading_capital?: number;
-  latest_close_price?: number;
+  // New watchlist_quant fields
+  rank?: number;
+  last_close?: number;
+  median_daily_tv_10d?: number;
+  atr_pct_10d?: number;
+  iv_10d?: number;
+  vol_rank_xs?: number;
+  dist_from_high_20d?: number;
+  vol_ratio_t1_vs_10d?: number;
+  median_tradable_ratio_10d?: number;
+  min_tradable_ratio_10d?: number;
+  median_p25_window_tv_10d?: number;
+  max_position_inr?: number;
+  days_capital_data?: number;
   pe_ratio?: number;
-  suggested_capital_deployment?: number;
-  hourly_median_volume?: number;
 }
 
 
@@ -358,12 +365,18 @@ export default function WatchlistPage() {
                             <Badge variant="secondary" className="mt-1">{selectedCompanyData.marker}</Badge>
                           </div>
                         )}
-                        {selectedCompanyData.latest_close_price && (
+                        {selectedCompanyData.last_close != null && (
                           <div className="bg-muted/50 p-3 rounded-lg">
-                            <p className="text-xs text-muted-foreground mb-1">Latest Close Price</p>
+                            <p className="text-xs text-muted-foreground mb-1">Last Close Price</p>
                             <p className="font-bold text-lg text-green-600 dark:text-green-400">
-                              {formatCurrency(selectedCompanyData.latest_close_price)}
+                              {formatCurrency(selectedCompanyData.last_close)}
                             </p>
+                          </div>
+                        )}
+                        {selectedCompanyData.rank != null && (
+                          <div className="bg-muted/50 p-3 rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">Watchlist Rank</p>
+                            <p className="font-bold text-lg">#{selectedCompanyData.rank}</p>
                           </div>
                         )}
                       </div>
@@ -376,35 +389,51 @@ export default function WatchlistPage() {
                         Trading Metrics
                       </h4>
                       <div className="grid gap-3">
-                        {selectedCompanyData.total_valid_days && (
-                          <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
-                            <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Total Valid Days</p>
-                            <p className="font-bold text-xl text-blue-700 dark:text-blue-300">
-                              {formatNumber(selectedCompanyData.total_valid_days)}
-                            </p>
-                          </div>
-                        )}
-                        {selectedCompanyData.avg_daily_high_low_range && (
+                        {selectedCompanyData.atr_pct_10d != null && (
                           <div className="bg-green-50 dark:bg-green-950/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
-                            <p className="text-xs text-green-600 dark:text-green-400 mb-1">Avg Daily High-Low Range</p>
+                            <p className="text-xs text-green-600 dark:text-green-400 mb-1">ATR % (10d)</p>
                             <p className="font-bold text-lg text-green-700 dark:text-green-300">
-                              {selectedCompanyData.avg_daily_high_low_range.toFixed(2)} %
+                              {selectedCompanyData.atr_pct_10d.toFixed(2)}%
                             </p>
                           </div>
                         )}
-                        {selectedCompanyData.median_daily_volume && (
+                        {selectedCompanyData.median_daily_tv_10d != null && (
                           <div className="bg-purple-50 dark:bg-purple-950/20 p-3 rounded-lg border border-purple-200 dark:border-purple-800">
-                            <p className="text-xs text-purple-600 dark:text-purple-400 mb-1">Median Daily Volume</p>
+                            <p className="text-xs text-purple-600 dark:text-purple-400 mb-1">Median Daily TV (10d)</p>
                             <p className="font-bold text-lg text-purple-700 dark:text-purple-300">
-                              {formatNumber(selectedCompanyData.median_daily_volume)}
+                              {formatCurrency(selectedCompanyData.median_daily_tv_10d)}
                             </p>
                           </div>
                         )}
-                        {selectedCompanyData.hourly_median_volume && (
+                        {selectedCompanyData.vol_rank_xs != null && (
+                          <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Volume Rank XS</p>
+                            <p className="font-bold text-xl text-blue-700 dark:text-blue-300">
+                              {selectedCompanyData.vol_rank_xs.toFixed(4)}
+                            </p>
+                          </div>
+                        )}
+                        {selectedCompanyData.vol_ratio_t1_vs_10d != null && (
                           <div className="bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg border border-orange-200 dark:border-orange-800">
-                            <p className="text-xs text-orange-600 dark:text-orange-400 mb-1">Hourly Median Volume</p>
+                            <p className="text-xs text-orange-600 dark:text-orange-400 mb-1">Vol Ratio T1 vs 10d</p>
                             <p className="font-bold text-lg text-orange-700 dark:text-orange-300">
-                              {formatNumber(selectedCompanyData.hourly_median_volume)}
+                              {selectedCompanyData.vol_ratio_t1_vs_10d.toFixed(4)}
+                            </p>
+                          </div>
+                        )}
+                        {selectedCompanyData.dist_from_high_20d != null && (
+                          <div className="bg-yellow-50 dark:bg-yellow-950/20 p-3 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                            <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-1">Dist from 20d High</p>
+                            <p className="font-bold text-lg text-yellow-700 dark:text-yellow-300">
+                              {selectedCompanyData.dist_from_high_20d.toFixed(2)}%
+                            </p>
+                          </div>
+                        )}
+                        {selectedCompanyData.iv_10d != null && (
+                          <div className="bg-teal-50 dark:bg-teal-950/20 p-3 rounded-lg border border-teal-200 dark:border-teal-800">
+                            <p className="text-xs text-teal-600 dark:text-teal-400 mb-1">IV (10d)</p>
+                            <p className="font-bold text-lg text-teal-700 dark:text-teal-300">
+                              {selectedCompanyData.iv_10d.toFixed(4)}
                             </p>
                           </div>
                         )}
@@ -418,7 +447,7 @@ export default function WatchlistPage() {
                         Financial Analysis
                       </h4>
                       <div className="grid gap-3">
-                        {selectedCompanyData.pe_ratio && (
+                        {selectedCompanyData.pe_ratio != null && (
                           <div className="bg-cyan-50 dark:bg-cyan-950/20 p-3 rounded-lg border border-cyan-200 dark:border-cyan-800">
                             <p className="text-xs text-cyan-600 dark:text-cyan-400 mb-1">P/E Ratio</p>
                             <p className="font-bold text-xl text-cyan-700 dark:text-cyan-300">
@@ -426,23 +455,37 @@ export default function WatchlistPage() {
                             </p>
                           </div>
                         )}
-                        {selectedCompanyData.avg_trading_capital && (
+                        {selectedCompanyData.max_position_inr != null && (
                           <div className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800">
-                            <p className="text-xs text-indigo-600 dark:text-indigo-400 mb-1">Avg Trading Capital</p>
+                            <p className="text-xs text-indigo-600 dark:text-indigo-400 mb-1">Max Position (INR)</p>
                             <p className="font-bold text-lg text-indigo-700 dark:text-indigo-300">
-                              {formatCurrency(selectedCompanyData.avg_trading_capital)}
+                              {formatCurrency(selectedCompanyData.max_position_inr)}
                             </p>
                           </div>
                         )}
-                        {selectedCompanyData.suggested_capital_deployment && (
+                        {selectedCompanyData.median_tradable_ratio_10d != null && (
                           <div className="bg-pink-50 dark:bg-pink-950/20 p-3 rounded-lg border border-pink-200 dark:border-pink-800">
-                            <p className="text-xs text-pink-600 dark:text-pink-400 mb-1">Suggested Capital Deployment</p>
+                            <p className="text-xs text-pink-600 dark:text-pink-400 mb-1">Median Tradable Ratio (10d)</p>
                             <p className="font-bold text-lg text-pink-700 dark:text-pink-300">
-                              {formatCurrency(selectedCompanyData.suggested_capital_deployment)}
+                              {selectedCompanyData.median_tradable_ratio_10d.toFixed(4)}
                             </p>
                           </div>
                         )}
-                        {selectedCompanyData.company_id && (
+                        {selectedCompanyData.min_tradable_ratio_10d != null && (
+                          <div className="bg-rose-50 dark:bg-rose-950/20 p-3 rounded-lg border border-rose-200 dark:border-rose-800">
+                            <p className="text-xs text-rose-600 dark:text-rose-400 mb-1">Min Tradable Ratio (10d)</p>
+                            <p className="font-bold text-lg text-rose-700 dark:text-rose-300">
+                              {selectedCompanyData.min_tradable_ratio_10d.toFixed(4)}
+                            </p>
+                          </div>
+                        )}
+                        {selectedCompanyData.days_capital_data != null && (
+                          <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border">
+                            <p className="text-xs text-muted-foreground mb-1">Days Capital Data</p>
+                            <p className="font-mono text-sm">{selectedCompanyData.days_capital_data}</p>
+                          </div>
+                        )}
+                        {selectedCompanyData.company_id != null && (
                           <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border">
                             <p className="text-xs text-muted-foreground mb-1">Company ID</p>
                             <p className="font-mono text-sm">{selectedCompanyData.company_id}</p>
@@ -518,6 +561,9 @@ export default function WatchlistPage() {
                       <thead>
                         <tr className="border-b-2">
                           <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
+                            Rank
+                          </th>
+                          <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
                             Company Code
                           </th>
                           <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
@@ -526,13 +572,16 @@ export default function WatchlistPage() {
                           <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
                             Exchange
                           </th>
-                          <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
-                            Valid Days
+                          <th className="text-right py-3 px-4 font-semibold text-sm text-muted-foreground">
+                            Last Close
                           </th>
-                          <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
-                            Close Price
+                          <th className="text-right py-3 px-4 font-semibold text-sm text-muted-foreground">
+                            ATR % (10d)
                           </th>
-                          <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
+                          <th className="text-right py-3 px-4 font-semibold text-sm text-muted-foreground">
+                            Max Position
+                          </th>
+                          <th className="text-right py-3 px-4 font-semibold text-sm text-muted-foreground">
                             P/E Ratio
                           </th>
                           <th className="text-left py-3 px-4 font-semibold text-sm text-muted-foreground">
@@ -553,6 +602,13 @@ export default function WatchlistPage() {
                               } ${index % 2 === 0 ? 'bg-muted/20' : ''}`}
                               onClick={() => handleTableRowClick(company.company_code, company.exchange)}
                             >
+                              <td className="py-3 px-4 text-center">
+                                {company.rank != null ? (
+                                  <span className="bg-muted text-muted-foreground px-2 py-1 rounded text-sm font-mono">
+                                    #{company.rank}
+                                  </span>
+                                ) : '—'}
+                              </td>
                               <td className="py-3 px-4">
                                 <span className="font-mono font-semibold text-primary">
                                   {company.company_code}
@@ -566,20 +622,29 @@ export default function WatchlistPage() {
                                   {company.exchange}
                                 </Badge>
                               </td>
-                              <td className="py-3 px-4 text-center">
-                                <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-sm">
-                                  {formatNumber(company.total_valid_days)}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4">
+                              <td className="py-3 px-4 text-right">
                                 <span className="font-medium text-green-600 dark:text-green-400">
-                                  {formatCurrency(company.latest_close_price)}
+                                  {company.last_close != null ? formatCurrency(company.last_close) : '—'}
                                 </span>
                               </td>
-                              <td className="py-3 px-4 text-center">
-                                <span className="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-2 py-1 rounded text-sm">
-                                  {company.pe_ratio ? company.pe_ratio.toFixed(2) : 'N/A'}
+                              <td className="py-3 px-4 text-right">
+                                {company.atr_pct_10d != null ? (
+                                  <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded text-sm">
+                                    {company.atr_pct_10d.toFixed(2)}%
+                                  </span>
+                                ) : '—'}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <span className="font-medium text-indigo-600 dark:text-indigo-400">
+                                  {company.max_position_inr != null ? formatCurrency(company.max_position_inr) : '—'}
                                 </span>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                {company.pe_ratio != null ? (
+                                  <span className="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-2 py-1 rounded text-sm">
+                                    {company.pe_ratio.toFixed(2)}
+                                  </span>
+                                ) : '—'}
                               </td>
                               <td className="py-3 px-4">
                                 <button

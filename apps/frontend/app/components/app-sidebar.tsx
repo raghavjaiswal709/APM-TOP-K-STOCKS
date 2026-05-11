@@ -319,25 +319,19 @@ export function AppSidebar() {
                     ) : (
                       /* ── Expanded → icon + label + chevron ───────────── */
                       <>
-                        <button
-                          onClick={() => {
-                            if (hasKids) {
-                              toggleExpanded(item.title)
-                            } else if (item.url !== "#") {
-                              window.location.href = item.url
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center w-full gap-3 rounded-lg text-sm text-left",
-                            "transition-colors duration-150 h-10 px-2.5",
-                            active
-                              ? "bg-foreground/10 text-foreground font-semibold"
-                              : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-                          )}
-                        >
-                          <NavIcon icon={item.icon} size={18} />
-                          <span className="flex-1 truncate">{item.title}</span>
-                          {hasKids && (
+                        {hasKids ? (
+                          <button
+                            onClick={() => toggleExpanded(item.title)}
+                            className={cn(
+                              "flex items-center w-full gap-3 rounded-lg text-sm text-left",
+                              "transition-colors duration-150 h-10 px-2.5",
+                              active
+                                ? "bg-foreground/10 text-foreground font-semibold"
+                                : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                            )}
+                          >
+                            <NavIcon icon={item.icon} size={18} />
+                            <span className="flex-1 truncate">{item.title}</span>
                             <ChevronRight
                               size={14}
                               className={cn(
@@ -345,8 +339,22 @@ export function AppSidebar() {
                                 isOpen && "rotate-90"
                               )}
                             />
-                          )}
-                        </button>
+                          </button>
+                        ) : (
+                          <Link
+                            href={item.url}
+                            className={cn(
+                              "flex items-center w-full gap-3 rounded-lg text-sm",
+                              "transition-colors duration-150 h-10 px-2.5",
+                              active
+                                ? "bg-foreground/10 text-foreground font-semibold"
+                                : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                            )}
+                          >
+                            <NavIcon icon={item.icon} size={18} />
+                            <span className="flex-1 truncate">{item.title}</span>
+                          </Link>
+                        )}
 
                         {/* Submenu */}
                         {hasKids && isOpen && (

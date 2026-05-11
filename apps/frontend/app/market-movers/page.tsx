@@ -73,6 +73,17 @@ interface MarketData {
 type TileColor = 'blue' | 'green' | 'yellow' | 'red' | 'grey';
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   Logic B (GTT Aligned) — types
+───────────────────────────────────────────────────────────────────────────── */
+type GttTileColor = 'blue' | 'green' | 'yellow' | 'red' | 'black' | 'gray';
+
+interface GttSnapshot {
+  publishTs: Date;                                         // IST publish timestamp
+  basePrice: number;                                       // input_close at publish
+  horizons: [number, number, number, number, number];     // H1–H5 (S1 predictions)
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    Helpers
 ───────────────────────────────────────────────────────────────────────────── */
 
@@ -227,6 +238,82 @@ function pctFromOpen(data: MarketData | undefined, externalOpen?: number): numbe
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   Logic B (GTT Aligned) — pure helpers
+───────────────────────────────────────────────────────────────────────────── */
+const GTT_HORIZON_MIN    = 15;
+const GTT_N_HORIZONS     = 5;
+const GTT_PATH_SPAN_MIN  = 75;
+
+/** Parse a prediction_time string (IST) into a UTC Date. */
+function parsePredictionTime(s: string): Date | null {
+  if (!s) return null;
+  let d: Date;
+  if (s.includes('T') && (s.includes('+') || s.endsWith('Z'))) {
+    d = new Date(s);
+  } else {
+    // "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DDTHH:MM:SS" — treat as IST
+    d = new Date(s.replace(' ', 'T') + '+05:30');
+  }
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Given the current moment `now`, find the latest GTT snapshot publish timestamp
+ * (15-min floor, clamped to [10:00, 15:30] IST). Returns null before 10:00 AM IST.
+ */
+function latestGttPublishTs(now: Date): Date | null {
+  const istMs   = now.getTime() + 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(istMs);
+  const totalMin = istDate.getUTCHours() * 60 + istDate.getUTCMinutes();
+  const FIRST    = 10 * 60;       // 10:00 AM IST
+  const LAST     = 15 * 60 + 30; // 15:30 IST
+  if (totalMin < FIRST) return null;
+  const aligned    = Math.floor(totalMin / GTT_HORIZON_MIN) * GTT_HORIZON_MIN;
+  if (aligned < FIRST) return null;
+  const clampedMin = Math.min(aligned, LAST);
+  const pubH = Math.floor(clampedMin / 60);
+  const pubM = clampedMin % 60;
+  // Convert back to UTC
+  const pubUtcMs = Date.UTC(
+    istDate.getUTCFullYear(), istDate.getUTCMonth(), istDate.getUTCDate(),
+    pubH, pubM, 0, 0,
+  ) - 5.5 * 60 * 60 * 1000;
+  return new Date(pubUtcMs);
+}
+
+/** Linear interpolation of expected price along the GTT forecast path. */
+function expectedOnPath(snap: GttSnapshot, now: Date): number | null {
+  if (now < snap.publishTs) return null;
+  const elapsed = (now.getTime() - snap.publishTs.getTime()) / 60000; // minutes
+  if (elapsed > GTT_PATH_SPAN_MIN) return null;
+  const seg    = Math.min(Math.floor(elapsed / GTT_HORIZON_MIN), GTT_N_HORIZONS - 1);
+  const pLeft  = seg === 0 ? snap.basePrice : snap.horizons[seg - 1];
+  const pRight = snap.horizons[seg];
+  const frac   = (elapsed - seg * GTT_HORIZON_MIN) / GTT_HORIZON_MIN;
+  return pLeft + (pRight - pLeft) * frac;
+}
+
+function classifyGttDev(devPct: number): GttTileColor {
+  if (devPct > 2.0)    return 'blue';
+  if (devPct >= 0.0)   return 'green';
+  if (devPct > -5.0)   return 'yellow';
+  if (devPct >= -10.0) return 'red';
+  return 'black';
+}
+
+function colorForTickGtt(
+  snap: GttSnapshot | null | undefined,
+  live: number | null | undefined,
+  now: Date,
+): { color: GttTileColor; devPct: number | null } {
+  if (!snap || live == null || live <= 0) return { color: 'gray', devPct: null };
+  const expected = expectedOnPath(snap, now);
+  if (expected == null || expected <= 0) return { color: 'gray', devPct: null };
+  const dev = (live - expected) / expected * 100;
+  return { color: classifyGttDev(dev), devPct: dev };
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    Tile color styles
 ───────────────────────────────────────────────────────────────────────────── */
 const CIRCLE_CLASS: Record<TileColor, string> = {
@@ -254,32 +341,69 @@ const TILE_BORDER_CLASS: Record<TileColor, string> = {
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   Logic B (GTT Aligned) — tile color styles
+───────────────────────────────────────────────────────────────────────────── */
+const GTT_CIRCLE_CLASS: Record<GttTileColor, string> = {
+  blue:  'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]',
+  green: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]',
+  yellow:'bg-yellow-400 shadow-[0_0_8px_rgba(234,179,8,0.8)]',
+  red:   'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]',
+  black: 'bg-zinc-800 shadow-[0_0_8px_rgba(0,0,0,0.6)] border border-zinc-600',
+  gray:  'bg-slate-400 shadow-[0_0_8px_rgba(148,163,184,0.3)]',
+};
+
+const GTT_CHANGE_TEXT_CLASS: Record<GttTileColor, string> = {
+  blue:  'text-blue-500 dark:text-blue-400',
+  green: 'text-emerald-500 dark:text-emerald-400',
+  yellow:'text-yellow-500 dark:text-yellow-400',
+  red:   'text-red-500 dark:text-red-400',
+  black: 'text-zinc-400 dark:text-zinc-500',
+  gray:  'text-slate-400 dark:text-slate-500',
+};
+
+const GTT_TILE_BORDER_CLASS: Record<GttTileColor, string> = {
+  blue:  'border-blue-500/30 hover:border-blue-500/60',
+  green: 'border-emerald-500/20 hover:border-emerald-500/50',
+  yellow:'border-yellow-400/20 hover:border-yellow-400/50',
+  red:   'border-red-500/20 hover:border-red-500/50',
+  black: 'border-zinc-700/30 hover:border-zinc-600/60',
+  gray:  'border-slate-400/15 hover:border-slate-400/35',
+};
+
+/* ─────────────────────────────────────────────────────────────────────────────
    Tile Component
 ───────────────────────────────────────────────────────────────────────────── */
 interface TileProps {
   company: Company;
   data: MarketData | undefined;
   color: TileColor;
+  /** When provided, Logic B (GTT Aligned) overrides the color display. */
+  gttColor?: GttTileColor;
+  /** Logic B deviation % to show as secondary label (e.g. +1.4% or -6.2%). */
+  devPct?: number | null;
 }
 
-const CompanyTile: React.FC<TileProps> = ({ company, data, color }) => {
+const CompanyTile: React.FC<TileProps> = ({ company, data, color, gttColor, devPct }) => {
   const change = data?.change ?? 0;
   const changePercent = data?.changePercent ?? 0;
   const ltp = data?.ltp;
+  const circleClass     = gttColor != null ? GTT_CIRCLE_CLASS[gttColor]     : CIRCLE_CLASS[color];
+  const changeTextClass = gttColor != null ? GTT_CHANGE_TEXT_CLASS[gttColor] : CHANGE_TEXT_CLASS[color];
+  const borderClass     = gttColor != null ? GTT_TILE_BORDER_CLASS[gttColor] : TILE_BORDER_CLASS[color];
   const hasData = !!data;
 
   return (
     <div
       className={cn(
         'flex items-center gap-4 px-5 py-4 rounded-2xl border-2 bg-card transition-colors cursor-default select-none w-full',
-        TILE_BORDER_CLASS[color]
+        borderClass
       )}
     >
       {/* ① Color indicator circle */}
       <div
         className={cn(
           'w-4 h-4 rounded-full shrink-0 transition-colors',
-          CIRCLE_CLASS[color]
+          circleClass
         )}
       />
 
@@ -293,6 +417,12 @@ const CompanyTile: React.FC<TileProps> = ({ company, data, color }) => {
             ₹{ltp.toFixed(2)}
           </div>
         )}
+        {/* Logic B deviation label */}
+        {devPct != null && (
+          <div className={cn('text-[10px] tabular-nums font-semibold leading-none mt-0.5', changeTextClass)}>
+            {devPct >= 0 ? '+' : ''}{devPct.toFixed(2)}% vs GTT
+          </div>
+        )}
       </div>
 
       {/* ② Price change + percentage */}
@@ -300,7 +430,7 @@ const CompanyTile: React.FC<TileProps> = ({ company, data, color }) => {
         <div
           className={cn(
             'text-sm font-bold tabular-nums shrink-0 text-right leading-tight',
-            CHANGE_TEXT_CLASS[color]
+            changeTextClass
           )}
         >
           <div className="flex items-center gap-1 justify-end">
@@ -325,7 +455,7 @@ const CompanyTile: React.FC<TileProps> = ({ company, data, color }) => {
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Legend Row
+   Legend Row (Logic 1 — unchanged)
 ───────────────────────────────────────────────────────────────────────────── */
 const LegendRow: React.FC = () => (
   <div className="flex items-center gap-4 px-1 text-[10px] text-muted-foreground">
@@ -340,6 +470,29 @@ const LegendRow: React.FC = () => (
     ).map(({ color, label }) => (
       <div key={color} className="flex items-center gap-1.5">
         <div className={cn('w-2 h-2 rounded-full shrink-0', CIRCLE_CLASS[color])} />
+        <span>{label}</span>
+      </div>
+    ))}
+  </div>
+);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Logic B Legend Row (GTT Aligned)
+───────────────────────────────────────────────────────────────────────────── */
+const GttLegendRow: React.FC = () => (
+  <div className="flex items-center gap-4 px-1 text-[10px] text-muted-foreground">
+    {(
+      [
+        { color: 'blue'  as GttTileColor, label: '>+2% above GTT path' },
+        { color: 'green' as GttTileColor, label: '0–+2% above GTT path' },
+        { color: 'yellow'as GttTileColor, label: '-5–0% below GTT path' },
+        { color: 'red'   as GttTileColor, label: '-10–-5% below GTT path' },
+        { color: 'black' as GttTileColor, label: '<-10% below GTT path' },
+        { color: 'gray'  as GttTileColor, label: 'No snapshot / expired' },
+      ]
+    ).map(({ color, label }) => (
+      <div key={color} className="flex items-center gap-1.5">
+        <div className={cn('w-2 h-2 rounded-full shrink-0', GTT_CIRCLE_CLASS[color])} />
         <span>{label}</span>
       </div>
     ))}
@@ -629,6 +782,99 @@ const MarketMoversPage: React.FC = () => {
     });
   }, [allSidebarCompanies, selectedCodes, marketData, openingPrices, blueCheckDone, lockedColors]);
 
+  /* ─────────────────────────────────────────────────────────────────────────
+     Logic B (GTT Aligned) — state (completely independent from Logic 1)
+  ───────────────────────────────────────────────────────────────────────────*/
+  const [gttAligned, setGttAligned] = useState(false);
+  const [gttSnapshots, setGttSnapshots] = useState<Map<string, GttSnapshot>>(new Map());
+  const gttFetchingRef  = useRef(false);
+  const gttIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* Fetch GTT snapshots for all sidebar companies; refresh every 15 min while ON */
+  useEffect(() => {
+    if (!gttAligned) {
+      if (gttIntervalRef.current) { clearInterval(gttIntervalRef.current); gttIntervalRef.current = null; }
+      return;
+    }
+
+    const fetchAll = async () => {
+      if (gttFetchingRef.current || allSidebarCompanies.length === 0) return;
+      gttFetchingRef.current = true;
+      try {
+        const codes  = allSidebarCompanies.map(c => c.company_code);
+        const BATCH  = 5;
+        const newMap = new Map<string, GttSnapshot>();
+        for (let i = 0; i < codes.length; i += BATCH) {
+          const batch = codes.slice(i, i + BATCH);
+          const results = await Promise.allSettled(
+            batch.map(async code => {
+              try {
+                const res = await fetch(
+                  `/api/gtt-predictions?symbol=${encodeURIComponent(code)}`,
+                  { cache: 'no-store', signal: AbortSignal.timeout(10000) },
+                );
+                if (!res.ok) return null;
+                const data = await res.json();
+                const l = data?.latest;
+                if (!l) return null;
+                const pt        = l.prediction_time ?? l.timestamp;
+                const publishTs = parsePredictionTime(pt);
+                if (!publishTs) return null;
+                const basePrice = l.input_close as number;
+                const horizons: [number, number, number, number, number] = [
+                  l.S1_H1_pred, l.S1_H2_pred, l.S1_H3_pred, l.S1_H4_pred, l.S1_H5_pred,
+                ];
+                if (horizons.some(h => typeof h !== 'number')) return null;
+                return { code, snap: { publishTs, basePrice, horizons } as GttSnapshot };
+              } catch { return null; }
+            }),
+          );
+          results.forEach(r => {
+            if (r.status === 'fulfilled' && r.value) newMap.set(r.value.code, r.value.snap);
+          });
+        }
+        setGttSnapshots(new Map(newMap));
+      } finally {
+        gttFetchingRef.current = false;
+      }
+    };
+
+    fetchAll();
+    gttIntervalRef.current = setInterval(fetchAll, GTT_HORIZON_MIN * 60 * 1000);
+    return () => {
+      if (gttIntervalRef.current) { clearInterval(gttIntervalRef.current); gttIntervalRef.current = null; }
+    };
+  // Re-fetch whenever companies list changes while gttAligned is ON
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gttAligned, allSidebarCompanies]);
+
+  /* Logic B sorted companies — all selected, no blue exclusion, sorted by devPct desc */
+  const gttSortedCompanies = useMemo(() => {
+    if (!gttAligned) return [] as Company[];
+    const now     = new Date();
+    const visible = allSidebarCompanies.filter(c => selectedCodes.has(c.company_code));
+    return [...visible].sort((a, b) => {
+      const snapA = gttSnapshots.get(a.company_code) ?? null;
+      const snapB = gttSnapshots.get(b.company_code) ?? null;
+      const { devPct: dA } = colorForTickGtt(snapA, resolveMarketData(marketData, a)?.ltp, now);
+      const { devPct: dB } = colorForTickGtt(snapB, resolveMarketData(marketData, b)?.ltp, now);
+      return (dB ?? -Infinity) - (dA ?? -Infinity);
+    });
+  }, [gttAligned, allSidebarCompanies, selectedCodes, marketData, gttSnapshots]);
+
+  /* Logic B stats (for header badges when gttAligned is ON) */
+  const gttStats = useMemo(() => {
+    if (!gttAligned) return null;
+    const now    = new Date();
+    const counts: Record<GttTileColor, number> = { blue: 0, green: 0, yellow: 0, red: 0, black: 0, gray: 0 };
+    gttSortedCompanies.forEach(c => {
+      const snap = gttSnapshots.get(c.company_code) ?? null;
+      const { color } = colorForTickGtt(snap, resolveMarketData(marketData, c)?.ltp, now);
+      counts[color]++;
+    });
+    return counts;
+  }, [gttAligned, gttSortedCompanies, gttSnapshots, marketData]);
+
   /* ── Sidebar drag resize ── */
   const handleSidebarMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -706,34 +952,74 @@ const MarketMoversPage: React.FC = () => {
           </Breadcrumb>
 
           {/* Stats badges */}
+          {/* Stats badges — Logic 1 or Logic B depending on toggle */}
           <div className="hidden sm:flex items-center gap-1.5">
-            {stats.blue > 0 && (
-              <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-blue-500/50 text-blue-500 gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                {stats.blue}
-              </Badge>
-            )}
-            {stats.green > 0 && (
-              <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-emerald-500/50 text-emerald-500 gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                {stats.green}
-              </Badge>
-            )}
-            {stats.yellow > 0 && (
-              <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-yellow-500/50 text-yellow-500 gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
-                {stats.yellow}
-              </Badge>
-            )}
-            <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-red-500/50 text-red-500 gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-              {stats.red}
-            </Badge>
-            {stats.grey > 0 && (
-              <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-slate-400/50 text-slate-400 gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                {stats.grey}
-              </Badge>
+            {gttAligned && gttStats ? (
+              /* ── Logic B badges ── */
+              <>
+                {gttStats.blue > 0 && (
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-blue-500/50 text-blue-500 gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />{gttStats.blue}
+                  </Badge>
+                )}
+                {gttStats.green > 0 && (
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-emerald-500/50 text-emerald-500 gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{gttStats.green}
+                  </Badge>
+                )}
+                {gttStats.yellow > 0 && (
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-yellow-500/50 text-yellow-500 gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />{gttStats.yellow}
+                  </Badge>
+                )}
+                {gttStats.red > 0 && (
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-red-500/50 text-red-500 gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />{gttStats.red}
+                  </Badge>
+                )}
+                {gttStats.black > 0 && (
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-zinc-600/50 text-zinc-400 gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-700" />{gttStats.black}
+                  </Badge>
+                )}
+                {gttStats.gray > 0 && (
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-slate-400/50 text-slate-400 gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />{gttStats.gray}
+                  </Badge>
+                )}
+              </>
+            ) : (
+              /* ── Logic 1 badges (unchanged) ── */
+              <>
+                {stats.blue > 0 && (
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-blue-500/50 text-blue-500 gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                    {stats.blue}
+                  </Badge>
+                )}
+                {stats.green > 0 && (
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-emerald-500/50 text-emerald-500 gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    {stats.green}
+                  </Badge>
+                )}
+                {stats.yellow > 0 && (
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-yellow-500/50 text-yellow-500 gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
+                    {stats.yellow}
+                  </Badge>
+                )}
+                <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-red-500/50 text-red-500 gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                  {stats.red}
+                </Badge>
+                {stats.grey > 0 && (
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-slate-400/50 text-slate-400 gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                    {stats.grey}
+                  </Badge>
+                )}
+              </>
             )}
           </div>
 
@@ -762,6 +1048,23 @@ const MarketMoversPage: React.FC = () => {
             </span>
           </div>
 
+          {/* GTT Aligned toggle */}
+          <Button
+            variant={gttAligned ? 'default' : 'outline'}
+            size="sm"
+            className={cn(
+              'h-7 px-2.5 text-[11px] font-semibold gap-1.5 shrink-0',
+              gttAligned
+                ? 'bg-violet-600 hover:bg-violet-700 text-white border-violet-600'
+                : 'border-violet-500/50 text-violet-500 hover:bg-violet-500/10',
+            )}
+            onClick={() => setGttAligned(v => !v)}
+            title={gttAligned ? 'Switch back to Logic 1 (open-price signals)' : 'Switch to GTT Aligned (path-deviation signals)'}
+          >
+            <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', gttAligned ? 'bg-white' : 'bg-violet-500')} />
+            GTT Aligned
+          </Button>
+
           <ModeToggle />
         </header>
 
@@ -777,11 +1080,16 @@ const MarketMoversPage: React.FC = () => {
                   <Zap className="h-4 w-4 text-yellow-500" />
                   Market Movers
                   <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-                    {sortedCompanies.length} tiles
+                    {gttAligned ? gttSortedCompanies.length : sortedCompanies.length} tiles
                   </Badge>
+                  {gttAligned && (
+                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-violet-500/50 text-violet-400">
+                      GTT Aligned
+                    </Badge>
+                  )}
                 </h2>
               </div>
-              <LegendRow />
+              {gttAligned ? <GttLegendRow /> : <LegendRow />}
             </div>
 
             {/* Tile grid + Blue frozen section — all in one scrollable container */}
@@ -815,76 +1123,135 @@ const MarketMoversPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Live companies — Red / Yellow / Green only (Blue excluded) */}
-              {sortedCompanies.length > 0 && (
-                <motion.div
-                  layout
-                  className="grid gap-3"
-                  style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}
-                >
-                  <AnimatePresence mode="popLayout">
-                    {sortedCompanies.map(company => {
-                      const data = resolveMarketData(marketData, company);
-                      const color = getTileColor(company.company_code, data, blueCheckDone, lockedColors, openingPrices[company.company_code]);
-
-                      return (
-                        <motion.div
-                          key={company.company_code}
-                          layout
-                          layoutId={company.company_code}
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.9 }}
-                          transition={{
-                            layout: { type: 'spring', stiffness: 300, damping: 30 },
-                            opacity: { duration: 0.2 },
-                            scale: { duration: 0.2 },
-                          }}
-                        >
-                          <CompanyTile
-                            company={company}
-                            data={data}
-                            color={color}
-                          />
-                        </motion.div>
-                      );
-                    })}
-                  </AnimatePresence>
-                </motion.div>
+              {/* ══════════════════════════════════════════════════════════════
+                  Logic B — GTT Aligned (rendered only when toggle is ON)
+                  Logic 1 state is completely untouched here.
+              ══════════════════════════════════════════════════════════════ */}
+              {gttAligned && (
+                <>
+                  {gttSortedCompanies.length === 0 ? (
+                    <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
+                      No companies selected. Check companies in the sidebar.
+                    </div>
+                  ) : (
+                    <motion.div
+                      layout
+                      className="grid gap-3"
+                      style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}
+                    >
+                      <AnimatePresence mode="popLayout">
+                        {gttSortedCompanies.map(company => {
+                          const data      = resolveMarketData(marketData, company);
+                          const snap      = gttSnapshots.get(company.company_code) ?? null;
+                          const { color: gttC, devPct } = colorForTickGtt(snap, data?.ltp, new Date());
+                          return (
+                            <motion.div
+                              key={company.company_code}
+                              layout
+                              layoutId={`gtt-${company.company_code}`}
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.9 }}
+                              transition={{
+                                layout: { type: 'spring', stiffness: 300, damping: 30 },
+                                opacity: { duration: 0.2 },
+                                scale: { duration: 0.2 },
+                              }}
+                            >
+                              <CompanyTile
+                                company={company}
+                                data={data}
+                                color="grey"
+                                gttColor={gttC}
+                                devPct={devPct}
+                              />
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
+                    </motion.div>
+                  )}
+                </>
               )}
 
-              {/* ── Blue Frozen Section — confirmed ≥2% above open at 10:30 AM ── */}
-              {blueCheckDone && lockedColors.size > 0 && (
-                <div className="border border-blue-500/25 rounded-2xl p-4 bg-blue-500/5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', CIRCLE_CLASS.blue)} />
-                    <span className="text-sm font-semibold text-blue-500 dark:text-blue-400">
-                      Blue — Confirmed at 10:30 AM
-                    </span>
-                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-blue-500/50 text-blue-500">
-                      {lockedColors.size}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground ml-1">
-                      ≥2% above opening price — frozen for the day
-                    </span>
-                  </div>
-                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-                    {[...lockedColors.keys()].sort().map(code => {
-                      const company = allSidebarCompanies.find(c => c.company_code === code) ?? {
-                        company_code: code, name: code, exchange: 'NSE', marker: 'EQ',
-                      } as Company;
-                      const data = resolveMarketData(marketData, company);
-                      return (
-                        <CompanyTile
-                          key={code}
-                          company={company}
-                          data={data}
-                          color="blue"
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
+              {/* ══════════════════════════════════════════════════════════════
+                  Logic 1 — original open-price signals (rendered only when
+                  toggle is OFF). Nothing in this block has been changed.
+              ══════════════════════════════════════════════════════════════ */}
+              {!gttAligned && (
+                <>
+                  {/* Live companies — Red / Yellow / Green only (Blue excluded) */}
+                  {sortedCompanies.length > 0 && (
+                    <motion.div
+                      layout
+                      className="grid gap-3"
+                      style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}
+                    >
+                      <AnimatePresence mode="popLayout">
+                        {sortedCompanies.map(company => {
+                          const data = resolveMarketData(marketData, company);
+                          const color = getTileColor(company.company_code, data, blueCheckDone, lockedColors, openingPrices[company.company_code]);
+
+                          return (
+                            <motion.div
+                              key={company.company_code}
+                              layout
+                              layoutId={company.company_code}
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.9 }}
+                              transition={{
+                                layout: { type: 'spring', stiffness: 300, damping: 30 },
+                                opacity: { duration: 0.2 },
+                                scale: { duration: 0.2 },
+                              }}
+                            >
+                              <CompanyTile
+                                company={company}
+                                data={data}
+                                color={color}
+                              />
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
+                    </motion.div>
+                  )}
+
+                  {/* ── Blue Frozen Section — confirmed ≥2% above open at 10:30 AM ── */}
+                  {blueCheckDone && lockedColors.size > 0 && (
+                    <div className="border border-blue-500/25 rounded-2xl p-4 bg-blue-500/5">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', CIRCLE_CLASS.blue)} />
+                        <span className="text-sm font-semibold text-blue-500 dark:text-blue-400">
+                          Blue — Confirmed at 10:30 AM
+                        </span>
+                        <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-blue-500/50 text-blue-500">
+                          {lockedColors.size}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground ml-1">
+                          ≥2% above opening price — frozen for the day
+                        </span>
+                      </div>
+                      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                        {[...lockedColors.keys()].sort().map(code => {
+                          const company = allSidebarCompanies.find(c => c.company_code === code) ?? {
+                            company_code: code, name: code, exchange: 'NSE', marker: 'EQ',
+                          } as Company;
+                          const data = resolveMarketData(marketData, company);
+                          return (
+                            <CompanyTile
+                              key={code}
+                              company={company}
+                              data={data}
+                              color="blue"
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
