@@ -1,21 +1,25 @@
 
 import { io, Socket } from 'socket.io-client';
 
-// ─── Server priority ─────────────────────────────────────────────────────────
-// 1. Primary  → remote server  http://100.93.172.21:5001
-// 2. Fallback → local machine  http://localhost:5001
+// ─── Socket URL ───────────────────────────────────────────────────────────────
+// Defined ONCE via NEXT_PUBLIC_FYERS_SOCKET_URL in docker-compose.yml (or
+// apps/frontend/.env for local dev without Docker).
+// NO hardcoded IPs in this file — the environment variable is the authority.
+// Default 'http://localhost:5001' only applies when running `npm run dev`
+// without any .env file at all.
 // ─────────────────────────────────────────────────────────────────────────────
-const PRIMARY_URL  = 'http://100.93.172.21:5001';
-const FALLBACK_URL = 'http://localhost:5001';
+const SOCKET_URL = process.env.NEXT_PUBLIC_FYERS_SOCKET_URL || 'http://localhost:5001';
 
-// Track which URL is actually in use (exported for display in UI)
-let _activeSocketUrl: string = PRIMARY_URL;
+// Track which URL is in use (exported for display in UI)
+let _activeSocketUrl: string = SOCKET_URL;
 
 export const getActiveSocketUrl = (): string => _activeSocketUrl;
 
 /** Returns 'server' | 'localhost' label for the tooltip */
 export const getSocketSourceLabel = (): 'server' | 'localhost' =>
-  _activeSocketUrl === PRIMARY_URL ? 'server' : 'localhost';
+  (_activeSocketUrl.includes('localhost') || _activeSocketUrl.includes('127.0.0.1'))
+    ? 'localhost'
+    : 'server';
 
 let socket: Socket | null = null;
 let reconnectAttempts = 0;
@@ -94,118 +98,26 @@ const SOCKET_OPTIONS = {
 };
 
 /**
- * Probe PRIMARY_URL with a short-lived socket.
- * Resolves true if it connects within 4 s, false otherwise.
- */
-function probePrimary(): Promise<boolean> {
-  return new Promise(resolve => {
-    const probe = io(PRIMARY_URL, {
-      ...SOCKET_OPTIONS,
-      reconnection: false,
-      timeout: 4000,
-      autoConnect: true,
-    });
-    let settled = false;
-
-    const done = (result: boolean) => {
-      if (settled) return;
-      settled = true;
-      probe.removeAllListeners();
-      probe.disconnect();
-      resolve(result);
-    };
-
-    probe.once('connect',       () => done(true));
-    probe.once('connect_error', () => done(false));
-
-    // Safety-net timer (slightly longer than socket timeout)
-    setTimeout(() => done(false), 5000);
-  });
-}
-
-/**
- * Create the persistent socket, choosing PRIMARY_URL when reachable,
- * otherwise FALLBACK_URL.
- */
-async function createSocket(): Promise<Socket> {
-  const primaryAvailable = await probePrimary();
-  _activeSocketUrl = primaryAvailable ? PRIMARY_URL : FALLBACK_URL;
-
-  console.log(
-    primaryAvailable
-      ? `🌐 Primary server reachable — connecting to ${PRIMARY_URL}`
-      : `⚠️ Primary server unreachable — falling back to ${FALLBACK_URL}`
-  );
-
-  notifySourceChange(getSocketSourceLabel());
-
-  const s = io(_activeSocketUrl, SOCKET_OPTIONS);
-  attachBaseListeners(s);
-  return s;
-}
-
-// Lazily initialised — holds the promise so concurrent callers share one probe
-let _socketPromise: Promise<Socket> | null = null;
-
-/**
- * Async version: resolves once the socket has been created (after the probe).
- */
-export const getSocketAsync = (): Promise<Socket> => {
-  if (!_socketPromise) {
-    _socketPromise = createSocket().then(s => {
-      socket = s;
-      return s;
-    });
-  }
-  return _socketPromise;
-};
-
-/**
- * Synchronous accessor — returns the socket immediately.
- * On first call it kicks off an async probe in the background and returns a
- * temporary socket to PRIMARY_URL.  Once the probe finishes the caller's
- * event listeners will be migrated automatically.
- *
- * Prefer getSocketAsync() in React effects where you can await.
+ * Synchronous accessor — returns the singleton socket, creating it on first call.
+ * The URL is read from NEXT_PUBLIC_FYERS_SOCKET_URL (set in docker-compose.yml).
  */
 export const getSocket = (): Socket => {
   if (socket) return socket;
 
-  // Return a placeholder to PRIMARY_URL immediately so callers can attach
-  // listeners right away.  We'll replace it once the probe settles.
-  const placeholder = io(PRIMARY_URL, { ...SOCKET_OPTIONS, autoConnect: false });
-  socket = placeholder;
-  _activeSocketUrl = PRIMARY_URL;
+  _activeSocketUrl = SOCKET_URL;
+  notifySourceChange(getSocketSourceLabel());
 
-  // Kick off the real probe; swap socket when done
-  (async () => {
-    const real = await getSocketAsync();
-    if (real === placeholder) return; // already the same socket (primary worked)
-
-    // Migrate: clone all listeners from placeholder → real socket
-    const events = ['connect', 'disconnect', 'error', 'subscriptionError',
-                    'fyersError', 'marketDataUpdate', 'chartUpdate',
-                    'historicalData', 'ohlcData', 'ohlc', 'heartbeat',
-                    'authStatus', 'fyersConnected', 'fyersDisconnected',
-                    'subscriptionConfirm', 'afterMarketDataLoaded',
-                    'reconnect', 'reconnect_attempt', 'reconnect_error',
-                    'reconnect_failed'];
-
-    for (const event of events) {
-      // @ts-ignore – accessing internal listeners map
-      const listeners = placeholder.listeners(event) as ((...args: any[]) => void)[];
-      for (const fn of listeners) {
-        real.on(event as any, fn);
-      }
-    }
-
-    placeholder.removeAllListeners();
-    placeholder.disconnect();
-    socket = real;
-  })();
-
+  console.log(`🔌 Connecting socket to ${SOCKET_URL}`);
+  socket = io(SOCKET_URL, SOCKET_OPTIONS);
+  attachBaseListeners(socket);
   return socket;
 };
+
+/**
+ * Async version — resolves immediately with the singleton socket.
+ * Kept for backward compatibility with callers that use await.
+ */
+export const getSocketAsync = (): Promise<Socket> => Promise.resolve(getSocket());
 
 export const isSocketConnected = (): boolean => socket?.connected || false;
 
@@ -224,7 +136,6 @@ export const disconnectSocket = (): void => {
     sourceChangeCallbacks.clear();
     socket.disconnect();
     socket = null;
-    _socketPromise = null;
   }
 };
 

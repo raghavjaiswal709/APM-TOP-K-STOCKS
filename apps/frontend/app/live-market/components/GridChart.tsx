@@ -18,6 +18,7 @@ import {
   ISeriesApi,
   Time,
   AreaSeries,
+  HistogramSeries,
 } from 'lightweight-charts';
 
 /* ── Types ── */
@@ -45,6 +46,8 @@ export interface GridChartProps {
   data: TickData | undefined;
   /** Historical ticks from backend — seeds the chart on mount */
   tickHistory?: TickData[];
+  /** Show or hide the volume histogram at the bottom of the chart */
+  showVolume?: boolean;
 }
 
 /* ── Helpers ── */
@@ -66,10 +69,11 @@ function buildLinePoints(ticks: TickData[]): Array<{ time: Time; value: number }
 }
 
 /* ── Component ── */
-const GridChart: React.FC<GridChartProps> = ({ company, data, tickHistory }) => {
+const GridChart: React.FC<GridChartProps> = ({ company, data, tickHistory, showVolume = true }) => {
   const containerRef  = useRef<HTMLDivElement>(null);
   const chartRef      = useRef<IChartApi | null>(null);
   const seriesRef     = useRef<ISeriesApi<'Area'> | null>(null);
+  const volumeRef     = useRef<ISeriesApi<'Histogram'> | null>(null);
   const roRef         = useRef<ResizeObserver | null>(null);
   const lastTimeRef   = useRef<number>(0);   // for monotonic line updates
 
@@ -182,6 +186,33 @@ const GridChart: React.FC<GridChartProps> = ({ company, data, tickHistory }) => 
     chartRef.current  = chart;
     seriesRef.current = series;
 
+    /* Volume histogram series — sits at the bottom, uses secondary price scale */
+    const volSeries = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'vol',
+      visible: showVolume,
+    });
+    chart.priceScale('vol').applyOptions({
+      scaleMargins: { top: 0.75, bottom: 0 },
+      visible: false,
+    });
+    /* Seed volume from tick history */
+    if (recent.length > 0) {
+      const volPts = recent
+        .filter(t => t.volume != null && t.volume! >= 0)
+        .map((t, i) => {
+          let ts = toSec(t.timestamp);
+          if (i > 0) ts = Math.max(ts, toSec(recent[i - 1].timestamp) + 1);
+          return {
+            time: ts as Time,
+            value: t.volume!,
+            color: (t.change ?? 0) >= 0 ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)',
+          };
+        });
+      if (volPts.length > 0) volSeries.setData(volPts);
+    }
+    volumeRef.current = volSeries;
+
     /* Auto-resize via ResizeObserver */
     const ro = new ResizeObserver(entries => {
       if (!chartRef.current) return;
@@ -199,9 +230,16 @@ const GridChart: React.FC<GridChartProps> = ({ company, data, tickHistory }) => 
       try { chartRef.current?.remove(); } catch {}
       chartRef.current  = null;
       seriesRef.current = null;
+      volumeRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [company.company_code]); // recreate only when company changes
+
+  /* ── Toggle volume visibility without recreating the chart ── */
+  useEffect(() => {
+    if (!volumeRef.current) return;
+    volumeRef.current.applyOptions({ visible: showVolume });
+  }, [showVolume]);
 
   /* ── Re-seed when historical data arrives asynchronously ── */
   useEffect(() => {
@@ -231,6 +269,15 @@ const GridChart: React.FC<GridChartProps> = ({ company, data, tickHistory }) => 
     try {
       seriesRef.current.update({ time: safeTs as Time, value: data.ltp });
       lastTimeRef.current = safeTs;
+
+      /* Update volume histogram if volume data is available */
+      if (volumeRef.current && data.volume != null && data.volume >= 0) {
+        volumeRef.current.update({
+          time: safeTs as Time,
+          value: data.volume,
+          color: (data.change ?? 0) >= 0 ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)',
+        });
+      }
 
       /* Slide 10-minute window forward with each tick */
       chartRef.current?.timeScale().setVisibleRange({

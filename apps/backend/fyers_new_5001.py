@@ -2028,7 +2028,7 @@ async def main():
         config = uvicorn.Config(
             app=app,
             host='0.0.0.0',
-            port=5001,
+            port=int(os.getenv('PORT', '5001')),
             log_level='info',
             loop='asyncio',
             ws='websockets',
@@ -2037,7 +2037,7 @@ async def main():
         )
         server = uvicorn.Server(config)
         
-        logger.info("✅ Starting Socket.IO server with AsyncIO + Uvicorn on port 5001...")
+        logger.info(f"✅ Starting Socket.IO server with AsyncIO + Uvicorn on port {int(os.getenv('PORT', '5001'))}...")
         logger.info("🔑 Using auto authentication with JWT token handling")
         logger.info("📊 Features: Background collection, 24h retention, optimized indicators")
         logger.info("⚡ Enhanced: Timeout protection, rate limiting, batch operations")

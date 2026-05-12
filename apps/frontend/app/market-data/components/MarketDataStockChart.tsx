@@ -144,6 +144,8 @@ interface StockChartProps {
     showBeyondTop3PatternLines?: boolean;
     /** Lock the X-axis to 09:15–15:30 IST and disable horizontal scroll/pan */
     lockToMarketHours?: boolean;
+    /** Show or hide the volume histogram at the bottom of the chart */
+    showVolume?: boolean;
 }
 
 // --- Constants ---
@@ -221,6 +223,7 @@ export function MarketDataStockChart({
     showTop3PatternLines = true,
     showBeyondTop3PatternLines = false,
     lockToMarketHours = false,
+    showVolume = true,
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -748,6 +751,12 @@ export function MarketDataStockChart({
         } catch (_) {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [lockToMarketHours, patternCurves?.date, chartReadyVersion]);
+
+    // Toggle volume histogram visibility without recreating the series
+    useEffect(() => {
+        if (!volumeSeriesRef.current) return;
+        volumeSeriesRef.current.applyOptions({ visible: showVolume });
+    }, [showVolume]);
 
     // Data processing helper with validation
     const processData = useCallback((rawData: StockDataPoint[]) => {
@@ -1534,6 +1543,7 @@ export function MarketDataStockChart({
             volumeSeriesRef.current = mainChart.addSeries(HistogramSeries, {
                 priceFormat: { type: 'volume' },
                 priceScaleId: 'volume_scale',
+                visible: showVolume,
             });
             mainChart.priceScale('volume_scale').applyOptions({
                 scaleMargins: { top: 0.55, bottom: 0 },

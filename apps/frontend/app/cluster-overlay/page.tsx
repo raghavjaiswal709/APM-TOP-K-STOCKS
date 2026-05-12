@@ -64,7 +64,7 @@ import { sentimentService } from '@/app/services/sentimentService';
 import { SubscriptionManagerModal } from "../market-data/components/SubscriptionManagerModal";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ListChecks, Settings2, Briefcase } from 'lucide-react';
+import { ListChecks, Settings2, Briefcase, BarChart2 } from 'lucide-react';
 import { gttService, type GttPrediction } from '@/app/services/gttService';
 import { Zap } from 'lucide-react';
 
@@ -206,6 +206,10 @@ const ClusterOverlayPage: React.FC = () => {
     'cluster-overlay-showPredictions',
     true
   );
+  const [showVolume, setShowVolume] = usePersistentState<boolean>(
+    'cluster-overlay-showVolume',
+    true
+  );
   const [predictionMode, setPredictionMode] = usePersistentState<'overlay' | 'comparison'>(
     'cluster-overlay-predictionMode',
     'overlay'
@@ -216,7 +220,7 @@ const ClusterOverlayPage: React.FC = () => {
   );
   const [isGttEnabled, setIsGttEnabled] = usePersistentState<boolean>(
     'cluster-overlay-isGttEnabled',
-    false
+    true
   );
   // GTT per-horizon visibility: each of the 10 horizons + input_close can be toggled
   const [gttHorizonVisibility, setGttHorizonVisibility] = usePersistentState<Record<string, boolean>>(
@@ -2851,6 +2855,21 @@ const ClusterOverlayPage: React.FC = () => {
 
             <Separator orientation="vertical" className="h-4 mx-0.5" />
 
+            {/* Volume toggle */}
+            <button
+              onClick={() => setShowVolume(!showVolume)}
+              className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors inline-flex items-center gap-1.5 border ${showVolume
+                  ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/25 hover:bg-sky-500/15'
+                  : 'bg-transparent text-muted-foreground border-border hover:bg-muted/60'
+                }`}
+              title={showVolume ? 'Hide volume histogram' : 'Show volume histogram'}
+            >
+              <BarChart2 className="h-3 w-3" />
+              Vol
+            </button>
+
+            <Separator orientation="vertical" className="h-4 mx-0.5" />
+
             {/* Portfolio Mode */}
             <div className="flex items-center">
               <PortfolioMode
@@ -2931,6 +2950,7 @@ const ClusterOverlayPage: React.FC = () => {
                     showTop3PatternLines={showTop3Lines}
                     showBeyondTop3PatternLines={showBeyondTop3Lines}
                     lockToMarketHours={true}
+                    showVolume={showVolume}
                   />
 
                   {/* ── PatternPool Overlay Panel (draggable, fixed, collapsible) ── */}

@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import GridChart, { TickData } from './GridChart';
-import { TrendingUp, TrendingDown, Minus, WifiOff, LayoutGrid } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, WifiOff, LayoutGrid, BarChart2 } from 'lucide-react';
 
 /* ── Layout options ── */
 type LayoutOption = 'auto' | '1' | '2' | '3' | '4' | '6';
@@ -15,6 +15,7 @@ const LAYOUT_OPTIONS: { value: LayoutOption; label: string }[] = [
   { value: '6',    label: '6' },
 ];
 const LAYOUT_STORAGE_KEY = 'live-market-grid-layout';
+const VOLUME_STORAGE_KEY = 'live-market-grid-showVolume';
 
 interface Company {
   company_code: string;
@@ -71,6 +72,22 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
     try { localStorage.setItem(LAYOUT_STORAGE_KEY, val); } catch { /* ignore */ }
   };
 
+  /* ── Volume toggle preference (localStorage-persisted) ── */
+  const [showVolume, setShowVolume] = useState<boolean>(true);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(VOLUME_STORAGE_KEY);
+      if (saved !== null) setShowVolume(saved === 'true');
+    } catch { /* ignore */ }
+  }, []);
+  const handleVolumeToggle = () => {
+    setShowVolume(v => {
+      const next = !v;
+      try { localStorage.setItem(VOLUME_STORAGE_KEY, String(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
   /* ── Compute columns so we can set explicit grid-template-rows ── */
   const cols = useMemo(() => {
     if (layout !== 'auto') return Number(layout);
@@ -104,6 +121,22 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
             </button>
           ))}
         </div>
+
+        <div className="w-px h-3 bg-border mx-0.5 shrink-0" />
+
+        {/* Volume toggle */}
+        <button
+          onClick={handleVolumeToggle}
+          className={`text-[10px] font-medium px-2 py-0.5 rounded-md flex items-center gap-1 transition-colors border ${
+            showVolume
+              ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20 hover:bg-sky-500/15'
+              : 'bg-muted/50 text-muted-foreground border-transparent hover:text-foreground'
+          }`}
+          title={showVolume ? 'Hide volume bars' : 'Show volume bars'}
+        >
+          <BarChart2 className="h-2.5 w-2.5" />
+          Vol
+        </button>
       </div>
 
       {/* ── Cards grid — fills all available height with equal rows ── */}
@@ -175,6 +208,7 @@ const LiveMarketGrid: React.FC<LiveMarketGridProps> = ({
                   company={company}
                   data={data}
                   tickHistory={history}
+                  showVolume={showVolume}
                 />
               </div>
 

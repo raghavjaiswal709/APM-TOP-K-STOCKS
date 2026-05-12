@@ -59,7 +59,7 @@ import {
   ChevronDown,
   Check,
 } from 'lucide-react';
-import { getSocket, onSocketSourceChange, getSocketSourceLabel } from '@/lib/socket';
+import { getSocket, onSocketSourceChange, getSocketSourceLabel, getActiveSocketUrl } from '@/lib/socket';
 import MarketMoversSidebar from './components/MarketMoversSidebar';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -1138,9 +1138,7 @@ const MarketMoversPage: React.FC = () => {
               className={cn('font-medium hidden sm:block cursor-default select-none', connDisplay.color)}
               title={
                 connectionStatus === 'Connected'
-                  ? socketSource === 'server'
-                    ? 'Connected to remote server (100.93.172.21:5001)'
-                    : 'Connected to localhost:5001 (remote server unreachable)'
+                  ? `Connected to ${getActiveSocketUrl()}`
                   : connectionStatus
               }
             >
@@ -1155,7 +1153,7 @@ const MarketMoversPage: React.FC = () => {
           </div>
 
           {/* GTT Aligned toggle */}
-          {/* <Button
+          <Button
             variant={gttAligned ? 'default' : 'outline'}
             size="sm"
             className={cn(
@@ -1169,7 +1167,7 @@ const MarketMoversPage: React.FC = () => {
           >
             <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', gttAligned ? 'bg-white' : 'bg-violet-500')} />
             GTT Aligned
-          </Button> */}
+          </Button>
 
           <ModeToggle />
         </header>
