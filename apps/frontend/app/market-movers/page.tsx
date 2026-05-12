@@ -1138,7 +1138,7 @@ const MarketMoversPage: React.FC = () => {
           </div>
 
           {/* GTT Aligned toggle */}
-          <Button
+          {/* <Button
             variant={gttAligned ? 'default' : 'outline'}
             size="sm"
             className={cn(
@@ -1152,7 +1152,7 @@ const MarketMoversPage: React.FC = () => {
           >
             <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', gttAligned ? 'bg-white' : 'bg-violet-500')} />
             GTT Aligned
-          </Button>
+          </Button> */}
 
           <ModeToggle />
         </header>
