@@ -36,23 +36,36 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # Client-side: Browser uses localhost (host machine perspective)
+      # ── NEXT_PUBLIC_ vars are the SINGLE SOURCE OF TRUTH for socket URLs. ──
+      # Browser-side code reads ONLY these — no IPs are ever hardcoded in TS/JS.
+      #
+      # TO USE LAPTOP'S LOCAL DOCKER (both running on same machine):
+      #   NEXT_PUBLIC_FYERS_SOCKET_URL=http://localhost:5001
+      #   NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://localhost:5010
+      #
+      # TO USE REMOTE SERVER (current setting — laptop browser → server):
+      #   NEXT_PUBLIC_FYERS_SOCKET_URL=http://100.93.172.21:5001
+      #   NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://100.93.172.21:5010
+      #
+      # Change these two lines + rebuild frontend to switch between sources.
+      - NEXT_PUBLIC_FYERS_SOCKET_URL=http://100.93.172.21:5001
+      - NEXT_PUBLIC_FYERS_SERVICE_5001_URL=http://100.93.172.21:5001
+      - NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://100.93.172.21:5010
+      
+      - NEXT_PUBLIC_SOCKET_URL=http://100.93.172.21:5001
+      # To use your laptop's local Docker:
+
+      
+
+
+
+      # Backend API URLs (browser-accessible)
       - NEXT_PUBLIC_API_URL=http://100.93.172.21:5002
       - NEXT_PUBLIC_BACKEND_URL=http://100.93.172.21:5002
       - NEXT_PUBLIC_MARKET_DATA_API=http://100.93.172.21:5002/api
       - NEXT_PUBLIC_GTT_API_URL=http://100.93.172.21:5002
-    
-      - NEXT_PUBLIC_SOCKET_URL=http://100.93.172.21:5001
-      - NEXT_PUBLIC_FYERS_SOCKET_URL=http://100.93.172.21:5001
-      - NEXT_PUBLIC_FYERS_SERVICE_5001_URL=http://100.93.172.21:5001
-      - NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://100.93.172.21:5010
 
-
-      # - NEXT_PUBLIC_SOCKET_URL=http://localhost:5001
-      # - NEXT_PUBLIC_FYERS_SOCKET_URL=http://localhost:5001
-      # - NEXT_PUBLIC_FYERS_SERVICE_5001_URL=http://localhost:5001
-      # - NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://100.93.172.21:5010
-    
+      # Internal server-side URL (container-to-container)
       - BACKEND_URL=http://backend:5002
     env_file:
       - apps/frontend/.env
@@ -67,6 +80,7 @@ services:
 
   # ═══════════════════════════════════════════════════════════════════════════
   # 🐍 Python Fyers Service A - ASGI/Uvicorn (Port 5001)
+  # PORT env var controls which port uvicorn binds to (reads via os.getenv).
   # ═══════════════════════════════════════════════════════════════════════════
   fyers-5001:
     build:
@@ -78,6 +92,7 @@ services:
       - "5001:5001"
     environment:
       - PYTHONUNBUFFERED=1
+      - PORT=5001
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
