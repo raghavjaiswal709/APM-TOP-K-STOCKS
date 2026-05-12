@@ -2,16 +2,23 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 
 // ─── Socket URL ───────────────────────────────────────────────────────────────
-// Defined via NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL (or NEXT_PUBLIC_FYERS_SOCKET_URL
-// as fallback) in docker-compose.yml / apps/frontend/.env.
-// NO hardcoded IPs in this file — the environment variable is the authority.
-// Default 'http://localhost:5010' only applies when running `npm run dev`
-// without any .env file at all.
+// Derived at RUNTIME from window.location.hostname so the socket always
+// connects back to the same host the page was loaded from.
+//   http://localhost:3000       → ws://localhost:5010       (local dev)
+//   http://100.93.172.21:3000  → ws://100.93.172.21:5010   (server access)
+// Set NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL only when the socket service runs on
+// a DIFFERENT host than the frontend.
 // ─────────────────────────────────────────────────────────────────────────────
-const LIVE_MARKET_SOCKET_URL =
-  process.env.NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL ||
-  process.env.NEXT_PUBLIC_FYERS_SOCKET_URL ||
-  'http://localhost:5010';
+const LIVE_MARKET_SOCKET_URL = (() => {
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:5010`;
+  }
+  return (
+    process.env.NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL ||
+    process.env.NEXT_PUBLIC_FYERS_SOCKET_URL ||
+    'http://localhost:5010'
+  );
+})();
 interface Company {
   company_code: string;
   name: string;

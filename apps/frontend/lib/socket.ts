@@ -2,13 +2,25 @@
 import { io, Socket } from 'socket.io-client';
 
 // ─── Socket URL ───────────────────────────────────────────────────────────────
-// Defined ONCE via NEXT_PUBLIC_FYERS_SOCKET_URL in docker-compose.yml (or
-// apps/frontend/.env for local dev without Docker).
-// NO hardcoded IPs in this file — the environment variable is the authority.
-// Default 'http://localhost:5001' only applies when running `npm run dev`
-// without any .env file at all.
+// Derived at RUNTIME from window.location.hostname so the socket always
+// connects back to the same host the page was loaded from.
+//   http://localhost:3000       → ws://localhost:5001       (local dev)
+//   http://100.93.172.21:3000  → ws://100.93.172.21:5001   (server access)
+// This avoids baked-in IPs in the JS bundle and works without any env var.
+// Set NEXT_PUBLIC_FYERS_SOCKET_URL only when the socket runs on a DIFFERENT
+// host than the frontend (rare, cross-host deployments).
 // ─────────────────────────────────────────────────────────────────────────────
-const SOCKET_URL = process.env.NEXT_PUBLIC_FYERS_SOCKET_URL || 'http://localhost:5001';
+const SOCKET_URL = (() => {
+  // Client-side: always resolve to the host the page was served from.
+  // This runs in the browser at request time, so it correctly picks up
+  // localhost, Tailscale IP, or any other hostname without any build-time
+  // configuration.
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:5001`;
+  }
+  // SSR fallback (sockets aren't used server-side, but satisfy module init).
+  return process.env.NEXT_PUBLIC_FYERS_SOCKET_URL || 'http://localhost:5001';
+})();
 
 // Track which URL is in use (exported for display in UI)
 let _activeSocketUrl: string = SOCKET_URL;
