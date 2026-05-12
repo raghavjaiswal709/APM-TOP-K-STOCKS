@@ -44,6 +44,11 @@ interface WatchlistResponse {
 interface UseWatchlistOptions {
   date?: string;
   showAllCompanies?: boolean;
+  /** Override the localStorage cache key for companies.
+   *  Use a page-specific key to prevent cross-page cache contamination
+   *  (e.g. a page with showAllCompanies=true writing 2000+ companies to the
+   *  shared key, which then loads into a page that only expects today's watchlist). */
+  cacheKey?: string;
   // REMOVED: refined filter — watchlist_quant has no refined column
   // refinedFilter?: boolean | null;
 }
@@ -51,6 +56,11 @@ interface UseWatchlistOptions {
 export function useWatchlist(options: UseWatchlistOptions = {}) {
   const BASE_URL = '';
   const hasLoadedRef = useRef(false);
+
+  // Determine the localStorage key for companies.
+  // Callers can pass a page-specific cacheKey to avoid cross-page contamination
+  // (e.g. a page that loads all 2000+ companies polluting a page that only wants today's watchlist).
+  const companiesStorageKey = options.cacheKey || 'watchlist-companies';
   
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [availableDates, setAvailableDates] = usePersistentState<string[]>(
@@ -58,7 +68,7 @@ export function useWatchlist(options: UseWatchlistOptions = {}) {
     []
   );
   const [companies, setCompanies] = usePersistentState<MergedCompany[]>(
-    'watchlist-companies',
+    companiesStorageKey,
     []
   );
   const [loading, setLoading] = useState(false);

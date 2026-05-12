@@ -932,10 +932,20 @@ const ClusterOverlayPage: React.FC = () => {
   const handleSubscribeCompanies = useCallback(async (companyCodes: string[]) => {
     if (!companyCodes || companyCodes.length === 0) return;
 
-    if (!socketRef.current || !socketRef.current.connected) {
-      toast.error('Not connected to server. Please wait for connection.');
-      return;
+    // Always resolve the live socket — getSocket() returns the module-level singleton
+    // which is already the real socket after the placeholder→real migration.
+    // This avoids a race where socketRef still holds the disconnected placeholder.
+    const activeSocket = getSocket();
+    if (!activeSocket || !activeSocket.connected) {
+      // One more chance: sync our ref and check again
+      socketRef.current = activeSocket;
+      if (!activeSocket || !activeSocket.connected) {
+        toast.error('Not connected to server. Please wait for connection.');
+        return;
+      }
     }
+    // Keep ref in sync
+    socketRef.current = activeSocket;
 
     setIsSubscribing(true);
     try {
@@ -970,7 +980,7 @@ const ClusterOverlayPage: React.FC = () => {
         allSubscribedSymbolsRef.current.add(s);
       });
 
-      socketRef.current.emit('subscribe_companies', {
+      activeSocket.emit('subscribe_companies', {
         symbols: fyersSymbols,
         companyCodes: companyCodes
       }, (response: any) => {
@@ -1098,6 +1108,11 @@ const ClusterOverlayPage: React.FC = () => {
 
   // Event Handlers
   const handleConnect = useCallback(() => {
+    // Refresh socketRef to the current real socket.
+    // getSocket() returns the module-level singleton which is updated after the
+    // placeholder→real-socket migration, so this cures a stale-ref race where
+    // socketRef still points to the disconnected placeholder.
+    socketRef.current = getSocket();
     console.log('✅ Connected to server');
     setSocketStatus('Connected');
     setIsReconnecting(false);

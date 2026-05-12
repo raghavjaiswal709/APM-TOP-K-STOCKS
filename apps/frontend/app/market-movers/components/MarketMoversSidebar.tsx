@@ -47,6 +47,8 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
   // Watchlist state — no refined filter (watchlist_quant has no refined column)
+  // Use a sidebar-specific cacheKey so that pages that load all 2000+ companies
+  // (e.g. cluster-overlay with showAllCompanies=true) never contaminate this cache.
   const {
     companies,
     loading,
@@ -58,7 +60,7 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
     showAllCompanies,
     setShowAllCompanies,
     availableExchanges,
-  } = useWatchlist();
+  } = useWatchlist({ cacheKey: 'market-movers-sidebar-companies' });
 
   // Hydration guard
   useEffect(() => setMounted(true), []);

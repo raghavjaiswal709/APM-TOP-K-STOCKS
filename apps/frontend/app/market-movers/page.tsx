@@ -564,7 +564,6 @@ const MarketMoversPage: React.FC = () => {
 
   /* ── Track which companies we subscribed to (to avoid re-subscribing) ── */
   const subscribedCodesRef = useRef<string>('');
-  const hasAutoSelectedRef = useRef(false);
   /* ── Stable ref mirror of allSidebarCompanies — used inside the 10:30 AM timer callback ── */
   const allSidebarCompaniesRef = useRef<Company[]>([]);
 
@@ -783,11 +782,31 @@ const MarketMoversPage: React.FC = () => {
       allSidebarCompaniesRef.current = companies;
       setAllSidebarCompanies(companies);
 
-      // Auto-select all on first load
-      if (!hasAutoSelectedRef.current && companies.length > 0) {
-        hasAutoSelectedRef.current = true;
-        setSelectedCodes(new Set(companies.map(c => c.company_code)));
-      }
+      setSelectedCodes(prev => {
+        const newCodes = new Set(companies.map(c => c.company_code));
+
+        // Initial load: nothing selected yet — select everything.
+        if (prev.size === 0) return newCodes;
+
+        // Stale-cache detected: previous set is more than 2× larger than the
+        // fresh API list (e.g. a "show all 2000+ companies" cache was loaded
+        // for a sidebar that only expects today's ~200-company watchlist).
+        // Reset the selection entirely to today's list.
+        if (newCodes.size > 0 && prev.size > newCodes.size * 2) return newCodes;
+
+        // Normal incremental update (e.g. user changed the date, or watchlist
+        // gained a few new entries): keep the user's existing deselections but
+        // auto-select any brand-new companies so tiles always appear for them.
+        let changed = false;
+        const next = new Set(prev);
+        companies.forEach(c => {
+          if (!next.has(c.company_code)) {
+            next.add(c.company_code);
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
     },
     []
   );
@@ -911,8 +930,6 @@ const MarketMoversPage: React.FC = () => {
     return () => {
       if (gttIntervalRef.current) { clearInterval(gttIntervalRef.current); gttIntervalRef.current = null; }
     };
-  // Re-fetch whenever companies list changes while gttAligned is ON
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gttAligned, allSidebarCompanies]);
 
   /* Logic B sorted companies — all selected, no blue exclusion, sorted by devPct desc */
