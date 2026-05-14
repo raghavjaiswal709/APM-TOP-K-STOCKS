@@ -488,10 +488,10 @@ export default function AdminServicesPage() {
         body: JSON.stringify({ key, action }),
       });
       const data = await res.json();
-      setActivityLog((prev) => [{ timestamp: new Date().toISOString(), key, action, result: data.success ? 'success' : 'error', message: (data.message ?? data.error ?? 'Unknown') as string }, ...prev].slice(0, 50));
+      setActivityLog((prev) => [{ timestamp: new Date().toISOString(), key, action, result: (data.success ? 'success' : 'error') as 'success' | 'error', message: (data.message ?? data.error ?? 'Unknown') as string }, ...prev].slice(0, 50));
       setTimeout(() => fetchServices(true), 2000);
     } catch (err) {
-      setActivityLog((prev) => [{ timestamp: new Date().toISOString(), key, action, result: 'error', message: err instanceof Error ? err.message : 'Network error' }, ...prev].slice(0, 50));
+      setActivityLog((prev) => [{ timestamp: new Date().toISOString(), key, action, result: 'error' as const, message: err instanceof Error ? err.message : 'Network error' }, ...prev].slice(0, 50));
     } finally { setActionLoading(null); }
   }, [fetchServices]);
 
@@ -508,12 +508,12 @@ export default function AdminServicesPage() {
         timestamp: new Date().toISOString(),
         key: instanceId + (service ? `/${service}` : ''),
         action,
-        result: data.success ? 'success' : 'error',
+        result: (data.success ? 'success' : 'error') as 'success' | 'error',
         message: data.success ? `${action} applied to ${instanceId}` : (data.error ?? 'Some containers failed'),
       }, ...prev].slice(0, 50));
       setTimeout(() => fetchInstances(true), 2000);
     } catch (err) {
-      setActivityLog((prev) => [{ timestamp: new Date().toISOString(), key: instanceId, action, result: 'error', message: err instanceof Error ? err.message : 'Network error' }, ...prev].slice(0, 50));
+      setActivityLog((prev) => [{ timestamp: new Date().toISOString(), key: instanceId, action, result: 'error' as const, message: err instanceof Error ? err.message : 'Network error' }, ...prev].slice(0, 50));
     } finally { setInstanceActionLoading(null); }
   }, [fetchInstances]);
 

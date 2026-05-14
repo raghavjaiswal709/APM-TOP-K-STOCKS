@@ -280,12 +280,18 @@ export function usePatternOverlay({
         return;
       }
 
+      if (overlayRes.status === 404) {
+        // Symbol not yet in the pattern pool — not an error, just unavailable
+        setError(`Symbol "${sym}" not found in pattern pool`);
+        setLoading(false);
+        scheduleRetry(FETCH_ERROR_RETRY_MS);
+        return;
+      }
+
       if (!overlayRes.ok) {
         // 500 or other server error — retry sooner than normal poll interval
         const errText = await overlayRes.text().catch(() => overlayRes.statusText);
-        const msg = overlayRes.status === 404
-          ? `Symbol "${sym}" not found in pattern pool`
-          : `Pattern overlay service error (HTTP ${overlayRes.status})`;
+        const msg = `Pattern overlay service error (HTTP ${overlayRes.status})`;
         throw Object.assign(new Error(msg), { _retryDelay: FETCH_ERROR_RETRY_MS, _raw: errText });
       }
 

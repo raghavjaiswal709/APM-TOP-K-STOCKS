@@ -6,8 +6,7 @@ interface MergedCompany {
   company_code: string;
   name: string;
   exchange: string;
-  // REMOVED: refined not in watchlist_quant
-  // refined?: boolean;
+  refined?: boolean;          // optional — watchlist_quant may not populate this
   marker?: string;
   // NEW fields from watchlist_quant
   rank?: number;
@@ -24,14 +23,13 @@ interface MergedCompany {
   max_position_inr?: number;
   days_capital_data?: number;
   pe_ratio?: number;
-  // OLD fields (commented out - no longer in watchlist_quant)
-  // total_valid_days?: number;
-  // avg_daily_high_low_range?: number;
-  // median_daily_volume?: number;
-  // avg_trading_capital?: number;
-  // latest_close_price?: number;
-  // suggested_capital_deployment?: number;
-  // hourly_median_volume?: number;
+  total_valid_days?: number;   // optional legacy field — used by getFilteredCompanies
+  avg_daily_high_low_range?: number;
+  median_daily_volume?: number;
+  avg_trading_capital?: number;
+  latest_close_price?: number;
+  suggested_capital_deployment?: number;
+  hourly_median_volume?: number;
 }
 
 interface WatchlistResponse {

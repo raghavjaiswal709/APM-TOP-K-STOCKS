@@ -24,7 +24,7 @@ interface ActiveFilters {
   exchanges: string[];
   markers: string[];
   sentiments: string[];
-  // refined: boolean | null; // REMOVED: not in watchlist_quant
+  refined: boolean | null;
   showAllCompanies: boolean;
 }
 
@@ -45,7 +45,7 @@ export const WatchlistSelector = React.memo(({
     exchanges: [],
     markers: [],
     sentiments: [],
-    // refined: null, // REMOVED: not in watchlist_quant
+    refined: null,
     showAllCompanies: false
   });
 
@@ -87,7 +87,7 @@ export const WatchlistSelector = React.memo(({
         exchanges: [],
         markers: [],
         sentiments: [],
-        // refined: null, // REMOVED: not in watchlist_quant
+        refined: null,
         showAllCompanies: false
       });
 

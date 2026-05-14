@@ -57,7 +57,6 @@ export const MultiSelectWatchlistSelector = React.memo(({
     getFilteredCompanies,
     showAllCompanies,
     setShowAllCompanies,
-    setRefinedFilter
   } = useWatchlist();
 
   const [selectedExchange, setSelectedExchange] = React.useState<string>('');
@@ -145,9 +144,6 @@ export const MultiSelectWatchlistSelector = React.memo(({
     // Update showAllCompanies state
     setShowAllCompanies(filters.showAllCompanies);
     
-    // Update refined filter for API calls
-    setRefinedFilter(filters.refined);
-    
     // Apply exchange and marker filters
     if (filters.exchanges.length > 0) {
       setSelectedExchange(filters.exchanges[0]);
@@ -160,7 +156,7 @@ export const MultiSelectWatchlistSelector = React.memo(({
     } else {
       setSelectedMarker('');
     }
-  }, [setShowAllCompanies, setRefinedFilter]);
+  }, [setShowAllCompanies]);
 
   const filteredCompanies = React.useMemo(() => {
     let filtered = [...companies];

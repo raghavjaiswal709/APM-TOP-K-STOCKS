@@ -58,7 +58,7 @@ export const WatchlistSelector = React.memo(({
   const [activeFilters, setActiveFilters] = React.useState({
     exchanges: [] as string[],
     markers: [] as string[],
-    // refined: null as boolean | null, // REMOVED: not in watchlist_quant
+    refined: null as boolean | null,
     showAllCompanies: false,
     hasPrediction: null as boolean | null,
     hasGtt: null as boolean | null,
