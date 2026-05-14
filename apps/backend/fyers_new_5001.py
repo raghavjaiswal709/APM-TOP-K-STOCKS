@@ -96,6 +96,65 @@ CHART_UPDATE_INTERVAL = 0.1
 last_emit_time = defaultdict(float)
 pending_data = {}
 
+# ============ Cross-Symbol Leak Defense ============
+# The Fyers SDK has a documented race in its internal symbol↔token mapping
+# (see _fyers_subscribe_lock comment above). Even with the lock, a tick can
+# arrive labeled with the wrong symbol when the SDK's mapping briefly mis-
+# associates a token. The serialisation prevents NEW corruption but cannot
+# reverse a stale mapping inside the SDK once it has happened.
+#
+# Defense: per-symbol "reference price" derived from historical data on
+# subscribe and refined by validated live ticks. Any incoming tick whose ltp
+# deviates more than PRICE_SANITY_MAX_DEVIATION from the reference is
+# considered a cross-symbol leak and is DROPPED at the ingress (onmessage).
+# This stops bad data from ever entering pending_data / historical_data /
+# ohlc_data / chart_updates and from being broadcast to clients.
+PRICE_SANITY_MAX_DEVIATION = 0.20  # 20% — covers Indian intraday circuit limits while still catching cross-symbol leaks (which are usually >>50%)
+reference_prices: Dict[str, float] = {}        # symbol -> trusted last price
+_reference_price_lock = threading.Lock()        # guards reference_prices from concurrent updates
+leak_rejection_counts: Dict[str, int] = defaultdict(int)  # diagnostics: per-symbol drop counter
+
+
+def set_reference_price(symbol: str, price) -> None:
+    """Atomically set or update the trusted reference price for a symbol."""
+    if not symbol or price is None:
+        return
+    try:
+        p = float(price)
+    except (TypeError, ValueError):
+        return
+    if p <= 0:
+        return
+    with _reference_price_lock:
+        reference_prices[symbol] = p
+
+
+def is_price_sane_for_symbol(symbol: str, price) -> bool:
+    """
+    Return True if `price` is within PRICE_SANITY_MAX_DEVIATION of the
+    trusted reference for `symbol`. Returns True (allow) when there is no
+    reference yet — the first tick for a freshly-subscribed symbol seeds
+    the reference. Returns False when the deviation is too large (likely
+    a cross-symbol leak from the Fyers SDK token-mapping race).
+    """
+    if not symbol or price is None:
+        return False
+    try:
+        p = float(price)
+    except (TypeError, ValueError):
+        return False
+    if p <= 0:
+        return False
+    with _reference_price_lock:
+        ref = reference_prices.get(symbol)
+    if ref is None or ref <= 0:
+        # No reference yet — seed and accept. The seed only happens once per
+        # symbol per session, so a leaked tick at this exact moment is the
+        # only failure mode (extremely rare given subscribe-time gating).
+        return True
+    deviation = abs(p - ref) / ref
+    return deviation <= PRICE_SANITY_MAX_DEVIATION
+
 # ============ Fyers Subscribe Thread-Safety ============
 # The Fyers SDK's internal symbol→token mapping is NOT thread-safe.
 # fyers.subscribe() is called from multiple threads concurrently:
@@ -564,6 +623,11 @@ def cleanup_old_data():
         if symbol in cached_indicators:
             del cached_indicators[symbol]
         active_symbols.discard(symbol)
+        # ✅ Drop stale leak-guard reference so the symbol re-seeds cleanly if
+        # it's ever subscribed again.
+        with _reference_price_lock:
+            reference_prices.pop(symbol, None)
+        leak_rejection_counts.pop(symbol, None)
 
     last_cleanup_time = current_time
     logger.info(f"Data cleanup completed. Cleaned {len(cleaned_symbols)} old symbols.")
@@ -1049,6 +1113,16 @@ async def subscribe(sid, data):
     else:
         logger.info(f"Using cached historical data for {symbol} ({len(historical_data[symbol])} points)")
 
+    # ✅ Seed the leak-guard reference price from the most recent valid candle
+    # BEFORE we open the live subscription, so the very first live tick is
+    # already gated.
+    if symbol in historical_data and historical_data[symbol]:
+        last_hist = historical_data[symbol][-1]
+        seed_price = last_hist.get('close') or last_hist.get('ltp')
+        if seed_price:
+            set_reference_price(symbol, seed_price)
+            logger.info(f"[leak-guard] Seeded reference price for {symbol}: {seed_price}")
+
     # Subscribe to real-time updates (only during market hours with auth)
     if is_market_open and auth_initialized:
         logger.info(f"Subscribing to real-time updates for: {symbol}")
@@ -1309,6 +1383,11 @@ async def send_batch_historical_data(sid, symbols):
                     for dp in hist_data_list:
                         if isinstance(dp, dict) and dp.get('symbol') != symbol:
                             dp['symbol'] = symbol
+                    # ✅ Seed leak-guard reference from latest historical close
+                    last_hist = hist_data_list[-1]
+                    seed = last_hist.get('close') or last_hist.get('ltp')
+                    if seed:
+                        set_reference_price(symbol, seed)
                     await sio.emit('historicalData', {
                         'symbol': symbol,
                         'data': hist_data_list
@@ -1352,17 +1431,23 @@ async def send_batch_external_historical_data(sid, symbols):
                     # Store in memory
                     if symbol not in historical_data:
                         historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
-                    
+
                     for data_point in external_data:
                         historical_data[symbol].append(data_point)
-                    
+
                     # Build and store OHLC candles
                     ohlc_candles = build_ohlc_from_external_data(symbol, external_data)
                     if symbol not in ohlc_data:
                         ohlc_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
                     for candle in ohlc_candles:
                         ohlc_data[symbol].append(candle)
-                    
+
+                    # ✅ Seed leak-guard reference from latest external candle
+                    seed_src = ohlc_candles[-1] if ohlc_candles else external_data[-1]
+                    seed = seed_src.get('close') or seed_src.get('ltp')
+                    if seed:
+                        set_reference_price(symbol, seed)
+
                     # Emit historical data
                     await sio.emit('historicalData', {
                         'symbol': symbol,
@@ -1717,6 +1802,11 @@ async def get_market_data_smart(sid, data):
 # ============ Data Storage and Processing ============
 def store_historical_data(symbol, data_point):
     """Store data for ALL active symbols"""
+    # ✅ Second-line leak defense — onmessage already filters, but this catches
+    # any internal caller that bypasses onmessage with a bad point.
+    if not is_price_sane_for_symbol(symbol, data_point.get('ltp')):
+        return
+
     if symbol not in historical_data:
         historical_data[symbol] = deque(maxlen=MAX_HISTORY_POINTS)
 
@@ -1746,6 +1836,11 @@ def update_ohlc_data(symbol, data_point):
 
     timestamp = data_point['timestamp']
     price = data_point['ltp']
+
+    # ✅ Belt-and-suspenders: refuse to mutate any candle with a price that
+    # would cross the leak-guard threshold for this symbol.
+    if not is_price_sane_for_symbol(symbol, price):
+        return
 
     minute_timestamp = (timestamp // 60) * 60
     current_cumulative_volume = data_point.get('volume', 0)
@@ -1925,11 +2020,31 @@ def onmessage(message):
         logger.info(f"Subscription confirmation: {symbol}")
         return
 
-    active_symbols.add(symbol)
+    # ✅ Drop messages for symbols that were never explicitly subscribed.
+    # Previously this auto-promoted any incoming symbol via `active_symbols.add`,
+    # which silently accepted Fyers SDK token-mapping leaks for unrelated symbols.
+    if symbol not in active_symbols:
+        return
+
+    ltp = message.get('ltp')
+
+    # ✅ Cross-symbol leak guard: if a tick's ltp is wildly different from the
+    # trusted reference price for this symbol, the Fyers SDK most likely mis-
+    # mapped a token. Drop the tick so it never pollutes any downstream state.
+    if not is_price_sane_for_symbol(symbol, ltp):
+        leak_rejection_counts[symbol] += 1
+        if leak_rejection_counts[symbol] <= 3 or leak_rejection_counts[symbol] % 50 == 0:
+            with _reference_price_lock:
+                ref = reference_prices.get(symbol)
+            logger.warning(
+                f"[leak-guard] Dropped tick for {symbol}: ltp={ltp} ref={ref} "
+                f"(rejected {leak_rejection_counts[symbol]} so far this session)"
+            )
+        return
 
     simplified_data = {
         'symbol': symbol,
-        'ltp': message.get('ltp'),
+        'ltp': ltp,
         'change': message.get('ch'),
         'changePercent': message.get('chp'),
         'volume': message.get('vol_traded_today'),
@@ -1947,6 +2062,9 @@ def onmessage(message):
         simplified_data.update(indicators)
 
     pending_data[symbol] = simplified_data
+    # Refine the trusted reference with this validated tick so the band tracks
+    # legitimate intraday moves while still rejecting cross-symbol jumps.
+    set_reference_price(symbol, ltp)
 
 
 def onerror(error):

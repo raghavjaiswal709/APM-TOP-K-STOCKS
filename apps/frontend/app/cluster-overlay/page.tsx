@@ -530,6 +530,24 @@ const ClusterOverlayPage: React.FC = () => {
   // Format: Map<symbol, Map<minuteTimestamp, cumulativeVolumeAtStartOfMinute>>
   const cumulativeVolumeRef = useRef<Map<string, Map<number, number>>>(new Map());
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Cross-symbol leak guard (see market-data/page.tsx for full context)
+  // ───────────────────────────────────────────────────────────────────────────
+  const referencePriceRef = useRef<Map<string, number>>(new Map());
+  const PRICE_SANITY_MAX_DEVIATION = 0.20;
+
+  const isPriceSaneForSymbol = useCallback((symbol: string, price: number | undefined | null): boolean => {
+    if (!symbol || price == null || !Number.isFinite(price) || price <= 0) return false;
+    const ref = referencePriceRef.current.get(symbol);
+    if (!ref || ref <= 0) return true;
+    return Math.abs(price - ref) / ref <= PRICE_SANITY_MAX_DEVIATION;
+  }, []);
+
+  const updateReferencePrice = useCallback((symbol: string, price: number | undefined | null) => {
+    if (!symbol || price == null || !Number.isFinite(price) || price <= 0) return;
+    referencePriceRef.current.set(symbol, price);
+  }, []);
+
   // Prediction Polling Integration
   const {
     isPolling,
@@ -834,26 +852,51 @@ const ClusterOverlayPage: React.FC = () => {
       historicalFetchAbortRef.current = null;
     }
 
-    // ✅ Clear stale data for the NEW company so the chart starts fresh
-    // This prevents cross-date data accumulation and visual gaps
     const newSymbol = (companyCode && exchange)
       ? validateAndFormatSymbol(companyCode, exchange, marker)
       : '';
 
     if (newSymbol && newSymbol !== selectedSymbol) {
-      // ✅ DON'T delete cached data — background updates accumulate data for ALL
-      // subscribed companies. Switching just changes which key we read from.
-      // Only show loading if we truly have NO data for this company.
-      const hasExistingData = (ohlcDataRef.current[newSymbol]?.length || 0) > 0 || (historicalDataRef.current[newSymbol]?.length || 0) > 0;
-      if (hasExistingData) {
-        console.log(`⚡ [handleCompanyChange] Instant switch to ${newSymbol} — ${ohlcDataRef.current[newSymbol]?.length || 0} candles already cached`);
-        setIsLoadingHistorical(false);
-        setHistoricalDataStatus('');
-      } else {
-        console.log(`📡 [handleCompanyChange] No cached data for ${newSymbol} — will fetch`);
-        setIsLoadingHistorical(true);
-        setHistoricalDataStatus('Loading data...');
-      }
+      // ✅ Always show the loader on company switch.
+      //
+      // Previously we did an "instant switch" when ohlcDataRef.current[newSymbol]
+      // had any cached candles from background subscriptions. That cache can be
+      // stale (wrong date, partial backfill, or polluted by a past cross-symbol
+      // leak), so the chart kept showing data that didn't match the company in
+      // the sidebar. Force a fresh fetch every time and gate the chart behind
+      // the loader until the new symbol's OHLC arrives — backfill is fast, the
+      // tiny extra latency is well worth the correctness guarantee.
+      console.log(`📡 [handleCompanyChange] Switching to ${newSymbol} — clearing stale state and fetching fresh`);
+
+      // ✅ Drop any previously-cached state for the new symbol so the chart
+      // cannot momentarily show stale candles before fresh data lands.
+      setOhlcData(prev => {
+        if (!prev[newSymbol]) return prev;
+        const next = { ...prev };
+        delete next[newSymbol];
+        return next;
+      });
+      setHistoricalData(prev => {
+        if (!prev[newSymbol]) return prev;
+        const next = { ...prev };
+        delete next[newSymbol];
+        return next;
+      });
+      setChartUpdates(prev => {
+        if (!prev[newSymbol]) return prev;
+        const next = { ...prev };
+        delete next[newSymbol];
+        return next;
+      });
+      // Allow the backfill effect to re-run for this symbol
+      backfilledSymbolsRef.current.forEach(key => {
+        if (key.startsWith(newSymbol)) {
+          backfilledSymbolsRef.current.delete(key);
+        }
+      });
+
+      setIsLoadingHistorical(true);
+      setHistoricalDataStatus('Loading data...');
     }
 
     setSelectedCompany(companyCode);
@@ -1305,6 +1348,12 @@ const ClusterOverlayPage: React.FC = () => {
       return;
     }
 
+    // ✅ Cross-symbol leak guard
+    if (!isPriceSaneForSymbol(data.symbol, data.ltp as unknown as number)) {
+      return;
+    }
+    updateReferencePrice(data.symbol, data.ltp as unknown as number);
+
     updateCountRef.current++;
     lastDataReceivedRef.current = Date.now();
     dataCountRef.current++;
@@ -1349,6 +1398,14 @@ const ClusterOverlayPage: React.FC = () => {
       return;
     }
 
+    // ✅ Cross-symbol leak guard
+    if (!isPriceSaneForSymbol(update.symbol, update.price)) {
+      return;
+    }
+    updateReferencePrice(update.symbol, update.price);
+
+    // ✅ Live-indicator heartbeat
+    lastDataReceivedRef.current = Date.now();
     updateCountRef.current++;
 
     setChartUpdates(prev => {
@@ -1395,11 +1452,13 @@ const ClusterOverlayPage: React.FC = () => {
         const startOfMinuteVolume = symbolVolumeMap.get(minuteTs)!;
         const volumeDelta = Math.max(0, cumulativeVolume - startOfMinuteVolume);
 
-        // Guard against bad ticks that would create an impossible 1-minute candle range.
-        // A price that deviates >50% from the candle's close is clearly a stale/wrong tick.
-        const candleClose = existingCandle.close || price;
-        const priceDeviation = candleClose > 0 ? Math.abs(price - candleClose) / candleClose : 0;
-        const safePrice = priceDeviation > 0.50 ? candleClose : price;
+        // Anchor the deviation gate to a STABLE baseline so a single drifting
+        // tick can't keep poisoning subsequent ticks via a mutating close.
+        const anchorOpen = existingCandle.open > 0 ? existingCandle.open : price;
+        const refPrice = referencePriceRef.current.get(update.symbol) ?? anchorOpen;
+        const baseline = refPrice > 0 ? refPrice : anchorOpen;
+        const priceDeviation = baseline > 0 ? Math.abs(price - baseline) / baseline : 0;
+        const safePrice = priceDeviation > PRICE_SANITY_MAX_DEVIATION ? baseline : price;
 
         candleMap.set(minuteTs, {
           ...existingCandle,
@@ -1425,14 +1484,16 @@ const ClusterOverlayPage: React.FC = () => {
           symbolVolumeMap.delete(oldest);
         }
 
-        // Guard: if the price deviates >50% from the previous candle's close,
-        // the tick is likely stale/wrong (Fyers sends old price on new subscription).
-        // Use the previous candle's close as the open instead to avoid corrupting OHLC.
+        // Use trusted reference price as the baseline for the new candle's
+        // open; fall back to the previous candle's close only when no ref.
         const prevCandles = Array.from(candleMap.values()).sort((a, b) => a.timestamp - b.timestamp);
         const lastCandle = prevCandles.length > 0 ? prevCandles[prevCandles.length - 1] : null;
-        const lastClose = lastCandle?.close ?? 0;
-        const deviation = lastClose > 0 ? Math.abs(price - lastClose) / lastClose : 0;
-        const safeOpen = (lastClose > 0 && deviation > 0.50) ? lastClose : price;
+        const refPrice = referencePriceRef.current.get(update.symbol);
+        const baseline = refPrice && refPrice > 0
+          ? refPrice
+          : (lastCandle?.close ?? 0);
+        const deviation = baseline > 0 ? Math.abs(price - baseline) / baseline : 0;
+        const safeOpen = (baseline > 0 && deviation > PRICE_SANITY_MAX_DEVIATION) ? baseline : price;
 
         candleMap.set(minuteTs, {
           timestamp: minuteTs,
@@ -1452,7 +1513,7 @@ const ClusterOverlayPage: React.FC = () => {
         [update.symbol]: merged
       };
     });
-  }, []);
+  }, [isPriceSaneForSymbol, updateReferencePrice]);
 
   const handleHistoricalData = useCallback((data: { symbol: string, data: MarketData[] }) => {
     if (!data || !data.symbol || !Array.isArray(data.data)) return;
@@ -1467,6 +1528,9 @@ const ClusterOverlayPage: React.FC = () => {
     }
 
     console.log(`📈 Received historical data for ${data.symbol}: ${data.data.length} points`);
+
+    // ✅ Live-indicator heartbeat
+    lastDataReceivedRef.current = Date.now();
 
     const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
 
@@ -1494,9 +1558,14 @@ const ClusterOverlayPage: React.FC = () => {
     });
 
     if (sortedData.length > 0) {
+      // ✅ Seed leak-guard reference from latest historical close
+      const last = sortedData[sortedData.length - 1];
+      const seed = (last as any).close ?? last.ltp;
+      updateReferencePrice(data.symbol, seed as number);
+
       setMarketData(prev => ({
         ...prev,
-        [data.symbol]: sortedData[sortedData.length - 1]
+        [data.symbol]: last
       }));
 
       const chartData = sortedData.map(item => ({
@@ -1529,7 +1598,7 @@ const ClusterOverlayPage: React.FC = () => {
         };
       });
     }
-  }, []);
+  }, [updateReferencePrice]);
 
   const handleOhlcData = useCallback((data: { symbol: string, data: OHLCData[] }) => {
     if (!data || !data.symbol || !Array.isArray(data.data)) {
@@ -1547,6 +1616,8 @@ const ClusterOverlayPage: React.FC = () => {
     }
 
     console.log(`📊 Received OHLC data for ${data.symbol}: ${data.data.length} candles`);
+    // ✅ Live-indicator heartbeat
+    lastDataReceivedRef.current = Date.now();
     // Debug: Log first and last candle to verify OHLC values
     if (data.data.length > 0) {
       const first = data.data[0];
@@ -1625,6 +1696,11 @@ const ClusterOverlayPage: React.FC = () => {
       const merged = Array.from(candleMap.values())
         .sort((a, b) => a.timestamp - b.timestamp);
 
+      // ✅ Seed leak-guard reference from latest known close
+      if (merged.length > 0) {
+        updateReferencePrice(data.symbol, merged[merged.length - 1].close);
+      }
+
       console.log(`📊 [handleOhlcData] Merged: ${existingCandles.length} existing + ${data.data.length} new = ${merged.length} total`);
 
       return {
@@ -1632,10 +1708,14 @@ const ClusterOverlayPage: React.FC = () => {
         [data.symbol]: merged
       };
     });
-  }, []);
+  }, [updateReferencePrice]);
 
   const handleHeartbeat = useCallback((data: any) => {
     if (!data) return;
+
+    // ✅ Heartbeats arrive every 10s — proof that the live pipeline is alive,
+    // even on a thinly-traded symbol that produces sparse ticks.
+    lastDataReceivedRef.current = Date.now();
 
     setTradingHours(prev => ({
       ...prev,
@@ -1861,6 +1941,15 @@ const ClusterOverlayPage: React.FC = () => {
         });
       }
     });
+
+    // ✅ Sync `socketStatus` with the actual socket.connected on mount.
+    // The socket is a module-singleton — if it was already connected before
+    // this page mounted (e.g. user navigated from market-movers), the 'connect'
+    // event won't re-fire and we'd be stuck showing Offline.
+    if (socket.connected) {
+      setSocketStatus('Connected');
+      setIsReconnecting(false);
+    }
 
     // Track which server (primary/fallback) is active and update the UI badge
     const unsubscribeSource = onSocketSourceChange(label => setSocketSource(label));
@@ -2197,11 +2286,33 @@ const ClusterOverlayPage: React.FC = () => {
     fetchSentiment();
   }, [selectedSymbol]);
 
+  // ✅ Status reconciler — keep the visible badge synced to the real socket
+  // every 3s so the Live/Offline label always reflects truth.
+  useEffect(() => {
+    if (!isClient) return;
+    const tick = () => {
+      const connected = isSocketConnected();
+      setSocketStatus(prev => {
+        if (connected && prev !== 'Connected') return 'Connected';
+        if (!connected && prev === 'Connected') return 'Reconnecting...';
+        return prev;
+      });
+      setIsReconnecting(prev => (connected ? false : prev));
+    };
+    tick();
+    const id = setInterval(tick, 3000);
+    return () => clearInterval(id);
+  }, [isClient]);
+
   // Connection Health Monitor
   useEffect(() => {
     if (!isClient || !socketRef.current || !selectedSymbol) return;
 
-    const STALE_THRESHOLD = 60000;
+    // ✅ 3-minute threshold — lastDataReceivedRef is now updated by heartbeats
+    // every 10s, plus every tick / historical / ohlc payload. A truly healthy
+    // socket cannot be falsely declared stale and force-disconnected, which
+    // was making the indicator flip to Offline mid-session.
+    const STALE_THRESHOLD = 180000;
 
     const healthCheckInterval = setInterval(() => {
       const socket = socketRef.current;
@@ -2214,7 +2325,7 @@ const ClusterOverlayPage: React.FC = () => {
         : null;
 
       if (isConnected && tradingHours.isActive && timeSinceLastData && timeSinceLastData > STALE_THRESHOLD) {
-        console.warn('⚠️ Connection appears stale (no data for 60s), forcing reconnection...');
+        console.warn('⚠️ Connection appears stale (no heartbeat or tick for 3 min), forcing reconnection...');
         isSubscribedRef.current.clear();
         socket.disconnect();
         setTimeout(() => {
@@ -2951,6 +3062,11 @@ const ClusterOverlayPage: React.FC = () => {
               {selectedCompany && (marketOpen || chartData.length > 0) ? (
                 <div className="relative w-full h-full flex flex-col">
                   <LightWeightStockChart
+                    // ✅ Hard-remount when the user switches companies. Without
+                    // this key, the chart library keeps its previous series
+                    // and overlays the new symbol's candles on top of the old
+                    // ones, which looks like "same data sticks across switches".
+                    key={selectedSymbol}
                     companyId={selectedCompany}
                     data={chartData}
                     interval={chartInterval}

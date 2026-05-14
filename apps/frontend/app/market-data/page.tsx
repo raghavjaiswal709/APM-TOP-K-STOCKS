@@ -511,6 +511,29 @@ const MarketDataPage: React.FC = () => {
   // Format: Map<symbol, Map<minuteTimestamp, cumulativeVolumeAtStartOfMinute>>
   const cumulativeVolumeRef = useRef<Map<string, Map<number, number>>>(new Map());
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Cross-symbol leak guard
+  // ───────────────────────────────────────────────────────────────────────────
+  // Trusted last-known price per symbol, seeded from historical/OHLC data and
+  // refined only by validated ticks. Defends against the Fyers SDK token-
+  // mapping race that occasionally delivers a tick labelled with the wrong
+  // symbol — those ticks deviate massively from the symbol's reference and are
+  // dropped before any state mutation.
+  const referencePriceRef = useRef<Map<string, number>>(new Map());
+  const PRICE_SANITY_MAX_DEVIATION = 0.20; // 20%: covers Indian intraday circuit limits, still catches cross-symbol leaks (typically >>50%)
+
+  const isPriceSaneForSymbol = useCallback((symbol: string, price: number | undefined | null): boolean => {
+    if (!symbol || price == null || !Number.isFinite(price) || price <= 0) return false;
+    const ref = referencePriceRef.current.get(symbol);
+    if (!ref || ref <= 0) return true; // first tick seeds the reference
+    return Math.abs(price - ref) / ref <= PRICE_SANITY_MAX_DEVIATION;
+  }, []);
+
+  const updateReferencePrice = useCallback((symbol: string, price: number | undefined | null) => {
+    if (!symbol || price == null || !Number.isFinite(price) || price <= 0) return;
+    referencePriceRef.current.set(symbol, price);
+  }, []);
+
   // Prediction Polling Integration
   const {
     isPolling,
@@ -1172,6 +1195,13 @@ const MarketDataPage: React.FC = () => {
       return;
     }
 
+    // ✅ Cross-symbol leak guard: drop ticks whose ltp is impossibly far from
+    // this symbol's trusted reference price (Fyers SDK token-mapping race).
+    if (!isPriceSaneForSymbol(data.symbol, data.ltp as unknown as number)) {
+      return;
+    }
+    updateReferencePrice(data.symbol, data.ltp as unknown as number);
+
     updateCountRef.current++;
     lastDataReceivedRef.current = Date.now();
     dataCountRef.current++;
@@ -1216,6 +1246,15 @@ const MarketDataPage: React.FC = () => {
       return;
     }
 
+    // ✅ Cross-symbol leak guard: reject the entire update if the price would
+    // corrupt this symbol's chart (massive deviation from reference).
+    if (!isPriceSaneForSymbol(update.symbol, update.price)) {
+      return;
+    }
+    updateReferencePrice(update.symbol, update.price);
+
+    // ✅ Live-indicator heartbeat: any tick proves the pipeline is alive.
+    lastDataReceivedRef.current = Date.now();
     updateCountRef.current++;
 
     setChartUpdates(prev => {
@@ -1262,11 +1301,15 @@ const MarketDataPage: React.FC = () => {
         const startOfMinuteVolume = symbolVolumeMap.get(minuteTs)!;
         const volumeDelta = Math.max(0, cumulativeVolume - startOfMinuteVolume);
 
-        // Guard against bad ticks that would create an impossible 1-minute candle range.
-        // A price that deviates >50% from the candle's close is clearly a stale/wrong tick.
-        const candleClose = existingCandle.close || price;
-        const priceDeviation = candleClose > 0 ? Math.abs(price - candleClose) / candleClose : 0;
-        const safePrice = priceDeviation > 0.50 ? candleClose : price;
+        // Anchor the deviation gate to a STABLE baseline (candle.open and the
+        // symbol's reference price), NOT the mutating candle.close — otherwise
+        // a single drifting tick poisons the threshold for every tick that
+        // follows and the candle slides away from reality.
+        const anchorOpen = existingCandle.open > 0 ? existingCandle.open : price;
+        const refPrice = referencePriceRef.current.get(update.symbol) ?? anchorOpen;
+        const baseline = refPrice > 0 ? refPrice : anchorOpen;
+        const priceDeviation = baseline > 0 ? Math.abs(price - baseline) / baseline : 0;
+        const safePrice = priceDeviation > PRICE_SANITY_MAX_DEVIATION ? baseline : price;
 
         candleMap.set(minuteTs, {
           ...existingCandle,
@@ -1292,14 +1335,18 @@ const MarketDataPage: React.FC = () => {
           symbolVolumeMap.delete(oldest);
         }
 
-        // Guard: if the price deviates >50% from the previous candle's close,
-        // the tick is likely stale/wrong (Fyers sends old price on new subscription).
-        // Use the previous candle's close as the open instead to avoid corrupting OHLC.
+        // Use the trusted reference price as the baseline for the new minute's
+        // open. Falling back to the previous candle's close only if no ref
+        // exists. If the incoming tick deviates beyond the leak-guard band we
+        // open the candle at the baseline so a stray tick can't fork the chart.
         const prevCandles = Array.from(candleMap.values()).sort((a, b) => a.timestamp - b.timestamp);
         const lastCandle = prevCandles.length > 0 ? prevCandles[prevCandles.length - 1] : null;
-        const lastClose = lastCandle?.close ?? 0;
-        const deviation = lastClose > 0 ? Math.abs(price - lastClose) / lastClose : 0;
-        const safeOpen = (lastClose > 0 && deviation > 0.50) ? lastClose : price;
+        const refPrice = referencePriceRef.current.get(update.symbol);
+        const baseline = refPrice && refPrice > 0
+          ? refPrice
+          : (lastCandle?.close ?? 0);
+        const deviation = baseline > 0 ? Math.abs(price - baseline) / baseline : 0;
+        const safeOpen = (baseline > 0 && deviation > PRICE_SANITY_MAX_DEVIATION) ? baseline : price;
 
         candleMap.set(minuteTs, {
           timestamp: minuteTs,
@@ -1319,7 +1366,7 @@ const MarketDataPage: React.FC = () => {
         [update.symbol]: merged
       };
     });
-  }, []);
+  }, [isPriceSaneForSymbol, updateReferencePrice]);
 
   const handleHistoricalData = useCallback((data: { symbol: string, data: MarketData[] }) => {
     if (!data || !data.symbol || !Array.isArray(data.data)) return;
@@ -1334,6 +1381,9 @@ const MarketDataPage: React.FC = () => {
     }
 
     console.log(`📈 Received historical data for ${data.symbol}: ${data.data.length} points`);
+
+    // ✅ Live-indicator heartbeat (server is delivering data)
+    lastDataReceivedRef.current = Date.now();
 
     const sortedData = [...data.data].sort((a, b) => a.timestamp - b.timestamp);
 
@@ -1361,9 +1411,15 @@ const MarketDataPage: React.FC = () => {
     });
 
     if (sortedData.length > 0) {
+      // ✅ Seed the leak-guard reference from the most recent historical close.
+      // Historical data is the trusted baseline before live ticks arrive.
+      const last = sortedData[sortedData.length - 1];
+      const seed = (last as any).close ?? last.ltp;
+      updateReferencePrice(data.symbol, seed as number);
+
       setMarketData(prev => ({
         ...prev,
-        [data.symbol]: sortedData[sortedData.length - 1]
+        [data.symbol]: last
       }));
 
       const chartData = sortedData.map(item => ({
@@ -1396,7 +1452,7 @@ const MarketDataPage: React.FC = () => {
         };
       });
     }
-  }, []);
+  }, [updateReferencePrice]);
 
   const handleOhlcData = useCallback((data: { symbol: string, data: OHLCData[] }) => {
     if (!data || !data.symbol || !Array.isArray(data.data)) {
@@ -1414,6 +1470,8 @@ const MarketDataPage: React.FC = () => {
     }
 
     console.log(`📊 Received OHLC data for ${data.symbol}: ${data.data.length} candles`);
+    // ✅ Live-indicator heartbeat
+    lastDataReceivedRef.current = Date.now();
     // Debug: Log first and last candle to verify OHLC values
     if (data.data.length > 0) {
       const first = data.data[0];
@@ -1492,6 +1550,13 @@ const MarketDataPage: React.FC = () => {
       const merged = Array.from(candleMap.values())
         .sort((a, b) => a.timestamp - b.timestamp);
 
+      // ✅ Seed leak-guard reference from the latest known close in the merged
+      // series — this is the trustworthy anchor for live ticks that follow.
+      if (merged.length > 0) {
+        const lastClose = merged[merged.length - 1].close;
+        updateReferencePrice(data.symbol, lastClose);
+      }
+
       console.log(`📊 [handleOhlcData] Merged: ${existingCandles.length} existing + ${data.data.length} new = ${merged.length} total`);
 
       return {
@@ -1499,10 +1564,15 @@ const MarketDataPage: React.FC = () => {
         [data.symbol]: merged
       };
     });
-  }, []);
+  }, [updateReferencePrice]);
 
   const handleHeartbeat = useCallback((data: any) => {
     if (!data) return;
+
+    // ✅ Heartbeats arrive every 10s from the backend — treat them as proof of
+    // a live pipeline so the indicator never drops to Offline while the socket
+    // is genuinely healthy (e.g. on a thinly-traded symbol with sparse ticks).
+    lastDataReceivedRef.current = Date.now();
 
     setTradingHours(prev => ({
       ...prev,
@@ -1728,6 +1798,15 @@ const MarketDataPage: React.FC = () => {
         });
       }
     });
+
+    // ✅ Sync `socketStatus` with the *actual* socket.connected on mount.
+    // getSocket() returns a module-singleton; if it was already connected
+    // before this component mounted, the 'connect' event won't fire here and
+    // socketStatus would stay 'Disconnected' → label flips to Offline forever.
+    if (socket.connected) {
+      setSocketStatus('Connected');
+      setIsReconnecting(false);
+    }
 
     // Track which server (primary/fallback) is active and update the UI badge
     const unsubscribeSource = onSocketSourceChange(label => setSocketSource(label));
@@ -2065,11 +2144,36 @@ const MarketDataPage: React.FC = () => {
     fetchSentiment();
   }, [selectedSymbol]);
 
+  // ✅ Status reconciler — every 3s, snap the visible badge to the actual
+  // socket.connected truth. Defends against missed/dropped 'connect' events
+  // (e.g. when a previously mounted page already consumed the singleton's
+  // initial connect) and against the indicator being briefly stuck on a
+  // stale 'Reconnecting…' string after a fast recovery.
+  useEffect(() => {
+    if (!isClient) return;
+    const tick = () => {
+      const connected = isSocketConnected();
+      setSocketStatus(prev => {
+        if (connected && prev !== 'Connected') return 'Connected';
+        if (!connected && prev === 'Connected') return 'Reconnecting...';
+        return prev;
+      });
+      setIsReconnecting(prev => (connected ? false : prev));
+    };
+    tick();
+    const id = setInterval(tick, 3000);
+    return () => clearInterval(id);
+  }, [isClient]);
+
   // Connection Health Monitor
   useEffect(() => {
     if (!isClient || !socketRef.current || !selectedSymbol) return;
 
-    const STALE_THRESHOLD = 60000;
+    // ✅ Stale threshold bumped to 3 min and lastDataReceivedRef is now updated
+    // by heartbeats/chartUpdate/historicalData/ohlcData (not just market ticks),
+    // so a genuinely connected socket can no longer be falsely declared stale
+    // and force-disconnected — that was the root cause of the live → Offline flip.
+    const STALE_THRESHOLD = 180000;
 
     const healthCheckInterval = setInterval(() => {
       const socket = socketRef.current;
@@ -2082,7 +2186,7 @@ const MarketDataPage: React.FC = () => {
         : null;
 
       if (isConnected && tradingHours.isActive && timeSinceLastData && timeSinceLastData > STALE_THRESHOLD) {
-        console.warn('⚠️ Connection appears stale (no data for 60s), forcing reconnection...');
+        console.warn('⚠️ Connection appears stale (no heartbeat or tick for 3 min), forcing reconnection...');
         isSubscribedRef.current.clear();
         socket.disconnect();
         setTimeout(() => {

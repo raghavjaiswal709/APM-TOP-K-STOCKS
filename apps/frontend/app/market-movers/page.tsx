@@ -59,7 +59,7 @@ import {
   ChevronDown,
   Check,
 } from 'lucide-react';
-import { getSocket, onSocketSourceChange, getSocketSourceLabel, getActiveSocketUrl } from '@/lib/socket';
+import { getSocket, onSocketSourceChange, getSocketSourceLabel, getActiveSocketUrl, isSocketConnected } from '@/lib/socket';
 import MarketMoversSidebar from './components/MarketMoversSidebar';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -571,6 +571,21 @@ const MarketMoversPage: React.FC = () => {
 
   /* ── Track which companies we subscribed to (to avoid re-subscribing) ── */
   const subscribedCodesRef = useRef<string>('');
+  /* ── Symbols this page is actually subscribed to right now (full Fyers symbols) ── */
+  const subscribedSymbolsRef = useRef<Set<string>>(new Set());
+
+  /* ── Cross-symbol leak guard: trusted last-known price per symbol.
+       Defends against the Fyers SDK token-mapping race that occasionally
+       delivers a tick labelled with the wrong symbol — those ticks deviate
+       massively from the symbol's reference and are dropped here. ── */
+  const referencePriceRef = useRef<Map<string, number>>(new Map());
+  const PRICE_SANITY_MAX_DEVIATION = 0.20;
+  const isPriceSaneForSymbol = (symbol: string, price: number | undefined | null): boolean => {
+    if (!symbol || price == null || !Number.isFinite(price) || price <= 0) return false;
+    const ref = referencePriceRef.current.get(symbol);
+    if (!ref || ref <= 0) return true;
+    return Math.abs(price - ref) / ref <= PRICE_SANITY_MAX_DEVIATION;
+  };
   /* ── Stable ref mirror of allSidebarCompanies — used inside the 10:30 AM timer callback ── */
   const allSidebarCompaniesRef = useRef<Company[]>([]);
 
@@ -638,6 +653,29 @@ const MarketMoversPage: React.FC = () => {
 
     const onMarketDataUpdate = (data: any) => {
       if (!data?.symbol) return;
+
+      // ✅ Strict symbol guard: reject ticks for symbols this page never
+      // subscribed to. Without this, a leaked tick (Fyers SDK token-mapping
+      // race) would silently land in marketData under the wrong symbol.
+      if (
+        subscribedSymbolsRef.current.size > 0 &&
+        !subscribedSymbolsRef.current.has(data.symbol)
+      ) {
+        return;
+      }
+
+      // ✅ Cross-symbol leak guard: a tick whose ltp is wildly off this
+      // symbol's reference price is a cross-symbol leak — drop it before it
+      // poisons the colour/change/percentage calculations.
+      if (!isPriceSaneForSymbol(data.symbol, data.ltp)) {
+        return;
+      }
+      // Refine the reference using the validated price so the band tracks
+      // legitimate intraday moves.
+      if (typeof data.ltp === 'number' && Number.isFinite(data.ltp) && data.ltp > 0) {
+        referencePriceRef.current.set(data.symbol, data.ltp);
+      }
+
       setMarketData(prev => {
         const existing = prev[data.symbol];
         // Resolve open: prefer open_price > 0 from this tick, then previous open
@@ -681,12 +719,27 @@ const MarketMoversPage: React.FC = () => {
     const unsubscribeSource = onSocketSourceChange(label => setSocketSource(label));
     setSocketSource(getSocketSourceLabel());
 
+    // ✅ Status reconciler — keep the badge synced to real socket state every 3s.
+    // Defends against missed connect/disconnect events that would otherwise
+    // leave the indicator stuck on a stale value.
+    const reconcile = () => {
+      const c = isSocketConnected();
+      setIsConnected(c);
+      setConnectionStatus(prev => {
+        if (c) return 'Connected';
+        if (prev === 'Connected') return 'Reconnecting';
+        return prev;
+      });
+    };
+    const reconcileId = setInterval(reconcile, 3000);
+
     return () => {
       socket.off('connect',           onConnect);
       socket.off('disconnect',        onDisconnect);
       socket.off('reconnect_attempt', onReconnectAttempt);
       socket.off('marketDataUpdate',  onMarketDataUpdate);
       unsubscribeSource();
+      clearInterval(reconcileId);
     };
   }, []);
 
@@ -831,8 +884,38 @@ const MarketMoversPage: React.FC = () => {
     const symbols = allSidebarCompanies.map(
       c => `${c.exchange}:${c.company_code}-${c.marker || 'EQ'}`
     );
+
+    // ✅ Maintain the per-page subscribed-symbols set so the leak guard on
+    // marketDataUpdate can reject any tick for an unrelated symbol.
+    const next = new Set<string>(symbols);
+    subscribedSymbolsRef.current = next;
+
+    // ✅ Seed leak-guard reference prices from today's open (fetched from
+    // port 6969). This gives the very first live tick a trusted baseline.
+    symbols.forEach((sym, i) => {
+      const code = companyCodes[i];
+      const open = openingPricesRef.current[code];
+      if (typeof open === 'number' && Number.isFinite(open) && open > 0) {
+        referencePriceRef.current.set(sym, open);
+      }
+    });
+
     getSocket().emit('subscribe_companies', { companyCodes, symbols });
   }, [isConnected, allSidebarCompanies]);
+
+  /* ── Whenever new opening prices arrive, seed any still-empty references ── */
+  useEffect(() => {
+    allSidebarCompanies.forEach(c => {
+      const sym = `${c.exchange}:${c.company_code}-${c.marker || 'EQ'}`;
+      const open = openingPricesRef.current[c.company_code];
+      if (
+        typeof open === 'number' && Number.isFinite(open) && open > 0 &&
+        !referencePriceRef.current.has(sym)
+      ) {
+        referencePriceRef.current.set(sym, open);
+      }
+    });
+  }, [openingPrices, allSidebarCompanies]);
 
   /* ── Compute sorted tile list (live: Red/Yellow/Green only — Blue goes to frozen section) ── */
   const sortedCompanies = useMemo(() => {
