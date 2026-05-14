@@ -202,6 +202,11 @@ export function usePatternOverlay({
   const doFetch = useCallback(async (sym: string, rDate: string | null, hLimit: number) => {
     if (!sym) return;
 
+    // ⚡ Set loading=true immediately so callers can gate rendering BEFORE the
+    // health check + fetch complete (health check can take ~1s).
+    setLoading(true);
+    setError(null);
+
     // In live mode, check market window
     if (!rDate) {
       const status = getMarketStatus();
@@ -255,9 +260,7 @@ export function usePatternOverlay({
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
-
-    setLoading(true);
-    setError(null);
+    // loading + error already set at the top of doFetch
 
     const dateParam = rDate || todayIST();
     const qs       = rDate ? `?date=${rDate}` : '';
@@ -338,6 +341,7 @@ export function usePatternOverlay({
     if (!enabled || !symbol) {
       setOverlay(null);
       setCurves(null);
+      setLoading(false);
       setError(null);
       setTooEarly(false);
       setAfterMarket(false);
@@ -346,6 +350,13 @@ export function usePatternOverlay({
       if (timerRef.current) clearTimeout(timerRef.current);
       return;
     }
+
+    // ✅ Immediately clear stale data from the PREVIOUS symbol so the chart
+    // never shows another company's cluster/pattern overlay while the new
+    // symbol's data is in-flight.
+    setOverlay(null);
+    setCurves(null);
+    setDate(null);
 
     doFetch(symbol, replayDate, historicalLimit);
 

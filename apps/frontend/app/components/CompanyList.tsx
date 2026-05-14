@@ -118,7 +118,17 @@ interface CompanyListProps {
      * Used in live-market to show URL-subscribed companies as checked on load.
      */
     initialSelectedCodes?: string[];
+    /** Set of company codes that have cluster (PatternPool) data available */
+    clusterSymbols?: Set<string>;
 }
+
+/** Small curve SVG icon indicating PatternPool cluster data is available */
+const CurveIcon = () => (
+    <svg width="13" height="9" viewBox="0 0 13 9" fill="none" aria-hidden="true">
+        <path d="M1 7.5 C2.5 7.5, 3.5 1.5, 6.5 1.5 C9.5 1.5, 10.5 5.5, 12 5.5"
+            stroke="#8b5cf6" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+    </svg>
+);
 
 export const CompanyList = React.memo(function CompanyList({
     companies,
@@ -143,6 +153,7 @@ export const CompanyList = React.memo(function CompanyList({
     subscribeMode = false,
     showSubscribeButton = false,
     initialSelectedCodes,
+    clusterSymbols,
 }: CompanyListProps) {
     const [searchTerm, setSearchTerm] = React.useState("");
     const [isFilterOpen, setIsFilterOpen] = React.useState(false);
@@ -382,7 +393,12 @@ export const CompanyList = React.memo(function CompanyList({
                 umapLoadedRef.current = true;
                 console.log(`✅ UMAP: Loaded analysis for ${Object.keys(analysisResults).length} companies`);
             } catch (error) {
-                console.error('❌ Failed to fetch UMAP data:', error);
+                // Downgrade to a single warn — the UMAP sidebar enrichment is
+                // strictly optional and a backend outage shouldn't escalate to
+                // a red console.error / Next.js error overlay every render.
+                const status = (error as any)?.status;
+                const detail = (error as any)?.message ?? String(error);
+                console.warn(`⚠️ UMAP sidebar enrichment unavailable (${status ?? 'network'}): ${detail}`);
             } finally {
                 setUmapDataLoading(false);
             }
@@ -925,6 +941,18 @@ export const CompanyList = React.memo(function CompanyList({
                                                         </TooltipTrigger>
                                                         <TooltipContent side="top" className="text-xs">
                                                             N1 Pattern Count
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                )}
+                                                {clusterSymbols?.has(company.company_code) && (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-violet-500/20">
+                                                                <CurveIcon />
+                                                            </div>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="top" className="text-xs">
+                                                            Cluster Pattern Available
                                                         </TooltipContent>
                                                     </Tooltip>
                                                 )}

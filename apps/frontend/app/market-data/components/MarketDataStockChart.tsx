@@ -144,6 +144,13 @@ interface StockChartProps {
     showBeyondTop3PatternLines?: boolean;
     /** Lock the X-axis to 09:15–15:30 IST and disable horizontal scroll/pan */
     lockToMarketHours?: boolean;
+    /**
+     * Trading date (YYYY-MM-DD IST) to pin the market-hours lock to.
+     * Pass this when viewing historical data so the X-axis stays locked
+     * to the correct trading day instead of defaulting to today.
+     * Falls back to patternCurves.date, then today's IST date.
+     */
+    lockedDate?: string | null;
     /** Show or hide the volume histogram at the bottom of the chart */
     showVolume?: boolean;
 }
@@ -223,6 +230,7 @@ export function MarketDataStockChart({
     showTop3PatternLines = true,
     showBeyondTop3PatternLines = false,
     lockToMarketHours = false,
+    lockedDate = null,
     showVolume = true,
 }: StockChartProps) {
     // State
@@ -291,6 +299,11 @@ export function MarketDataStockChart({
     const intradayMedianSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
     const intradayP25SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
     const intradayP75SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+
+    // Market-hours anchor series: invisible LineSeries with whitespace data at open+close
+    // Ensures the time axis covers the full 09:15–15:30 IST window even when there are
+    // no pattern overlay curves to provide bars for the "future" portion of the day.
+    const marketHoursAnchorSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
 
     // PatternPool Overlay series refs: 3 centroids + 3 band-uppers + 3 band-lowers + live curve + current-slot line
     const patternCentroidSeriesRefs = useRef<Array<ISeriesApi<'Line'> | null>>([]);
@@ -723,12 +736,33 @@ export function MarketDataStockChart({
 
     // ─── Lock X-axis to market hours (09:15–15:30 IST) ───────────────────────
     // Fires as soon as lockToMarketHours=true and re-fires when patternCurves.date
-    // changes (replay mode). Does NOT require patternCurves to be loaded.
+    // or lockedDate changes (replay mode). Does NOT require patternCurves to be loaded.
     useEffect(() => {
         const chart = mainChartRef.current;
         if (!chart || !lockToMarketHours) return;
 
-        const { open, close } = getMarketUTCRange(patternCurves?.date);
+        const { open, close } = getMarketUTCRange(lockedDate ?? patternCurves?.date);
+
+        // Ensure an invisible anchor series exists with whitespace data at market
+        // open + close. This pre-allocates time slots for the full market day so that
+        // setVisibleRange(open→close) works even when candle data only covers part of
+        // the day (e.g. live trading mid-session, or no pattern overlay curves).
+        try {
+            if (!marketHoursAnchorSeriesRef.current) {
+                marketHoursAnchorSeriesRef.current = chart.addSeries(LineSeries, {
+                    color: 'transparent',
+                    lineWidth: 0 as any,
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                    crosshairMarkerVisible: false,
+                });
+            }
+            // WhitespaceData (only time, no value) creates time slots without drawing
+            marketHoursAnchorSeriesRef.current.setData([
+                { time: open as UTCTimestamp } as any,
+                { time: close as UTCTimestamp } as any,
+            ]);
+        } catch (_) {}
 
         try {
             const ts = (chart as any).timeScale();
@@ -750,7 +784,7 @@ export function MarketDataStockChart({
             });
         } catch (_) {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [lockToMarketHours, patternCurves?.date, chartReadyVersion]);
+    }, [lockToMarketHours, lockedDate, patternCurves?.date, chartReadyVersion]);
 
     // Toggle volume histogram visibility without recreating the series
     useEffect(() => {
@@ -1018,7 +1052,7 @@ export function MarketDataStockChart({
         // Pin the time axis to market hours immediately so the very first frame
         // shows 09:15–15:30 IST instead of the default empty/fit view.
         if (lockToMarketHours) {
-            const { open, close } = getMarketUTCRange();
+            const { open, close } = getMarketUTCRange(lockedDate ?? undefined);
             try {
                 (chart as any).timeScale().setVisibleRange({
                     from: open as any,
@@ -1077,6 +1111,7 @@ export function MarketDataStockChart({
             mainChartRef.current = null;
             mainSeriesRef.current = null;
             volumeSeriesRef.current = null;
+            marketHoursAnchorSeriesRef.current = null;
             indicatorSeriesRefs.current.clear();
         };
     }, []);
@@ -1811,7 +1846,7 @@ export function MarketDataStockChart({
                 // ─ Market-hours lock: NEVER call fitContent — always pin 09:15–15:30 IST─
                 // This prevents candle data arriving AFTER the lock effect from
                 // overriding the locked range back to first-candle→last-candle.
-                const { open, close } = getMarketUTCRange(patternCurves?.date);
+                const { open, close } = getMarketUTCRange(lockedDate ?? patternCurves?.date);
                 try {
                     mainChartRef.current.timeScale().setVisibleRange({
                         from: open as any,

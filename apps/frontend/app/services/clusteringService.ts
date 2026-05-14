@@ -34,17 +34,51 @@ class ClusteringV2Error extends Error {
   }
 }
 
+/**
+ * Resilient JSON fetch.
+ *
+ * The clustering V2 backend can transiently return 5xx during model reloads.
+ * To stop those transient failures from spilling `ClusteringV2Error: Internal
+ * Server Error` into the dev-tools console / Next.js error overlay we:
+ *  - retry 5xx and network errors with exponential backoff (3 attempts);
+ *  - leave 4xx alone (they indicate a real client-side issue we want to see);
+ *  - leave AbortError untouched so cancellation still bubbles.
+ */
 async function fetchJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(url, { signal });
-  if (!res.ok) {
-    let detail = res.statusText;
+  const MAX_ATTEMPTS = 3;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const body = await res.json();
-      detail = body.detail || detail;
-    } catch {}
-    throw new ClusteringV2Error(detail, res.status);
+      const res = await fetch(url, { signal });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const body = await res.json();
+          detail = body.detail || detail;
+        } catch {}
+        const err = new ClusteringV2Error(detail, res.status);
+        // Retry only on 5xx / 429 — 4xx is a real bug we want to surface.
+        if ((res.status >= 500 || res.status === 429) && attempt < MAX_ATTEMPTS) {
+          await new Promise(r => setTimeout(r, 250 * 2 ** (attempt - 1)));
+          lastErr = err;
+          continue;
+        }
+        throw err;
+      }
+      return res.json();
+    } catch (e) {
+      // Don't retry on caller-initiated abort.
+      if ((e as any)?.name === 'AbortError') throw e;
+      lastErr = e;
+      if (attempt >= MAX_ATTEMPTS) throw e;
+      // Network errors: short backoff
+      if (!(e instanceof ClusteringV2Error)) {
+        await new Promise(r => setTimeout(r, 250 * 2 ** (attempt - 1)));
+      }
+    }
   }
-  return res.json();
+  // Defensive — the loop always either returns or throws above.
+  throw lastErr ?? new ClusteringV2Error('clustering fetch failed', 500);
 }
 
 // ── Simple in-memory cache ───────────────────────────────────────────────────

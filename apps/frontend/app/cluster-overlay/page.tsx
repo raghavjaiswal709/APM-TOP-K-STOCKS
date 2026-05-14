@@ -46,6 +46,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelector2/WatchlistSelector";
 import { ImageCarousel } from "../market-data/components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
+import { useClusterSymbols } from "@/hooks/useClusterSymbols";
 import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity, Calendar as CalendarIcon, Images, ChevronDown, ChevronUp, PanelBottomOpen, PanelBottomClose, AlertTriangle, ChevronLeft, ChevronRight, ShieldAlert } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
 import { isMarketOpen } from "@/lib/marketHours";
@@ -497,6 +498,9 @@ const ClusterOverlayPage: React.FC = () => {
     selectedDate: hookSelectedDate,
     availableDates,
   } = useWatchlist({ date: currentDate || undefined, showAllCompanies });
+
+  // Fetch set of company codes that have PatternPool cluster data available
+  const { clusterSymbols } = useClusterSymbols();
 
   // Date Synchronization Logic
   const effectiveDate = currentDate || hookSelectedDate;
@@ -2568,6 +2572,91 @@ const ClusterOverlayPage: React.FC = () => {
     return [];
   }, [symbolOhlc, symbolHistory, currentDate, chartInterval, getIntervalSeconds, aggregateCandles]);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Page-level readiness gate
+  // ─────────────────────────────────────────────────────────────────────────
+  // MUST be declared BEFORE the `if (!isClient) return …` early return below.
+  // Otherwise on the first SSR render (`isClient=false`) these hooks are not
+  // executed, but on the second render (`isClient=true`) they ARE, which
+  // changes the hook count and trips React's Rules-of-Hooks check.
+  //
+  // The cluster-overlay page combines three async data sources: live OHLC
+  // (isLoadingHistorical), GTT predictions (gttLoading), and pattern-overlay
+  // analysis (patternOverlayState.loading). Rendering the chart before any of
+  // these settle causes two visible defects:
+  //  1. The TradingView chart autoFits to a not-yet-final container size on
+  //     first paint, leaving the candles "zoomed in" until a later resize.
+  //  2. On company switch, the previous company's panels remain on screen
+  //     until the new data arrives, looking like the switch failed.
+  //
+  // Fix: a single `pageReady` flag covers the entire main content. While it's
+  // false we render a single full-page loader and the chart/panels never
+  // mount on a half-laid-out container.
+  const [layoutStable, setLayoutStable] = useState(false);
+  const READY_HARD_TIMEOUT_MS = 8000;
+  const readyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Reset stability whenever the user switches companies. We re-enable it
+  // after data settles (below).
+  useEffect(() => {
+    setLayoutStable(false);
+  }, [selectedSymbol]);
+
+  // Once all data sources are settled (or the hard timeout fires), wait two
+  // animation frames so the flex layout has finished computing widths/heights,
+  // then mark layout stable so the chart mounts at its real size.
+  useEffect(() => {
+    if (!isClient || !selectedSymbol) return;
+    const dataSettled =
+      !isLoadingHistorical &&
+      !gttLoading &&
+      !patternOverlayState.loading &&
+      // Only gate on intraday shapes when the overlay is actually enabled.
+      // When disabled the hook is a no-op and never transitions to loading.
+      (!showIntradayOverlay || !intradayShapesLoading);
+
+    if (dataSettled) {
+      // Use a closure variable to track raf2 — cannot set properties on number
+      // primitives in strict mode (TypeError in Next.js 15 / V8).
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setLayoutStable(true));
+        if (readyTimeoutRef.current) clearTimeout(readyTimeoutRef.current);
+        readyTimeoutRef.current = null;
+      });
+      return () => {
+        cancelAnimationFrame(raf1);
+        if (raf2) cancelAnimationFrame(raf2);
+      };
+    }
+
+    if (!readyTimeoutRef.current) {
+      readyTimeoutRef.current = setTimeout(() => {
+        console.warn('[cluster-overlay] ready-gate hard timeout; rendering with partial data');
+        setLayoutStable(true);
+        readyTimeoutRef.current = null;
+      }, READY_HARD_TIMEOUT_MS);
+    }
+  }, [
+    isClient,
+    selectedSymbol,
+    isLoadingHistorical,
+    gttLoading,
+    patternOverlayState.loading,
+    showIntradayOverlay,
+    intradayShapesLoading,
+  ]);
+
+  useEffect(() => () => {
+    if (readyTimeoutRef.current) clearTimeout(readyTimeoutRef.current);
+  }, []);
+
+  // The page is ready when: client is hydrated, a company is selected, and the
+  // layout has had a chance to stabilise after all data sources settled.
+  // When no company is selected, we still want to render the empty-state panel
+  // immediately so the user sees the "Select a company" prompt.
+  const pageReady = isClient && (!selectedSymbol || layoutStable);
+
   // Loading state
   if (!isClient) {
     return (
@@ -2603,6 +2692,9 @@ const ClusterOverlayPage: React.FC = () => {
   // Combined loading gate: show unified loader until chart data + GTT are both ready
   // Prevents cluster/GTT panels from rendering before live market data is ready
   const allDataReady = !isLoadingHistorical && !gttLoading;
+  // `pageReady`, `layoutStable`, and the readiness effects are all declared
+  // ABOVE the `if (!isClient) return …` early return — required for Rules of
+  // Hooks to hold across the SSR→client hydration boundary.
 
   // Main render - using recommendations page layout
   return (
@@ -3026,8 +3118,55 @@ const ClusterOverlayPage: React.FC = () => {
           {/* LEFT: CHART & ANALYSIS SPLIT */}
           <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden" ref={containerRef}>
 
-            {/* Combined loading gate: show unified loader until all three data sources are ready */}
-            {selectedCompany && !allDataReady && (
+            {/* ✅ READINESS LOADER (scoped to chart + panels area only — the
+                company-list sidebar to the right stays interactive so the user
+                can switch companies while data loads). Sits ABOVE the chart so
+                it never paints into a half-resolved flex container (the
+                "zoomed-in" first-render glitch) and so a previous company's
+                data is never visible while new data is in-flight. */}
+            {selectedCompany && !pageReady && (
+              <div className="absolute inset-0 z-[60] flex items-center justify-center bg-background backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="h-10 w-10 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      Loading {selectedCompany}…
+                    </p>
+                    <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground/70">
+                      {isLoadingHistorical && (
+                        <span className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                          Chart data
+                        </span>
+                      )}
+                      {gttLoading && (
+                        <span className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
+                          GTT predictions
+                        </span>
+                      )}
+                      {patternOverlayState.loading && (
+                        <span className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
+                          Pattern overlay
+                        </span>
+                      )}
+                      {!isLoadingHistorical && !gttLoading && !patternOverlayState.loading && (
+                        <span className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Stabilising view…
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* In-pane chart loader kept for transitions AFTER pageReady (e.g.,
+                date picker re-fetch on the same company). The pageReady gate
+                above handles initial load + company switch.  */}
+            {selectedCompany && pageReady && !allDataReady && (
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
                 <div className="flex flex-col items-center gap-4">
                   <div className="h-9 w-9 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
@@ -3090,6 +3229,7 @@ const ClusterOverlayPage: React.FC = () => {
                     showTop3PatternLines={showTop3Lines}
                     showBeyondTop3PatternLines={showBeyondTop3Lines}
                     lockToMarketHours={true}
+                    lockedDate={effectiveDate || null}
                     showVolume={showVolume}
                   />
 
@@ -3331,7 +3471,17 @@ const ClusterOverlayPage: React.FC = () => {
                     </TabsContent>
                     <TabsContent value="umap" className="h-full m-0">
                       <ScrollArea className="h-full w-full">
-                        <UMAPClusterDashboard initialSymbol={selectedCompany || selectedSymbol || 'RELIANCE'} />
+                        {/* ✅ Hard-remount the entire UMAP dashboard when the
+                            user switches companies. The component already syncs
+                            `initialSymbol → symbol` via a useEffect, but the
+                            underlying clustering hooks can briefly show prior
+                            company's panels during the transition. Keying it
+                            guarantees the previous company's cluster data
+                            cannot be seen even for a frame. */}
+                        <UMAPClusterDashboard
+                          key={selectedCompany || selectedSymbol || 'RELIANCE'}
+                          initialSymbol={selectedCompany || selectedSymbol || 'RELIANCE'}
+                        />
                       </ScrollArea>
                     </TabsContent>
                   </div>
@@ -3389,6 +3539,7 @@ const ClusterOverlayPage: React.FC = () => {
                   multiSelectMode={true}
                   showSubscribeButton={true}
                   onMultiAction={handleMultiAction}
+                  clusterSymbols={clusterSymbols}
                 />
               </div>
             </div>
