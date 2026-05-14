@@ -259,6 +259,7 @@ const MarketDataPage: React.FC = () => {
 
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
   const [socketSource, setSocketSource] = useState<'server' | 'localhost'>('server');
+  const [hasBackfillData, setHasBackfillData] = useState(false);
   // lastDataReceived moved to ref — only read in the 30s health-check interval,
   // no need to trigger re-renders on every live tick.
   const lastDataReceivedRef = useRef<number | null>(null);
@@ -1777,6 +1778,7 @@ const MarketDataPage: React.FC = () => {
       hasLoadedDataRef.current = true;
       setIsLoadingHistorical(false);
       setHistoricalDataStatus('');
+      setHasBackfillData(backfilledSymbolsRef.current.has(`${selectedSymbol}_${todayIST}`));
       return; // No cleanup needed — we don't unsubscribe
     }
 
@@ -1786,6 +1788,7 @@ const MarketDataPage: React.FC = () => {
       hasLoadedDataRef.current = true;
       setIsLoadingHistorical(false);
       setHistoricalDataStatus('');
+      setHasBackfillData(backfilledSymbolsRef.current.has(`${selectedSymbol}_${todayIST}`));
       // Subscribe for real-time updates (don't block rendering)
       if (!isSubscribedRef.current.has(selectedSymbol)) {
         // ✅ Pre-register before emit so handlers accept data immediately
@@ -1799,6 +1802,8 @@ const MarketDataPage: React.FC = () => {
       }
       return; // No cleanup — don't unsubscribe
     }
+
+    setHasBackfillData(false); // reset while slow-path fetch is in progress
 
     // ✅ SLOW PATH: No cache — subscribe and fetch historical data
     console.log(`📡 [Data] No cache for ${selectedSymbol} — subscribing + fetching...`);
@@ -1835,6 +1840,7 @@ const MarketDataPage: React.FC = () => {
       if (backfilledSymbolsRef.current.has(backfillKey)) {
         console.log(`📡 [Backfill] Already backfilled ${backfillKey}, skipping`);
         setIsLoadingHistorical(false);
+        setHasBackfillData(true);
         return;
       }
 
@@ -1872,6 +1878,7 @@ const MarketDataPage: React.FC = () => {
 
           // Mark as backfilled
           backfilledSymbolsRef.current.add(backfillKey);
+          setHasBackfillData(true);
 
           // ===== MERGE EXTERNAL OHLC WITH EXISTING OHLC =====
           if (result.ohlc && result.ohlc.length > 0) {
@@ -2174,8 +2181,6 @@ const MarketDataPage: React.FC = () => {
   }, []);
 
   const chartData = useMemo(() => {
-    console.log(`📈 [chartData] symbolOhlc: ${symbolOhlc?.length || 0}, symbolHistory: ${symbolHistory?.length || 0}, interval: ${chartInterval}`);
-
     // ✅ CRITICAL: Use today's IST date for chart filtering unless the user
     // EXPLICITLY selected a specific date via the date picker (currentDate).
     // hookSelectedDate is the watchlist DB date (e.g. last Friday) — it must NOT
@@ -2242,7 +2247,6 @@ const MarketDataPage: React.FC = () => {
 
         // Aggregate to requested interval
         const aggregated = aggregateCandles(minuteData, intervalSec);
-        console.log(`📈 [chartData] ${validCandles.length} 1m candles → ${aggregated.length} ${chartInterval} candles`);
         return aggregated;
       }
     }
@@ -2394,18 +2398,18 @@ const MarketDataPage: React.FC = () => {
                   }`}
                 title={
                   socketStatus === 'Connected'
-                    ? socketSource === 'server'
-                      ? 'Connected to remote server (100.93.172.21:5001)'
-                      : 'Connected to localhost:5001 (remote server unreachable)'
+                    ? hasBackfillData
+                      ? `Live Fyers data + historical backfill from server (port 6969) — socket on ${socketSource === 'server' ? 'remote server (100.93.172.21:5001)' : 'localhost:5001'}`
+                      : `Live Fyers data only (port 5001) — socket on ${socketSource === 'server' ? 'remote server (100.93.172.21:5001)' : 'localhost:5001 (remote server unreachable)'}`
                     : socketStatus
                 }
               >
                 {socketStatus === 'Connected'
                   ? <>Live <span className={`text-[10px] font-normal opacity-70 ml-0.5 ${
-                      socketSource === 'server'
-                        ? 'text-emerald-500 dark:text-emerald-400'
-                        : 'text-amber-500 dark:text-amber-400'
-                    }`}>({socketSource})</span></>
+                      hasBackfillData
+                        ? 'text-sky-500 dark:text-sky-400'
+                        : 'text-emerald-500 dark:text-emerald-400'
+                    }`}>({hasBackfillData ? 'server + fyers' : 'fyers'})</span></>
                   : isReconnecting ? 'Reconnecting'
                     : 'Offline'}
               </span>

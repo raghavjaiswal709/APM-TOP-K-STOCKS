@@ -1385,11 +1385,6 @@ export function MarketDataStockChart({
 
         const processedData = processData(data);
 
-        console.log(`📊 [DATA UPDATE] Processing ${processedData.length} data points for chart type: ${chartType}, seriesReuse: ${!needsSeriesRecreation}`);
-        if (processedData.length > 0) {
-            console.log(`📊 [DATA UPDATE] First point time: ${new Date(processedData[0].time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}, Last: ${new Date(processedData[processedData.length - 1].time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
-        }
-
         // isIncrementalUpdate: set inside the DATA-ONLY branch after prepareMainSeriesData() is
         // declared; used by the volume-series update below which runs after the main-series block.
         let isIncrementalUpdate = false;
@@ -1531,7 +1526,6 @@ export function MarketDataStockChart({
                 });
             }
 
-            console.log(`📊 [DATA UPDATE] Reused existing ${chartType} series — updated ${newData.length} data points in-place (no chart disruption)`);
         }
 
         // Volume histogram — reuse existing series if possible, same as main series

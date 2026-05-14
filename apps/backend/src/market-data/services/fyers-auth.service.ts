@@ -420,7 +420,11 @@ export class FyersAuthService {
         return;
       }
 
-      const client = Client(`http://localhost:${port}`, {
+      // In Docker, localhost inside the NestJS container is the container's loopback,
+      // NOT the host. Use PYTHON_SERVICE_HOST env var (set to host.docker.internal in
+      // docker-compose) so this reaches the Python service containers via the host network.
+      const pythonHost = process.env.PYTHON_SERVICE_HOST || 'localhost';
+      const client = Client(`http://${pythonHost}:${port}`, {
         timeout: 15000, // Increased timeout
         reconnection: false,
         forceNew: true

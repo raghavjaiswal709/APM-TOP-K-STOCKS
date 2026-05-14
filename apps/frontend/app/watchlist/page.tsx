@@ -393,7 +393,7 @@ export default function WatchlistPage() {
                           <div className="bg-green-50 dark:bg-green-950/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
                             <p className="text-xs text-green-600 dark:text-green-400 mb-1">ATR % (10d)</p>
                             <p className="font-bold text-lg text-green-700 dark:text-green-300">
-                              {selectedCompanyData.atr_pct_10d.toFixed(2)}%
+                              {(selectedCompanyData.atr_pct_10d * 100).toFixed(2)}%
                             </p>
                           </div>
                         )}
@@ -425,7 +425,7 @@ export default function WatchlistPage() {
                           <div className="bg-yellow-50 dark:bg-yellow-950/20 p-3 rounded-lg border border-yellow-200 dark:border-yellow-800">
                             <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-1">Dist from 20d High</p>
                             <p className="font-bold text-lg text-yellow-700 dark:text-yellow-300">
-                              {selectedCompanyData.dist_from_high_20d.toFixed(2)}%
+                              {(selectedCompanyData.dist_from_high_20d * 100).toFixed(2)}%
                             </p>
                           </div>
                         )}
@@ -630,7 +630,7 @@ export default function WatchlistPage() {
                               <td className="py-3 px-4 text-right">
                                 {company.atr_pct_10d != null ? (
                                   <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded text-sm">
-                                    {company.atr_pct_10d.toFixed(2)}%
+                                    {(company.atr_pct_10d * 100).toFixed(2)}%
                                   </span>
                                 ) : '—'}
                               </td>

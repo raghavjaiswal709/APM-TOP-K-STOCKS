@@ -917,11 +917,6 @@ export function DashboardStockChart({
 
         const processedData = processData(data);
 
-        console.log(`📊 [DATA UPDATE] Processing ${processedData.length} data points for chart type: ${chartType}, seriesReuse: ${!needsSeriesRecreation}`);
-        if (processedData.length > 0) {
-            console.log(`📊 [DATA UPDATE] First point time: ${new Date(processedData[0].time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}, Last: ${new Date(processedData[processedData.length - 1].time * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
-        }
-
         // --- Main Chart Data ---
         // OPTIMIZATION: When only data changed (background loading / incremental merge),
         // reuse the existing series and just call setData(). This prevents the chart from
@@ -1036,7 +1031,6 @@ export function DashboardStockChart({
                 });
             }
 
-            console.log(`📊 [DATA UPDATE] Reused existing ${chartType} series — updated ${newData.length} data points in-place (no chart disruption)`);
         }
 
         // Volume histogram — reuse existing series if possible, same as main series

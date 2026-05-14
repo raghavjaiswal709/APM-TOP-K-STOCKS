@@ -268,6 +268,7 @@ const ClusterOverlayPage: React.FC = () => {
 
   const [socketStatus, setSocketStatus] = useState<string>('Disconnected');
   const [socketSource, setSocketSource] = useState<'server' | 'localhost'>('server');
+  const [hasBackfillData, setHasBackfillData] = useState(false);
   // lastDataReceived moved to ref — only read in the 30s health-check interval,
   // no need to trigger re-renders on every live tick.
   const lastDataReceivedRef = useRef<number | null>(null);
@@ -1909,6 +1910,7 @@ const ClusterOverlayPage: React.FC = () => {
       hasLoadedDataRef.current = true;
       setIsLoadingHistorical(false);
       setHistoricalDataStatus('');
+      setHasBackfillData(backfilledSymbolsRef.current.has(`${selectedSymbol}_${todayIST}`));
       return; // No cleanup needed — we don't unsubscribe
     }
 
@@ -1918,6 +1920,7 @@ const ClusterOverlayPage: React.FC = () => {
       hasLoadedDataRef.current = true;
       setIsLoadingHistorical(false);
       setHistoricalDataStatus('');
+      setHasBackfillData(backfilledSymbolsRef.current.has(`${selectedSymbol}_${todayIST}`));
       // Subscribe for real-time updates (don't block rendering)
       if (!isSubscribedRef.current.has(selectedSymbol)) {
         // ✅ Pre-register so handlers accept data immediately (before callback fires)
@@ -1934,6 +1937,8 @@ const ClusterOverlayPage: React.FC = () => {
 
     // ✅ SLOW PATH: No cache — subscribe and fetch historical data
     console.log(`📡 [Data] No cache for ${selectedSymbol} — subscribing + fetching...`);
+
+    setHasBackfillData(false); // reset while slow-path fetch is in progress
 
     if (!isSubscribedRef.current.has(selectedSymbol)) {
       // ✅ Pre-register so handlers accept data immediately (before callback fires)
@@ -1967,6 +1972,7 @@ const ClusterOverlayPage: React.FC = () => {
       if (backfilledSymbolsRef.current.has(backfillKey)) {
         console.log(`📡 [Backfill] Already backfilled ${backfillKey}, skipping`);
         setIsLoadingHistorical(false);
+        setHasBackfillData(true);
         return;
       }
 
@@ -2004,6 +2010,7 @@ const ClusterOverlayPage: React.FC = () => {
 
           // Mark as backfilled
           backfilledSymbolsRef.current.add(backfillKey);
+          setHasBackfillData(true);
 
           // ===== MERGE EXTERNAL OHLC WITH EXISTING OHLC =====
           if (result.ohlc && result.ohlc.length > 0) {
@@ -2306,8 +2313,6 @@ const ClusterOverlayPage: React.FC = () => {
   }, []);
 
   const chartData = useMemo(() => {
-    console.log(`📈 [chartData] symbolOhlc: ${symbolOhlc?.length || 0}, symbolHistory: ${symbolHistory?.length || 0}, interval: ${chartInterval}`);
-
     // ✅ CRITICAL: Use today's IST date for chart filtering unless the user
     // EXPLICITLY selected a specific date via the date picker (currentDate).
     // hookSelectedDate is the watchlist DB date (e.g. last Friday) — it must NOT
@@ -2374,7 +2379,6 @@ const ClusterOverlayPage: React.FC = () => {
 
         // Aggregate to requested interval
         const aggregated = aggregateCandles(minuteData, intervalSec);
-        console.log(`📈 [chartData] ${validCandles.length} 1m candles → ${aggregated.length} ${chartInterval} candles`);
         return aggregated;
       }
     }
@@ -2485,6 +2489,10 @@ const ClusterOverlayPage: React.FC = () => {
 
   const pageTitle = selectedCompany ? `${selectedCompany} - Cluster Overlay` : "Cluster Overlay";
 
+  // Combined loading gate: show unified loader until chart data + GTT are both ready
+  // Prevents cluster/GTT panels from rendering before live market data is ready
+  const allDataReady = !isLoadingHistorical && !gttLoading;
+
   // Main render - using recommendations page layout
   return (
     <SidebarProvider>
@@ -2526,18 +2534,18 @@ const ClusterOverlayPage: React.FC = () => {
                   }`}
                 title={
                   socketStatus === 'Connected'
-                    ? socketSource === 'server'
-                      ? 'Connected to remote server (100.93.172.21:5001)'
-                      : 'Connected to localhost:5001 (remote server unreachable)'
+                    ? hasBackfillData
+                      ? `Live Fyers data + historical backfill from server (port 6969) — socket on ${socketSource === 'server' ? 'remote server (100.93.172.21:5001)' : 'localhost:5001'}`
+                      : `Live Fyers data only (port 5001) — socket on ${socketSource === 'server' ? 'remote server (100.93.172.21:5001)' : 'localhost:5001 (remote server unreachable)'}`
                     : socketStatus
                 }
               >
                 {socketStatus === 'Connected'
                   ? <>Live <span className={`text-[10px] font-normal opacity-70 ml-0.5 ${
-                      socketSource === 'server'
-                        ? 'text-emerald-500 dark:text-emerald-400'
-                        : 'text-amber-500 dark:text-amber-400'
-                    }`}>({socketSource})</span></>
+                      hasBackfillData
+                        ? 'text-sky-500 dark:text-sky-400'
+                        : 'text-emerald-500 dark:text-emerald-400'
+                    }`}>({hasBackfillData ? 'server + fyers' : 'fyers'})</span></>
                   : isReconnecting ? 'Reconnecting'
                     : 'Offline'}
               </span>
@@ -2907,6 +2915,22 @@ const ClusterOverlayPage: React.FC = () => {
           {/* LEFT: CHART & ANALYSIS SPLIT */}
           <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden" ref={containerRef}>
 
+            {/* Combined loading gate: show unified loader until all three data sources are ready */}
+            {selectedCompany && !allDataReady && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="h-9 w-9 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-medium text-foreground">Loading market data...</p>
+                    <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground/70">
+                      {isLoadingHistorical && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />Chart data</span>}
+                      {gttLoading && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />GTT predictions</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Outdated Predictions Warning Banner */}
             {showPredictions && predictionsOutdated && predictions && predictions.count > 0 && (
               <div className="bg-red-600 text-white px-4 py-2 flex items-center gap-2 text-sm font-medium">
@@ -2924,7 +2948,7 @@ const ClusterOverlayPage: React.FC = () => {
                 minHeight: '200px'
               }}
             >
-              {selectedCompany && marketOpen ? (
+              {selectedCompany && (marketOpen || chartData.length > 0) ? (
                 <div className="relative w-full h-full flex flex-col">
                   <LightWeightStockChart
                     companyId={selectedCompany}

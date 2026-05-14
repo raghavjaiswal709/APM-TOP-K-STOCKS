@@ -17,6 +17,9 @@ services:
     environment:
       - PORT=5002
       - NODE_ENV=development
+      # host.docker.internal resolves to the host machine thanks to extra_hosts above.
+      # This lets the NestJS container reach Python services on ports 5001/5010.
+      - PYTHON_SERVICE_HOST=host.docker.internal
     env_file:
       - apps/backend/.env
     volumes:
@@ -73,6 +76,7 @@ services:
       - ./apps/frontend:/app
       - /app/node_modules
       - /app/.next
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - backend
     networks:

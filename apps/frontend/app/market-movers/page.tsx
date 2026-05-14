@@ -409,10 +409,17 @@ const CompanyTile: React.FC<TileProps> = ({ company, data, color, gttColor, devP
   const borderClass     = gttColor != null ? GTT_TILE_BORDER_CLASS[gttColor] : TILE_BORDER_CLASS[color];
   const hasData = !!data;
 
+  const handleClick = () => {
+    const marker = company.marker || 'EQ';
+    const url = `/cluster-overlay?company=${encodeURIComponent(company.company_code)}&exchange=${encodeURIComponent(company.exchange)}&marker=${encodeURIComponent(marker)}`;
+    window.open(url, '_blank');
+  };
+
   return (
     <div
+      onClick={handleClick}
       className={cn(
-        'flex items-center gap-4 px-5 py-4 rounded-2xl border-2 bg-card transition-colors cursor-default select-none w-full',
+        'flex items-center gap-4 px-5 py-4 rounded-2xl border-2 bg-card transition-colors cursor-pointer select-none w-full hover:brightness-110 active:scale-[0.98]',
         borderClass
       )}
     >
@@ -873,6 +880,7 @@ const MarketMoversPage: React.FC = () => {
   type TileView = 'grid' | 'cluster' | 'ranked' | 'compact' | 'momentum';
   const [tileView, setTileView] = useState<TileView>('cluster');
   const [gttSnapshots, setGttSnapshots] = useState<Map<string, GttSnapshot>>(new Map());
+  const [gttLoading, setGttLoading] = useState(false);
   const gttFetchingRef  = useRef(false);
   const gttIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -884,7 +892,8 @@ const MarketMoversPage: React.FC = () => {
     }
 
     const fetchAll = async () => {
-      if (gttFetchingRef.current || allSidebarCompanies.length === 0) return;
+      if (allSidebarCompanies.length === 0) { setGttLoading(false); return; }
+      if (gttFetchingRef.current) return;
       gttFetchingRef.current = true;
       try {
         const codes  = allSidebarCompanies.map(c => c.company_code);
@@ -922,9 +931,11 @@ const MarketMoversPage: React.FC = () => {
         setGttSnapshots(new Map(newMap));
       } finally {
         gttFetchingRef.current = false;
+        setGttLoading(false);
       }
     };
 
+    setGttLoading(true);
     fetchAll();
     gttIntervalRef.current = setInterval(fetchAll, GTT_HORIZON_MIN * 60 * 1000);
     return () => {
@@ -1269,6 +1280,21 @@ const MarketMoversPage: React.FC = () => {
                   Logic B — GTT Aligned (all 5 views, mirrors Logic 1)
               ══════════════════════════════════════════════════════════════ */}
               {gttAligned && (
+                gttLoading ? (
+                  <div className="flex flex-col items-center justify-center py-20 gap-5">
+                    <div className="h-10 w-10 rounded-full border-2 border-violet-500/25 border-t-violet-500 animate-spin" />
+                    <div className="text-center space-y-1">
+                      <p className="text-sm font-semibold text-foreground">Loading GTT predictions</p>
+                      <p className="text-xs text-muted-foreground">
+                        Fetching predictions for {allSidebarCompanies.length} companies&hellip;
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground/50">
+                      <span className="h-1.5 w-1.5 rounded-full bg-violet-500/60 animate-pulse" />
+                      <span>GTT Aligned Mode</span>
+                    </div>
+                  </div>
+                ) : (
                 <LayoutGroup id="gtt-tiles">
                   {gttSortedCompanies.length === 0 ? (
                     <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
@@ -1457,6 +1483,7 @@ const MarketMoversPage: React.FC = () => {
                     </>
                   )}
                 </LayoutGroup>
+                )
               )}
 
               {/* ══════════════════════════════════════════════════════════════

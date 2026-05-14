@@ -103,6 +103,7 @@ export const useLiveMarket = () => {
   const [socketSource, setSocketSource] = useState<'server' | 'localhost'>('server');
   const [maxCompanies, setMaxCompanies] = useState<number>(999); // ✅ Unlimited companies
   const [tradingHours, setTradingHours] = useState<TradingHours | null>(null);
+  const [pyServiceReady, setPyServiceReady] = useState<boolean>(false);
   const socketRef = useRef<Socket | null>(null);
   const subscribedCompanyCodes = useRef<Set<string>>(new Set());
   const reconnectAttempts = useRef<number>(0);
@@ -131,6 +132,7 @@ export const useLiveMarket = () => {
       console.log('❌ Disconnected from Live Market WebSocket:', reason);
       setConnectionStatus('Disconnected');
       setIsConnected(false);
+      setPyServiceReady(false);
       if (reason === 'io server disconnect') {
         setConnectionStatus('Reconnecting');
       }
@@ -157,7 +159,7 @@ export const useLiveMarket = () => {
       reconnectAttempts.current = 0;
     });
     // Handle availableSymbols event from backend
-    socket.on('availableSymbols', (data: AvailableSymbolsData) => {
+    socket.on('availableSymbols', (data: AvailableSymbolsData & { authStatus?: boolean }) => {
       console.log('📊 Received available symbols:', data);
       // Filter out invalid symbols from backend
       const validSymbols = (data.symbols || []).filter(symbol =>
@@ -169,6 +171,16 @@ export const useLiveMarket = () => {
       setAvailableCompanies(validSymbols);
       setMaxCompanies(data.maxCompanies || 999); // ✅ Unlimited if not specified
       setTradingHours(data.tradingHours || null);
+      // Python service reports its auth status on connect — use it immediately
+      if (data.authStatus === true) {
+        setPyServiceReady(true);
+        console.log('🔑 Python service is auth-ready (from availableSymbols)');
+      }
+    });
+    // Handle authStatus event from Python service (broadcast after auth initialization)
+    socket.on('authStatus', (data: { authenticated: boolean; timestamp?: number }) => {
+      console.log('🔑 Python service authStatus event:', data);
+      setPyServiceReady(data.authenticated === true);
     });
     // Handle marketData event from backend
     socket.on('marketData', (data: MarketData) => {
@@ -453,6 +465,7 @@ export const useLiveMarket = () => {
     error,
     loading,
     isConnected,
+    pyServiceReady,
     subscribeToCompanies,
     subscribeByCompanyCodes,
     unsubscribeAll,

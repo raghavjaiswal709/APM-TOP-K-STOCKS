@@ -463,6 +463,15 @@ def initialize_fyers():
         return False
 
 
+async def broadcast_auth_status():
+    """Broadcast current auth status to ALL connected frontend clients."""
+    await sio.emit('authStatus', {
+        'authenticated': auth_initialized,
+        'timestamp': int(time.time())
+    })
+    logger.info(f"📢 Broadcasted authStatus: authenticated={auth_initialized} to all clients")
+
+
 async def auth_watcher():
     """Watch auth file for updates and reinitialize when needed."""
     global running, auth_initialized, fyers
@@ -489,6 +498,9 @@ async def auth_watcher():
                                     symbols_list = list(active_symbols)
                                     loop.run_in_executor(executor, fyers_subscribe_safe, symbols_list, "SymbolUpdate")
                                     logger.info(f"✅ Queued resubscription for {len(symbols_list)} symbols")
+
+                                # Notify all connected frontend clients immediately
+                                await broadcast_auth_status()
                             except Exception as e:
                                 logger.error(f"❌ WebSocket start error: {e}")
                     last_modified = current_modified
@@ -774,6 +786,42 @@ async def disconnect(sid):
                 logger.info(f"No more active clients for {symbol}, but keeping background collection")
 
         del clients[sid]
+
+
+@sio.event
+async def auth_token_ready(sid, data):
+    """Handle auth token notification from NestJS backend (WebSocket fast-path).
+    
+    NestJS calls this event after generating the Fyers token. This allows near-instant
+    auth detection without waiting for the 5-second file-poll cycle.
+    """
+    global auth_initialized, fyers
+    logger.info(f"🔑 auth_token_ready received from NestJS — reinitializing Fyers immediately...")
+    try:
+        # Save token to shared auth file so file-watcher stays consistent
+        access_token = data.get('access_token') if isinstance(data, dict) else None
+        if access_token:
+            auth_file_path = os.path.join('data', 'fyers_data_auth.json')
+            auth_payload = {
+                'access_token': access_token,
+                'auth_code': data.get('auth_code', ''),
+                'client_id': data.get('client_id', client_id),
+                'timestamp': data.get('timestamp', datetime.datetime.now(INDIA_TZ).isoformat()),
+                'expires_at': data.get('expires_at', ''),
+                'service': 'fyers_data'
+            }
+            with open(auth_file_path, 'w') as f:
+                json.dump(auth_payload, f, indent=2)
+            logger.info("✅ Auth token saved to file via socket event")
+
+        if initialize_fyers() and fyers:
+            loop = asyncio.get_event_loop()
+            loop.run_in_executor(executor, fyers.connect)
+            logger.info("✅ WebSocket connection started after auth_token_ready")
+
+        await broadcast_auth_status()
+    except Exception as e:
+        logger.error(f"❌ Error in auth_token_ready: {e}")
 
 
 # Fetch historical data with timeout protection

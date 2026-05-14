@@ -66,6 +66,7 @@ const LiveMarketInner: React.FC = () => {
     subscribeByCompanyCodes,
     unsubscribeAll,
     isConnected,
+    pyServiceReady,
   } = useLiveMarket();
 
   /* ── Watchlist (for URL-param auto-subscribe company lookup) ── */
@@ -89,9 +90,18 @@ const LiveMarketInner: React.FC = () => {
 
   useEffect(() => {
     fetchAuthStatus();
-    const interval = setInterval(fetchAuthStatus, 30_000);
+    const interval = setInterval(fetchAuthStatus, 10_000);
     return () => clearInterval(interval);
   }, [fetchAuthStatus]);
+
+  // When Python service signals it is auth-ready, immediately refresh NestJS auth
+  // status and reset the one-shot auto-subscribe flag so the dashboard re-subscribes.
+  useEffect(() => {
+    if (!pyServiceReady) return;
+    fetchAuthStatus();
+    // Reset one-shot flag so auto-subscribe can fire again with the fresh auth
+    autoSubscribeDoneRef.current = false;
+  }, [pyServiceReady, fetchAuthStatus]);
 
   /* ── Sidebar resize / collapse ── */
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
