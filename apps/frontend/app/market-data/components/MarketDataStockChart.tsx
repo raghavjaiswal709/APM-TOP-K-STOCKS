@@ -757,11 +757,14 @@ export function MarketDataStockChart({
                     crosshairMarkerVisible: false,
                 });
             }
-            // WhitespaceData (only time, no value) creates time slots without drawing
-            marketHoursAnchorSeriesRef.current.setData([
-                { time: open as UTCTimestamp } as any,
-                { time: close as UTCTimestamp } as any,
-            ]);
+            // Generate one whitespace slot per minute for the full market day.
+            // Whitespace data = { time } with NO value → creates a bar slot without drawing.
+            const totalMktMin = Math.round((close - open) / 60); // 375 min (09:15 → 15:30)
+            const anchorData: Array<{ time: UTCTimestamp }> = [];
+            for (let i = 0; i <= totalMktMin; i++) {
+                anchorData.push({ time: (open + i * 60) as UTCTimestamp });
+            }
+            marketHoursAnchorSeriesRef.current.setData(anchorData as any);
         } catch (_) {}
 
         try {
