@@ -1,11 +1,13 @@
 /**
- * usePatternOverlay — PatternPool Overlay API integration hook
+ * usePatternOverlay — PatternPool Overlay API v2 integration hook
  *
- * Polls /api/pattern-overlay/overlay/{symbol} and
- *       /api/pattern-overlay/overlay/{symbol}/pattern_curves
+ * Polls /api/pattern-overlay/overlay/v2/{symbol} and
+ *       /api/pattern-overlay/overlay/v2/{symbol}/pattern_curves
  * every 15 minutes during IST market hours (09:45 – 15:30).
  *
- * Based on DAKSPHERE PatternPool Overlay API Integration Guide.
+ * Supports multi-PAA resolution via paaWidthMin option (3 | 5 | 9 | 15).
+ *
+ * Based on DAKSPHERE PatternPool Overlay API Integration Guide v4.
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 
@@ -43,17 +45,26 @@ export interface GttOverlay {
   available: boolean;
 }
 
+/** Fields returned by /overlay/v2/{symbol} */
 export interface OverlayData {
   symbol: string;
   date: string;
+  // v2 engine metadata
+  engine?: string;
+  paa_segment_minutes?: number;
+  current_n_segments?: number;
+  low_match_confidence?: boolean;
+  // lock
   lock_status: 'unlocked' | 'tentative' | 'locked';
   lock_word: string;
+  // pattern results
   top3_locked: PatternEntry[];
   current_step: string;
   current_slot: string;
   current_volatile: boolean;
   current_top3: PatternEntry[];
   step_evolution: StepEntry[];
+  nearest_days?: string[];
   gtt: GttOverlay;
 }
 
@@ -69,13 +80,19 @@ export interface HistoricalDay {
   curve: number[];
 }
 
+/** Fields returned by /overlay/v2/{symbol}/pattern_curves */
 export interface PatternCurveEntry {
   rank: number;
   cluster: string;
   score: number;
-  centroid: number[];
-  band_upper: number[];
-  band_lower: number[];
+  // v2 API returns price-scaled variants; legacy returns normalised
+  centroid_price?: number[];
+  band_upper_price?: number[];
+  band_lower_price?: number[];
+  // legacy field names (kept for backward compat)
+  centroid?: number[];
+  band_upper?: number[];
+  band_lower?: number[];
   n_historical: number;
   historical_days: HistoricalDay[];
   meta: PatternProfile;
@@ -86,9 +103,19 @@ export interface PatternCurvesData {
   date: string;
   lock_word: string;
   lock_status: 'unlocked' | 'tentative' | 'locked';
-  time_axis: string[];       // 25 slot-end times: "09:30", "09:45", ..., "15:30"
+  /** Slot-end times; length depends on resolution (25 @ 15m, 42 @ 9m, 75 @ 5m, 125 @ 3m) */
+  time_axis: string[];
   live_curve: LiveCurve;
   patterns: PatternCurveEntry[];
+}
+
+/** Parsed fields from /health response */
+export interface HealthData {
+  allowed_paa_widths: number[];
+  default_paa_width: number;
+  completed_k: number;
+  first_scoring_k: number;
+  lock_k: number;
 }
 
 export interface PatternOverlayState {
@@ -105,6 +132,10 @@ export interface PatternOverlayState {
   lastUpdated: number | null;
   /** ISO date string that was passed to the API (today or replay date) */
   date: string | null;
+  /** Parsed /health response — available after first successful health check */
+  healthData: HealthData | null;
+  /** Currently active PAA resolution in minutes */
+  paaWidthMin: number;
   refetch: () => void;
 }
 
@@ -147,6 +178,10 @@ function getMarketStatus(): 'before' | 'open' | 'after' {
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
+/** Allowed PAA resolution values */
+export const PAA_WIDTH_OPTIONS = [3, 5, 9, 15] as const;
+export type PaaWidthMin = typeof PAA_WIDTH_OPTIONS[number];
+
 interface UsePatternOverlayOptions {
   symbol: string;               // plain company code e.g. "ADANIGREEN"
   enabled?: boolean;
@@ -154,6 +189,8 @@ interface UsePatternOverlayOptions {
   replayDate?: string | null;
   /** Historical days to request in pattern_curves (default 5) */
   historicalLimit?: number;
+  /** PAA segment width in minutes: 3 | 5 | 9 | 15 (default 15) */
+  paaWidthMin?: number;
 }
 
 /** 15-minute poll interval in ms */
@@ -168,6 +205,7 @@ export function usePatternOverlay({
   enabled = true,
   replayDate = null,
   historicalLimit = 5,
+  paaWidthMin = 15,
 }: UsePatternOverlayOptions): PatternOverlayState {
   const [overlay, setOverlay] = useState<OverlayData | null>(null);
   const [curves, setCurves] = useState<PatternCurvesData | null>(null);
@@ -178,28 +216,31 @@ export function usePatternOverlay({
   const [serviceDown, setServiceDown] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [date, setDate] = useState<string | null>(null);
+  const [healthData, setHealthData] = useState<HealthData | null>(null);
 
   const abortRef   = useRef<AbortController | null>(null);
   const timerRef   = useRef<NodeJS.Timeout | null>(null);
   const symbolRef  = useRef(symbol);
   const replayDateRef      = useRef(replayDate);
   const historicalLimitRef = useRef(historicalLimit);
+  const paaWidthMinRef     = useRef(paaWidthMin);
 
   useEffect(() => { symbolRef.current = symbol; }, [symbol]);
   useEffect(() => { replayDateRef.current = replayDate; }, [replayDate]);
   useEffect(() => { historicalLimitRef.current = historicalLimit; }, [historicalLimit]);
+  useEffect(() => { paaWidthMinRef.current = paaWidthMin; }, [paaWidthMin]);
 
   // ── Schedule a one-shot retry ──────────────────────────────────────────
   const scheduleRetry = useCallback((delayMs: number) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      doFetch(symbolRef.current, replayDateRef.current, historicalLimitRef.current);
+      doFetch(symbolRef.current, replayDateRef.current, historicalLimitRef.current, paaWidthMinRef.current);
     }, delayMs);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Main fetch logic ───────────────────────────────────────────────────
-  const doFetch = useCallback(async (sym: string, rDate: string | null, hLimit: number) => {
+  const doFetch = useCallback(async (sym: string, rDate: string | null, hLimit: number, paaW: number) => {
     if (!sym) return;
 
     // ⚡ Set loading=true immediately so callers can gate rendering BEFORE the
@@ -243,6 +284,20 @@ export function usePatternOverlay({
         signal: healthAc.signal,
       });
       healthOk = healthRes.ok;
+      if (healthRes.ok) {
+        try {
+          const hJson = await healthRes.json();
+          setHealthData({
+            allowed_paa_widths: hJson.allowed_paa_widths ?? [3, 5, 9, 15],
+            default_paa_width:  hJson.default_paa_width  ?? 15,
+            completed_k:        hJson.completed_k        ?? 0,
+            first_scoring_k:    hJson.first_scoring_k    ?? 0,
+            lock_k:             hJson.lock_k             ?? 0,
+          });
+        } catch {
+          // Health JSON parse failure is non-fatal
+        }
+      }
     } catch {
       healthOk = false;
     }
@@ -260,18 +315,22 @@ export function usePatternOverlay({
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
-    // loading + error already set at the top of doFetch
 
     const dateParam = rDate || todayIST();
-    const qs       = rDate ? `?date=${rDate}` : '';
+    const paaQs = `paa_width_min=${paaW}`;
+
+    // v2 endpoints with paa_width_min
+    const overlayQs = rDate
+      ? `?date=${rDate}&${paaQs}`
+      : `?${paaQs}`;
     const curvesQs = rDate
-      ? `?date=${rDate}&historical_limit=${hLimit}`
-      : `?historical_limit=${hLimit}`;
+      ? `?date=${rDate}&historical_limit=${hLimit}&${paaQs}`
+      : `?historical_limit=${hLimit}&${paaQs}`;
 
     try {
       const [overlayRes, curvesRes] = await Promise.all([
-        window.fetch(`/api/pattern-overlay/overlay/${encodeURIComponent(sym)}${qs}`, { signal: ac.signal }),
-        window.fetch(`/api/pattern-overlay/overlay/${encodeURIComponent(sym)}/pattern_curves${curvesQs}`, { signal: ac.signal }),
+        window.fetch(`/api/pattern-overlay/overlay/v2/${encodeURIComponent(sym)}${overlayQs}`, { signal: ac.signal }),
+        window.fetch(`/api/pattern-overlay/overlay/v2/${encodeURIComponent(sym)}/pattern_curves${curvesQs}`, { signal: ac.signal }),
       ]);
 
       if (ac.signal.aborted) return;
@@ -284,10 +343,25 @@ export function usePatternOverlay({
       }
 
       if (overlayRes.status === 404) {
-        // Symbol not yet in the pattern pool — not an error, just unavailable
-        setError(`Symbol "${sym}" not found in pattern pool`);
+        // Symbol not built for selected resolution — not an error, show unavailable
+        setError(`Symbol "${sym}" not available for ${paaW}-min resolution`);
         setLoading(false);
         scheduleRetry(FETCH_ERROR_RETRY_MS);
+        return;
+      }
+
+      if (overlayRes.status === 400) {
+        // Invalid paa_width_min — fallback warning, don't crash
+        console.warn(`[PatternOverlay] 400 Bad Request for paa_width_min=${paaW} — check allowed values`);
+        setError(`Invalid resolution ${paaW} min — check allowed values`);
+        setLoading(false);
+        return;
+      }
+
+      if (overlayRes.status === 503) {
+        setError('Pattern overlay service temporarily unavailable');
+        setLoading(false);
+        scheduleRetry(SERVICE_DOWN_RETRY_MS);
         return;
       }
 
@@ -333,10 +407,10 @@ export function usePatternOverlay({
 
   const refetch = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    doFetch(symbolRef.current, replayDateRef.current, historicalLimitRef.current);
+    doFetch(symbolRef.current, replayDateRef.current, historicalLimitRef.current, paaWidthMinRef.current);
   }, [doFetch]);
 
-  // Main effect
+  // Main effect — re-runs when symbol, replayDate, paaWidthMin, or enabled changes
   useEffect(() => {
     if (!enabled || !symbol) {
       setOverlay(null);
@@ -351,21 +425,21 @@ export function usePatternOverlay({
       return;
     }
 
-    // ✅ Immediately clear stale data from the PREVIOUS symbol so the chart
-    // never shows another company's cluster/pattern overlay while the new
-    // symbol's data is in-flight.
+    // ✅ Immediately clear stale data when symbol OR resolution changes so the
+    // chart never shows another company's / resolution's overlay while new
+    // data is in-flight.
     setOverlay(null);
     setCurves(null);
     setDate(null);
 
-    doFetch(symbol, replayDate, historicalLimit);
+    doFetch(symbol, replayDate, historicalLimit, paaWidthMin);
 
     return () => {
       abortRef.current?.abort();
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, replayDate, enabled]);
+  }, [symbol, replayDate, paaWidthMin, enabled]);
 
-  return { overlay, curves, loading, error, tooEarly, afterMarket, serviceDown, lastUpdated, date, refetch };
+  return { overlay, curves, loading, error, tooEarly, afterMarket, serviceDown, lastUpdated, date, healthData, paaWidthMin, refetch };
 }

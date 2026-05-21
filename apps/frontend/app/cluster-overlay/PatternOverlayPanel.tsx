@@ -248,14 +248,21 @@ interface PatternOverlayPanelProps {
   state: PatternOverlayState;
   symbol: string;
   className?: string;
+  /** Currently selected PAA resolution in minutes (3 | 5 | 9 | 15) */
+  paaWidthMin?: number;
 }
 
 export function PatternOverlayPanel({
   state,
   symbol,
   className,
+  paaWidthMin = 15,
 }: PatternOverlayPanelProps) {
   const { overlay, curves, loading, error, tooEarly, afterMarket, serviceDown, lastUpdated, refetch } = state;
+
+  // paa_segment_minutes from the live response is the source of truth for what the API
+  // actually used; fall back to the prop value while loading or when not present.
+  const actualPaaMin = overlay?.paa_segment_minutes ?? paaWidthMin;
 
   const lastUpdatedStr = useMemo(() => {
     if (!lastUpdated) return null;
@@ -347,6 +354,17 @@ export function PatternOverlayPanel({
             <span className="font-semibold text-sm">{symbol}</span>
             <span className="text-xs text-muted-foreground">{overlay.date}</span>
             <LockBadge status={overlay.lock_status} word={overlay.lock_word} />
+            {/* Resolution badge — shows API-confirmed paa_segment_minutes */}
+            <span className="inline-flex items-center text-[9px] font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              {actualPaaMin} min PAA
+            </span>
+            {/* Low match confidence caution */}
+            {overlay.low_match_confidence && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                <AlertTriangle className="h-2.5 w-2.5" />
+                Low confidence
+              </span>
+            )}
             {afterMarket && (
               <span className="inline-flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
                 <Clock className="h-2.5 w-2.5" /> Closed
@@ -382,6 +400,11 @@ export function PatternOverlayPanel({
           {overlay.current_volatile && (
             <span className="text-amber-500 text-[9px] flex items-center gap-0.5">
               <AlertTriangle className="h-2.5 w-2.5" /> Volatile
+            </span>
+          )}
+          {overlay.current_n_segments != null && (
+            <span className="text-[9px] text-muted-foreground font-mono ml-auto">
+              n={overlay.current_n_segments} segs
             </span>
           )}
         </div>

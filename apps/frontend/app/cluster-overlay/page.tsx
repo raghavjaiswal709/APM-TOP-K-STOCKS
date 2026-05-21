@@ -499,8 +499,15 @@ const ClusterOverlayPage: React.FC = () => {
     availableDates,
   } = useWatchlist({ date: currentDate || undefined, showAllCompanies });
 
-  // Fetch set of company codes that have PatternPool cluster data available
-  const { clusterSymbols } = useClusterSymbols();
+  // PAA resolution for PatternPool Overlay (3 | 5 | 9 | 15) — declared here so
+  // useClusterSymbols can receive it before patternOverlay block further below.
+  const [patternPaaWidth, setPatternPaaWidth] = usePersistentState<number>(
+    'cluster-overlay-patternPaaWidth',
+    15
+  );
+
+  // Fetch set of company codes that have PatternPool cluster data for the selected resolution
+  const { clusterSymbols } = useClusterSymbols(patternPaaWidth);
 
   // Date Synchronization Logic
   const effectiveDate = currentDate || hookSelectedDate;
@@ -697,12 +704,13 @@ const ClusterOverlayPage: React.FC = () => {
     'cluster-overlay-showBeyondTop3Lines',
     false
   );
+  // patternPaaWidth is declared earlier (before useClusterSymbols) — used here too.
 
   const patternOverlayState = usePatternOverlay({
     symbol: overlaySymbol,
-    // Start fetching as soon as overlaySymbol is available (don't wait for isClient).
-    // usePatternOverlay only calls window.fetch inside useEffect, so it's SSR-safe.
     enabled: !!overlaySymbol,
+    replayDate: effectiveDate || null,
+    paaWidthMin: patternPaaWidth,
   });
 
   // ── Pattern overlay floating panel: expand/collapse + drag ───────────────
@@ -3269,6 +3277,20 @@ const ClusterOverlayPage: React.FC = () => {
                         Pattern Overlay
                       </span>
 
+                      {/* ── PAA Resolution selector ── */}
+                      <div className="flex items-center gap-0.5 ml-1" onMouseDown={e => e.stopPropagation()}>
+                        {([3, 5, 9, 15] as const).map(w => (
+                          <button
+                            key={w}
+                            onClick={(e) => { e.stopPropagation(); setPatternPaaWidth(w); }}
+                            className={`text-[9px] font-mono px-1.5 py-0.5 rounded transition-colors ${patternPaaWidth === w ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
+                            title={`Switch to ${w}-minute PAA resolution`}
+                          >
+                            {w}m
+                          </button>
+                        ))}
+                      </div>
+
                       {/* ── Per-group line toggles ── */}
                       {/* Top-3 toggle (#1–#3) */}
                       <div className="flex items-center gap-0.5 ml-1.5" title="Show/hide top-3 pattern lines (#1–#3)">
@@ -3318,6 +3340,7 @@ const ClusterOverlayPage: React.FC = () => {
                       <PatternOverlayPanel
                         state={patternOverlayState}
                         symbol={overlaySymbol}
+                        paaWidthMin={patternPaaWidth}
                         className="flex-1 min-h-0"
                       />
                     )}

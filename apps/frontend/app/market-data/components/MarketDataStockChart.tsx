@@ -652,7 +652,11 @@ export function MarketDataStockChart({
                 // Centroid and band lines have separate initial visibility
                 const centroidVisible = showTop3LinesRef.current;
                 const bandsVisible    = showBeyondTop3LinesRef.current;
-                const { centroid, band_upper, band_lower, cluster, meta } = pat;
+                const { centroid_price, band_upper_price, band_lower_price, cluster, meta } = pat;
+                // Support both v2 price-scaled fields and legacy normalised fields as fallback
+                const centroid   = centroid_price   ?? pat.centroid;
+                const band_upper = band_upper_price ?? pat.band_upper;
+                const band_lower = band_lower_price ?? pat.band_lower;
 
                 // Band lower (faint dashed — least-visible, controlled by Bands toggle)
                 if (band_lower && band_lower.length === timeAxisUTC.length) {
