@@ -153,6 +153,10 @@ interface StockChartProps {
     lockedDate?: string | null;
     /** Show or hide the volume histogram at the bottom of the chart */
     showVolume?: boolean;
+    /** Extra controls rendered inline in the chart toolbar, right after the auto-scale lock button */
+    toolbarSlot?: React.ReactNode;
+    onIndicatorsChange?: (indicators: string[]) => void;
+    onChartTypeChange?: (type: string) => void;
 }
 
 // --- Constants ---
@@ -232,6 +236,9 @@ export function MarketDataStockChart({
     lockToMarketHours = false,
     lockedDate = null,
     showVolume = true,
+    toolbarSlot,
+    onIndicatorsChange,
+    onChartTypeChange,
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -249,6 +256,14 @@ export function MarketDataStockChart({
     useEffect(() => {
         setSelectedInterval(interval);
     }, [interval]);
+
+    useEffect(() => {
+        onIndicatorsChange?.(activeIndicators);
+    }, [activeIndicators, onIndicatorsChange]);
+
+    useEffect(() => {
+        onChartTypeChange?.(chartType);
+    }, [chartType, onChartTypeChange]);
 
 
     // Analysis State
@@ -320,6 +335,9 @@ export function MarketDataStockChart({
 
     // Track previous companyId for detecting company switches in the data effect
     const prevCompanyIdRef = useRef<string | null>(null);
+
+    // Track previous lockedDate to detect date-navigation switches in the data effect
+    const prevLockedDateRef = useRef<string | null>(null);
     
     // Track previous chartType to detect chart type changes (need series recreation) vs data-only changes (reuse series)
     const prevChartTypeRef = useRef<string | null>(null);
@@ -923,8 +941,7 @@ export function MarketDataStockChart({
         return createChart(container, {
             layout: { background: { type: ColorType.Solid, color: colors.bg }, textColor: colors.text },
             grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
-            width: container.clientWidth,
-            height: container.clientHeight,
+            autoSize: true,
             handleScroll: {
                 mouseWheel: true,
                 pressedMouseMove: true,
@@ -1076,7 +1093,8 @@ export function MarketDataStockChart({
             mainChartRef as { current: IChartApi | null }
         );
 
-        // ✅ Debounced resize handler — prevents lag from rapid ResizeObserver fires
+        // ✅ Debounced resize handler — only resizes the main chart.
+        // Sub-charts use autoSize:true so they self-manage their dimensions.
         let resizeRafId: number | null = null;
         const handleResize = () => {
             if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
@@ -1085,18 +1103,6 @@ export function MarketDataStockChart({
                     const width = mainChartContainerRef.current.clientWidth;
                     const height = mainChartContainerRef.current.clientHeight;
                     mainChartRef.current.applyOptions({ width, height });
-                }
-                if (rsiChartContainerRef.current && rsiChartRef.current) {
-                    rsiChartRef.current.applyOptions({ width: rsiChartContainerRef.current.clientWidth, height: rsiChartContainerRef.current.clientHeight });
-                }
-                if (macdChartContainerRef.current && macdChartRef.current) {
-                    macdChartRef.current.applyOptions({ width: macdChartContainerRef.current.clientWidth, height: macdChartContainerRef.current.clientHeight });
-                }
-                if (bidAskChartContainerRef.current && bidAskChartRef.current) {
-                    bidAskChartRef.current.applyOptions({ width: bidAskChartContainerRef.current.clientWidth, height: bidAskChartContainerRef.current.clientHeight });
-                }
-                if (buySellChartContainerRef.current && buySellChartRef.current) {
-                    buySellChartRef.current.applyOptions({ width: buySellChartContainerRef.current.clientWidth, height: buySellChartContainerRef.current.clientHeight });
                 }
                 resizeRafId = null;
             });
@@ -1120,6 +1126,10 @@ export function MarketDataStockChart({
             volumeSeriesRef.current = null;
             marketHoursAnchorSeriesRef.current = null;
             indicatorSeriesRefs.current.clear();
+            if (rsiChartRef.current) { try { rsiChartRef.current.remove(); } catch (_) {} rsiChartRef.current = null; }
+            if (macdChartRef.current) { try { macdChartRef.current.remove(); } catch (_) {} macdChartRef.current = null; }
+            if (bidAskChartRef.current) { try { bidAskChartRef.current.remove(); } catch (_) {} bidAskChartRef.current = null; }
+            if (buySellChartRef.current) { try { buySellChartRef.current.remove(); } catch (_) {} buySellChartRef.current = null; }
         };
     }, []);
 
@@ -1265,28 +1275,7 @@ export function MarketDataStockChart({
 
     // Sub-Chart Initialization with Sync
     useEffect(() => {
-        const hasRSI = activeIndicators.includes('rsi');
         const hasMACD = activeIndicators.includes('macd');
-
-        // RSI Chart
-        if (hasRSI && rsiChartContainerRef.current && !rsiChartRef.current) {
-            const chart = createStandardChart(rsiChartContainerRef.current);
-            rsiChartRef.current = chart;
-            attachPriceAxisWheelZoom(rsiChartContainerRef.current, rsiChartRef as { current: IChartApi | null });
-            const rsiSeries = chart.addSeries(LineSeries, { color: '#7e57c2', lineWidth: 2, title: 'RSI 14' });
-            (rsiSeries as any).createPriceLine({ price: 70, color: '#ef5350', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: '' });
-            (rsiSeries as any).createPriceLine({ price: 30, color: '#26a69a', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: '' });
-            indicatorSeriesRefs.current.set('rsi', rsiSeries);
-
-            // Sync logic
-            if (mainChartRef.current) syncCharts(mainChartRef.current, [chart]);
-            syncCharts(chart, [mainChartRef.current, macdChartRef.current, bidAskChartRef.current, buySellChartRef.current]);
-        } else if (!hasRSI && rsiChartRef.current) {
-            removePriceAxisWheelZoom(rsiChartContainerRef.current);
-            rsiChartRef.current.remove();
-            rsiChartRef.current = null;
-            indicatorSeriesRefs.current.delete('rsi');
-        }
 
         // MACD Chart
         if (hasMACD && macdChartContainerRef.current && !macdChartRef.current) {
@@ -1348,6 +1337,69 @@ export function MarketDataStockChart({
         }
 
     }, [activeIndicators, showBidAsk, showBuySell, colors, syncCharts]);
+
+    // RSI Chart — keep creation, teardown, and data application in one effect so
+    // company switches cannot leave an empty sub-chart between effect passes.
+    useEffect(() => {
+        if (!mainChartRef.current) return;
+
+        const hasRSI = activeIndicators.includes('rsi');
+
+        if (!hasRSI) {
+            if (rsiChartRef.current) {
+                removePriceAxisWheelZoom(rsiChartContainerRef.current);
+                try { rsiChartRef.current.remove(); } catch (_) {}
+                rsiChartRef.current = null;
+                indicatorSeriesRefs.current.delete('rsi');
+            }
+            return;
+        }
+
+        if (!rsiChartRef.current && rsiChartContainerRef.current) {
+            const chart = createStandardChart(rsiChartContainerRef.current);
+            rsiChartRef.current = chart;
+            attachPriceAxisWheelZoom(rsiChartContainerRef.current, rsiChartRef as { current: IChartApi | null });
+            const rsiSeries = chart.addSeries(LineSeries, { color: '#7e57c2', lineWidth: 2, title: 'RSI 14' });
+            try {
+                (rsiSeries as any).createPriceLine({ price: 70, color: '#ef5350', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: '' });
+                (rsiSeries as any).createPriceLine({ price: 30, color: '#26a69a', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: '' });
+            } catch (_) {}
+            indicatorSeriesRefs.current.set('rsi', rsiSeries);
+
+            if (mainChartRef.current) {
+                syncCharts(mainChartRef.current, [chart]);
+                try {
+                    const currentRange = mainChartRef.current.timeScale().getVisibleLogicalRange();
+                    if (currentRange) chart.timeScale().setVisibleLogicalRange(currentRange);
+                } catch (_) {}
+            }
+            syncCharts(chart, [mainChartRef.current, macdChartRef.current, bidAskChartRef.current, buySellChartRef.current]);
+        }
+
+        if (!data || data.length === 0) return;
+        if (!rsiChartRef.current || !indicatorSeriesRefs.current.has('rsi')) return;
+
+        const processedForRsi = processData(data);
+        if (processedForRsi.length === 0) return;
+
+        const rsiSeries = indicatorSeriesRefs.current.get('rsi');
+        const rsiClosePrices = processedForRsi.map(d => d.close);
+        const rsiData = calculateRSI(rsiClosePrices);
+        const points = processedForRsi
+            .map((d, i) => ({ time: d.time, value: rsiData[i] ?? NaN }))
+            .filter(d => !isNaN(d.value));
+
+        rsiSeries?.setData(points);
+
+        try {
+            const logicalRange = mainChartRef.current.timeScale().getVisibleLogicalRange();
+            if (logicalRange) {
+                rsiChartRef.current.timeScale().setVisibleLogicalRange(logicalRange);
+            } else {
+                rsiChartRef.current.timeScale().fitContent();
+            }
+        } catch (_) {}
+    }, [activeIndicators, data, processData, syncCharts]);
 
     // Data Updates
     useEffect(() => {
@@ -1615,7 +1667,7 @@ export function MarketDataStockChart({
 
 
         // --- Indicators (optimized: reuse existing series when possible) ---
-        const closePrices = data.map(d => d.close);
+        const closePrices = processedData.map(d => d.close);
 
         if (activeIndicators.includes('ma')) {
             [20, 50].forEach(period => {
@@ -1699,12 +1751,6 @@ export function MarketDataStockChart({
             });
         }
 
-        if (activeIndicators.includes('rsi') && rsiChartRef.current && indicatorSeriesRefs.current.has('rsi')) {
-            const rsiSeries = indicatorSeriesRefs.current.get('rsi');
-            const rsiData = calculateRSI(closePrices);
-            rsiSeries?.setData(processedData.map((d, i) => ({ time: d.time, value: rsiData[i] || NaN })).filter(d => !isNaN(d.value)));
-        }
-
         if (activeIndicators.includes('macd') && macdChartRef.current) {
             const macdRes = calculateMACD(closePrices);
             const hist = indicatorSeriesRefs.current.get('macd_hist');
@@ -1718,6 +1764,16 @@ export function MarketDataStockChart({
             })).filter(d => !isNaN(d.value)));
             line?.setData(processedData.map((d, i) => ({ time: d.time, value: macdRes.macdLine[i] || NaN })).filter(d => !isNaN(d.value)));
             signal?.setData(processedData.map((d, i) => ({ time: d.time, value: macdRes.signalLine[i] || NaN })).filter(d => !isNaN(d.value)));
+            if (needsSeriesRecreation && macdChartRef.current) {
+                try {
+                    const logicalRange = mainChartRef.current.timeScale().getVisibleLogicalRange();
+                    if (logicalRange) {
+                        macdChartRef.current.timeScale().setVisibleLogicalRange(logicalRange);
+                    } else {
+                        macdChartRef.current.timeScale().fitContent();
+                    }
+                } catch (_) {}
+            }
         }
 
         // --- Bid/Ask Chart Logic (optimized: reuse series on data-only updates) ---
@@ -1846,13 +1902,15 @@ export function MarketDataStockChart({
             }
         }
 
-        // ✅ CRITICAL: Only fit/zoom on FIRST data load or company change.
+        // ✅ CRITICAL: Only fit/zoom on FIRST data load, company change, or date navigation.
         // On subsequent live updates, preserve the user's manual zoom/pan.
-        if (processedData.length > 0 && mainChartRef.current && needsInitialFitRef.current) {
+        const lockedDateForRange = lockedDate ?? null;
+        const lockedDateChanged = lockToMarketHours && lockedDateForRange !== prevLockedDateRef.current;
+        if (processedData.length > 0 && mainChartRef.current && (needsInitialFitRef.current || lockedDateChanged)) {
             if (lockToMarketHours) {
-                // ─ Market-hours lock: NEVER call fitContent — always pin 09:15–15:30 IST─
-                // This prevents candle data arriving AFTER the lock effect from
-                // overriding the locked range back to first-candle→last-candle.
+                // ─ Market-hours lock: NEVER call fitContent — always pin 09:15–15:30 IST ─
+                // Also re-applies whenever the date changes (date navigation) so that
+                // incoming candles for the new date never override the locked range.
                 const { open, close } = getMarketUTCRange(lockedDate ?? patternCurves?.date);
                 try {
                     mainChartRef.current.timeScale().setVisibleRange({
@@ -1860,6 +1918,7 @@ export function MarketDataStockChart({
                         to: (close + 30 * 60) as any,
                     });
                 } catch (_) {}
+                prevLockedDateRef.current = lockedDateForRange;
             } else if (selectedDuration === 'full') {
                 mainChartRef.current.timeScale().fitContent();
             } else {
@@ -2428,6 +2487,13 @@ export function MarketDataStockChart({
                 >
                     {autoScaleLocked ? <Lock size={14} /> : <Unlock size={14} />}
                 </Button>
+
+                {/* Toolbar slot — extra controls injected by the parent (e.g. Pattern Overlay controls) */}
+                {toolbarSlot && (
+                    <div className="relative flex items-center">
+                        {toolbarSlot}
+                    </div>
+                )}
 
                 <div className="flex-1" />
 

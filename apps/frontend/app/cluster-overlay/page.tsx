@@ -202,6 +202,15 @@ const ClusterOverlayPage: React.FC = () => {
     false
   );
 
+  const [chartActiveIndicators, setChartActiveIndicators] = usePersistentState<string[]>(
+    'cluster-overlay-chartActiveIndicators',
+    []
+  );
+  const [chartActiveType, setChartActiveType] = usePersistentState<string>(
+    'cluster-overlay-chartActiveType',
+    'candlestick'
+  );
+
   // Prediction Integration State
   const [showPredictions, setShowPredictions] = usePersistentState<boolean>(
     'cluster-overlay-showPredictions',
@@ -296,6 +305,10 @@ const ClusterOverlayPage: React.FC = () => {
   const [marketOpen, setMarketOpen] = useState<boolean>(true);
   const [isLoadingHistorical, setIsLoadingHistorical] = useState<boolean>(false);
   const [historicalDataStatus, setHistoricalDataStatus] = useState<string>('');
+  // ✅ Increment this whenever handleDateChange is called — ensures the backfill
+  // useEffect re-runs even if effectiveDate didn't change (e.g. hookSelectedDate
+  // already equalled the newly-selected date).
+  const [forceRefetchKey, setForceRefetchKey] = useState<number>(0);
   const [overallSentiment, setOverallSentiment] = useState<string>('NEUTRAL');
   const [isSentimentFetching, setIsSentimentFetching] = useState<boolean>(false);
 
@@ -522,6 +535,21 @@ const ClusterOverlayPage: React.FC = () => {
     return effectiveDate === latestAvailableDate;
   }, [effectiveDate, latestAvailableDate]);
 
+  // ── Date Navigator helpers ───────────────────────────────────────────────
+  // Sorted ascending list of all trading dates available in the watchlist DB
+  const sortedDates = useMemo(() => {
+    if (!availableDates || availableDates.length === 0) return [];
+    return [...availableDates].sort();
+  }, [availableDates]);
+
+  // Index of the currently-viewed date in sortedDates (-1 if not found → treat as last)
+  const currentDateIdx = useMemo(() => {
+    if (sortedDates.length === 0) return -1;
+    if (!effectiveDate) return sortedDates.length - 1; // no explicit date → at "latest"
+    const idx = sortedDates.indexOf(effectiveDate);
+    return idx >= 0 ? idx : sortedDates.length - 1;
+  }, [effectiveDate, sortedDates]);
+
   // Refs
   const updateCountRef = useRef(0);
   const lastUpdateTimeRef = useRef(Date.now());
@@ -713,52 +741,14 @@ const ClusterOverlayPage: React.FC = () => {
     paaWidthMin: patternPaaWidth,
   });
 
-  // ── Pattern overlay floating panel: expand/collapse + drag ───────────────
+  // ── Pattern overlay toolbar controls: expand/collapse ────────────────────
   const [isPanelExpanded, setIsPanelExpanded] = usePersistentState<boolean>(
-    'cluster-overlay-patternPanelExpanded', true
+    'cluster-overlay-patternPanelExpanded', false
   );
   const [patternPanelPos, setPatternPanelPos] = useState<{ left: number; top: number } | null>(null);
   const patternPanelRef = useRef<HTMLDivElement | null>(null);
-  const patternDragRef = useRef({ dragging: false, startX: 0, startY: 0, origLeft: 0, origTop: 0 });
 
   const isLoadingDesirability = desirabilityLoading;
-
-  // Drag handler for the pattern overlay floating panel
-  const handlePatternPanelDragStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // Let button clicks through without starting drag
-    if ((e.target as HTMLElement).closest('button')) return;
-    e.preventDefault();
-    const el = patternPanelRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    patternDragRef.current = {
-      dragging: true,
-      startX: e.clientX,
-      startY: e.clientY,
-      origLeft: rect.left,
-      origTop: rect.top,
-    };
-    const onMove = (me: MouseEvent) => {
-      if (!patternDragRef.current.dragging || !patternPanelRef.current) return;
-      const dx = me.clientX - patternDragRef.current.startX;
-      const dy = me.clientY - patternDragRef.current.startY;
-      const newLeft = Math.max(0, Math.min(window.innerWidth - 200, patternDragRef.current.origLeft + dx));
-      const newTop = Math.max(0, Math.min(window.innerHeight - 40, patternDragRef.current.origTop + dy));
-      patternPanelRef.current.style.left = `${newLeft}px`;
-      patternPanelRef.current.style.top = `${newTop}px`;
-      patternPanelRef.current.style.bottom = 'auto';
-    };
-    const onUp = () => {
-      if (!patternDragRef.current.dragging || !patternPanelRef.current) return;
-      patternDragRef.current.dragging = false;
-      const r = patternPanelRef.current.getBoundingClientRect();
-      setPatternPanelPos({ left: r.left, top: r.top });
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }, []);
 
   const handleFetchDesirabilityScore = useCallback(() => {
     refetchDesirability();
@@ -966,7 +956,24 @@ const ClusterOverlayPage: React.FC = () => {
     }
 
     setCurrentDate(date);
+    // ✅ Always bump the refetch key so the backfill useEffect fires even when
+    // the selected date string equals what effectiveDate was already resolving to.
+    setForceRefetchKey(k => k + 1);
   }, [selectedSymbol]);
+
+  // Navigate to the previous available trading date
+  const handlePrevDate = useCallback(() => {
+    if (currentDateIdx > 0) {
+      handleDateChange(sortedDates[currentDateIdx - 1]);
+    }
+  }, [currentDateIdx, sortedDates, handleDateChange]);
+
+  // Navigate to the next available trading date
+  const handleNextDate = useCallback(() => {
+    if (currentDateIdx < sortedDates.length - 1) {
+      handleDateChange(sortedDates[currentDateIdx + 1]);
+    }
+  }, [currentDateIdx, sortedDates, handleDateChange]);
 
   // ── URL param auto-select: ?company=RELIANCE&exchange=NSE ──
   // Uses window.location.search (no Suspense / useSearchParams needed)
@@ -1992,64 +1999,65 @@ const ClusterOverlayPage: React.FC = () => {
     if (!isClient || !selectedSymbol || !socketRef.current) return;
 
     const socket = socketRef.current;
-    // ✅ CRITICAL: The live feed server (port 6969) only stores TODAY's data.
-    // Always use actual today's IST date — NOT effectiveDate which is the last
-    // trading day from the watchlist DB (e.g. Friday when today is Monday).
     const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    // ✅ When the user has explicitly chosen a historical date, use it for port-6969 fetches.
+    // Otherwise fall back to today (live mode).
+    const fetchDate = currentDate || todayIST;
 
-    // Check if we already have valid cached OHLC data for THIS TRADING DAY
+    // Check if we already have valid cached OHLC data for the TARGET date
     const hasCachedOhlcData = ohlcData[selectedSymbol] && ohlcData[selectedSymbol].length > 0;
-    const cacheIsFromToday = hasCachedOhlcData && (() => {
+    const cacheIsFromTargetDate = hasCachedOhlcData && (() => {
       const firstCandle = ohlcData[selectedSymbol][0];
       const candleDate = new Date(firstCandle.timestamp * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      return candleDate === todayIST; // Compare against actual today, not watchlist date
+      return candleDate === fetchDate;
     })();
 
-    // ✅ FAST PATH: Already have data AND already subscribed → instant switch
-    if (cacheIsFromToday && isSubscribedRef.current.has(selectedSymbol)) {
-      console.log(`⚡ [Data] Instant switch to ${selectedSymbol} — ${ohlcData[selectedSymbol].length} candles cached, already subscribed`);
+    // Pre-compute the backfill key so all paths below can use it
+    const backfillKey = `${selectedSymbol}_${fetchDate}`;
+    const hasBeenBackfilled = backfilledSymbolsRef.current.has(backfillKey);
+
+    // ✅ FAST PATH: Data cached from target date + subscribed + backfill complete → nothing to do
+    if (cacheIsFromTargetDate && isSubscribedRef.current.has(selectedSymbol) && hasBeenBackfilled) {
+      console.log(`⚡ [Data] Instant switch to ${selectedSymbol} — ${ohlcData[selectedSymbol].length} candles cached, backfill done`);
       hasLoadedDataRef.current = true;
       setIsLoadingHistorical(false);
       setHistoricalDataStatus('');
-      setHasBackfillData(backfilledSymbolsRef.current.has(`${selectedSymbol}_${todayIST}`));
-      return; // No cleanup needed — we don't unsubscribe
+      setHasBackfillData(true);
+      return; // Fully complete — nothing more to do
     }
 
-    // ✅ MEDIUM PATH: Have cache but not subscribed → show cache instantly, subscribe in background
-    if (cacheIsFromToday) {
-      console.log(`⚡ [Data] Using cache for ${selectedSymbol}, subscribing for live updates...`);
+    // ✅ If we have SOME data for the target date, show it immediately (no spinner)
+    // while we silently fill any gaps via backfill below.
+    // CRITICAL: Do NOT short-circuit here — always proceed to backfill unless
+    // hasBeenBackfilled is true, because WebSocket can inject partial data
+    // (e.g. only the last hour) between a data-clear and the backfill effect.
+    if (cacheIsFromTargetDate) {
+      console.log(`⚡ [Data] Partial cache for ${selectedSymbol} (${ohlcData[selectedSymbol].length} candles) — showing instantly, will fill gaps`);
       hasLoadedDataRef.current = true;
       setIsLoadingHistorical(false);
       setHistoricalDataStatus('');
-      setHasBackfillData(backfilledSymbolsRef.current.has(`${selectedSymbol}_${todayIST}`));
-      // Subscribe for real-time updates (don't block rendering)
-      if (!isSubscribedRef.current.has(selectedSymbol)) {
-        // ✅ Pre-register so handlers accept data immediately (before callback fires)
-        allSubscribedSymbolsRef.current.add(selectedSymbol);
-        socket.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
-          if (response && response.success) {
-            isSubscribedRef.current.add(selectedSymbol);
-            console.log(`✅ Subscribed to ${selectedSymbol} (had cache)`);
-          }
-        });
-      }
-      return; // No cleanup — don't unsubscribe
+      setHasBackfillData(hasBeenBackfilled);
+      // Intentional fall-through: still need to subscribe and run backfill below
+    } else {
+      console.log(`📡 [Data] No cache for ${selectedSymbol} — subscribing + fetching...`);
+      setHasBackfillData(false);
     }
 
-    // ✅ SLOW PATH: No cache — subscribe and fetch historical data
-    console.log(`📡 [Data] No cache for ${selectedSymbol} — subscribing + fetching...`);
-
-    setHasBackfillData(false); // reset while slow-path fetch is in progress
-
+    // Subscribe if not already subscribed (needed for both partial-cache and no-cache paths)
     if (!isSubscribedRef.current.has(selectedSymbol)) {
       // ✅ Pre-register so handlers accept data immediately (before callback fires)
       allSubscribedSymbolsRef.current.add(selectedSymbol);
       socket.emit('subscribe', { symbol: selectedSymbol }, (response: any) => {
         if (response && response.success) {
           isSubscribedRef.current.add(selectedSymbol);
-          console.log(`✅ Successfully subscribed to ${selectedSymbol}`);
+          console.log(`✅ Subscribed to ${selectedSymbol} (${cacheIsFromTargetDate ? 'had partial cache' : 'no cache'})`);
         }
       });
+    }
+
+    // If fully backfilled, subscription is all we needed — no fetch required
+    if (hasBeenBackfilled) {
+      return;
     }
 
     /**
@@ -2062,14 +2070,13 @@ const ClusterOverlayPage: React.FC = () => {
      * 3. Market open with full data: No backfill needed
      */
     const fetchAndBackfillHistoricalData = async (signal: AbortSignal) => {
-      // ✅ ALWAYS use today's IST date for the live feed server (port 6969).
-      // It only stores the CURRENT trading day's data — not historical DB dates.
-      // effectiveDate is the watchlist's last trading day (e.g. Friday) and must
-      // NOT be used here — it would fetch a non-existent or wrong-day file.
-      const todayForFetch = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      // ✅ Use the user-selected historical date when set; otherwise fall back to today.
+      // `fetchDate` is already computed above: currentDate || todayIST.
+      // Using fetchDate ensures port-6969 is queried for the correct trading day.
+      const todayForFetch = todayIST; // alias — todayIST is in the outer useEffect scope
 
-      // Check if we already backfilled this symbol for today
-      const backfillKey = `${selectedSymbol}_${todayForFetch}`;
+      // backfillKey is declared in the outer scope — reuse it here (don't redeclare)
+      // Guard: if somehow we get here despite the key existing, bail out.
       if (backfilledSymbolsRef.current.has(backfillKey)) {
         console.log(`📡 [Backfill] Already backfilled ${backfillKey}, skipping`);
         setIsLoadingHistorical(false);
@@ -2083,22 +2090,27 @@ const ClusterOverlayPage: React.FC = () => {
         return;
       }
 
-      setIsLoadingHistorical(true);
+      // Only show the loading spinner if we have NO partial data to display yet.
+      // When cacheIsFromTargetDate is true we already cleared the spinner above.
+      if (!cacheIsFromTargetDate) {
+        setIsLoadingHistorical(true);
+      }
       setHistoricalDataStatus('Checking data completeness...');
 
       try {
-        const currentDate = todayForFetch; // today's IST date for the live feed server
+        // For historical dates (not today), always treat as "after market" — fetch the full day.
+        const isHistoricalMode = fetchDate !== todayForFetch;
         const marketStatus = isMarketOpen();
-        const isAfterMarket = marketStatus.reason === 'after-market';
+        const isAfterMarket = isHistoricalMode || marketStatus.reason === 'after-market';
 
-        console.log(`📡 [Backfill] Symbol: ${selectedSymbol}, FetchDate: ${currentDate} (effectiveDate=${effectiveDate}), Market: ${marketStatus.isOpen ? 'OPEN' : marketStatus.reason}`);
+        console.log(`📡 [Backfill] Symbol: ${selectedSymbol}, FetchDate: ${fetchDate} (effectiveDate=${effectiveDate}, mode: ${isHistoricalMode ? 'historical' : 'live'}), Market: ${marketStatus.isOpen ? 'OPEN' : marketStatus.reason}`);
 
         // Always fetch external data to fill any gaps
-        // After market: need full day
+        // After market / historical: need full day
         // During market: fill gaps from 9:15 AM to now
         setHistoricalDataStatus(`Fetching ${isAfterMarket ? 'full day' : 'historical'} data...`);
 
-        const result = await fetchHistoricalData(selectedSymbol, currentDate);
+        const result = await fetchHistoricalData(selectedSymbol, fetchDate);
 
         // Bail out if company changed while we were fetching
         if (signal.aborted) {
@@ -2109,9 +2121,37 @@ const ClusterOverlayPage: React.FC = () => {
         if (result.success && result.data.length > 0) {
           console.log(`✅ [Backfill] Fetched ${result.data.length} ticks, ${result.ohlc?.length || 0} candles from external server`);
 
-          // Mark as backfilled
-          backfilledSymbolsRef.current.add(backfillKey);
-          setHasBackfillData(true);
+          // ✅ Check if the returned data covers the full trading day.
+          // For historical dates the session ends at 15:30 IST (10:00 UTC).
+          // If the last candle is before 15:00 IST (~09:30 UTC), the data is
+          // incomplete — don't cache it so a future visit can re-fetch.
+          const isDataComplete = (() => {
+            if (!isHistoricalMode) return true; // live day — always treat as complete
+            if (!result.ohlc || result.ohlc.length === 0) return false;
+            const lastCandle = result.ohlc[result.ohlc.length - 1];
+            // 15:00 IST = 09:30 UTC
+            const marketEndUTC = Date.UTC(
+              ...fetchDate.split('-').map(Number) as [number, number, number],
+              9, 30, 0
+            ) / 1000;
+            return lastCandle.timestamp >= marketEndUTC;
+          })();
+
+          if (isDataComplete) {
+            // Mark as fully backfilled — fast path can skip on next visit
+            backfilledSymbolsRef.current.add(backfillKey);
+            setHasBackfillData(true);
+          } else {
+            // Partial data: show a warning but still display what we have.
+            // Do NOT add to backfilledSymbolsRef so the next date-change re-fetches.
+            const lastCandle = result.ohlc && result.ohlc.length > 0 ? result.ohlc[result.ohlc.length - 1] : null;
+            const lastTime = lastCandle
+              ? new Date(lastCandle.timestamp * 1000).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false })
+              : 'unknown';
+            console.warn(`⚠️ [Backfill] Incomplete data for ${fetchDate}: last candle at ${lastTime} IST (expected 15:30). Showing partial data.`);
+            setHistoricalDataStatus(`Partial data: available until ${lastTime} IST`);
+            setHasBackfillData(true);
+          }
 
           // ===== MERGE EXTERNAL OHLC WITH EXISTING OHLC =====
           if (result.ohlc && result.ohlc.length > 0) {
@@ -2264,7 +2304,8 @@ const ClusterOverlayPage: React.FC = () => {
       // The data stores are keyed by symbol, so switching companies
       // just changes which key we read from.
     };
-  }, [selectedSymbol, isClient, effectiveDate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSymbol, isClient, effectiveDate, forceRefetchKey]);
 
   useEffect(() => {
     const fetchSentiment = async () => {
@@ -2467,10 +2508,11 @@ const ClusterOverlayPage: React.FC = () => {
         })
         .sort((a, b) => a.timestamp - b.timestamp);
 
-      // ✅ FALLBACK: If no candles match targetDate but we have candles from today,
-      // show today's live data anyway. This handles the case where effectiveDate
-      // is a past date (from watchlist) but live ticks are flowing for today.
-      if (validCandles.length === 0 && targetDate !== todayIST) {
+      // FALLBACK: Only when NO explicit date was selected (currentDate === null),
+      // fall back to today's live data if nothing matched the watchlist-derived date.
+      // When the user HAS set an explicit historical date, show nothing rather than
+      // the wrong date — the backfill may still be in flight.
+      if (validCandles.length === 0 && currentDate === null && targetDate !== todayIST) {
         const todayCandles = symbolOhlc
           .filter(candle => {
             if (
@@ -2725,6 +2767,79 @@ const ClusterOverlayPage: React.FC = () => {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
+
+          {/* ── Date Navigator ─────────────────────────────────────────────── */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handlePrevDate}
+              disabled={sortedDates.length === 0 || currentDateIdx <= 0}
+              className="h-7 w-7 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="Previous trading day"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium border border-border/60 hover:bg-accent hover:border-border transition-colors min-w-[155px] justify-center"
+                  title="Pick a trading date"
+                >
+                  <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="truncate">
+                    {effectiveDate
+                      ? format(new Date(effectiveDate + 'T00:00:00'), 'EEE, dd MMM yyyy')
+                      : 'Select Date'}
+                  </span>
+                  {!currentDate && (
+                    <span className="ml-0.5 text-[9px] font-bold tracking-wide text-emerald-500 uppercase shrink-0">Live</span>
+                  )}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="center" sideOffset={4}>
+                <div className="p-3">
+                  <div className="flex items-center justify-between mb-2 gap-4">
+                    <span className="text-xs font-semibold text-muted-foreground">Trading Date</span>
+                    {currentDate && (
+                      <button
+                        onClick={() => handleDateChange(sortedDates[sortedDates.length - 1] || '')}
+                        className="text-[10px] text-blue-500 hover:text-blue-600 font-medium hover:underline underline-offset-2"
+                      >
+                        Jump to Latest
+                      </button>
+                    )}
+                  </div>
+                  <Calendar
+                    mode="single"
+                    selected={effectiveDate ? new Date(effectiveDate + 'T00:00:00') : undefined}
+                    onSelect={(date) => {
+                      if (date) handleDateChange(format(date, 'yyyy-MM-dd'));
+                    }}
+                    disabled={(date) => {
+                      const dateStr = format(date, 'yyyy-MM-dd');
+                      return sortedDates.length > 0 && !sortedDates.includes(dateStr);
+                    }}
+                    initialFocus
+                  />
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            <button
+              onClick={handleNextDate}
+              disabled={sortedDates.length === 0 || currentDateIdx >= sortedDates.length - 1}
+              className="h-7 w-7 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="Next trading day"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+
+            {isLoadingHistorical && (
+              <div className="h-3 w-3 rounded-full border border-muted-foreground/40 border-t-transparent animate-spin shrink-0" />
+            )}
+          </div>
+
+          <Separator orientation="vertical" className="h-4 mx-0.5" />
 
           {/* Header Controls — all items h-7, text-xs, consistent border+tint color system */}
           <div className="flex items-center gap-1.5">
@@ -3074,21 +3189,6 @@ const ClusterOverlayPage: React.FC = () => {
 
             <Separator orientation="vertical" className="h-4 mx-0.5" />
 
-            {/* Volume toggle */}
-            <button
-              onClick={() => setShowVolume(!showVolume)}
-              className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors inline-flex items-center gap-1.5 border ${showVolume
-                  ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/25 hover:bg-sky-500/15'
-                  : 'bg-transparent text-muted-foreground border-border hover:bg-muted/60'
-                }`}
-              title={showVolume ? 'Hide volume histogram' : 'Show volume histogram'}
-            >
-              <BarChart2 className="h-3 w-3" />
-              Vol
-            </button>
-
-            <Separator orientation="vertical" className="h-4 mx-0.5" />
-
             {/* Portfolio Mode */}
             <div className="flex items-center">
               <PortfolioMode
@@ -3207,7 +3307,7 @@ const ClusterOverlayPage: React.FC = () => {
               }}
             >
               {selectedCompany && (marketOpen || chartData.length > 0) ? (
-                <div className="relative w-full h-full flex flex-col">
+                <div className="relative w-full flex-1 min-h-0 flex flex-col">
                   <LightWeightStockChart
                     // ✅ Hard-remount when the user switches companies. Without
                     // this key, the chart library keeps its previous series
@@ -3221,7 +3321,10 @@ const ClusterOverlayPage: React.FC = () => {
                     height="100%"
                     className="w-full h-full"
                     theme={theme === 'light' ? 'light' : 'dark'}
-                    defaultChartType="candlestick"
+                    defaultChartType={chartActiveType}
+                    indicators={chartActiveIndicators}
+                    onIndicatorsChange={setChartActiveIndicators}
+                    onChartTypeChange={setChartActiveType}
                     predictions={predictionServiceHealth === 'available' ? predictions : null}
                     showPredictions={showPredictions && predictionServiceHealth === 'available'}
                     gttPredictions={gttServiceHealth === 'available' ? gttChartData : null}
@@ -3239,115 +3342,133 @@ const ClusterOverlayPage: React.FC = () => {
                     lockToMarketHours={true}
                     lockedDate={effectiveDate || null}
                     showVolume={showVolume}
+                    toolbarSlot={(
+                      /* ── Pattern Overlay controls — inline in chart toolbar, next to lock icon ── */
+                      <div
+                        ref={patternPanelRef}
+                        className="flex items-center gap-1.5 select-none border-l border-border/40 ml-1 pl-2"
+                      >
+                        {/* Drag grip (visual indicator) */}
+                        <div className="flex flex-col gap-[3px] mr-0.5 opacity-30 shrink-0">
+                          <div className="flex gap-[3px]">
+                            <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
+                            <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
+                          </div>
+                          <div className="flex gap-[3px]">
+                            <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
+                            <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Pattern Overlay
+                        </span>
+
+                        {/* PAA Resolution selector */}
+                        <div className="flex items-center gap-0.5 ml-1">
+                          {([3, 5, 9, 15] as const).map(w => (
+                            <button
+                              key={w}
+                              onClick={(e) => { e.stopPropagation(); setPatternPaaWidth(w); }}
+                              className={`text-[9px] font-mono px-1.5 py-0.5 rounded transition-colors ${patternPaaWidth === w ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
+                              title={`Switch to ${w}-minute PAA resolution`}
+                            >
+                              {w}m
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Top-3 toggle (#1–#3) */}
+                        <div className="flex items-center gap-0.5 ml-1.5" title="Show/hide top-3 pattern lines (#1–#3)">
+                          <span className="text-[9px] text-muted-foreground font-mono select-none">#1-3</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setShowTop3Lines(!showTop3Lines); }}
+                            disabled={!showPatternOverlay}
+                            className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${showTop3Lines && showPatternOverlay ? 'bg-violet-600' : 'bg-gray-400 dark:bg-gray-600'}`}
+                            title={showTop3Lines ? 'Hide #1–#3 lines' : 'Show #1–#3 lines'}
+                          >
+                            <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform shadow-sm ${showTop3Lines ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
+                          </button>
+                        </div>
+
+                        {/* Bands toggle */}
+                        <div className="flex items-center gap-0.5" title="Show/hide confidence band lines (faint upper & lower bounds)">
+                          <span className="text-[9px] text-muted-foreground font-mono select-none">Bands</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setShowBeyondTop3Lines(!showBeyondTop3Lines); }}
+                            disabled={!showPatternOverlay}
+                            className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${showBeyondTop3Lines && showPatternOverlay ? 'bg-cyan-600' : 'bg-gray-400 dark:bg-gray-600'}`}
+                            title={showBeyondTop3Lines ? 'Hide confidence bands' : 'Show confidence bands'}
+                          >
+                            <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform shadow-sm ${showBeyondTop3Lines ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
+                          </button>
+                        </div>
+
+                        {/* Expand/collapse chevron — click to show/hide PatternOverlayPanel dropdown */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isPanelExpanded && patternPanelRef.current) {
+                              const rect = patternPanelRef.current.getBoundingClientRect();
+                              setPatternPanelPos({ left: Math.max(8, Math.min(window.innerWidth - 448, rect.left)), top: rect.bottom + 6 });
+                            }
+                            setIsPanelExpanded(prev => !prev);
+                          }}
+                          className="ml-1 p-0.5 rounded hover:bg-accent transition-colors"
+                          title={isPanelExpanded ? 'Collapse panel' : 'Expand panel'}
+                        >
+                          <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 ${isPanelExpanded ? '' : 'rotate-180'}`} />
+                        </button>
+
+                        {/* Master toggle */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowPatternOverlay(!showPatternOverlay); }}
+                          className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${showPatternOverlay ? 'bg-violet-600' : 'bg-gray-400 dark:bg-gray-600'}`}
+                          title={showPatternOverlay ? 'Hide all chart overlay lines' : 'Show all chart overlay lines'}
+                        >
+                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform shadow-sm ${showPatternOverlay ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                        </button>
+
+                        {/* Vol toggle — icon-only, positioned before chart's reset-view button */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowVolume(!showVolume); }}
+                          className={`ml-1 p-1 rounded transition-colors border-l border-border/40 pl-2 ${
+                            showVolume
+                              ? 'text-sky-400 hover:text-sky-300'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                          title={showVolume ? 'Hide volume histogram' : 'Show volume histogram'}
+                        >
+                          <BarChart2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
                   />
 
-                  {/* ── PatternPool Overlay Panel (draggable, fixed, collapsible) ── */}
-                  <div
-                    ref={patternPanelRef}
-                    style={{
-                      position: 'fixed',
-                      ...(patternPanelPos
-                        ? { left: patternPanelPos.left, top: patternPanelPos.top }
-                        : { left: 'calc(50vw - 220px)', top: 12 }
-                      ),
-                      zIndex: 9999,
-                      width: 440,
-                      maxWidth: 'calc(100vw - 24px)',
-                      maxHeight: isPanelExpanded ? 'min(60vh, 520px)' : 'none',
-                    }}
-                    className="bg-background/90 border border-border/60 rounded-lg shadow-xl backdrop-blur-sm flex flex-col overflow-hidden"
-                  >
-                    {/* Header — drag handle + collapse + group toggles + master toggle */}
+                  {/* ── PatternOverlayPanel dropdown — fixed overlay, shown when expanded ── */}
+                  {isPanelExpanded && patternPanelPos && (
                     <div
-                      className="flex-none flex items-center gap-1.5 px-2.5 py-1.5 border-b border-border/50 cursor-grab active:cursor-grabbing select-none"
-                      onMouseDown={handlePatternPanelDragStart}
+                      style={{
+                        position: 'fixed',
+                        left: patternPanelPos.left,
+                        top: patternPanelPos.top,
+                        zIndex: 9999,
+                        width: 440,
+                        maxWidth: 'calc(100vw - 24px)',
+                        maxHeight: 'min(60vh, 520px)',
+                      }}
+                      className="bg-background/90 border border-border/60 rounded-lg shadow-xl backdrop-blur-sm flex flex-col overflow-hidden"
                     >
-                      {/* Drag grip */}
-                      <div className="flex flex-col gap-[3px] mr-0.5 opacity-30 shrink-0">
-                        <div className="flex gap-[3px]">
-                          <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
-                          <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
-                        </div>
-                        <div className="flex gap-[3px]">
-                          <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
-                          <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        Pattern Overlay
-                      </span>
-
-                      {/* ── PAA Resolution selector ── */}
-                      <div className="flex items-center gap-0.5 ml-1" onMouseDown={e => e.stopPropagation()}>
-                        {([3, 5, 9, 15] as const).map(w => (
-                          <button
-                            key={w}
-                            onClick={(e) => { e.stopPropagation(); setPatternPaaWidth(w); }}
-                            className={`text-[9px] font-mono px-1.5 py-0.5 rounded transition-colors ${patternPaaWidth === w ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
-                            title={`Switch to ${w}-minute PAA resolution`}
-                          >
-                            {w}m
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* ── Per-group line toggles ── */}
-                      {/* Top-3 toggle (#1–#3) */}
-                      <div className="flex items-center gap-0.5 ml-1.5" title="Show/hide top-3 pattern lines (#1–#3)">
-                        <span className="text-[9px] text-muted-foreground font-mono select-none">#1-3</span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setShowTop3Lines(!showTop3Lines); }}
-                          disabled={!showPatternOverlay}
-                          className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${showTop3Lines && showPatternOverlay ? 'bg-violet-600' : 'bg-gray-400 dark:bg-gray-600'}`}
-                          title={showTop3Lines ? 'Hide #1–#3 lines' : 'Show #1–#3 lines'}
-                        >
-                          <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform shadow-sm ${showTop3Lines ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
-                        </button>
-                      </div>
-
-                      {/* Bands toggle — confidence band lines (faint upper/lower bounds) */}
-                      <div className="flex items-center gap-0.5" title="Show/hide confidence band lines (faint upper & lower bounds)">
-                        <span className="text-[9px] text-muted-foreground font-mono select-none">Bands</span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setShowBeyondTop3Lines(!showBeyondTop3Lines); }}
-                          disabled={!showPatternOverlay}
-                          className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${showBeyondTop3Lines && showPatternOverlay ? 'bg-cyan-600' : 'bg-gray-400 dark:bg-gray-600'}`}
-                          title={showBeyondTop3Lines ? 'Hide confidence bands' : 'Show confidence bands'}
-                        >
-                          <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform shadow-sm ${showBeyondTop3Lines ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
-                        </button>
-                      </div>
-
-                      {/* Collapse/expand panel body */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setIsPanelExpanded(!isPanelExpanded); }}
-                        className="ml-auto p-0.5 rounded hover:bg-accent transition-colors"
-                        title={isPanelExpanded ? 'Collapse panel' : 'Expand panel'}
-                      >
-                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 ${isPanelExpanded ? '' : 'rotate-180'}`} />
-                      </button>
-                      {/* Master toggle — turns all chart overlay lines on/off */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setShowPatternOverlay(!showPatternOverlay); }}
-                        className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${showPatternOverlay ? 'bg-violet-600' : 'bg-gray-400 dark:bg-gray-600'}`}
-                        title={showPatternOverlay ? 'Hide all chart overlay lines' : 'Show all chart overlay lines'}
-                      >
-                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform shadow-sm ${showPatternOverlay ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
-                      </button>
-                    </div>
-                    {/* Body — shown when expanded, chart overlay unaffected */}
-                    {isPanelExpanded && (
                       <PatternOverlayPanel
                         state={patternOverlayState}
                         symbol={overlaySymbol}
                         paaWidthMin={patternPaaWidth}
                         className="flex-1 min-h-0"
                       />
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               ) : !selectedCompany ? (
-                <div className="flex h-full items-center justify-center text-muted-foreground p-8 text-center flex-col gap-4">
+                <div className="flex flex-1 min-h-0 items-center justify-center text-muted-foreground p-8 text-center flex-col gap-4">
                   <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
                     <Database size={32} />
                   </div>
@@ -3358,7 +3479,7 @@ const ClusterOverlayPage: React.FC = () => {
                 </div>
               ) : (
                 /* Market closed + company selected — show a centered placeholder (banner is already at top) */
-                <div className="flex h-full items-center justify-center text-muted-foreground p-8 text-center flex-col gap-3">
+                <div className="flex flex-1 min-h-0 items-center justify-center text-muted-foreground p-8 text-center flex-col gap-3">
                   <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center">
                     <Clock size={28} className="text-amber-500" />
                   </div>

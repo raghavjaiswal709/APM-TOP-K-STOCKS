@@ -18,8 +18,8 @@ import {
   XCircle,
   AlertTriangle,
   AlertCircle,
-  Pin,
-  PinOff,
+  ChevronsRight,
+  ChevronsLeft,
   ChevronRight,
   Layers,
 } from "lucide-react"
@@ -146,50 +146,62 @@ function NavIcon({ icon: Icon, size = 22 }: { icon: NavItem["icon"]; size?: numb
 export function AppSidebar() {
   const pathname = usePathname()
 
-  // Sidebar state
-  const [isPinned,  setIsPinned]  = useState(false)
-  const [isHovered, setIsHovered] = useState(false)
+  // Sidebar expansion — only toggled by explicit click, never by hover
+  const [isExpanded, setIsExpanded] = useState(false)
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
+
+  // Flyout for items with sub-items (collapsed mode only)
+  const [flyoutTitle, setFlyoutTitle] = useState<string | null>(null)
+  const [flyoutTop,   setFlyoutTop]   = useState(0)
+  const flyoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Auth
   const [authStatus,        setAuthStatus]        = useState<AuthStatus | null>(null)
   const [authLoading,       setAuthLoading]        = useState(true)
   const [isAuthModalOpen,   setIsAuthModalOpen]    = useState(false)
 
-  const hoverLeaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const isExpanded = isPinned || isHovered
-
-  // ── Persist pin state ──────────────────────────────────────────────────────
+  // ── Persist expansion state ────────────────────────────────────────────────
   useEffect(() => {
     try {
       const stored = localStorage.getItem("daksphere-sidebar-pinned")
-      if (stored === "true") setIsPinned(true)
+      if (stored === "true") setIsExpanded(true)
     } catch { /* ignore SSR */ }
   }, [])
 
   useEffect(() => {
-    try { localStorage.setItem("daksphere-sidebar-pinned", String(isPinned)) } catch { /* ignore */ }
-  }, [isPinned])
+    try { localStorage.setItem("daksphere-sidebar-pinned", String(isExpanded)) } catch { /* ignore */ }
+  }, [isExpanded])
 
   // ── Listen for external toggle (SidebarTrigger in page headers) ────────────
   useEffect(() => {
-    const handler = () => setIsPinned(p => !p)
+    const handler = () => setIsExpanded(p => !p)
     window.addEventListener("toggle-sidebar-pin", handler)
     return () => window.removeEventListener("toggle-sidebar-pin", handler)
   }, [])
 
-  // ── Hover handlers — tiny delay prevents flicker on fast mouse moves ───────
-  const handleMouseEnter = useCallback(() => {
-    if (isPinned) return
-    if (hoverLeaveTimer.current) { clearTimeout(hoverLeaveTimer.current); hoverLeaveTimer.current = null }
-    setIsHovered(true)
-  }, [isPinned])
+  // ── Close flyout when sidebar expands ──────────────────────────────────────
+  useEffect(() => {
+    if (isExpanded) {
+      if (flyoutTimer.current) clearTimeout(flyoutTimer.current)
+      setFlyoutTitle(null)
+    }
+  }, [isExpanded])
 
-  const handleMouseLeave = useCallback(() => {
-    if (isPinned) return
-    hoverLeaveTimer.current = setTimeout(() => setIsHovered(false), 120)
-  }, [isPinned])
+  // ── Flyout handlers ────────────────────────────────────────────────────────
+  const openFlyout = useCallback((title: string, el: HTMLElement) => {
+    if (flyoutTimer.current) clearTimeout(flyoutTimer.current)
+    const rect = el.getBoundingClientRect()
+    setFlyoutTop(Math.min(rect.top, window.innerHeight - 240))
+    setFlyoutTitle(title)
+  }, [])
+
+  const scheduleFlyoutClose = useCallback(() => {
+    flyoutTimer.current = setTimeout(() => setFlyoutTitle(null), 160)
+  }, [])
+
+  const keepFlyoutOpen = useCallback(() => {
+    if (flyoutTimer.current) clearTimeout(flyoutTimer.current)
+  }, [])
 
   // ── Auth status ────────────────────────────────────────────────────────────
   const fetchAuthStatus = useCallback(async () => {
@@ -219,6 +231,9 @@ export function AppSidebar() {
   const authDisplay = getAuthDisplay()
   const AuthIcon    = authDisplay.icon
 
+  // Resolve active flyout item
+  const activeFlyout = flyoutTitle ? NAV_MAIN.find(i => i.title === flyoutTitle) ?? null : null
+
   // ── Active item detection ──────────────────────────────────────────────────
   const isItemActive = useCallback((item: NavItem) => {
     if (item.url !== "#" && item.url && pathname === item.url) return true
@@ -239,7 +254,7 @@ export function AppSidebar() {
   // ─────────────────────────────────────────────────────────────────────────────
   return (
     <>
-      <TooltipProvider delayDuration={400}>
+      <TooltipProvider delayDuration={0}>
         {/* ── Sidebar Panel ─────────────────────────────────────────────────── */}
         <div
           data-sidebar
@@ -247,15 +262,11 @@ export function AppSidebar() {
             "fixed left-0 top-0 z-50 h-full flex flex-col",
             "bg-sidebar text-sidebar-foreground",
             "border-r border-sidebar-border",
-            "transition-[width,box-shadow] duration-200 ease-in-out",
+            "transition-[width] duration-200 ease-in-out",
             "overflow-hidden select-none",
-            isExpanded
-              ? "shadow-[4px_0_32px_rgba(0,0,0,0.25)]"
-              : "shadow-none"
+            isExpanded ? "shadow-[4px_0_32px_rgba(0,0,0,0.25)]" : "shadow-none"
           )}
           style={{ width: isExpanded ? EXPANDED_W : COLLAPSED_W }}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
         >
           {/* ── Logo Header ─────────────────────────────────────────────────── */}
           <div className={cn(
@@ -294,14 +305,18 @@ export function AppSidebar() {
 
                 return (
                   <div key={item.title}>
-                    {/* ── Collapsed → icon + tooltip ─────────────────────── */}
+                    {/* ── Collapsed ──────────────────────────────────────── */}
                     {!isExpanded ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
+                      hasKids ? (
+                        /* Items WITH sub-items → flyout on hover, show > indicator */
+                        <div
+                          onMouseEnter={e => openFlyout(item.title, e.currentTarget)}
+                          onMouseLeave={scheduleFlyoutClose}
+                        >
                           <Link
                             href={item.url === "#" ? "#" : item.url}
                             className={cn(
-                              "flex items-center justify-center w-full rounded-lg",
+                              "relative flex items-center justify-center w-full rounded-lg",
                               "transition-colors duration-150 h-11",
                               active
                                 ? "bg-foreground/10 text-foreground font-semibold"
@@ -309,12 +324,35 @@ export function AppSidebar() {
                             )}
                           >
                             <NavIcon icon={item.icon} size={22} />
+                            {/* Sub-items indicator */}
+                            <ChevronRight
+                              size={9}
+                              className="absolute right-[5px] top-1/2 -translate-y-1/2 opacity-35"
+                            />
                           </Link>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" sideOffset={10} className="font-medium text-xs">
-                          {item.title}
-                        </TooltipContent>
-                      </Tooltip>
+                        </div>
+                      ) : (
+                        /* Items WITHOUT sub-items → instant tooltip for name */
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Link
+                              href={item.url === "#" ? "#" : item.url}
+                              className={cn(
+                                "flex items-center justify-center w-full rounded-lg",
+                                "transition-colors duration-150 h-11",
+                                active
+                                  ? "bg-foreground/10 text-foreground font-semibold"
+                                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                              )}
+                            >
+                              <NavIcon icon={item.icon} size={22} />
+                            </Link>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" sideOffset={10} className="font-medium text-xs">
+                            {item.title}
+                          </TooltipContent>
+                        </Tooltip>
+                      )
 
                     ) : (
                       /* ── Expanded → icon + label + chevron ───────────── */
@@ -472,50 +510,36 @@ export function AppSidebar() {
           {/* ── Footer ──────────────────────────────────────────────────────── */}
           <div className="shrink-0 border-t border-sidebar-border py-2 px-2 space-y-0.5">
 
-            {/* Pin / Unpin toggle */}
+            {/* ── Expand / Collapse toggle ( >> / << ) ──────────────────── */}
             {!isExpanded ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    onClick={() => setIsPinned(p => !p)}
+                    onClick={() => setIsExpanded(true)}
                     className={cn(
                       "flex items-center justify-center w-full h-11 rounded-lg",
                       "transition-colors hover:bg-sidebar-accent",
-                      isPinned
-                        ? "text-foreground"
-                        : "text-sidebar-foreground/55 hover:text-sidebar-foreground"
+                      "text-sidebar-foreground/55 hover:text-sidebar-foreground"
                     )}
                   >
-                    {isPinned ? <PinOff size={20} /> : <Pin size={20} />}
+                    <ChevronsRight size={20} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="right" sideOffset={10} className="text-xs">
-                  {isPinned ? "Unpin sidebar" : "Pin sidebar open"}
+                  Expand sidebar
                 </TooltipContent>
               </Tooltip>
             ) : (
               <button
-                onClick={() => setIsPinned(p => !p)}
+                onClick={() => setIsExpanded(false)}
                 className={cn(
                   "flex items-center gap-3 w-full h-10 px-2.5 rounded-lg text-sm",
                   "transition-colors hover:bg-sidebar-accent",
-                  isPinned
-                    ? "text-foreground"
-                    : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                  "text-sidebar-foreground/70 hover:text-sidebar-foreground"
                 )}
               >
-                {isPinned
-                  ? <PinOff size={18} className="shrink-0" />
-                  : <Pin    size={18} className="shrink-0" />
-                }
-                <span className="flex-1 text-left truncate">
-                  {isPinned ? "Unpin Sidebar" : "Pin Sidebar Open"}
-                </span>
-                {isPinned && (
-                  <span className="text-[10px] bg-foreground/8 text-foreground/70 px-1.5 py-0.5 rounded shrink-0">
-                    Pinned
-                  </span>
-                )}
+                <ChevronsLeft size={18} className="shrink-0" />
+                <span className="flex-1 text-left truncate">Collapse Sidebar</span>
               </button>
             )}
 
@@ -547,6 +571,47 @@ export function AppSidebar() {
             )}
           </div>
         </div>
+
+        {/* ── Flyout sub-menu panel ──────────────────────────────────────────── */}
+        {/* Rendered OUTSIDE the sidebar div to escape overflow:hidden clipping   */}
+        {!isExpanded && activeFlyout?.items?.length ? (
+          <div
+            style={{
+              position: "fixed",
+              left: COLLAPSED_W,
+              top: flyoutTop,
+              zIndex: 9999,
+            }}
+            onMouseEnter={keepFlyoutOpen}
+            onMouseLeave={scheduleFlyoutClose}
+            className="bg-popover border border-border/60 rounded-lg shadow-2xl py-1.5 min-w-[190px] max-w-[260px]"
+          >
+            {/* Header — icon + item title */}
+            <div className="flex items-center gap-2 px-3 py-1.5 mb-0.5 border-b border-border/50">
+              <activeFlyout.icon size={13} className="shrink-0 text-muted-foreground" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {activeFlyout.title}
+              </span>
+            </div>
+            {/* Sub-item links */}
+            {activeFlyout.items.map(sub => (
+              <Link
+                key={sub.title}
+                href={sub.url}
+                onClick={() => setFlyoutTitle(null)}
+                className={cn(
+                  "flex items-center h-8 px-3 mx-1 rounded-md text-[13px]",
+                  "transition-colors duration-100",
+                  pathname === sub.url
+                    ? "bg-accent text-foreground font-medium"
+                    : "text-foreground/70 hover:text-foreground hover:bg-accent"
+                )}
+              >
+                {sub.title}
+              </Link>
+            ))}
+          </div>
+        ) : null}
       </TooltipProvider>
 
       {/* Auth Modal */}

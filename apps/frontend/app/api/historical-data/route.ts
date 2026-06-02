@@ -64,23 +64,13 @@ export async function GET(request: NextRequest) {
     const text = await response.text();
     const lines = text.trim().split('\n').filter(line => line.trim());
     
-    // ✅ FIXED: Use the REQUESTED DATE's 9:15 AM in IST, not today's
-    // Parse the requested date (format: YYYY-MM-DD)
+    // ✅ FIXED: Use the REQUESTED DATE's 9:15 AM in IST, not today's.
+    // 09:15 IST = 03:45 UTC (IST is UTC+5:30).
+    // Use Date.UTC() so the result is identical on any server timezone (IST, UTC, etc.).
     const [requestedYear, requestedMonth, requestedDay] = date.split('-').map(Number);
-    const requestedDateIST = new Date(
-      requestedYear,
-      requestedMonth - 1, // JavaScript months are 0-indexed
-      requestedDay,
-      9, // 9 AM
-      15, // 15 minutes
-      0,
-      0
+    const tradingStartTimestamp = Math.floor(
+      Date.UTC(requestedYear, requestedMonth - 1, requestedDay, 3, 45, 0) / 1000
     );
-    
-    // Convert to UTC timestamp
-    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
-    const utcTimestamp = requestedDateIST.getTime() - istOffset;
-    const tradingStartTimestamp = Math.floor(utcTimestamp / 1000);
     
     console.log(`[API Proxy] 🕐 Requested date: ${date}`);
     console.log(`[API Proxy] 🕐 Trading start for ${date} (9:15 AM IST): ${new Date(tradingStartTimestamp * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);

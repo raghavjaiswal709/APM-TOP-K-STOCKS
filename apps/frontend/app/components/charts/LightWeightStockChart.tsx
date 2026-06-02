@@ -129,6 +129,9 @@ interface StockChartProps {
     hideSeparateView?: boolean;
     /** Hide the GTT eye/EyeOff toggle overlay button (default: false) */
     hideGttEyeToggle?: boolean;
+    /** Called whenever the active indicator set changes inside the chart */
+    onIndicatorsChange?: (indicators: string[]) => void;
+    onChartTypeChange?: (chartType: string) => void;
 }
 
 // --- Constants ---
@@ -200,6 +203,8 @@ export function LightWeightStockChart({
     scrollToDataBoundary = null,
     hideSeparateView = false,
     hideGttEyeToggle = false,
+    onIndicatorsChange,
+    onChartTypeChange,
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -217,6 +222,16 @@ export function LightWeightStockChart({
     useEffect(() => {
         setSelectedInterval(interval);
     }, [interval]);
+
+    // Notify parent whenever the active indicator set changes
+    useEffect(() => {
+        onIndicatorsChange?.(activeIndicators);
+    }, [activeIndicators, onIndicatorsChange]);
+
+    // Notify parent whenever chart type changes
+    useEffect(() => {
+        onChartTypeChange?.(chartType);
+    }, [chartType, onChartTypeChange]);
 
 
     // Analysis State
@@ -436,8 +451,7 @@ export function LightWeightStockChart({
         return createChart(container, {
             layout: { background: { type: ColorType.Solid, color: colors.bg }, textColor: colors.text },
             grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
-            width: container.clientWidth,
-            height: container.clientHeight,
+            autoSize: true,
             handleScroll: {
                 mouseWheel: true,
                 pressedMouseMove: true,
@@ -575,7 +589,8 @@ export function LightWeightStockChart({
             mainChartRef as { current: IChartApi | null }
         );
 
-        // ✅ Debounced resize handler — prevents lag from rapid ResizeObserver fires
+        // ✅ Debounced resize handler — only resizes the main chart.
+        // Sub-charts use autoSize:true so they self-manage their dimensions.
         let resizeRafId: number | null = null;
         const handleResize = () => {
             if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
@@ -584,18 +599,6 @@ export function LightWeightStockChart({
                     const width = mainChartContainerRef.current.clientWidth;
                     const height = mainChartContainerRef.current.clientHeight;
                     mainChartRef.current.applyOptions({ width, height });
-                }
-                if (rsiChartContainerRef.current && rsiChartRef.current) {
-                    rsiChartRef.current.applyOptions({ width: rsiChartContainerRef.current.clientWidth, height: rsiChartContainerRef.current.clientHeight });
-                }
-                if (macdChartContainerRef.current && macdChartRef.current) {
-                    macdChartRef.current.applyOptions({ width: macdChartContainerRef.current.clientWidth, height: macdChartContainerRef.current.clientHeight });
-                }
-                if (bidAskChartContainerRef.current && bidAskChartRef.current) {
-                    bidAskChartRef.current.applyOptions({ width: bidAskChartContainerRef.current.clientWidth, height: bidAskChartContainerRef.current.clientHeight });
-                }
-                if (buySellChartContainerRef.current && buySellChartRef.current) {
-                    buySellChartRef.current.applyOptions({ width: buySellChartContainerRef.current.clientWidth, height: buySellChartContainerRef.current.clientHeight });
                 }
                 resizeRafId = null;
             });
@@ -618,6 +621,12 @@ export function LightWeightStockChart({
             mainSeriesRef.current = null;
             volumeSeriesRef.current = null;
             indicatorSeriesRefs.current.clear();
+            // Null out sub-chart refs so the sub-chart init effect can recreate
+            // them cleanly on remount (critical for React Strict Mode double-mount).
+            if (rsiChartRef.current) { try { rsiChartRef.current.remove(); } catch (_) {} rsiChartRef.current = null; }
+            if (macdChartRef.current) { try { macdChartRef.current.remove(); } catch (_) {} macdChartRef.current = null; }
+            if (bidAskChartRef.current) { try { bidAskChartRef.current.remove(); } catch (_) {} bidAskChartRef.current = null; }
+            if (buySellChartRef.current) { try { buySellChartRef.current.remove(); } catch (_) {} buySellChartRef.current = null; }
         };
     }, []);
 
@@ -763,28 +772,7 @@ export function LightWeightStockChart({
 
     // Sub-Chart Initialization with Sync
     useEffect(() => {
-        const hasRSI = activeIndicators.includes('rsi');
         const hasMACD = activeIndicators.includes('macd');
-
-        // RSI Chart
-        if (hasRSI && rsiChartContainerRef.current && !rsiChartRef.current) {
-            const chart = createStandardChart(rsiChartContainerRef.current);
-            rsiChartRef.current = chart;
-            attachPriceAxisWheelZoom(rsiChartContainerRef.current, rsiChartRef as { current: IChartApi | null });
-            const rsiSeries = chart.addSeries(LineSeries, { color: '#7e57c2', lineWidth: 2, title: 'RSI 14' });
-            (rsiSeries as any).createPriceLine({ price: 70, color: '#ef5350', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: '' });
-            (rsiSeries as any).createPriceLine({ price: 30, color: '#26a69a', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: '' });
-            indicatorSeriesRefs.current.set('rsi', rsiSeries);
-
-            // Sync logic
-            if (mainChartRef.current) syncCharts(mainChartRef.current, [chart]);
-            syncCharts(chart, [mainChartRef.current, macdChartRef.current, bidAskChartRef.current, buySellChartRef.current]);
-        } else if (!hasRSI && rsiChartRef.current) {
-            removePriceAxisWheelZoom(rsiChartContainerRef.current);
-            rsiChartRef.current.remove();
-            rsiChartRef.current = null;
-            indicatorSeriesRefs.current.delete('rsi');
-        }
 
         // MACD Chart
         if (hasMACD && macdChartContainerRef.current && !macdChartRef.current) {
@@ -846,6 +834,60 @@ export function LightWeightStockChart({
         }
 
     }, [activeIndicators, showBidAsk, showBuySell, colors, syncCharts]);
+
+    // RSI Chart — single unified effect that atomically handles creation, data-setting,
+    // and teardown. Keeping creation and data in ONE effect eliminates the race condition
+    // where sub-chart init creates the chart but data update fires before the DOM ref is
+    // ready (or vice-versa) during a company switch.
+    useEffect(() => {
+        if (!mainChartRef.current) return;
+
+        const hasRSI = activeIndicators.includes('rsi');
+
+        if (!hasRSI) {
+            // Tear down RSI chart when user disables the indicator
+            if (rsiChartRef.current) {
+                removePriceAxisWheelZoom(rsiChartContainerRef.current);
+                try { rsiChartRef.current.remove(); } catch (_) {}
+                rsiChartRef.current = null;
+                indicatorSeriesRefs.current.delete('rsi');
+            }
+            return;
+        }
+
+        // RSI is active — create chart if it doesn't exist yet
+        if (!rsiChartRef.current && rsiChartContainerRef.current) {
+            const chart = createStandardChart(rsiChartContainerRef.current);
+            rsiChartRef.current = chart;
+            attachPriceAxisWheelZoom(rsiChartContainerRef.current, rsiChartRef as { current: IChartApi | null });
+            const rsiSeries = chart.addSeries(LineSeries, { color: '#7e57c2', lineWidth: 2, title: 'RSI 14' });
+            try {
+                (rsiSeries as any).createPriceLine({ price: 70, color: '#ef5350', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: '' });
+                (rsiSeries as any).createPriceLine({ price: 30, color: '#26a69a', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: '' });
+            } catch (_) {}
+            indicatorSeriesRefs.current.set('rsi', rsiSeries);
+            if (mainChartRef.current) syncCharts(mainChartRef.current, [chart]);
+            syncCharts(chart, [mainChartRef.current, macdChartRef.current, bidAskChartRef.current, buySellChartRef.current]);
+        }
+
+        // Apply data — runs on every data change (including company switch)
+        if (!data || data.length === 0) return;
+        if (!rsiChartRef.current || !indicatorSeriesRefs.current.has('rsi')) return;
+
+        const processedForRsi = processData(data);
+        if (processedForRsi.length === 0) return;
+
+        const rsiSeries = indicatorSeriesRefs.current.get('rsi')!;
+        const rsiClosePrices = processedForRsi.map(d => d.close);
+        const rsiData = calculateRSI(rsiClosePrices);
+        const points = processedForRsi
+            .map((d, i) => ({ time: d.time, value: rsiData[i] ?? NaN }))
+            .filter(d => !isNaN(d.value as number));
+        rsiSeries.setData(
+            points
+        );
+
+    }, [activeIndicators, data, processData, syncCharts]);
 
     // Data Updates
     useEffect(() => {
@@ -1176,12 +1218,6 @@ export function LightWeightStockChart({
                 const s = indicatorSeriesRefs.current.get(k);
                 if (s) { try { mainChart.removeSeries(s); } catch (e) { } indicatorSeriesRefs.current.delete(k); }
             });
-        }
-
-        if (activeIndicators.includes('rsi') && rsiChartRef.current && indicatorSeriesRefs.current.has('rsi')) {
-            const rsiSeries = indicatorSeriesRefs.current.get('rsi');
-            const rsiData = calculateRSI(closePrices);
-            rsiSeries?.setData(processedData.map((d, i) => ({ time: d.time, value: rsiData[i] || NaN })).filter(d => !isNaN(d.value)));
         }
 
         if (activeIndicators.includes('macd') && macdChartRef.current) {
