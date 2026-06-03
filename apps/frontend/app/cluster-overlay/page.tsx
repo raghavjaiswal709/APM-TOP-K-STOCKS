@@ -734,6 +734,10 @@ const ClusterOverlayPage: React.FC = () => {
     'cluster-overlay-showBeyondTop3Lines',
     false
   );
+  const [patternScaleMode, setPatternScaleMode] = usePersistentState<'shared' | 'independent'>(
+    'cluster-overlay-patternScaleMode',
+    'shared'
+  );
   // patternPaaWidth is declared earlier (before useClusterSymbols) — used here too.
 
   // ── Live vs Historical mode resolution (per API doc §6) ──────────────────
@@ -3369,6 +3373,7 @@ const ClusterOverlayPage: React.FC = () => {
                     showPatternOverlay={showPatternOverlay}
                     showTop3PatternLines={showTop3Lines}
                     showBeyondTop3PatternLines={showBeyondTop3Lines}
+                    patternScaleMode={patternScaleMode}
                     lockToMarketHours={true}
                     lockedDate={effectiveDate || null}
                     showVolume={showVolume}
@@ -3430,6 +3435,19 @@ const ClusterOverlayPage: React.FC = () => {
                             title={showBeyondTop3Lines ? 'Hide confidence bands' : 'Show confidence bands'}
                           >
                             <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform shadow-sm ${showBeyondTop3Lines ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
+                          </button>
+                        </div>
+
+                        {/* Scale mode toggle */}
+                        <div className="flex items-center gap-0.5" title="Scale mode: Align curves to price axis (Shared) vs Auto-scale separately (Independent)">
+                          <span className="text-[9px] text-muted-foreground font-mono select-none">Scale</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setPatternScaleMode(patternScaleMode === 'shared' ? 'independent' : 'shared'); }}
+                            disabled={!showPatternOverlay}
+                            className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${patternScaleMode === 'shared' && showPatternOverlay ? 'bg-amber-600' : 'bg-gray-400 dark:bg-gray-600'}`}
+                            title={patternScaleMode === 'shared' ? 'Switch to Independent Scale' : 'Switch to Aligned (Shared) Scale'}
+                          >
+                            <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform shadow-sm ${patternScaleMode === 'shared' ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
                           </button>
                         </div>
 

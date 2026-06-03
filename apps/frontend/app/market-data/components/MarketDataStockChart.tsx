@@ -144,6 +144,8 @@ interface StockChartProps {
     showBeyondTop3PatternLines?: boolean;
     /** Lock the X-axis to 09:15–15:30 IST and disable horizontal scroll/pan */
     lockToMarketHours?: boolean;
+    /** Y-axis scale mode for pattern overlay: 'shared' (aligns curves on the main price scale) or 'independent' (auto-scaled separately to fit chart area) */
+    patternScaleMode?: 'shared' | 'independent';
     /**
      * Trading date (YYYY-MM-DD IST) to pin the market-hours lock to.
      * Pass this when viewing historical data so the X-axis stays locked
@@ -235,6 +237,7 @@ export function MarketDataStockChart({
     showBeyondTop3PatternLines = false,
     lockToMarketHours = false,
     lockedDate = null,
+    patternScaleMode = 'shared',
     showVolume = true,
     toolbarSlot,
     onIndicatorsChange,
@@ -658,6 +661,9 @@ export function MarketDataStockChart({
             } catch (_) {}
         };
 
+        const isPriceScaled = patterns.some(pat => pat.centroid_price !== undefined && pat.centroid_price !== null);
+        const targetScaleId = (patternScaleMode === 'shared' && isPriceScaled) ? 'right' : OVERLAY_SCALE_ID;
+
         try {
             // --- Plot ALL ranked patterns (#1–#last) ---
             // centroid lines  → controlled by showTop3PatternLines (#1-3 toggle)
@@ -684,7 +690,7 @@ export function MarketDataStockChart({
                         lineStyle: LineStyle.Dashed,
                         lastValueVisible: false,
                         priceLineVisible: false,
-                        priceScaleId: OVERLAY_SCALE_ID,
+                        priceScaleId: targetScaleId,
                         title: '',
                         visible: bandsVisible,
                     });
@@ -701,7 +707,7 @@ export function MarketDataStockChart({
                         lineStyle: LineStyle.Dashed,
                         lastValueVisible: false,
                         priceLineVisible: false,
-                        priceScaleId: OVERLAY_SCALE_ID,
+                        priceScaleId: targetScaleId,
                         title: '',
                         visible: bandsVisible,
                     });
@@ -722,7 +728,7 @@ export function MarketDataStockChart({
                         lineStyle: LineStyle.Dashed,
                         lastValueVisible: showGttLabels,
                         priceLineVisible: false,
-                        priceScaleId: OVERLAY_SCALE_ID,
+                        priceScaleId: targetScaleId,
                         title: showGttLabels ? label : '',
                         visible: centroidVisible,
                     });
@@ -733,7 +739,9 @@ export function MarketDataStockChart({
             });
 
             // Configure scale after series are added
-            configureOverlayScale();
+            if (targetScaleId === OVERLAY_SCALE_ID) {
+                configureOverlayScale();
+            }
 
         } catch (err) {
             console.warn('[PatternOverlay] Failed to add series:', err);
@@ -741,7 +749,7 @@ export function MarketDataStockChart({
 
         return () => { clearPatternOverlay(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [showPatternOverlay, patternCurves, chartReadyVersion]);
+    }, [showPatternOverlay, patternCurves, chartReadyVersion, patternScaleMode]);
 
     // ─── Market-hours UTC range helper ───────────────────────────────────────
     // Returns { open, close } as UTC seconds for 09:15–15:30 IST on the given
