@@ -377,6 +377,9 @@ export function usePatternOverlay({
       let curvesJson: PatternCurvesData | null = null;
       if (curvesRes.ok) {
         curvesJson = await curvesRes.json();
+        if (curvesJson && !curvesJson.date) {
+          curvesJson.date = overlayJson.date || dateParam;
+        }
       } else if (curvesRes.status !== 425 && curvesRes.status !== 404) {
         console.warn(`[PatternOverlay] pattern_curves ${curvesRes.status} — overlay-only mode`);
       }
@@ -389,8 +392,11 @@ export function usePatternOverlay({
       setLastUpdated(Date.now());
       setError(null);
 
+      // Historical (replay) mode — per API doc §6, the data is final for that
+      // date and never changes. Don't poll.
+      if (rDate) return;
       // Don't poll again after market close — data is final for the day
-      if (!rDate && getMarketStatus() === 'after') return;
+      if (getMarketStatus() === 'after') return;
       // Schedule next normal poll
       scheduleRetry(POLL_INTERVAL_MS);
     } catch (err: any) {

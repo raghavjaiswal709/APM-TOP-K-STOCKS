@@ -365,6 +365,39 @@ export class AdminService {
   }
 
   /**
+   * Clear all stopped companies and failed subscriptions
+   */
+  async clearStoppedCompanies(): Promise<void> {
+    const stoppedPath = this.getStoppedCompaniesPath();
+    const failedPath = this.getFailedSubscriptionsPath();
+    try {
+      await Promise.all([
+        fs.promises.writeFile(stoppedPath, JSON.stringify([], null, 2)),
+        fs.promises.writeFile(failedPath, JSON.stringify([], null, 2))
+      ]);
+      this.logger.log('Cleared all stopped companies and failed subscriptions');
+    } catch (error) {
+      this.logger.error(`Error clearing stopped companies: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Clear all permanently stopped companies
+   */
+  async clearPermanentlyStopped(): Promise<void> {
+    const filePath = this.getPermanentlyStoppedPath();
+    try {
+      await fs.promises.writeFile(filePath, JSON.stringify([], null, 2));
+      this.logger.log('Cleared all permanently stopped companies');
+    } catch (error) {
+      this.logger.error(`Error clearing permanently stopped: ${error.message}`);
+      throw error;
+    }
+  }
+
+
+  /**
    * Get list of stopped companies (daily reset)
    */
   async getStoppedCompanies(): Promise<string[]> {

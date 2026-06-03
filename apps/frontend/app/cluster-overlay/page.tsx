@@ -63,9 +63,10 @@ import { useDesirability } from "@/hooks/useDesirability";
 import { DesirabilityPanel } from "../market-data/components/DesirabilityPanel";
 import { sentimentService } from '@/app/services/sentimentService';
 import { SubscriptionManagerModal } from "../market-data/components/SubscriptionManagerModal";
+import { PinnedMarketMovers } from "@/components/PinnedMarketMovers";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ListChecks, Settings2, Briefcase, BarChart2 } from 'lucide-react';
+import { ListChecks, Settings2, Briefcase, BarChart2, Pin } from 'lucide-react';
 import { gttService, type GttPrediction } from '@/app/services/gttService';
 import { Zap } from 'lucide-react';
 
@@ -318,6 +319,7 @@ const ClusterOverlayPage: React.FC = () => {
 
   // Subscription Management State
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [isPinnedMarketMovers, setIsPinnedMarketMovers] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [subscriptionErrors, setSubscriptionErrors] = useState<{
     code: number;
@@ -734,10 +736,29 @@ const ClusterOverlayPage: React.FC = () => {
   );
   // patternPaaWidth is declared earlier (before useClusterSymbols) — used here too.
 
+  // ── Live vs Historical mode resolution (per API doc §6) ──────────────────
+  // - Live mode (no `date` param): the user has not picked an explicit date, or
+  //   picked today's IST date. Engine returns the current session and uses the
+  //   server-side result cache.
+  // - Historical (replay) mode (`date=YYYY-MM-DD`): the user has explicitly
+  //   picked a non-today date via the date navigator. Engine always recomputes
+  //   from the stored bars for that date; no result cache.
+  // Anchored on `currentDate` (explicit user pick), not `effectiveDate`, because
+  // `hookSelectedDate` can resolve to a future/next-session date that does not
+  // exist in the pattern engine's store.
+  const patternReplayDate = useMemo(() => {
+    const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    if (!effectiveDate) return null;
+    // If effectiveDate is today or in the future, return null (live mode).
+    if (effectiveDate >= todayIST) return null;
+    return effectiveDate;
+  }, [effectiveDate]);
+  const isPatternHistorical = patternReplayDate !== null;
+
   const patternOverlayState = usePatternOverlay({
     symbol: overlaySymbol,
     enabled: !!overlaySymbol,
-    replayDate: effectiveDate || null,
+    replayDate: patternReplayDate,
     paaWidthMin: patternPaaWidth,
   });
 
@@ -2904,6 +2925,15 @@ const ClusterOverlayPage: React.FC = () => {
               >
                 <Settings2 className="h-3.5 w-3.5" />
               </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsPinnedMarketMovers(v => !v)}
+                className="h-7 w-7"
+                title="Pin Market Movers"
+              >
+                <Pin className={`h-3.5 w-3.5 ${isPinnedMarketMovers ? 'text-indigo-400' : ''}`} />
+              </Button>
             </div>
 
             <Separator orientation="vertical" className="h-4 mx-0.5" />
@@ -3462,6 +3492,7 @@ const ClusterOverlayPage: React.FC = () => {
                         state={patternOverlayState}
                         symbol={overlaySymbol}
                         paaWidthMin={patternPaaWidth}
+                        isHistorical={isPatternHistorical}
                         className="flex-1 min-h-0"
                       />
                     </div>
@@ -3718,6 +3749,11 @@ const ClusterOverlayPage: React.FC = () => {
           currentDate={effectiveDate}
           isLatestDate={isLatestDate}
         />
+
+        {/* Pinned Market Movers floating widget */}
+        {isPinnedMarketMovers && (
+          <PinnedMarketMovers onClose={() => setIsPinnedMarketMovers(false)} />
+        )}
 
       </SidebarInset>
     </SidebarProvider>

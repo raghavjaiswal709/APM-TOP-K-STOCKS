@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import http from 'http';
-import { CONTAINERS, ContainerKey } from '../service-control/route';
+import { CONTAINERS, ContainerKey } from '../constants';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

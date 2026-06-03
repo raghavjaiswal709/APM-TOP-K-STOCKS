@@ -57,9 +57,10 @@ import { useDesirability } from "@/hooks/useDesirability";
 import { DesirabilityPanel } from "./components/DesirabilityPanel";
 import { sentimentService } from '@/app/services/sentimentService';
 import { SubscriptionManagerModal } from "./components/SubscriptionManagerModal";
+import { PinnedMarketMovers } from "@/components/PinnedMarketMovers";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ListChecks, Settings2, Briefcase } from 'lucide-react';
+import { ListChecks, Settings2, Briefcase, Pin } from 'lucide-react';
 import { gttService, type GttPrediction } from '@/app/services/gttService';
 import { Zap } from 'lucide-react';
 
@@ -295,6 +296,7 @@ const MarketDataPage: React.FC = () => {
 
   // Subscription Management State
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [isPinnedMarketMovers, setIsPinnedMarketMovers] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [subscriptionErrors, setSubscriptionErrors] = useState<{
     code: number;
@@ -2546,6 +2548,15 @@ const MarketDataPage: React.FC = () => {
               >
                 <Settings2 className="h-3.5 w-3.5" />
               </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsPinnedMarketMovers(v => !v)}
+                className="h-7 w-7"
+                title="Pin Market Movers"
+              >
+                <Pin className={`h-3.5 w-3.5 ${isPinnedMarketMovers ? 'text-indigo-400' : ''}`} />
+              </Button>
             </div>
 
             <Separator orientation="vertical" className="h-4 mx-0.5" />
@@ -3144,6 +3155,11 @@ const MarketDataPage: React.FC = () => {
           currentDate={effectiveDate}
           isLatestDate={isLatestDate}
         />
+
+        {/* Pinned Market Movers floating widget */}
+        {isPinnedMarketMovers && (
+          <PinnedMarketMovers onClose={() => setIsPinnedMarketMovers(false)} />
+        )}
 
       </SidebarInset>
     </SidebarProvider>

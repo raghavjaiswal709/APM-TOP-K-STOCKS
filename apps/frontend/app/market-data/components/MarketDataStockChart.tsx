@@ -585,7 +585,7 @@ export function MarketDataStockChart({
 
         // Build UTC timestamps from IST slot-end times (e.g. "09:30" → UTC seconds)
         // The date comes from patternCurves.date (YYYY-MM-DD in IST)
-        const dateStr = patternCurves.date; // "2026-05-07"
+        const dateStr = patternCurves.date || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // "2026-05-07"
         const [yr, mo, dy] = dateStr.split('-').map(Number);
 
         // Convert IST "HH:MM" → UTC timestamp (seconds)

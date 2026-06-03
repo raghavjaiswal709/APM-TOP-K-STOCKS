@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { X, Plus, Check, Loader2, AlertCircle, RefreshCw, Clock, Calendar, Wifi, WifiOff, Ban, Undo2 } from "lucide-react";
+import { X, Plus, Check, Loader2, AlertCircle, RefreshCw, Clock, Calendar, Wifi, WifiOff, Ban, Undo2, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 
@@ -228,6 +228,32 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
         setSelectedSymbols(new Set());
     }, [subscribedList]);
 
+    // Per-tab reset handlers — clears the corresponding backend JSON file(s)
+    const handleResetTab = useCallback(async (tab: 'subscribed' | 'available' | 'stopped' | 'blocked') => {
+        try {
+            const response = await fetch('/api/admin/reset-tab-data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tab }),
+            });
+            if (response.ok) {
+                await fetchCurrentSubscriptions();
+                const labels: Record<string, string> = {
+                    subscribed: 'subscriptions',
+                    available: 'subscriptions',
+                    stopped: 'stopped list',
+                    blocked: 'blocked list',
+                };
+                toast.success(`Cleared ${labels[tab]}`);
+            } else {
+                toast.error('Reset failed');
+            }
+        } catch (err) {
+            console.error('Reset failed:', err);
+            toast.error('Reset failed');
+        }
+    }, []);
+
     // Handler to add symbol to permanently stopped
     const handleAddToPermanentlyBlocked = useCallback(async (symbol: string) => {
         try {
@@ -430,15 +456,28 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
                                             <Wifi className="w-4 h-4" />
                                             Active Subscriptions
                                         </h3>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={handleClearAll}
-                                            className="h-7 text-xs text-zinc-400 hover:text-red-400"
-                                            disabled={subscribedList.length === 0 || isSubmitting}
-                                        >
-                                            Clear All
-                                        </Button>
+                                        <div className="flex items-center gap-1.5">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={handleClearAll}
+                                                className="h-7 text-xs text-zinc-400 hover:text-red-400"
+                                                disabled={subscribedList.length === 0 || isSubmitting}
+                                            >
+                                                Clear All
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleResetTab('subscribed')}
+                                                className="h-7 text-xs text-zinc-400 hover:text-red-400 gap-1"
+                                                disabled={isSubmitting}
+                                                title="Reset file: clears subscribed_companies.json"
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                                Reset File
+                                            </Button>
+                                        </div>
                                     </div>
                                     <ScrollArea className="flex-1 p-3">
                                         <div className="flex flex-wrap gap-2">
@@ -482,15 +521,28 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
                                             <Plus className="w-4 h-4" />
                                             Available Companies
                                         </h3>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={handleSelectAll}
-                                            className="h-7 text-xs text-zinc-400 hover:text-blue-400"
-                                            disabled={availableList.length === 0 || isSubmitting}
-                                        >
-                                            Select All
-                                        </Button>
+                                        <div className="flex items-center gap-1.5">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={handleSelectAll}
+                                                className="h-7 text-xs text-zinc-400 hover:text-blue-400"
+                                                disabled={availableList.length === 0 || isSubmitting}
+                                            >
+                                                Select All
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleResetTab('available')}
+                                                className="h-7 text-xs text-zinc-400 hover:text-red-400 gap-1"
+                                                disabled={isSubmitting}
+                                                title="Reset file: clears subscribed_companies.json"
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                                Reset File
+                                            </Button>
+                                        </div>
                                     </div>
                                     <ScrollArea className="flex-1 p-3">
                                         <div className="flex flex-wrap gap-2">
@@ -533,9 +585,22 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
                                             <WifiOff className="w-4 h-4" />
                                             Stopped Today (Resets Daily)
                                         </h3>
-                                        <Badge variant="outline" className="text-[10px] bg-yellow-950/30 border-yellow-800/50 text-yellow-300">
-                                            Auto-resets at midnight
-                                        </Badge>
+                                        <div className="flex items-center gap-1.5">
+                                            <Badge variant="outline" className="text-[10px] bg-yellow-950/30 border-yellow-800/50 text-yellow-300">
+                                                Auto-resets at midnight
+                                            </Badge>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleResetTab('stopped')}
+                                                className="h-7 text-xs text-zinc-400 hover:text-red-400 gap-1"
+                                                disabled={isSubmitting}
+                                                title="Reset files: clears stopped_companies.json & failed_subscriptions.json"
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                                Reset
+                                            </Button>
+                                        </div>
                                     </div>
                                     <ScrollArea className="flex-1 p-3">
                                         <div className="flex flex-wrap gap-2">
@@ -607,9 +672,22 @@ export const SubscriptionManagerModal: React.FC<SubscriptionManagerModalProps> =
                                             <Ban className="w-4 h-4" />
                                             Permanently Blocked
                                         </h3>
-                                        <Badge variant="outline" className="text-[10px] bg-purple-950/30 border-purple-800/50 text-purple-300">
-                                            Never auto-resets
-                                        </Badge>
+                                        <div className="flex items-center gap-1.5">
+                                            <Badge variant="outline" className="text-[10px] bg-purple-950/30 border-purple-800/50 text-purple-300">
+                                                Never auto-resets
+                                            </Badge>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleResetTab('blocked')}
+                                                className="h-7 text-xs text-zinc-400 hover:text-red-400 gap-1"
+                                                disabled={isSubmitting}
+                                                title="Reset file: clears permanently_stopped.json"
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                                Reset
+                                            </Button>
+                                        </div>
                                     </div>
                                     <ScrollArea className="flex-1 p-3">
                                         <div className="flex flex-wrap gap-2">

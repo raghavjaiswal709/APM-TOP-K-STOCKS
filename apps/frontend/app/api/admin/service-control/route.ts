@@ -4,15 +4,7 @@ import http from 'http';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Whitelisted container keys → actual Docker container names
-export const CONTAINERS = {
-  'fyers-5001': 'daks-fyers-5001',
-  'fyers-5010': 'daks-fyers-5010',
-  'backend':    'daks-backend',
-  'frontend':   'daks-frontend',
-} as const;
-
-export type ContainerKey = keyof typeof CONTAINERS;
+import { CONTAINERS, ContainerKey } from '../constants';
 type Action = 'restart' | 'stop' | 'start';
 const ALLOWED_ACTIONS: Action[] = ['restart', 'stop', 'start'];
 const ALLOWED_KEYS = Object.keys(CONTAINERS) as ContainerKey[];

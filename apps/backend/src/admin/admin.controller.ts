@@ -176,6 +176,31 @@ export class AdminController {
   }
 
   /**
+   * Clear all stopped companies and failed subscriptions
+   */
+  @Delete('stopped-companies')
+  async clearStoppedCompanies() {
+    await this.adminService.clearStoppedCompanies();
+    return {
+      success: true,
+      message: 'Stopped companies cleared'
+    };
+  }
+
+  /**
+   * Clear all permanently stopped companies
+   */
+  @Delete('permanently-stopped')
+  async clearPermanentlyStopped() {
+    await this.adminService.clearPermanentlyStopped();
+    return {
+      success: true,
+      message: 'Permanently stopped list cleared'
+    };
+  }
+
+
+  /**
    * Get list of stopped companies (daily reset)
    */
   @Get('stopped-companies')

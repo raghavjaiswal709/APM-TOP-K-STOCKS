@@ -250,6 +250,8 @@ interface PatternOverlayPanelProps {
   className?: string;
   /** Currently selected PAA resolution in minutes (3 | 5 | 9 | 15) */
   paaWidthMin?: number;
+  /** True when the panel is rendering replay/historical mode (date≠today). */
+  isHistorical?: boolean;
 }
 
 export function PatternOverlayPanel({
@@ -257,6 +259,7 @@ export function PatternOverlayPanel({
   symbol,
   className,
   paaWidthMin = 15,
+  isHistorical = false,
 }: PatternOverlayPanelProps) {
   const { overlay, curves, loading, error, tooEarly, afterMarket, serviceDown, lastUpdated, refetch } = state;
 
@@ -358,6 +361,13 @@ export function PatternOverlayPanel({
             <span className="inline-flex items-center text-[9px] font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
               {actualPaaMin} min PAA
             </span>
+            {/* Historical replay-mode badge */}
+            {isHistorical && (
+              <span className="inline-flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/30">
+                <Clock className="h-2.5 w-2.5" />
+                Historical
+              </span>
+            )}
             {/* Low match confidence caution */}
             {overlay.low_match_confidence && (
               <span className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
