@@ -32,7 +32,8 @@ const ARCHETYPE_COLOR_MAP: Record<string, string> = {
   Flat:           '#94a3b8',
 };
 
-const RANK_COLORS = ['#c084fc', '#f59e0b', '#6ee7b7']; // violet, amber, emerald
+// Confidence-based: green=highest (#1), yellow=medium (#2), red=lowest (#3)
+const RANK_COLORS = ['#22c55e', '#f59e0b', '#ef5350'];
 
 function archetypeColor(archetype?: string): string {
   if (!archetype) return '#94a3b8';

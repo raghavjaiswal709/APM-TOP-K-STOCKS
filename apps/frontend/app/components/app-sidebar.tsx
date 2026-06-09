@@ -113,7 +113,11 @@ const NAV_MAIN: NavItem[] = [
     title: "Admin",
     url: "/admin",
     icon: Shield,
-    items: [{ title: "Validate", url: "/admin/validate" }, { title: "Services", url: "/admin/services" }],
+    items: [
+      { title: "Validate",       url: "/admin/validate" },
+      { title: "Services",       url: "/admin/services" },
+      { title: "Fyers Control",  url: "/admin/fyers-control" },
+    ],
   },
   {
     title: "Settings",

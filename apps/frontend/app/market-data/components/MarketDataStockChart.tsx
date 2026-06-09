@@ -548,8 +548,8 @@ export function MarketDataStockChart({
     useEffect(() => {
         const chart = mainChartRef.current;
 
-        // Colour palettes: top-3 get vivid rank colours, #4+ get muted grays
-        const RANK_COLORS  = ['#c084fc', '#f59e0b', '#6ee7b7']; // violet, amber, emerald
+        // Colour palettes: top-3 coloured by confidence (green=highest, yellow=mid, red=lowest), #4+ muted grays
+        const RANK_COLORS  = ['#22c55e', '#f59e0b', '#ef5350']; // green, yellow, red
         const EXTRA_COLORS = ['#64748b', '#94a3b8', '#6b7280', '#9ca3af', '#475569', '#a8b4be'];
 
         const clearPatternOverlay = () => {

@@ -14,6 +14,7 @@ import { MarketDataModule } from './market-data/market-data.module';
 import { GttPredictionModule } from './gtt-prediction/gtt-prediction.module';
 import { AdminModule } from './admin/admin.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
+import { FyersControlModule } from './fyers-control/fyers-control.module';
 import { HttpModule } from '@nestjs/axios';
 
 @Module({
@@ -35,6 +36,7 @@ import { HttpModule } from '@nestjs/axios';
     GttPredictionModule,
     AdminModule,
     PortfolioModule,
+    FyersControlModule,
   ],
   controllers: [AppController],
   providers: [AppService],

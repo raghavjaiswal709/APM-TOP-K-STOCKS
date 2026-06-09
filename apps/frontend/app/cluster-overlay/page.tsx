@@ -514,14 +514,20 @@ const ClusterOverlayPage: React.FC = () => {
     availableDates,
   } = useWatchlist({ date: currentDate || undefined, showAllCompanies });
 
-  // PAA resolution for PatternPool Overlay (3 | 5 | 9 | 15) — declared here so
+  // PAA resolution for PatternPool Overlay (3 | 5) — declared here so
   // useClusterSymbols can receive it before patternOverlay block further below.
   const [patternPaaWidth, setPatternPaaWidth] = usePersistentState<number>(
     'cluster-overlay-patternPaaWidth',
-    15
+    5
   );
 
   // Fetch set of company codes that have PatternPool cluster data for the selected resolution
+  // Reset any previously-persisted value that is no longer an allowed option
+  useEffect(() => {
+    if (![3, 5].includes(patternPaaWidth)) setPatternPaaWidth(5);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const { clusterSymbols } = useClusterSymbols(patternPaaWidth);
 
   // Date Synchronization Logic
@@ -3400,7 +3406,7 @@ const ClusterOverlayPage: React.FC = () => {
 
                         {/* PAA Resolution selector */}
                         <div className="flex items-center gap-0.5 ml-1">
-                          {([3, 5, 9, 15] as const).map(w => (
+                          {([3, 5] as const).map(w => (
                             <button
                               key={w}
                               onClick={(e) => { e.stopPropagation(); setPatternPaaWidth(w); }}
