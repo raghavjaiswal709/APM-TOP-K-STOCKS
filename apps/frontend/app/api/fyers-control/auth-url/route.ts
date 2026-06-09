@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCreds, addLog } from '../_lib/state';
+import { getCreds, addLog, pyFetch } from '../_lib/state';
 
 export const dynamic = 'force-dynamic';
-
-// Fyers OAuth URL — built directly from config.ini, no Python API needed.
-// Format: https://api-t1.fyers.in/api/v3/generate-authcode?client_id=...&redirect_uri=...&response_type=code&state=None
-const FYERS_AUTH_BASE = 'https://api-t1.fyers.in/api/v3/generate-authcode';
 
 export async function POST(req: NextRequest) {
   const { userId } = await req.json();
@@ -14,20 +10,32 @@ export async function POST(req: NextRequest) {
   const creds = getCreds().find(u => u.id === userId);
   if (!creds) return NextResponse.json({ error: `User "${userId}" not found in config.ini` }, { status: 404 });
 
-  const params = new URLSearchParams({
-    client_id:     creds.clientId,
-    redirect_uri:  creds.redirectUri,
-    response_type: 'code',
-    state:         'None',
-  });
+  addLog({ level: 'info', action: 'GET_AUTH_URL', message: `Requesting auth URL for ${userId}` });
 
-  const auth_url = `${FYERS_AUTH_BASE}?${params.toString()}`;
+  try {
+    const { ok, data } = await pyFetch('/auth-url', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user:         userId,
+        client_id:    creds.clientId,
+        secret_key:   creds.secretKey,
+        redirect_uri: creds.redirectUri,
+      }),
+    });
 
-  addLog({
-    level:   'success',
-    action:  'GET_AUTH_URL',
-    message: `Auth URL built for ${userId} (client_id: ${creds.clientId.slice(0, 8)}…)`,
-  });
+    if (!ok) throw new Error((data?.message as string) ?? 'Python API error');
 
-  return NextResponse.json({ auth_url });
+    addLog({
+      level:   'success',
+      action:  'GET_AUTH_URL',
+      message: `Auth URL received for ${userId}`,
+    });
+
+    return NextResponse.json({ auth_url: data.auth_url });
+  } catch (err: unknown) {
+    const msg = (err as Error).message;
+    addLog({ level: 'error', action: 'GET_AUTH_URL', message: msg });
+    return NextResponse.json({ error: msg }, { status: 502 });
+  }
 }

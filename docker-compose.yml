@@ -17,8 +17,6 @@ services:
     environment:
       - PORT=5002
       - NODE_ENV=development
-      # host.docker.internal resolves to the host machine thanks to extra_hosts above.
-      # This lets the NestJS container reach Python services on ports 5001/5010.
       - PYTHON_SERVICE_HOST=host.docker.internal
     env_file:
       - apps/backend/.env
@@ -38,32 +36,15 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
-      - PYTHON_API_URL=http://host.docker.internal:6977
-      # ── NEXT_PUBLIC_ vars are the SINGLE SOURCE OF TRUTH for socket URLs. ──
-      # Browser-side code reads ONLY these — no IPs are ever hardcoded in TS/JS.
-      #
-      # TO USE LAPTOP'S LOCAL DOCKER (both running on same machine):
-      #   NEXT_PUBLIC_FYERS_SOCKET_URL=http://localhost:5001
-      #   NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://localhost:5010
-      #
-      # TO USE REMOTE SERVER (current setting — laptop browser → server):
-      #   NEXT_PUBLIC_FYERS_SOCKET_URL=http://100.93.172.21:5001
-      #   NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://100.93.172.21:5010
-      #
-      # Change these two lines + rebuild frontend to switch between sources.
+      # Python management API — Tailscale IP, port 6977.
+      - PYTHON_API_URL=http://100.93.172.21:6977
+
+      # Socket / service URLs (browser-side)
       - NEXT_PUBLIC_FYERS_SOCKET_URL=http://100.93.172.21:5001
       - NEXT_PUBLIC_FYERS_SERVICE_5001_URL=http://100.93.172.21:5001
       - NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://100.93.172.21:5010
-      
       - NEXT_PUBLIC_SOCKET_URL=http://100.93.172.21:5001
-      # To use your laptop's local Docker:
-
-      
-
-
 
       # Backend API URLs (browser-accessible)
       - NEXT_PUBLIC_API_URL=http://100.93.172.21:5002
@@ -71,7 +52,7 @@ services:
       - NEXT_PUBLIC_MARKET_DATA_API=http://100.93.172.21:5002/api
       - NEXT_PUBLIC_GTT_API_URL=http://100.93.172.21:5002
 
-      # Internal server-side URL (container-to-container)
+      # Internal server-side URL (container-to-container via Docker DNS)
       - BACKEND_URL=http://backend:5002
     env_file:
       - apps/frontend/.env
@@ -88,7 +69,6 @@ services:
 
   # ═══════════════════════════════════════════════════════════════════════════
   # 🐍 Python Fyers Service A - ASGI/Uvicorn (Port 5001)
-  # PORT env var controls which port uvicorn binds to (reads via os.getenv).
   # ═══════════════════════════════════════════════════════════════════════════
   fyers-5001:
     build:
