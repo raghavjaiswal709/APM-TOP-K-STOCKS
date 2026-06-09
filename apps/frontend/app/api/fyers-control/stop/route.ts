@@ -1,20 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { addLog, setAuthState, getAuthState, pyFetch, getCreds } from '../_lib/state';
 
 export const dynamic = 'force-dynamic';
 
-const BACKEND = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5002';
-
 export async function POST(req: NextRequest) {
+  const { service } = await req.json();
+  if (!service) return NextResponse.json({ error: 'service is required' }, { status: 400 });
+
+  const name = service === 1 ? 'Data' : service === 2 ? 'Min' : 'All';
+  addLog({ level: 'info', action: 'STOP_SERVICE', message: `Stopping ${name}` });
+
   try {
-    const body = await req.json();
-    const res = await fetch(`${BACKEND}/api/fyers-control/stop`, {
-      method: 'POST',
+    const { ok, data } = await pyFetch('/stop', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body:    JSON.stringify({ service }),
     });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
-  } catch {
-    return NextResponse.json({ error: 'Backend unreachable' }, { status: 502 });
+
+    if (!ok) throw new Error((data?.message as string) ?? `Python API error`);
+
+    if (service === 3) {
+      for (const { id } of getCreds()) {
+        setAuthState(id, { ...getAuthState(id), authLocked: false });
+      }
+    }
+
+    addLog({ level: 'success', action: 'STOP_SERVICE', message: `${name} stopped` });
+    return NextResponse.json(data);
+  } catch (err: unknown) {
+    const msg = (err as Error).message;
+    addLog({ level: 'error', action: 'STOP_SERVICE', message: `Failed to stop ${name}: ${msg}` });
+    return NextResponse.json({ error: msg }, { status: 502 });
   }
 }

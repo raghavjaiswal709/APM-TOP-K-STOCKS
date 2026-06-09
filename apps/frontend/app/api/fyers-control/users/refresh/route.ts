@@ -1,15 +1,9 @@
 import { NextResponse } from 'next/server';
+import { refreshCreds } from '../../_lib/state';
 
 export const dynamic = 'force-dynamic';
 
-const BACKEND = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5002';
-
 export async function POST() {
-  try {
-    const res = await fetch(`${BACKEND}/api/fyers-control/users/refresh`, { method: 'POST' });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
-  } catch {
-    return NextResponse.json({ error: 'Backend unreachable' }, { status: 502 });
-  }
+  const result = refreshCreds();
+  return NextResponse.json(result);
 }

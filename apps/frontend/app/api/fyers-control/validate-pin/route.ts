@@ -1,20 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { validatePin } from '../_lib/state';
 
 export const dynamic = 'force-dynamic';
 
-const BACKEND = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5002';
-
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const res = await fetch(`${BACKEND}/api/fyers-control/validate-pin`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
-  } catch {
-    return NextResponse.json({ error: 'Backend unreachable' }, { status: 502 });
+  const body = await req.json();
+  const { userId, pin } = body ?? {};
+  if (!userId || !pin) {
+    return NextResponse.json({ error: 'userId and pin are required' }, { status: 400 });
   }
+
+  const result = validatePin(userId, pin);
+
+  if (!result.ok) {
+    if (result.locked) {
+      return NextResponse.json(
+        { error: 'Too many failed attempts. Try again in 5 minutes.', locked: true },
+        { status: 401 },
+      );
+    }
+    return NextResponse.json(
+      { error: 'Invalid PIN', attemptsLeft: result.attemptsLeft },
+      { status: 401 },
+    );
+  }
+
+  return NextResponse.json({ ok: true });
 }

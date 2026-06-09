@@ -58,6 +58,9 @@ Thumbs.db
 # Fyers runtime config (contains PIN hashes and is managed at runtime)
 apps/backend/data/fyers-users.json
 
+# Local configurations
+apps/backend/data/config.ini
+
 # Package manager locks (optional - typically these should be committed)
 # package-lock.json
 # yarn.lock

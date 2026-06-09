@@ -38,7 +38,10 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
+      - PYTHON_API_URL=http://host.docker.internal:6977
       # ── NEXT_PUBLIC_ vars are the SINGLE SOURCE OF TRUTH for socket URLs. ──
       # Browser-side code reads ONLY these — no IPs are ever hardcoded in TS/JS.
       #
@@ -77,6 +80,7 @@ services:
       - /app/node_modules
       - /app/.next
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./apps/backend/data/config.ini:/fyers-config/config.ini
     depends_on:
       - backend
     networks:

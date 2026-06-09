@@ -7,21 +7,7 @@ import { firstValueFrom } from 'rxjs';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-/** Shape returned by GET http://100.93.172.21:6977/users (flexible — normalised below) */
-interface ApiUser {
-  user?: string;
-  id?: string;
-  name?: string;
-  displayName?: string;
-  client_id?: string;
-  clientId?: string;
-  secret_key?: string;
-  secretKey?: string;
-  redirect_uri?: string;
-  redirectUri?: string;
-}
-
-/** Normalised credentials we use internally */
+/** Normalised credentials loaded from config.ini */
 interface FyersCreds {
   id: string;
   displayName: string;
@@ -30,14 +16,9 @@ interface FyersCreds {
   redirectUri: string;
 }
 
-interface PinEntry {
-  displayName: string;
-  pinSalt: string;
-  pinHash: string;
-}
-
-interface PinConfig {
-  pins: Record<string, PinEntry>;
+/** One parsed section from config.ini */
+interface IniSection {
+  [key: string]: string;
 }
 
 export interface UserAuthState {
@@ -54,9 +35,9 @@ export interface LogEntry {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const LOCAL_API = 'http://100.93.172.21:6977';
-const CONFIG_PATH_DOCKER = '/app/data/fyers-users.json';
-const CONFIG_PATH_LOCAL = path.join(process.cwd(), 'data', 'fyers-users.json');
+const LOCAL_API          = 'http://100.93.172.21:6977';
+const CONFIG_INI_DOCKER  = '/app/data/config.ini';
+const CONFIG_INI_LOCAL   = path.join(process.cwd(), 'data', 'config.ini');
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
@@ -64,107 +45,78 @@ const CONFIG_PATH_LOCAL = path.join(process.cwd(), 'data', 'fyers-users.json');
 export class FyersControlService {
   private readonly logger = new Logger(FyersControlService.name);
 
-  /** In-memory cache of credentials fetched from the local API */
   private cachedCreds: FyersCreds[] | null = null;
   private credsCachedAt = 0;
-  private readonly CREDS_TTL_MS = 5 * 60 * 1000; // refresh every 5 min
+  private readonly CREDS_TTL_MS = 5 * 60 * 1000;
 
-  private readonly authStates = new Map<string, UserAuthState>();
+  private readonly authStates  = new Map<string, UserAuthState>();
   private readonly pinFailures = new Map<string, { count: number; lockedUntil: number }>();
   private logs: LogEntry[] = [];
   private readonly logListeners = new Set<(e: LogEntry) => void>();
 
   constructor(private readonly http: HttpService) {}
 
-  // ── Config helpers ────────────────────────────────────────────────────────
+  // ── INI parser ────────────────────────────────────────────────────────────
 
-  private loadPinConfig(): PinConfig {
-    const p = fs.existsSync(CONFIG_PATH_DOCKER) ? CONFIG_PATH_DOCKER : CONFIG_PATH_LOCAL;
+  private parseIni(): Record<string, IniSection> {
+    const p = fs.existsSync(CONFIG_INI_DOCKER) ? CONFIG_INI_DOCKER : CONFIG_INI_LOCAL;
+    let content: string;
     try {
-      return JSON.parse(fs.readFileSync(p, 'utf-8')) as PinConfig;
+      content = fs.readFileSync(p, 'utf-8');
     } catch (err) {
-      this.logger.error(`Failed to load fyers-users.json: ${err.message}`);
-      return { pins: {} };
+      this.logger.error(`Cannot read config.ini: ${err.message}`);
+      return {};
     }
-  }
 
-  /** Normalise a raw API user object to our FyersCreds shape */
-  private normalise(raw: ApiUser): FyersCreds | null {
-    const id = raw.user ?? raw.id ?? raw.name;
-    const clientId = raw.client_id ?? raw.clientId;
-    const secretKey = raw.secret_key ?? raw.secretKey;
-    const redirectUri = raw.redirect_uri ?? raw.redirectUri;
-    if (!id || !clientId || !secretKey || !redirectUri) return null;
-
-    const cfg = this.loadPinConfig();
-    const pinEntry = cfg.pins[id];
-    const displayName = raw.displayName ?? pinEntry?.displayName ?? id;
-
-    return { id, displayName, clientId, secretKey, redirectUri };
-  }
-
-  /** Fetch users from local API. Returns null on failure. */
-  private async fetchCredsFromApi(): Promise<FyersCreds[] | null> {
-    try {
-      const res = await firstValueFrom(
-        this.http.get<ApiUser[] | { users: ApiUser[] }>(`${LOCAL_API}/users`, { timeout: 5000 } as any),
-      );
-      const raw: ApiUser[] = Array.isArray(res.data) ? res.data : (res.data as any).users ?? [];
-      const normalised = raw.map(u => this.normalise(u)).filter(Boolean) as FyersCreds[];
-      if (normalised.length === 0) return null;
-      this.logger.log(`Fetched ${normalised.length} users from local API`);
-      return normalised;
-    } catch {
-      return null;
+    const sections: Record<string, IniSection> = {};
+    let cur = '';
+    for (const raw of content.split('\n')) {
+      const line = raw.trim();
+      if (!line || line.startsWith(';') || line.startsWith('#')) continue;
+      const sectionMatch = line.match(/^\[(.+)\]$/);
+      if (sectionMatch) {
+        cur = sectionMatch[1].trim();
+        sections[cur] = {};
+      } else if (cur) {
+        const eq = line.indexOf('=');
+        if (eq > 0) {
+          sections[cur][line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+        }
+      }
     }
+    return sections;
   }
 
-  /** Load fallback users from the FYERS_USERS environment variable (JSON array). */
-  private loadFallbackUsers(): FyersCreds[] {
-    const raw = process.env.FYERS_USERS;
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw) as Array<{
-        id: string;
-        displayName?: string;
-        clientId: string;
-        secretKey: string;
-        redirectUri: string;
-      }>;
-      return parsed
-        .filter(u => u.id && u.clientId && u.secretKey && u.redirectUri &&
-                     u.clientId !== 'CONFIGURE_CLIENT_ID' && u.secretKey !== 'CONFIGURE_SECRET_KEY')
-        .map(u => ({
-          id: u.id,
-          displayName: u.displayName ?? u.id,
-          clientId: u.clientId,
-          secretKey: u.secretKey,
-          redirectUri: u.redirectUri,
-        }));
-    } catch (err) {
-      this.logger.error(`Failed to parse FYERS_USERS env var: ${err.message}`);
-      return [];
+  /** Load all Fyers credentials directly from config.ini */
+  private loadCredsFromIni(): FyersCreds[] {
+    const sections = this.parseIni();
+    const result: FyersCreds[] = [];
+    for (const [sectionName, s] of Object.entries(sections)) {
+      if (!s.client_id || !s.secret_key || !s.redirect_uri) continue;
+      const id = s.user ?? sectionName;
+      result.push({
+        id,
+        displayName: id.charAt(0).toUpperCase() + id.slice(1),
+        clientId:    s.client_id,
+        secretKey:   s.secret_key,
+        redirectUri: s.redirect_uri,
+      });
     }
+    this.logger.log(`Loaded ${result.length} users from config.ini`);
+    return result;
   }
 
-  /** Get credentials, preferring local API with env-var fallback */
+  // ── Credential helpers ────────────────────────────────────────────────────
+
   private async getCreds(): Promise<FyersCreds[]> {
     const now = Date.now();
     if (this.cachedCreds && now - this.credsCachedAt < this.CREDS_TTL_MS) {
       return this.cachedCreds;
     }
-
-    const fromApi = await this.fetchCredsFromApi();
-    if (fromApi) {
-      this.cachedCreds = fromApi;
-      this.credsCachedAt = now;
-      return fromApi;
-    }
-
-    // Fallback: use FYERS_USERS env var
-    const fallback = this.loadFallbackUsers();
-    this.addLog({ level: 'warning', action: 'LOAD_USERS', message: 'Local API /users unreachable — using FYERS_USERS env fallback' });
-    return fallback;
+    const creds = this.loadCredsFromIni();
+    this.cachedCreds  = creds;
+    this.credsCachedAt = now;
+    return creds;
   }
 
   private async findCreds(userId: string): Promise<FyersCreds | null> {
@@ -179,26 +131,35 @@ export class FyersControlService {
     return all.map(({ id, displayName }) => ({ id, displayName }));
   }
 
+  async refreshUsers(): Promise<{ count: number; source: 'ini' }> {
+    this.cachedCreds  = null;
+    this.credsCachedAt = 0;
+    const creds = this.loadCredsFromIni();
+    this.cachedCreds  = creds;
+    this.credsCachedAt = Date.now();
+    this.addLog({ level: 'success', action: 'REFRESH_USERS', message: `Loaded ${creds.length} users from config.ini` });
+    return { count: creds.length, source: 'ini' };
+  }
+
   validatePin(userId: string, pin: string): { ok: boolean; locked?: boolean; attemptsLeft?: number } {
     const failure = this.pinFailures.get(userId);
     if (failure && failure.lockedUntil > Date.now()) return { ok: false, locked: true };
 
-    const cfg = this.loadPinConfig();
-    const entry = cfg.pins[userId];
-    if (!entry) {
-      // User exists in API but has no PIN configured — deny
+    const sections = this.parseIni();
+    const s = sections[userId];
+    if (!s?.pin_hash || !s?.pin_salt) {
       this.addLog({ level: 'warning', action: 'PIN_VALIDATE', message: `No PIN configured for user: ${userId}` });
       return { ok: false };
     }
 
-    const hash = crypto.pbkdf2Sync(pin, entry.pinSalt, 100000, 64, 'sha512').toString('hex');
-    if (hash === entry.pinHash) {
+    const hash = crypto.pbkdf2Sync(pin, s.pin_salt, 100000, 64, 'sha512').toString('hex');
+    if (hash === s.pin_hash) {
       this.pinFailures.delete(userId);
       this.addLog({ level: 'info', action: 'PIN_VALIDATE', message: `PIN validated — user: ${userId}` });
       return { ok: true };
     }
 
-    const prev = failure ?? { count: 0, lockedUntil: 0 };
+    const prev     = failure ?? { count: 0, lockedUntil: 0 };
     const newCount = prev.count + 1;
     const lockedUntil = newCount >= 5 ? Date.now() + 5 * 60 * 1000 : 0;
     this.pinFailures.set(userId, { count: newCount, lockedUntil });
@@ -217,7 +178,7 @@ export class FyersControlService {
 
   async getAuthUrl(userId: string): Promise<{ auth_url: string }> {
     const creds = await this.findCreds(userId);
-    if (!creds) throw new Error(`User "${userId}" not found — check local API or config`);
+    if (!creds) throw new Error(`User "${userId}" not found in config.ini`);
 
     this.addLog({
       level: 'info',
@@ -228,9 +189,9 @@ export class FyersControlService {
     try {
       const res = await firstValueFrom(
         this.http.post<{ auth_url: string }>(`${LOCAL_API}/auth-url`, {
-          user: userId,
-          client_id: creds.clientId,
-          secret_key: creds.secretKey,
+          user:         userId,
+          client_id:    creds.clientId,
+          secret_key:   creds.secretKey,
           redirect_uri: creds.redirectUri,
         }),
       );
@@ -324,22 +285,6 @@ export class FyersControlService {
       this.addLog({ level: 'error', action: 'HEALTH_CHECK', message: `Health check failed: ${msg}` });
       throw new Error(msg);
     }
-  }
-
-  /** Force-refresh the credential cache from the local API */
-  async refreshUsers(): Promise<{ count: number; source: 'api' | 'fallback' }> {
-    this.cachedCreds = null;
-    this.credsCachedAt = 0;
-    const fromApi = await this.fetchCredsFromApi();
-    if (fromApi) {
-      this.cachedCreds = fromApi;
-      this.credsCachedAt = Date.now();
-      this.addLog({ level: 'success', action: 'REFRESH_USERS', message: `Fetched ${fromApi.length} users from local API` });
-      return { count: fromApi.length, source: 'api' };
-    }
-    const fallback = this.loadFallbackUsers();
-    this.addLog({ level: 'warning', action: 'REFRESH_USERS', message: 'Local API unreachable — using FYERS_USERS env fallback' });
-    return { count: fallback.length, source: 'fallback' };
   }
 
   // ── Logs ──────────────────────────────────────────────────────────────────

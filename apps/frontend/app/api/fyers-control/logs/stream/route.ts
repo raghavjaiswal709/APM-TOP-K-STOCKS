@@ -1,39 +1,37 @@
+import { getLogs, subscribeToLogs, type LogEntry } from '../../_lib/state';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const BACKEND = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5002';
-
 export async function GET() {
-  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-  const writer = writable.getWriter();
   const enc = new TextEncoder();
+  let unsubscribe: (() => void) | null = null;
 
-  (async () => {
-    try {
-      const upstream = await fetch(`${BACKEND}/api/fyers-control/logs/stream`, {
-        headers: { Accept: 'text/event-stream' },
+  const stream = new ReadableStream({
+    start(controller) {
+      for (const log of getLogs()) {
+        controller.enqueue(enc.encode(`data: ${JSON.stringify(log)}\n\n`));
+      }
+      unsubscribe = subscribeToLogs((log: LogEntry) => {
+        try {
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(log)}\n\n`));
+        } catch {
+          unsubscribe?.();
+          unsubscribe = null;
+        }
       });
-      const reader = upstream.body!.getReader();
-      const pump = async () => {
-        const { done, value } = await reader.read();
-        if (done) { await writer.close(); return; }
-        await writer.write(value);
-        return pump();
-      };
-      await pump();
-    } catch {
-      try {
-        await writer.write(enc.encode(`data: ${JSON.stringify({ level: 'error', action: 'STREAM', message: 'Backend SSE stream disconnected', timestamp: new Date().toISOString() })}\n\n`));
-        await writer.close();
-      } catch { /* already closed */ }
-    }
-  })();
+    },
+    cancel() {
+      unsubscribe?.();
+      unsubscribe = null;
+    },
+  });
 
-  return new Response(readable, {
+  return new Response(stream, {
     headers: {
-      'Content-Type': 'text/event-stream',
+      'Content-Type':  'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
-      'Connection': 'keep-alive',
+      'Connection':    'keep-alive',
       'X-Accel-Buffering': 'no',
     },
   });

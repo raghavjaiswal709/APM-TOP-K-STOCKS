@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DAKSphere — Auth Redirect</title>
+  <style>
+    body { margin: 0; font-family: -apple-system, sans-serif; background: #0a0a0a; color: #e4e4e7; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card { background: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 32px 40px; text-align: center; max-width: 360px; width: 90%; }
+    .icon { font-size: 2.5rem; margin-bottom: 12px; }
+    h2 { margin: 0 0 8px; font-size: 1.1rem; font-weight: 600; }
+    p  { margin: 0; font-size: 0.85rem; color: #71717a; }
+    .code { margin-top: 14px; font-size: 0.75rem; font-family: monospace; background: #09090b; border: 1px solid #27272a; border-radius: 6px; padding: 8px 12px; word-break: break-all; color: #a1a1aa; }
+    .success { color: #34d399; }
+    .error   { color: #f87171; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #34d399; box-shadow: 0 0 8px #34d399; margin-right: 8px; animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+  </style>
+</head>
+<body>
+<div class="card" id="card">
+  <div class="icon">⏳</div>
+  <h2>Capturing auth code…</h2>
+  <p>Please wait — sending to dashboard.</p>
+</div>
+<script>
+  const params  = new URLSearchParams(location.search);
+  const code    = params.get('auth_code');
+  const card    = document.getElementById('card');
+
+  if (code) {
+    // Send to opener (the dashboard popup parent)
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ auth_code: code, source: 'daksphere_redirect' }, '*');
+    }
+
+    // Also store in localStorage so the dashboard can poll if opener ref is lost
+    try { localStorage.setItem('daksphere_auth_code', JSON.stringify({ code, ts: Date.now() })); } catch {}
+
+    card.innerHTML = `
+      <div class="icon success">✓</div>
+      <h2 class="success"><span class="dot"></span>Auth code captured</h2>
+      <p>Sent to your dashboard. This window will close automatically.</p>
+      <div class="code">${code.slice(0, 40)}…</div>`;
+
+    setTimeout(() => { try { window.close(); } catch {} }, 1800);
+  } else {
+    card.innerHTML = `
+      <div class="icon error">✗</div>
+      <h2 class="error">No auth code found</h2>
+      <p>The URL is missing the <code>auth_code</code> parameter.<br>Try logging in again.</p>`;
+  }
+</script>
+</body>
+</html>
