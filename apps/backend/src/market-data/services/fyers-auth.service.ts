@@ -95,16 +95,18 @@ export class FyersAuthService {
   }
 
   private calculateTokenExpiry(): Date {
+    // Fyers tokens expire at 11:59 PM IST of the SAME day they are generated.
+    // Use IST (UTC+5:30) to find today's date, then set expiry to 23:59:00 IST
+    // which is 18:29:00 UTC.
     const now = new Date();
-    // Fyers tokens expire at 11:59 PM IST
-    const expiryDate = new Date(now);
-    expiryDate.setHours(23, 59, 0, 0); // Set to 11:59 PM
-
-    // If current time is after market hours (after 4 PM), set expiry to next day
-    if (now.getHours() >= 16) {
-      expiryDate.setDate(expiryDate.getDate() + 1);
-    }
-
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(now.getTime() + istOffsetMs);
+    const expiryDate = new Date(Date.UTC(
+      istNow.getUTCFullYear(),
+      istNow.getUTCMonth(),
+      istNow.getUTCDate(),
+      23, 59, 0, 0,
+    ) - istOffsetMs);
     return expiryDate;
   }
 
@@ -235,18 +237,6 @@ export class FyersAuthService {
 
   async generateTokenFromCode(authCode: string): Promise<TokenResponse> {
     try {
-      // First check if we already have a valid token
-      const existingToken = await this.getValidTokenOrNull();
-      if (existingToken) {
-        this.logger.log('Reusing existing valid token');
-        const tokenData: TokenData = JSON.parse(fs.readFileSync(this.tokenPath, 'utf8'));
-        return {
-          access_token: existingToken,
-          expires_at: tokenData.expires_at,
-          reused: true
-        };
-      }
-
       this.logger.log('Generating new access token from auth code');
       this.logger.debug(`Auth code received: ${authCode.substring(0, 20)}...`);
 
@@ -394,15 +384,16 @@ export class FyersAuthService {
   }
 
   private calculateExpiryTime(): string {
-    const now = new Date();
-    const expiryDate = new Date(now);
-    expiryDate.setHours(23, 59, 59, 999);
-
-    if (now.getHours() > 15) {
-      expiryDate.setDate(expiryDate.getDate() + 1);
-    }
-
-    return expiryDate.toISOString();
+    // Always expire at 23:59:59 IST of the SAME day (never extend to the next day).
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(Date.now() + istOffsetMs);
+    const expiryUTC = new Date(Date.UTC(
+      istNow.getUTCFullYear(),
+      istNow.getUTCMonth(),
+      istNow.getUTCDate(),
+      23, 59, 59, 999,
+    ) - istOffsetMs);
+    return expiryUTC.toISOString();
   }
 
   private async notifyViaWebSocket(serviceName: string, authData: any): Promise<void> {

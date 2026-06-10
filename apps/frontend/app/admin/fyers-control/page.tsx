@@ -212,7 +212,7 @@ export default function FyersControlPage() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   const loadUsers = useCallback(async (forceRefresh = false) => {
-    forceRefresh ? setRefreshing(true) : setUsersLoading(true);
+    if (forceRefresh) setRefreshing(true); else setUsersLoading(true);
     try {
       if (forceRefresh) {
         const r = await apiFetch<{ count: number; source: 'api'|'fallback'|'ini' }>(

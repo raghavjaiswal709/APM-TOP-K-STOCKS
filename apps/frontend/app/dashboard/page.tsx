@@ -1,5 +1,6 @@
 'use client';
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import dynamic from 'next/dynamic';
 import { BarChart2, ChevronLeft, ChevronRight, Loader2, Database, ChevronDown } from "lucide-react";
 import { usePersistentState, useScrollRestoration } from '@/hooks/useStateRestoration';
 import { AppSidebar } from "../components/app-sidebar";
@@ -18,12 +19,25 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ModeToggle } from "../components/toggleButton";
-import { DashboardStockChart as StockChart } from "./components/DashboardStockChart";
 import { CompanyList } from "../components/CompanyList";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useStockData } from "@/hooks/useStockData";
 import { useSearchParams } from 'next/navigation';
-import MarketDataPage from "../market-data/page";
+
+// The heavy candlestick chart (lightweight-charts + ~2k lines of indicator math) is
+// split into its own chunk and only fetched once a company is selected. This keeps the
+// initial dashboard bundle small so the page becomes interactive fast.
+const StockChart = dynamic(
+  () => import('./components/DashboardStockChart').then(mod => ({ default: mod.DashboardStockChart })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center bg-secondary/5">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    ),
+  }
+);
 
 export default function Page() {
   return (

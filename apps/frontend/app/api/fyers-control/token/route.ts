@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     const { ok, data } = await pyFetch('/token', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ user: userId, auth_code: authCode }),
+      body:    JSON.stringify({ user: userId, auth_code: authCode, force: true }),
     });
 
     if (!ok) throw new Error((data?.message as string) ?? `HTTP error from Python API`);

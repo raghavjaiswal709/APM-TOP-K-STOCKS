@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode, useEffect, useRef } from 'react';
 
 // Market Data Page State
 export interface MarketDataState {
@@ -126,19 +126,33 @@ export const PageStateProvider: React.FC<{ children: ReactNode }> = ({ children 
     setPortfolioState(prev => ({ ...prev, ...newState }));
   }, []);
 
+  // Memoize the context value so consumers only re-render when state actually changes,
+  // not on every PageStateProvider render. The update fns are already stable (useCallback).
+  const value = useMemo(
+    () => ({
+      marketDataState,
+      updateMarketDataState,
+      watchlistState,
+      updateWatchlistState,
+      recommendationsState,
+      updateRecommendationsState,
+      portfolioState,
+      updatePortfolioState,
+    }),
+    [
+      marketDataState,
+      updateMarketDataState,
+      watchlistState,
+      updateWatchlistState,
+      recommendationsState,
+      updateRecommendationsState,
+      portfolioState,
+      updatePortfolioState,
+    ]
+  );
+
   return (
-    <PageStateContext.Provider
-      value={{
-        marketDataState,
-        updateMarketDataState,
-        watchlistState,
-        updateWatchlistState,
-        recommendationsState,
-        updateRecommendationsState,
-        portfolioState,
-        updatePortfolioState,
-      }}
-    >
+    <PageStateContext.Provider value={value}>
       {children}
     </PageStateContext.Provider>
   );

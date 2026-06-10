@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import Plot from 'react-plotly.js';
+import Plot from '@/app/market-data/components/LazyPlot';
 import type { PatternConfidenceResponse, PerClusterConfidence } from '@/types/clustering';
 import { PATTERN_COLORS } from '@/types/clustering';
 import { Shield, Eye, Gem, BarChart3 } from 'lucide-react';

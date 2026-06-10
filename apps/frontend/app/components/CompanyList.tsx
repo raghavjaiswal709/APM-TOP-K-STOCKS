@@ -827,6 +827,10 @@ export const CompanyList = React.memo(function CompanyList({
                         {searchTerm ? 'No matches found' : 'No companies available'}
                     </div>
                 ) : (
+                    /* One TooltipProvider wraps the whole list — previously every row mounted
+                       its own provider, which is hundreds of redundant providers on large
+                       watchlists. The per-row Tooltips share this single provider. */
+                    <TooltipProvider delayDuration={300}>
                     <div className="flex flex-col" suppressHydrationWarning>
                         {filteredCompanies.map((company, index) => {
                             const uniqueKey = `${company.company_code}-${company.exchange}-${index}`;
@@ -845,7 +849,7 @@ export const CompanyList = React.memo(function CompanyList({
                             const isMultiChecked = multiSelectedCodes.has(company.company_code);
 
                             return (
-                                <TooltipProvider key={uniqueKey} delayDuration={300}>
+                                <React.Fragment key={uniqueKey}>
                                     <div
                                         onClick={() => {
                                             if (isMultiSelectActive) {
@@ -1048,10 +1052,11 @@ export const CompanyList = React.memo(function CompanyList({
                                             )}
                                         </div>
                                     </div>
-                                </TooltipProvider>
+                                </React.Fragment>
                             );
                         })}
                     </div>
+                    </TooltipProvider>
                 )}
             </div>
 

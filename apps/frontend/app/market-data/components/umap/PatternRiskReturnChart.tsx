@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import Plot from 'react-plotly.js';
+import Plot from '@/app/market-data/components/LazyPlot';
 import type { PatternRiskReturnResponse } from '@/types/clustering';
 import { ARCHETYPE_COLORS, PATTERN_COLORS } from '@/types/clustering';
 import { getChartTheme } from './chartTheme';

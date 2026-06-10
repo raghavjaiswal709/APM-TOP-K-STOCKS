@@ -6,6 +6,33 @@ const nextConfig = {
 
   reactStrictMode: true,
 
+  // Barrel-optimize the libraries that are imported by name across dozens of files.
+  // Without this, a single `import { Foo } from 'lucide-react'` forces the bundler to
+  // walk the library's entire barrel (lucide-react alone re-exports 1000+ icons),
+  // which massively inflates dev-compile time and per-page JS. This rewrites those
+  // imports to deep path imports so only what's used is pulled in.
+  experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      '@heroicons/react',
+      'date-fns',
+      'date-fns-tz',
+      'recharts',
+      'framer-motion',
+      'radix-ui',
+      '@radix-ui/react-checkbox',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-hover-card',
+      '@radix-ui/react-scroll-area',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-toast',
+      'cmdk',
+      'sonner',
+      'd3-format',
+      'd3-time-format',
+    ],
+  },
+
   async rewrites() {
     return [
       // Specific API rewrites (these MUST come BEFORE the catch-all)

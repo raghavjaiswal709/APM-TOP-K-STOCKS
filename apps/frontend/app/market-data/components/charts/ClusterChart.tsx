@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import Plot from 'react-plotly.js';
+import Plot from '@/app/market-data/components/LazyPlot';
 import { ClusterInfo, ClusterPatternData } from '@/hooks/useClusterPattern';
 import { TrendingUp, Calendar, Target, BarChart3 } from 'lucide-react';
 

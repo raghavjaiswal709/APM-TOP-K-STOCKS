@@ -141,7 +141,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ force: !!authStatus?.authenticated }),
+                body: JSON.stringify({ force: true }),
             });
             const data = await response.json();
 
