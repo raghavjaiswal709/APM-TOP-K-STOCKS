@@ -1,11 +1,17 @@
 # ═══════════════════════════════════════════════════════════════════════════
-# Next.js Frontend Dockerfile - With network retry
+# Next.js Frontend Dockerfile — PRODUCTION build (next build → next start)
+#
+# The optimized production bundle is compiled at image-build time and served with
+# `next start`. Unlike `next dev`, every route is pre-compiled ahead of time, so
+# navigating between pages no longer triggers an on-demand webpack compile — that
+# on-demand compilation was the main reason the app felt "heavy" and pages took a
+# long time to load.
 # ═══════════════════════════════════════════════════════════════════════════
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Add curl for container healthchecks
+# curl for container healthchecks
 RUN apk add --no-cache curl
 
 # Configure npm for better network reliability
@@ -14,19 +20,65 @@ RUN npm config set fetch-retries 5 && \
     npm config set fetch-retry-maxtimeout 120000 && \
     npm config set fetch-timeout 300000
 
-# Copy package files
+# Install dependencies first so this layer stays cached across source-only edits.
+# (NODE_ENV is intentionally NOT "production" here — the build needs devDependencies
+#  such as typescript / eslint-config-next / tailwind.)
 COPY apps/frontend/package*.json ./
-
-# Install dependencies with retries
 RUN npm install --legacy-peer-deps || npm install --legacy-peer-deps || npm install --legacy-peer-deps
 
-# Ensure recharts is installed (explicit install to avoid caching issues)
-RUN npm install recharts --legacy-peer-deps
-
-# Copy source code
+# Copy the application source
 COPY apps/frontend ./
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Build-time configuration.
+# Next.js inlines every NEXT_PUBLIC_* value and evaluates the next.config
+# rewrites/images during `next build`. They therefore MUST be present before the
+# build runs — supplying them only at runtime (as the old dev server did) would
+# leave the browser bundle pointing at localhost. They are build args so each
+# deployment/instance can override them via docker-compose `build.args`; the
+# defaults match the primary (Tailscale) deployment.
+# ─────────────────────────────────────────────────────────────────────────────
+ARG SERVER_IP=100.93.172.21
+ARG BACKEND_URL=http://backend:5002
+ARG NEXT_PUBLIC_FYERS_SOCKET_URL=http://100.93.172.21:5001
+ARG NEXT_PUBLIC_FYERS_SERVICE_5001_URL=http://100.93.172.21:5001
+ARG NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=http://100.93.172.21:5010
+ARG NEXT_PUBLIC_SOCKET_URL=http://100.93.172.21:5001
+ARG NEXT_PUBLIC_API_URL=http://100.93.172.21:5002
+ARG NEXT_PUBLIC_BACKEND_URL=http://100.93.172.21:5002
+ARG NEXT_PUBLIC_MARKET_DATA_API=http://100.93.172.21:5002/api
+ARG NEXT_PUBLIC_GTT_API_URL=http://100.93.172.21:5002
+ARG NEXT_PUBLIC_FORCE_MARKET_OPEN=false
+ARG NEXT_PUBLIC_USER_NAME=
+ARG NEXT_PUBLIC_USER_EMAIL=
+ARG NEXT_PUBLIC_INSTANCE_USER_NAME=
+ARG NEXT_PUBLIC_INSTANCE_USER_EMAIL=
+
+ENV SERVER_IP=$SERVER_IP \
+    BACKEND_URL=$BACKEND_URL \
+    NEXT_PUBLIC_FYERS_SOCKET_URL=$NEXT_PUBLIC_FYERS_SOCKET_URL \
+    NEXT_PUBLIC_FYERS_SERVICE_5001_URL=$NEXT_PUBLIC_FYERS_SERVICE_5001_URL \
+    NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=$NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL \
+    NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL \
+    NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL \
+    NEXT_PUBLIC_MARKET_DATA_API=$NEXT_PUBLIC_MARKET_DATA_API \
+    NEXT_PUBLIC_GTT_API_URL=$NEXT_PUBLIC_GTT_API_URL \
+    NEXT_PUBLIC_FORCE_MARKET_OPEN=$NEXT_PUBLIC_FORCE_MARKET_OPEN \
+    NEXT_PUBLIC_USER_NAME=$NEXT_PUBLIC_USER_NAME \
+    NEXT_PUBLIC_USER_EMAIL=$NEXT_PUBLIC_USER_EMAIL \
+    NEXT_PUBLIC_INSTANCE_USER_NAME=$NEXT_PUBLIC_INSTANCE_USER_NAME \
+    NEXT_PUBLIC_INSTANCE_USER_EMAIL=$NEXT_PUBLIC_INSTANCE_USER_EMAIL \
+    NEXT_TELEMETRY_DISABLED=1
+
+# Compile the optimized production bundle (runs generate-manifest, then next build)
+RUN npm run build
+
+# Run as production from here on
+ENV NODE_ENV=production
 
 EXPOSE 3000
 
-# Run development server
-CMD ["npm", "run", "dev"]
+# Serve the pre-built production app — routes are already compiled, so page
+# navigation is instant (no per-request dev compilation).
+CMD ["npm", "run", "start"]

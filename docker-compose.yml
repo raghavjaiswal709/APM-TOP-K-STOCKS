@@ -32,6 +32,20 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      # Baked into the client bundle / next.config at BUILD time — keep in sync
+      # with the `environment:` block below (Next.js inlines NEXT_PUBLIC_* and
+      # evaluates rewrites during `next build`, not at runtime).
+      args:
+        SERVER_IP: 100.93.172.21
+        BACKEND_URL: http://backend:5002
+        NEXT_PUBLIC_FYERS_SOCKET_URL: http://100.93.172.21:5001
+        NEXT_PUBLIC_FYERS_SERVICE_5001_URL: http://100.93.172.21:5001
+        NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL: http://100.93.172.21:5010
+        NEXT_PUBLIC_SOCKET_URL: http://100.93.172.21:5001
+        NEXT_PUBLIC_API_URL: http://100.93.172.21:5002
+        NEXT_PUBLIC_BACKEND_URL: http://100.93.172.21:5002
+        NEXT_PUBLIC_MARKET_DATA_API: http://100.93.172.21:5002/api
+        NEXT_PUBLIC_GTT_API_URL: http://100.93.172.21:5002
     container_name: daks-frontend
     restart: unless-stopped
     ports:
@@ -57,9 +71,9 @@ services:
     env_file:
       - apps/frontend/.env
     volumes:
-      - ./apps/frontend:/app
-      - /app/node_modules
-      - /app/.next
+      # Production build: the app is compiled into the image, so we no longer
+      # bind-mount ./apps/frontend over /app (that would shadow the built .next).
+      # Only the runtime mounts the app genuinely needs remain.
       - /var/run/docker.sock:/var/run/docker.sock
       - ./apps/backend/data/config.ini:/fyers-config/config.ini
     depends_on:

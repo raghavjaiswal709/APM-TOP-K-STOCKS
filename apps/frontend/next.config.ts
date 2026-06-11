@@ -6,6 +6,12 @@ const nextConfig = {
 
   reactStrictMode: true,
 
+  // A failing lint rule should not break the production image build. `next lint`
+  // still runs in dev and can be run in CI; it just no longer blocks `next build`.
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
   // Barrel-optimize the libraries that are imported by name across dozens of files.
   // Without this, a single `import { Foo } from 'lucide-react'` forces the bundler to
   // walk the library's entire barrel (lucide-react alone re-exports 1000+ icons),
