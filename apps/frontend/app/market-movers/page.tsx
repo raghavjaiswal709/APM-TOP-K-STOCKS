@@ -61,6 +61,7 @@ import {
 } from 'lucide-react';
 import { getSocket, onSocketSourceChange, getSocketSourceLabel, getActiveSocketUrl, isSocketConnected } from '@/lib/socket';
 import MarketMoversSidebar from './components/MarketMoversSidebar';
+import { MarketClosedBanner } from '@/app/components/MarketClosedBanner';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Types
@@ -1265,6 +1266,9 @@ const MarketMoversPage: React.FC = () => {
 
           <ModeToggle />
         </header>
+
+        {/* ── Market Closed Banner — visible only when market is closed and FORCE_MARKET_OPEN=false ── */}
+        <MarketClosedBanner />
 
         {/* ── BODY: tile grid + right sidebar ── */}
         <div className="flex flex-1 overflow-hidden">

@@ -22,6 +22,10 @@ import {
   ChevronsLeft,
   ChevronRight,
   Layers,
+  Database,
+  ArrowLeftRight,
+  History,
+  Star,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -61,25 +65,28 @@ interface NavItem {
 // ─── Navigation Data ──────────────────────────────────────────────────────────
 const NAV_MAIN: NavItem[] = [
   {
-    title: "Dashboard",
+    title: "Historical Data",
     url: "/",
-    icon: LayoutDashboard,
+    icon: Database,
+  },
+  {
+    // Live Market group — ArrowLeftRight icon (↔), no direct navigation, opens flyout only
+    title: "Live Market",
+    url: "#",
+    icon: ArrowLeftRight,
     items: [
-      { title: "Historical Data", url: "/" },
-      { title: "Overview", url: "#" },
-      { title: "Market Movers", url: "/market-movers" },
-      { title: "Sector Performance", url: "#" },
+      { title: "Live Market",        url: "/market-data" },
+      { title: "Market Movers",      url: "/market-movers" },
+      { title: "Cluster Overlay",    url: "/cluster-overlay" },
+      { title: "Multiple Live Chart", url: "/live-market" },
     ],
   },
-  { title: "Live Market",         url: "/market-data",      icon: LineChart },
-  { title: "Cluster Overlay",     url: "/cluster-overlay",  icon: Layers },
-  { title: "Multiple Live Chart", url: "/live-market",      icon: LayoutGrid },
-  { title: "Recommendations",     url: "/recommendations",  icon: Sparkles },
+  { title: "Time Machine",        url: "/recommendations",  icon: History },
   { title: "UMAP Clustering",     url: "/umap-clustering",  icon: BrainCircuit },
   {
     title: "Watchlist",
     url: "/watchlist",
-    icon: Eye,
+    icon: Star,
     items: [
       { title: "My Watchlist",       url: "/watchlist" },
       { title: "My Stocks",          url: "#" },
@@ -274,18 +281,19 @@ export function AppSidebar() {
         >
           {/* ── Logo Header ─────────────────────────────────────────────────── */}
           <div className={cn(
-            "flex items-center shrink-0 h-14",
+            "flex items-center shrink-0 h-12",
             "border-b border-sidebar-border",
             isExpanded ? "px-4 gap-3" : "justify-center"
           )}>
             {/* Logo mark */}
             <div className={cn(
-              "shrink-0 flex items-center justify-center rounded-lg font-bold text-sm",
-              "bg-foreground/10 text-foreground",
-              "transition-[width,height] duration-200",
-              isExpanded ? "w-8 h-8" : "w-9 h-9"
+              "shrink-0 flex items-center justify-center rounded-lg overflow-hidden bg-white p-1.5 w-7 h-7"
             )}>
-              D
+              <img
+                src="/favicon.ico"
+                alt="Logo"
+                className="w-full h-full object-contain"
+              />
             </div>
             {/* Brand text — only visible when expanded */}
             <div className={cn(
@@ -312,28 +320,47 @@ export function AppSidebar() {
                     {/* ── Collapsed ──────────────────────────────────────── */}
                     {!isExpanded ? (
                       hasKids ? (
-                        /* Items WITH sub-items → flyout on hover, show > indicator */
+                        /* Items WITH sub-items → flyout on hover/click, show > indicator.
+                           url='#' items use a button so clicking never navigates. */
                         <div
                           onMouseEnter={e => openFlyout(item.title, e.currentTarget)}
                           onMouseLeave={scheduleFlyoutClose}
                         >
-                          <Link
-                            href={item.url === "#" ? "#" : item.url}
-                            className={cn(
-                              "relative flex items-center justify-center w-full rounded-lg",
-                              "transition-colors duration-150 h-11",
-                              active
-                                ? "bg-foreground/10 text-foreground font-semibold"
-                                : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-                            )}
-                          >
-                            <NavIcon icon={item.icon} size={22} />
-                            {/* Sub-items indicator */}
-                            <ChevronRight
-                              size={9}
-                              className="absolute right-[5px] top-1/2 -translate-y-1/2 opacity-35"
-                            />
-                          </Link>
+                          {item.url === "#" ? (
+                            <button
+                              onClick={e => openFlyout(item.title, e.currentTarget.closest("div") as HTMLElement)}
+                              className={cn(
+                                "relative flex items-center justify-center w-full rounded-lg",
+                                "transition-colors duration-150 h-11",
+                                active
+                                  ? "bg-foreground/10 text-foreground font-semibold"
+                                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                              )}
+                            >
+                              <NavIcon icon={item.icon} size={22} />
+                              <ChevronRight
+                                size={9}
+                                className="absolute right-[5px] top-1/2 -translate-y-1/2 opacity-35"
+                              />
+                            </button>
+                          ) : (
+                            <Link
+                              href={item.url}
+                              className={cn(
+                                "relative flex items-center justify-center w-full rounded-lg",
+                                "transition-colors duration-150 h-11",
+                                active
+                                  ? "bg-foreground/10 text-foreground font-semibold"
+                                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                              )}
+                            >
+                              <NavIcon icon={item.icon} size={22} />
+                              <ChevronRight
+                                size={9}
+                                className="absolute right-[5px] top-1/2 -translate-y-1/2 opacity-35"
+                              />
+                            </Link>
+                          )}
                         </div>
                       ) : (
                         /* Items WITHOUT sub-items → instant tooltip for name */

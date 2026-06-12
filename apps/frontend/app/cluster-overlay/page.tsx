@@ -47,7 +47,7 @@ import { WatchlistSelector } from "@/app/components/controllers/WatchlistSelecto
 import { ImageCarousel } from "../market-data/components/ImageCarousel";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useClusterSymbols } from "@/hooks/useClusterSymbols";
-import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity, Calendar as CalendarIcon, Images, ChevronDown, ChevronUp, PanelBottomOpen, PanelBottomClose, AlertTriangle, ChevronLeft, ChevronRight, ShieldAlert } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Wifi, Award, Clock, Building2, Database, AlertCircle, WifiOff, Activity, Calendar as CalendarIcon, Images, ChevronDown, ChevronUp, PanelBottomOpen, PanelBottomClose, AlertTriangle, ChevronLeft, ChevronRight, ShieldAlert, X } from 'lucide-react';
 import { MarketClosedBanner } from "@/app/components/MarketClosedBanner";
 import { isMarketOpen } from "@/lib/marketHours";
 import {
@@ -778,6 +778,66 @@ const ClusterOverlayPage: React.FC = () => {
   );
   const [patternPanelPos, setPatternPanelPos] = useState<{ left: number; top: number } | null>(null);
   const patternPanelRef = useRef<HTMLDivElement | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  // Use a ref for live position to avoid stale-closure drag bugs
+  const panelPosRef = useRef<{ left: number; top: number }>({ left: 0, top: 0 });
+
+  // Sync patternPanelPos → ref whenever it changes
+  useEffect(() => {
+    if (patternPanelPos) panelPosRef.current = patternPanelPos;
+  }, [patternPanelPos]);
+
+  // Automatically initialize position if panel is expanded but patternPanelPos is null
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isPanelExpanded && !patternPanelPos) {
+      if (toolbarRef.current) {
+        const rect = toolbarRef.current.getBoundingClientRect();
+        setPatternPanelPos({
+          left: Math.max(8, Math.min(window.innerWidth - 468, rect.left)),
+          top: rect.bottom + 6
+        });
+      } else {
+        // Fallback default position
+        setPatternPanelPos({
+          left: window.innerWidth - 480,
+          top: 120
+        });
+      }
+    }
+  }, [isPanelExpanded, patternPanelPos]);
+
+  // Drag handler — reads current pos from ref so it never goes stale
+  const handlePanelDragMouseDown = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('a') || target.closest('input')) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    // snapshot current position from ref — always fresh
+    const { left: startLeft, top: startTop } = panelPosRef.current;
+
+    const onMove = (mv: MouseEvent) => {
+      const newLeft = Math.max(4, Math.min(window.innerWidth  - 452, startLeft + (mv.clientX - startX)));
+      const newTop  = Math.max(4, Math.min(window.innerHeight - 60,  startTop  + (mv.clientY - startY)));
+      panelPosRef.current = { left: newLeft, top: newTop };
+      setPatternPanelPos({ left: newLeft, top: newTop });
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'grabbing';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  }, []);
 
   const isLoadingDesirability = desirabilityLoading;
 
@@ -3383,10 +3443,12 @@ const ClusterOverlayPage: React.FC = () => {
                     lockToMarketHours={true}
                     lockedDate={effectiveDate || null}
                     showVolume={showVolume}
+                    hideIntervals={true}
+                    hideDuration={true}
                     toolbarSlot={(
                       /* ── Pattern Overlay controls — inline in chart toolbar, next to lock icon ── */
                       <div
-                        ref={patternPanelRef}
+                        ref={toolbarRef}
                         className="flex items-center gap-1.5 select-none border-l border-border/40 ml-1 pl-2"
                       >
                         {/* Drag grip (visual indicator) */}
@@ -3461,10 +3523,6 @@ const ClusterOverlayPage: React.FC = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (!isPanelExpanded && patternPanelRef.current) {
-                              const rect = patternPanelRef.current.getBoundingClientRect();
-                              setPatternPanelPos({ left: Math.max(8, Math.min(window.innerWidth - 448, rect.left)), top: rect.bottom + 6 });
-                            }
                             setIsPanelExpanded(prev => !prev);
                           }}
                           className="ml-1 p-0.5 rounded hover:bg-accent transition-colors"
@@ -3498,20 +3556,63 @@ const ClusterOverlayPage: React.FC = () => {
                     )}
                   />
 
-                  {/* ── PatternOverlayPanel dropdown — fixed overlay, shown when expanded ── */}
+                  {/* ── PatternOverlayPanel — floating draggable card ── */}
                   {isPanelExpanded && patternPanelPos && (
                     <div
+                      ref={patternPanelRef}
                       style={{
                         position: 'fixed',
                         left: patternPanelPos.left,
                         top: patternPanelPos.top,
                         zIndex: 9999,
-                        width: 440,
-                        maxWidth: 'calc(100vw - 24px)',
-                        maxHeight: 'min(60vh, 520px)',
+                        width: 460,
+                        maxWidth: 'calc(100vw - 16px)',
+                        maxHeight: 'min(72vh, 560px)',
                       }}
-                      className="bg-background/90 border border-border/60 rounded-lg shadow-xl backdrop-blur-sm flex flex-col overflow-hidden"
+                      className="flex flex-col rounded-xl border border-border bg-card shadow-2xl overflow-hidden"
                     >
+                      {/* ─── Drag Handle Header ─────────────────────────── */}
+                      <div
+                        onMouseDown={handlePanelDragMouseDown}
+                        className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border bg-muted/50 select-none cursor-grab active:cursor-grabbing shrink-0"
+                      >
+                        {/* 6-dot grip */}
+                        <div className="flex flex-col gap-[3px] opacity-50 shrink-0">
+                          <div className="flex gap-[3px]">
+                            <span className="w-[3px] h-[3px] rounded-full bg-foreground" />
+                            <span className="w-[3px] h-[3px] rounded-full bg-foreground" />
+                            <span className="w-[3px] h-[3px] rounded-full bg-foreground" />
+                          </div>
+                          <div className="flex gap-[3px]">
+                            <span className="w-[3px] h-[3px] rounded-full bg-foreground" />
+                            <span className="w-[3px] h-[3px] rounded-full bg-foreground" />
+                            <span className="w-[3px] h-[3px] rounded-full bg-foreground" />
+                          </div>
+                        </div>
+
+                        {/* Title */}
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="text-xs font-semibold text-foreground tracking-tight truncate">
+                            Pattern Engine
+                          </span>
+                          {overlaySymbol && (
+                            <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">
+                              {overlaySymbol}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Close */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setIsPanelExpanded(false); }}
+                          className="ml-auto shrink-0 h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                          title="Close"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      {/* ─── Scrollable Body ─────────────────────────────── */}
                       <PatternOverlayPanel
                         state={patternOverlayState}
                         symbol={overlaySymbol}

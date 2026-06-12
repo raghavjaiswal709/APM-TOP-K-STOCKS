@@ -1938,6 +1938,13 @@ export function LightWeightStockChart({
                 {/* Right Side Tools */}
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
                     needsInitialFitRef.current = true; // Allow re-fit on reset
+                    setAutoScaleLocked(true); // Reset lock to auto-scale
+                    if (mainChartRef.current) {
+                        mainChartRef.current.priceScale('right').applyOptions({ autoScale: true });
+                        try {
+                            mainChartRef.current.priceScale('volume_scale').applyOptions({ autoScale: true });
+                        } catch (_) {}
+                    }
                     mainChartRef.current?.timeScale().fitContent();
                     rsiChartRef.current?.timeScale().fitContent();
                     macdChartRef.current?.timeScale().fitContent();

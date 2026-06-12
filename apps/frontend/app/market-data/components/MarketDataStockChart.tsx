@@ -159,6 +159,8 @@ interface StockChartProps {
     toolbarSlot?: React.ReactNode;
     onIndicatorsChange?: (indicators: string[]) => void;
     onChartTypeChange?: (type: string) => void;
+    hideIntervals?: boolean;
+    hideDuration?: boolean;
 }
 
 // --- Constants ---
@@ -242,6 +244,8 @@ export function MarketDataStockChart({
     toolbarSlot,
     onIndicatorsChange,
     onChartTypeChange,
+    hideIntervals = false,
+    hideDuration = false,
 }: StockChartProps) {
     // State
     const [activeIndicators, setActiveIndicators] = useState<string[]>(indicators);
@@ -2298,61 +2302,67 @@ export function MarketDataStockChart({
                     <span className="text-xs font-normal opacity-50 px-1 border rounded">{interval}</span>
                 </div>
 
-                <Separator orientation="vertical" className="h-6 mx-1" />
+                {!hideIntervals && (
+                    <>
+                        <Separator orientation="vertical" className="h-6 mx-1" />
+                        {/* Intervals - Controls candle aggregation */}
+                        <div className="flex bg-muted/20 rounded p-0.5 gap-0.5">
+                            {TIME_INTERVALS.map(int => (
+                                <button
+                                    key={int.id}
+                                    onClick={() => { 
+                                        setSelectedInterval(int.id); 
+                                        needsInitialFitRef.current = true; // Re-fit when interval changes
+                                        setAutoScaleLocked(true); // Reset lock to auto-scale for new interval data
+                                        onIntervalChange?.(int.id); 
+                                    }}
+                                    className={`px-2 py-1 text-xs rounded transition-colors hover:bg-muted/50 ${selectedInterval === int.id ? 'bg-background shadow-sm text-primary font-medium' : 'text-muted-foreground'}`}
+                                >
+                                    {int.name}
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
 
-                {/* Intervals - Controls candle aggregation */}
-                <div className="flex bg-muted/20 rounded p-0.5 gap-0.5">
-                    {TIME_INTERVALS.map(int => (
-                        <button
-                            key={int.id}
-                            onClick={() => { 
-                                setSelectedInterval(int.id); 
-                                needsInitialFitRef.current = true; // Re-fit when interval changes
-                                setAutoScaleLocked(true); // Reset lock to auto-scale for new interval data
-                                onIntervalChange?.(int.id); 
-                            }}
-                            className={`px-2 py-1 text-xs rounded transition-colors hover:bg-muted/50 ${selectedInterval === int.id ? 'bg-background shadow-sm text-primary font-medium' : 'text-muted-foreground'}`}
-                        >
-                            {int.name}
-                        </button>
-                    ))}
-                </div>
-
-                <Separator orientation="vertical" className="h-6 mx-1" />
-
-                {/* Duration - Controls visible time range */}
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 gap-1 px-2">
-                            <Clock size={14} />
-                            <span className="text-xs">{DURATION_OPTIONS.find(d => d.id === selectedDuration)?.name || 'Duration'}</span>
-                            <ChevronDown size={12} className="opacity-50" />
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-40 p-1">
-                        {DURATION_OPTIONS.map(dur => (
-                            <button
-                                key={dur.id}
-                                onClick={() => {
-                                    setSelectedDuration(dur.id);
-                                    needsInitialFitRef.current = true; // Re-fit when user explicitly changes duration
-                                    if (dur.id === 'full') {
-                                        mainChartRef.current?.timeScale().fitContent();
-                                        rsiChartRef.current?.timeScale().fitContent();
-                                        macdChartRef.current?.timeScale().fitContent();
-                                        bidAskChartRef.current?.timeScale().fitContent();
-                                        buySellChartRef.current?.timeScale().fitContent();
-                                    } else {
-                                        applyDurationZoom(dur.id);
-                                    }
-                                }}
-                                className={`flex w-full items-center gap-2 px-2 py-1.5 text-sm rounded-sm hover:bg-accent ${selectedDuration === dur.id ? 'bg-accent/50 text-accent-foreground font-medium' : ''}`}
-                            >
-                                {dur.name}
-                            </button>
-                        ))}
-                    </PopoverContent>
-                </Popover>
+                {!hideDuration && (
+                    <>
+                        <Separator orientation="vertical" className="h-6 mx-1" />
+                        {/* Duration - Controls visible time range */}
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 gap-1 px-2">
+                                    <Clock size={14} />
+                                    <span className="text-xs">{DURATION_OPTIONS.find(d => d.id === selectedDuration)?.name || 'Duration'}</span>
+                                    <ChevronDown size={12} className="opacity-50" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-40 p-1">
+                                {DURATION_OPTIONS.map(dur => (
+                                    <button
+                                        key={dur.id}
+                                        onClick={() => {
+                                            setSelectedDuration(dur.id);
+                                            needsInitialFitRef.current = true; // Re-fit when user explicitly changes duration
+                                            if (dur.id === 'full') {
+                                                mainChartRef.current?.timeScale().fitContent();
+                                                rsiChartRef.current?.timeScale().fitContent();
+                                                macdChartRef.current?.timeScale().fitContent();
+                                                bidAskChartRef.current?.timeScale().fitContent();
+                                                buySellChartRef.current?.timeScale().fitContent();
+                                            } else {
+                                                applyDurationZoom(dur.id);
+                                            }
+                                        }}
+                                        className={`flex w-full items-center gap-2 px-2 py-1.5 text-sm rounded-sm hover:bg-accent ${selectedDuration === dur.id ? 'bg-accent/50 text-accent-foreground font-medium' : ''}`}
+                                    >
+                                        {dur.name}
+                                    </button>
+                                ))}
+                            </PopoverContent>
+                        </Popover>
+                    </>
+                )}
 
                 <Separator orientation="vertical" className="h-6 mx-1" />
 
@@ -2508,7 +2518,29 @@ export function MarketDataStockChart({
                 {/* Right Side Tools */}
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
                     needsInitialFitRef.current = true; // Allow re-fit on reset
-                    mainChartRef.current?.timeScale().fitContent();
+                    setAutoScaleLocked(true); // Reset lock to auto-scale
+                    if (mainChartRef.current) {
+                        mainChartRef.current.priceScale('right').applyOptions({ autoScale: true });
+                        try {
+                            mainChartRef.current.priceScale('pattern-overlay').applyOptions({ autoScale: true });
+                        } catch (_) {}
+                        try {
+                            mainChartRef.current.priceScale('volume_scale').applyOptions({ autoScale: true });
+                        } catch (_) {}
+                    }
+                    if (lockToMarketHours && mainChartRef.current) {
+                        const { open, close } = getMarketUTCRange(lockedDate ?? patternCurves?.date);
+                        try {
+                            mainChartRef.current.timeScale().setVisibleRange({
+                                from: open as any,
+                                to: (close + 30 * 60) as any,
+                            });
+                        } catch (_) {
+                            mainChartRef.current.timeScale().fitContent();
+                        }
+                    } else {
+                        mainChartRef.current?.timeScale().fitContent();
+                    }
                     rsiChartRef.current?.timeScale().fitContent();
                     macdChartRef.current?.timeScale().fitContent();
                     bidAskChartRef.current?.timeScale().fitContent();
