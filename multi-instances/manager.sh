@@ -371,7 +371,7 @@ FYERS_REDIRECT_URI=https://raghavjaiswal709.github.io/DAKSphere_redirect
 FYERS_ACCESS_TOKEN=YOUR_FYERS_ACCESS_TOKEN_HERE
 
 # Environment Configuration
-NODE_ENV=development
+NODE_ENV=production
 PYTHONUNBUFFERED=1
 PYTHONDONTWRITEBYTECODE=1
 TZ=Asia/Kolkata
@@ -1440,7 +1440,7 @@ FYERS_REDIRECT_URI=https://raghavjaiswal709.github.io/DAKSphere_redirect
 FYERS_ACCESS_TOKEN=YOUR_FYERS_ACCESS_TOKEN_HERE
 
 # Environment Configuration
-NODE_ENV=development
+NODE_ENV=production
 PYTHONUNBUFFERED=1
 PYTHONDONTWRITEBYTECODE=1
 TZ=Asia/Kolkata
@@ -1831,7 +1831,7 @@ FYERS_REDIRECT_URI=$fyers_redirect_uri
 FYERS_ACCESS_TOKEN=$fyers_access_token
 
 # Environment Configuration
-NODE_ENV=development
+NODE_ENV=production
 PYTHONUNBUFFERED=1
 PYTHONDONTWRITEBYTECODE=1
 TZ=Asia/Kolkata

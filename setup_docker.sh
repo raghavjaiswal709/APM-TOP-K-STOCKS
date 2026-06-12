@@ -594,7 +594,7 @@ create_env_files() {
 
 # Server Configuration
 PORT=5002
-NODE_ENV=development
+NODE_ENV=production
 APP_NAME=DAKS-Backend
 
 # Database Configuration

@@ -135,7 +135,7 @@ FYERS_ACCESS_TOKEN=YOUR_FYERS_ACCESS_TOKEN_HERE
 # ENVIRONMENT CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════
 
-NODE_ENV=development
+NODE_ENV=production
 PYTHONUNBUFFERED=1
 PYTHONDONTWRITEBYTECODE=1
 TZ=Asia/Kolkata

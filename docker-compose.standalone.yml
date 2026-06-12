@@ -52,10 +52,6 @@ services:
       - NODE_ENV=production
     env_file:
       - .env
-    volumes:
-      - ./apps/frontend:/app
-      - frontend-node-modules:/app/node_modules
-      - frontend-next:/app/.next
     depends_on:
       backend:
         condition: service_healthy
@@ -108,7 +104,6 @@ services:
     env_file:
       - .env
     volumes:
-      - ./apps/backend:/app
       - ./data:/app/data
     depends_on:
       db:

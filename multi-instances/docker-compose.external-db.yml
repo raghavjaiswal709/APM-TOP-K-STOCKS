@@ -41,13 +41,9 @@ services:
       - NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL=${NEXT_PUBLIC_LIVE_MARKET_SOCKET_URL}
       # Server-side (internal Docker network)
       - BACKEND_URL=http://backend:5002
-      - NODE_ENV=${NODE_ENV:-development}
+      - NODE_ENV=${NODE_ENV:-production}
     env_file:
       - .env
-    volumes:
-      - ../../apps/frontend:/app
-      - frontend-node-modules:/app/node_modules
-      - frontend-next:/app/.next
     depends_on:
       backend:
         condition: service_healthy
@@ -79,7 +75,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - PORT=5002
-      - NODE_ENV=${NODE_ENV:-development}
+      - NODE_ENV=${NODE_ENV:-production}
       # Database connection - EXTERNAL PostgreSQL
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}

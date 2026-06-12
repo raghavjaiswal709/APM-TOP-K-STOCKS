@@ -32,7 +32,7 @@ DB_DATABASE=mydb
 
 # API Configuration
 PORT=5000
-NODE_ENV=development
+NODE_ENV=production
 
 # Add other environment variables as needed
 EOL
