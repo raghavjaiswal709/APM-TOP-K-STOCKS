@@ -3305,13 +3305,6 @@ const ClusterOverlayPage: React.FC = () => {
           </div>
         </header>
 
-        {/* Market Closed Banner */}
-        {!marketOpen && (
-          <div className="border-b">
-            <MarketClosedBanner />
-          </div>
-        )}
-
         {/* Auth Warning Banner */}
         {isAuthenticated === false && (
           <div className="bg-orange-500/90 text-white px-4 py-2 flex items-center gap-2 text-sm font-medium border-b border-orange-600/50">
@@ -3325,6 +3318,9 @@ const ClusterOverlayPage: React.FC = () => {
 
           {/* LEFT: CHART & ANALYSIS SPLIT */}
           <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden" ref={containerRef}>
+
+            {/* Market Closed Overlay */}
+            <MarketClosedBanner variant="overlay" />
 
             {/* ✅ READINESS LOADER (scoped to chart + panels area only — the
                 company-list sidebar to the right stays interactive so the user

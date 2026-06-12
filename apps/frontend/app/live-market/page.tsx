@@ -22,6 +22,7 @@ import { ModeToggle } from "../components/toggleButton";
 import { Badge } from "@/components/ui/badge";
 import LiveMarketGrid from './components/LiveMarketGrid';
 import LiveMarketSidebar from './components/LiveMarketSidebar';
+import { MarketClosedBanner } from '@/app/components/MarketClosedBanner';
 import { useLiveMarket } from '../../hooks/useLiveMarket';
 import { useWatchlist } from '../../hooks/useWatchlist';
 import {
@@ -328,7 +329,10 @@ const LiveMarketInner: React.FC = () => {
         <div className="flex flex-1 min-h-0 overflow-hidden">
 
           {/* Left: market grid — uses all available height */}
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+
+            {/* Market Closed Overlay */}
+            <MarketClosedBanner variant="overlay" />
 
             {/* Inline messages (shrink, not grow) */}
             {error &&

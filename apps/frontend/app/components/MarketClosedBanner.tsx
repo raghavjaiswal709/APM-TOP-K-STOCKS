@@ -9,15 +9,12 @@ import { getMarketStatusMessage } from '@/lib/marketHours';
 
 interface MarketClosedBannerProps {
   className?: string;
+  variant?: 'bar' | 'overlay';
 }
 
-/**
- * Banner component that displays when the market is closed
- * Shows appropriate message based on the reason (weekend, holiday, before/after market hours)
- * Includes a link to the recommendations page for more information
- */
 export const MarketClosedBanner: React.FC<MarketClosedBannerProps> = ({
   className = '',
+  variant = 'bar',
 }) => {
   const [marketStatus, setMarketStatus] = React.useState<{
     isOpen: boolean;
@@ -25,24 +22,43 @@ export const MarketClosedBanner: React.FC<MarketClosedBannerProps> = ({
     message: string;
   } | null>(null);
 
-  // Update market status every minute
   React.useEffect(() => {
-    const updateStatus = () => {
-      setMarketStatus(getMarketStatusMessage());
-    };
-
-    // Initial update
+    const updateStatus = () => setMarketStatus(getMarketStatusMessage());
     updateStatus();
-
-    // Update every minute
     const interval = setInterval(updateStatus, 60000);
-
     return () => clearInterval(interval);
   }, []);
 
-  // Don't render if market is open or status not loaded yet
-  if (!marketStatus || marketStatus.isOpen) {
-    return null;
+  if (!marketStatus || marketStatus.isOpen) return null;
+
+  if (variant === 'overlay') {
+    return (
+      <div className={`absolute inset-0 z-20 flex flex-col items-center justify-center bg-background/85 backdrop-blur-sm ${className}`}>
+        <div className="flex flex-col items-center gap-6 p-10 max-w-sm text-center">
+          <div className="w-24 h-24 rounded-full bg-amber-950/50 border-2 border-amber-900/60 flex items-center justify-center shadow-lg shadow-amber-950/20">
+            <Clock className="h-12 w-12 text-amber-500" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-3xl font-bold text-amber-500">{marketStatus.title}</h2>
+            <p className="text-base text-muted-foreground leading-relaxed">{marketStatus.message}</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 px-4 py-2 rounded-full border border-border">
+            <Calendar className="h-4 w-4 shrink-0" />
+            <span>Next Open: 9:15 AM IST</span>
+          </div>
+          <Link href="/recommendations">
+            <Button
+              variant="outline"
+              className="gap-2 border-amber-900/50 hover:bg-amber-950/30 hover:text-amber-400 text-muted-foreground"
+            >
+              <TrendingUp className="h-4 w-4" />
+              View Recommendations
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (

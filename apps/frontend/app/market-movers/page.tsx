@@ -1267,14 +1267,14 @@ const MarketMoversPage: React.FC = () => {
           <ModeToggle />
         </header>
 
-        {/* ── Market Closed Banner — visible only when market is closed and FORCE_MARKET_OPEN=false ── */}
-        <MarketClosedBanner />
-
         {/* ── BODY: tile grid + right sidebar ── */}
         <div className="flex flex-1 overflow-hidden">
 
           {/* ── Main tile area ── */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col overflow-hidden relative">
+            {/* Market Closed Overlay */}
+            <MarketClosedBanner variant="overlay" />
+
             {/* Legend + View Switcher */}
             <div className="px-4 pt-3 pb-2 shrink-0 border-b">
               <div className="flex items-center justify-between mb-2">
