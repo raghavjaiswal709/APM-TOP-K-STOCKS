@@ -2941,13 +2941,13 @@ const MarketDataPage: React.FC = () => {
               {/* Toggle Button with TabsList - ALWAYS VISIBLE */}
               <div className="flex-none bg-background z-20 border-t sticky bottom-0">
                 {isAnalysisVisible ? (
-                  <div className="flex items-center justify-between px-4 py-1.5 border-b bg-muted/30">
+                  <div className="flex items-center justify-between px-3 py-1.5 border-b bg-background/80 backdrop-blur-sm">
                     {/* Tabs on the left */}
-                    <TabsList className="h-7 bg-muted/50 p-0.5">
-                      <TabsTrigger value="livedata" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Live Data</TabsTrigger>
-                      <TabsTrigger value="predictions" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">AI Predictions & GTT</TabsTrigger>
-                      <TabsTrigger value="charts" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Metrices</TabsTrigger>
-                      <TabsTrigger value="umap" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">UMAP Clustering</TabsTrigger>
+                    <TabsList className="h-7 bg-muted/40 p-0.5 rounded-lg gap-px">
+                      <TabsTrigger value="livedata" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">Live Data</TabsTrigger>
+                      <TabsTrigger value="predictions" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">AI Predictions & GTT</TabsTrigger>
+                      <TabsTrigger value="charts" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">Metrices</TabsTrigger>
+                      <TabsTrigger value="umap" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">UMAP Clustering</TabsTrigger>
                     </TabsList>
                     {/* Drag handle and hide button on the right */}
                     <div

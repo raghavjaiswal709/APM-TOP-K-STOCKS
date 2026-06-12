@@ -2554,7 +2554,7 @@ export function MarketDataStockChart({
                 <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 gap-2 border-blue-500 text-blue-500 hover:bg-blue-500/20 hover:border-blue-400 transition-all duration-300 font-medium"
+                    className="h-8 gap-2 border-border/60 text-muted-foreground hover:bg-muted/50 hover:border-border hover:text-foreground transition-all duration-200 font-medium"
                     onClick={() => setIsSeparatorModalOpen(true)}
                     title="Open Separate View - Comparative Analysis"
                 >
@@ -2578,7 +2578,7 @@ export function MarketDataStockChart({
                             size="sm"
                             className={`h-7 w-7 p-0 border transition-colors shadow-sm backdrop-blur-sm ${
                                 showGttLabels
-                                    ? 'border-violet-500/50 bg-violet-500/15 text-violet-400 hover:bg-violet-500/25'
+                                    ? 'border-border/60 bg-muted/40 text-foreground hover:bg-muted/60'
                                     : 'border-border/40 bg-background/60 text-muted-foreground hover:border-border hover:text-foreground'
                             }`}
                             onClick={() => setShowGttLabels(prev => !prev)}

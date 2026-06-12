@@ -24,6 +24,7 @@ import {
   Layers,
   Database,
   ArrowLeftRight,
+  TrendingUp,
   History,
   Star,
 } from "lucide-react"
@@ -69,18 +70,10 @@ const NAV_MAIN: NavItem[] = [
     url: "/",
     icon: Database,
   },
-  {
-    // Live Market group — ArrowLeftRight icon (↔), no direct navigation, opens flyout only
-    title: "Live Market",
-    url: "#",
-    icon: ArrowLeftRight,
-    items: [
-      { title: "Live Market",        url: "/market-data" },
-      { title: "Market Movers",      url: "/market-movers" },
-      { title: "Cluster Overlay",    url: "/cluster-overlay" },
-      { title: "Multiple Live Chart", url: "/live-market" },
-    ],
-  },
+  { title: "Live Market",         url: "/market-data",     icon: LineChart },
+  { title: "Market Movers",       url: "/market-movers",   icon: ArrowLeftRight },
+  { title: "Cluster Overlay",     url: "/cluster-overlay", icon: Layers },
+  { title: "Multiple Live Chart", url: "/live-market",     icon: LayoutGrid },
   { title: "Time Machine",        url: "/recommendations",  icon: History },
   { title: "UMAP Clustering",     url: "/umap-clustering",  icon: BrainCircuit },
   {
@@ -331,16 +324,16 @@ export function AppSidebar() {
                               onClick={e => openFlyout(item.title, e.currentTarget.closest("div") as HTMLElement)}
                               className={cn(
                                 "relative flex items-center justify-center w-full rounded-lg",
-                                "transition-colors duration-150 h-11",
+                                "transition-colors duration-150 h-9",
                                 active
                                   ? "bg-foreground/10 text-foreground font-semibold"
                                   : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                               )}
                             >
-                              <NavIcon icon={item.icon} size={22} />
+                              <NavIcon icon={item.icon} size={18} />
                               <ChevronRight
-                                size={9}
-                                className="absolute right-[5px] top-1/2 -translate-y-1/2 opacity-35"
+                                size={8}
+                                className="absolute right-[4px] top-1/2 -translate-y-1/2 opacity-35"
                               />
                             </button>
                           ) : (
@@ -348,16 +341,16 @@ export function AppSidebar() {
                               href={item.url}
                               className={cn(
                                 "relative flex items-center justify-center w-full rounded-lg",
-                                "transition-colors duration-150 h-11",
+                                "transition-colors duration-150 h-9",
                                 active
                                   ? "bg-foreground/10 text-foreground font-semibold"
                                   : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                               )}
                             >
-                              <NavIcon icon={item.icon} size={22} />
+                              <NavIcon icon={item.icon} size={18} />
                               <ChevronRight
-                                size={9}
-                                className="absolute right-[5px] top-1/2 -translate-y-1/2 opacity-35"
+                                size={8}
+                                className="absolute right-[4px] top-1/2 -translate-y-1/2 opacity-35"
                               />
                             </Link>
                           )}
@@ -370,13 +363,13 @@ export function AppSidebar() {
                               href={item.url === "#" ? "#" : item.url}
                               className={cn(
                                 "flex items-center justify-center w-full rounded-lg",
-                                "transition-colors duration-150 h-11",
+                                "transition-colors duration-150 h-9",
                                 active
                                   ? "bg-foreground/10 text-foreground font-semibold"
                                   : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                               )}
                             >
-                              <NavIcon icon={item.icon} size={22} />
+                              <NavIcon icon={item.icon} size={18} />
                             </Link>
                           </TooltipTrigger>
                           <TooltipContent side="right" sideOffset={10} className="font-medium text-xs">
@@ -464,9 +457,9 @@ export function AppSidebar() {
                     <TooltipTrigger asChild>
                       <Link
                         href={item.url}
-                        className="flex items-center justify-center w-full h-11 rounded-lg transition-colors text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                        className="flex items-center justify-center w-full h-9 rounded-lg transition-colors text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                       >
-                        <Icon size={22} />
+                        <Icon size={18} />
                       </Link>
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={10} className="text-xs">{item.title}</TooltipContent>
@@ -490,13 +483,13 @@ export function AppSidebar() {
                     <button
                       onClick={() => setIsAuthModalOpen(true)}
                       className={cn(
-                        "flex items-center justify-center w-full h-11 rounded-lg transition-colors",
+                        "flex items-center justify-center w-full h-9 rounded-lg transition-colors",
                         "hover:bg-sidebar-accent",
                         authDisplay.color
                       )}
                     >
                       <span className="relative">
-                        <AuthIcon className="w-[22px] h-[22px]" />
+                        <AuthIcon className="w-[18px] h-[18px]" />
                         {authDisplay.showWarning && (
                           <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                         )}
@@ -548,12 +541,12 @@ export function AppSidebar() {
                   <button
                     onClick={() => setIsExpanded(true)}
                     className={cn(
-                      "flex items-center justify-center w-full h-11 rounded-lg",
+                      "flex items-center justify-center w-full h-9 rounded-lg",
                       "transition-colors hover:bg-sidebar-accent",
                       "text-sidebar-foreground/55 hover:text-sidebar-foreground"
                     )}
                   >
-                    <ChevronsRight size={20} />
+                    <ChevronsRight size={17} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="right" sideOffset={10} className="text-xs">
@@ -578,7 +571,7 @@ export function AppSidebar() {
             {!isExpanded ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button className="flex items-center justify-center w-full h-11 rounded-lg transition-colors hover:bg-sidebar-accent">
+                  <button className="flex items-center justify-center w-full h-9 rounded-lg transition-colors hover:bg-sidebar-accent">
                     <div className="w-8 h-8 rounded-full bg-foreground/10 text-foreground flex items-center justify-center text-sm font-semibold">
                       {USER_DATA.name.charAt(0).toUpperCase()}
                     </div>

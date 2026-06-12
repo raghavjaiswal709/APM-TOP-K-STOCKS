@@ -46,7 +46,7 @@ services:
         NEXT_PUBLIC_BACKEND_URL: http://100.93.172.21:5002
         NEXT_PUBLIC_MARKET_DATA_API: http://100.93.172.21:5002/api
         NEXT_PUBLIC_GTT_API_URL: http://100.93.172.21:5002
-        NEXT_PUBLIC_FORCE_MARKET_OPEN: 'false'
+        NEXT_PUBLIC_FORCE_MARKET_OPEN: 'true'
     container_name: daks-frontend
     restart: unless-stopped
     ports:

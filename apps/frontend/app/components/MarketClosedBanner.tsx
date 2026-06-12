@@ -33,18 +33,18 @@ export const MarketClosedBanner: React.FC<MarketClosedBannerProps> = ({
 
   if (variant === 'overlay') {
     return (
-      <div className={`absolute inset-0 z-20 flex flex-col items-center justify-center bg-background/85 backdrop-blur-sm ${className}`}>
-        <div className="flex flex-col items-center gap-6 p-10 max-w-sm text-center">
+      <div className={`absolute inset-0 z-30 flex flex-col items-center justify-center bg-background/85 backdrop-blur-sm ${className}`}>
+        <div className="flex flex-col items-center gap-6 p-10 w-full max-w-2xl text-center">
           <div className="w-24 h-24 rounded-full bg-amber-950/50 border-2 border-amber-900/60 flex items-center justify-center shadow-lg shadow-amber-950/20">
             <Clock className="h-12 w-12 text-amber-500" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-3xl font-bold text-amber-500">{marketStatus.title}</h2>
-            <p className="text-base text-muted-foreground leading-relaxed">{marketStatus.message}</p>
+            <h2 className="text-3xl font-bold text-amber-500 whitespace-nowrap">{marketStatus.title}</h2>
+            <p className="text-base text-muted-foreground leading-relaxed whitespace-nowrap">{marketStatus.message}</p>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 px-4 py-2 rounded-full border border-border">
             <Calendar className="h-4 w-4 shrink-0" />
-            <span>Next Open: 9:15 AM IST</span>
+            <span className="whitespace-nowrap">Next Open: 9:15 AM IST</span>
           </div>
           <Link href="/recommendations">
             <Button

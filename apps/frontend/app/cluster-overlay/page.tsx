@@ -787,25 +787,21 @@ const ClusterOverlayPage: React.FC = () => {
     if (patternPanelPos) panelPosRef.current = patternPanelPos;
   }, [patternPanelPos]);
 
-  // Automatically initialize position if panel is expanded but patternPanelPos is null
+  // Initialize floating widget position once on mount — near the chart toolbar
+  // (lock + volume button row). Uses rAF to read window size after layout.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (isPanelExpanded && !patternPanelPos) {
-      if (toolbarRef.current) {
-        const rect = toolbarRef.current.getBoundingClientRect();
-        setPatternPanelPos({
-          left: Math.max(8, Math.min(window.innerWidth - 468, rect.left)),
-          top: rect.bottom + 6
-        });
-      } else {
-        // Fallback default position
-        setPatternPanelPos({
-          left: window.innerWidth - 480,
-          top: 120
-        });
-      }
-    }
-  }, [isPanelExpanded, patternPanelPos]);
+    if (typeof window === 'undefined' || patternPanelPos) return;
+    // rAF fires after the browser has done its first layout, so window.innerWidth
+    // reflects the real viewport rather than a zero/partial value during hydration.
+    const raf = requestAnimationFrame(() => {
+      setPatternPanelPos({
+        left: Math.max(70, Math.min(520, window.innerWidth - 460)),
+        top: 50,
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Drag handler — reads current pos from ref so it never goes stale
   const handlePanelDragMouseDown = useCallback((e: React.MouseEvent<HTMLElement>) => {
@@ -3442,182 +3438,16 @@ const ClusterOverlayPage: React.FC = () => {
                     hideIntervals={true}
                     hideDuration={true}
                     toolbarSlot={(
-                      /* ── Pattern Overlay controls — inline in chart toolbar, next to lock icon ── */
-                      <div
-                        ref={toolbarRef}
-                        className="flex items-center gap-1.5 select-none border-l border-border/40 ml-1 pl-2"
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowVolume(!showVolume); }}
+                        className={`p-1 rounded transition-colors ${showVolume ? 'text-sky-400 hover:text-sky-300' : 'text-muted-foreground hover:text-foreground'}`}
+                        title={showVolume ? 'Hide volume histogram' : 'Show volume histogram'}
                       >
-                        {/* Drag grip (visual indicator) */}
-                        <div className="flex flex-col gap-[3px] mr-0.5 opacity-30 shrink-0">
-                          <div className="flex gap-[3px]">
-                            <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
-                            <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
-                          </div>
-                          <div className="flex gap-[3px]">
-                            <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
-                            <span className="w-[3px] h-[3px] rounded-full bg-muted-foreground" />
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Pattern Overlay
-                        </span>
-
-                        {/* PAA Resolution selector */}
-                        <div className="flex items-center gap-0.5 ml-1">
-                          {([3, 5] as const).map(w => (
-                            <button
-                              key={w}
-                              onClick={(e) => { e.stopPropagation(); setPatternPaaWidth(w); }}
-                              className={`text-[9px] font-mono px-1.5 py-0.5 rounded transition-colors ${patternPaaWidth === w ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
-                              title={`Switch to ${w}-minute PAA resolution`}
-                            >
-                              {w}m
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Top-3 toggle (#1–#3) */}
-                        <div className="flex items-center gap-0.5 ml-1.5" title="Show/hide top-3 pattern lines (#1–#3)">
-                          <span className="text-[9px] text-muted-foreground font-mono select-none">#1-3</span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setShowTop3Lines(!showTop3Lines); }}
-                            disabled={!showPatternOverlay}
-                            className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${showTop3Lines && showPatternOverlay ? 'bg-violet-600' : 'bg-gray-400 dark:bg-gray-600'}`}
-                            title={showTop3Lines ? 'Hide #1–#3 lines' : 'Show #1–#3 lines'}
-                          >
-                            <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform shadow-sm ${showTop3Lines ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
-                          </button>
-                        </div>
-
-                        {/* Bands toggle */}
-                        <div className="flex items-center gap-0.5" title="Show/hide confidence band lines (faint upper & lower bounds)">
-                          <span className="text-[9px] text-muted-foreground font-mono select-none">Bands</span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setShowBeyondTop3Lines(!showBeyondTop3Lines); }}
-                            disabled={!showPatternOverlay}
-                            className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${showBeyondTop3Lines && showPatternOverlay ? 'bg-cyan-600' : 'bg-gray-400 dark:bg-gray-600'}`}
-                            title={showBeyondTop3Lines ? 'Hide confidence bands' : 'Show confidence bands'}
-                          >
-                            <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform shadow-sm ${showBeyondTop3Lines ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
-                          </button>
-                        </div>
-
-                        {/* Scale mode toggle */}
-                        <div className="flex items-center gap-0.5" title="Scale mode: Align curves to price axis (Shared) vs Auto-scale separately (Independent)">
-                          <span className="text-[9px] text-muted-foreground font-mono select-none">Scale</span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setPatternScaleMode(patternScaleMode === 'shared' ? 'independent' : 'shared'); }}
-                            disabled={!showPatternOverlay}
-                            className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${patternScaleMode === 'shared' && showPatternOverlay ? 'bg-amber-600' : 'bg-gray-400 dark:bg-gray-600'}`}
-                            title={patternScaleMode === 'shared' ? 'Switch to Independent Scale' : 'Switch to Aligned (Shared) Scale'}
-                          >
-                            <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform shadow-sm ${patternScaleMode === 'shared' ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
-                          </button>
-                        </div>
-
-                        {/* Expand/collapse chevron — click to show/hide PatternOverlayPanel dropdown */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setIsPanelExpanded(prev => !prev);
-                          }}
-                          className="ml-1 p-0.5 rounded hover:bg-accent transition-colors"
-                          title={isPanelExpanded ? 'Collapse panel' : 'Expand panel'}
-                        >
-                          <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 ${isPanelExpanded ? '' : 'rotate-180'}`} />
-                        </button>
-
-                        {/* Master toggle */}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setShowPatternOverlay(!showPatternOverlay); }}
-                          className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${showPatternOverlay ? 'bg-violet-600' : 'bg-gray-400 dark:bg-gray-600'}`}
-                          title={showPatternOverlay ? 'Hide all chart overlay lines' : 'Show all chart overlay lines'}
-                        >
-                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform shadow-sm ${showPatternOverlay ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
-                        </button>
-
-                        {/* Vol toggle — icon-only, positioned before chart's reset-view button */}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setShowVolume(!showVolume); }}
-                          className={`ml-1 p-1 rounded transition-colors border-l border-border/40 pl-2 ${
-                            showVolume
-                              ? 'text-sky-400 hover:text-sky-300'
-                              : 'text-muted-foreground hover:text-foreground'
-                          }`}
-                          title={showVolume ? 'Hide volume histogram' : 'Show volume histogram'}
-                        >
-                          <BarChart2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                        <BarChart2 className="h-3.5 w-3.5" />
+                      </button>
                     )}
                   />
 
-                  {/* ── PatternOverlayPanel — floating draggable card ── */}
-                  {isPanelExpanded && patternPanelPos && (
-                    <div
-                      ref={patternPanelRef}
-                      style={{
-                        position: 'fixed',
-                        left: patternPanelPos.left,
-                        top: patternPanelPos.top,
-                        zIndex: 9999,
-                        width: 460,
-                        maxWidth: 'calc(100vw - 16px)',
-                        maxHeight: 'min(72vh, 560px)',
-                      }}
-                      className="flex flex-col rounded-xl border border-border bg-card shadow-2xl overflow-hidden"
-                    >
-                      {/* ─── Drag Handle Header ─────────────────────────── */}
-                      <div
-                        onMouseDown={handlePanelDragMouseDown}
-                        className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border bg-muted/50 select-none cursor-grab active:cursor-grabbing shrink-0"
-                      >
-                        {/* 6-dot grip */}
-                        <div className="flex flex-col gap-[3px] opacity-50 shrink-0">
-                          <div className="flex gap-[3px]">
-                            <span className="w-[3px] h-[3px] rounded-full bg-foreground" />
-                            <span className="w-[3px] h-[3px] rounded-full bg-foreground" />
-                            <span className="w-[3px] h-[3px] rounded-full bg-foreground" />
-                          </div>
-                          <div className="flex gap-[3px]">
-                            <span className="w-[3px] h-[3px] rounded-full bg-foreground" />
-                            <span className="w-[3px] h-[3px] rounded-full bg-foreground" />
-                            <span className="w-[3px] h-[3px] rounded-full bg-foreground" />
-                          </div>
-                        </div>
-
-                        {/* Title */}
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <span className="text-xs font-semibold text-foreground tracking-tight truncate">
-                            Pattern Engine
-                          </span>
-                          {overlaySymbol && (
-                            <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">
-                              {overlaySymbol}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Close */}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setIsPanelExpanded(false); }}
-                          className="ml-auto shrink-0 h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                          title="Close"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-
-                      {/* ─── Scrollable Body ─────────────────────────────── */}
-                      <PatternOverlayPanel
-                        state={patternOverlayState}
-                        symbol={overlaySymbol}
-                        paaWidthMin={patternPaaWidth}
-                        isHistorical={isPatternHistorical}
-                        className="flex-1 min-h-0"
-                      />
-                    </div>
-                  )}
                 </div>
               ) : !selectedCompany ? (
                 <div className="flex flex-1 min-h-0 items-center justify-center text-muted-foreground p-8 text-center flex-col gap-4">
@@ -3643,18 +3473,129 @@ const ClusterOverlayPage: React.FC = () => {
               )}
             </div>
 
+            {/* ── Pattern Overlay — unified floating draggable widget ── */}
+            {patternPanelPos && (
+              <div
+                ref={patternPanelRef}
+                style={{
+                  position: 'fixed',
+                  left: patternPanelPos.left,
+                  top: patternPanelPos.top,
+                  zIndex: 9999,
+                  width: isPanelExpanded ? 520 : undefined,
+                  minWidth: isPanelExpanded ? 520 : undefined,
+                  maxWidth: 'calc(100vw - 16px)',
+                }}
+                className="flex flex-col rounded-xl border border-border/60 bg-card/95 shadow-2xl backdrop-blur-sm overflow-hidden"
+              >
+                {/* ─── Toolbar pill — always visible, drag handle ─── */}
+                <div
+                  onMouseDown={handlePanelDragMouseDown}
+                  className="flex items-center gap-1.5 px-2.5 py-2 select-none cursor-grab active:cursor-grabbing shrink-0 bg-muted/40 border-b border-border/40"
+                >
+                  {/* 6-dot grip */}
+                  <div className="flex flex-col gap-[3px] opacity-35 shrink-0 mr-0.5">
+                    <div className="flex gap-[3px]">
+                      {[0,1,2].map(i => <span key={i} className="w-[3px] h-[3px] rounded-full bg-foreground" />)}
+                    </div>
+                    <div className="flex gap-[3px]">
+                      {[0,1,2].map(i => <span key={i} className="w-[3px] h-[3px] rounded-full bg-foreground" />)}
+                    </div>
+                  </div>
+
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                    Pattern Overlay
+                  </span>
+
+                  {overlaySymbol && (
+                    <span className="text-[9px] font-mono text-muted-foreground/70 bg-muted/60 px-1.5 py-0.5 rounded shrink-0">
+                      {overlaySymbol}
+                    </span>
+                  )}
+
+                  {/* PAA Resolution */}
+                  <div className="flex items-center gap-0.5 ml-1">
+                    {([3, 5] as const).map(w => (
+                      <button key={w}
+                        onClick={(e) => { e.stopPropagation(); setPatternPaaWidth(w); }}
+                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded transition-colors ${patternPaaWidth === w ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}
+                      >{w}m</button>
+                    ))}
+                  </div>
+
+                  {/* #1-3 */}
+                  <div className="flex items-center gap-0.5 ml-0.5" title="#1–#3 lines">
+                    <span className="text-[9px] text-muted-foreground font-mono select-none">#1-3</span>
+                    <button onClick={(e) => { e.stopPropagation(); setShowTop3Lines(!showTop3Lines); }}
+                      disabled={!showPatternOverlay}
+                      className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${showTop3Lines && showPatternOverlay ? 'bg-foreground/70' : 'bg-muted-foreground/25'}`}>
+                      <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-background transition-transform shadow-sm ${showTop3Lines && showPatternOverlay ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
+                    </button>
+                  </div>
+
+                  {/* Bands */}
+                  <div className="flex items-center gap-0.5" title="Confidence bands">
+                    <span className="text-[9px] text-muted-foreground font-mono select-none">Bands</span>
+                    <button onClick={(e) => { e.stopPropagation(); setShowBeyondTop3Lines(!showBeyondTop3Lines); }}
+                      disabled={!showPatternOverlay}
+                      className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${showBeyondTop3Lines && showPatternOverlay ? 'bg-foreground/70' : 'bg-muted-foreground/25'}`}>
+                      <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-background transition-transform shadow-sm ${showBeyondTop3Lines && showPatternOverlay ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
+                    </button>
+                  </div>
+
+                  {/* Scale */}
+                  <div className="flex items-center gap-0.5" title="Scale mode">
+                    <span className="text-[9px] text-muted-foreground font-mono select-none">Scale</span>
+                    <button onClick={(e) => { e.stopPropagation(); setPatternScaleMode(patternScaleMode === 'shared' ? 'independent' : 'shared'); }}
+                      disabled={!showPatternOverlay}
+                      className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors disabled:opacity-40 ${patternScaleMode === 'shared' && showPatternOverlay ? 'bg-foreground/70' : 'bg-muted-foreground/25'}`}>
+                      <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-background transition-transform shadow-sm ${patternScaleMode === 'shared' && showPatternOverlay ? 'translate-x-2.5' : 'translate-x-0.5'}`} />
+                    </button>
+                  </div>
+
+                  {/* Expand/collapse */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setIsPanelExpanded(prev => !prev); }}
+                    className="p-0.5 rounded hover:bg-accent transition-colors"
+                    title={isPanelExpanded ? 'Collapse' : 'Expand'}>
+                    <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${isPanelExpanded ? '' : '-rotate-180'}`} />
+                  </button>
+
+                  {/* Master on/off */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowPatternOverlay(!showPatternOverlay); }}
+                    className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${showPatternOverlay ? 'bg-foreground/70' : 'bg-muted-foreground/25'}`}
+                    title={showPatternOverlay ? 'Hide overlay' : 'Show overlay'}>
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-background transition-transform shadow-sm ${showPatternOverlay ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+
+                {/* ─── Expanded body ─────────────────────────────── */}
+                {isPanelExpanded && (
+                  <div className="max-h-[520px] overflow-y-auto">
+                    <PatternOverlayPanel
+                      state={patternOverlayState}
+                      symbol={overlaySymbol}
+                      paaWidthMin={patternPaaWidth}
+                      isHistorical={isPatternHistorical}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Analysis Panel - Always visible toggle bar, sticky at bottom */}
             <Tabs defaultValue="livedata" className="flex flex-col min-h-0" style={{ flex: isAnalysisVisible ? `0 0 ${analysisHeight}%` : '0 0 auto' }}>
               {/* Toggle Button with TabsList - ALWAYS VISIBLE */}
               <div className="flex-none bg-background z-20 border-t sticky bottom-0">
                 {isAnalysisVisible ? (
-                  <div className="flex items-center justify-between px-4 py-1.5 border-b bg-muted/30">
+                  <div className="flex items-center justify-between px-3 py-1.5 border-b bg-background/80 backdrop-blur-sm">
                     {/* Tabs on the left */}
-                    <TabsList className="h-7 bg-muted/50 p-0.5">
-                      <TabsTrigger value="livedata" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Live Data</TabsTrigger>
-                      <TabsTrigger value="predictions" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">AI Predictions & GTT</TabsTrigger>
-                      <TabsTrigger value="charts" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">Metrices</TabsTrigger>
-                      <TabsTrigger value="umap" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">UMAP Clustering</TabsTrigger>
+                    <TabsList className="h-7 bg-muted/40 p-0.5 rounded-lg gap-px">
+                      <TabsTrigger value="livedata" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">Live Data</TabsTrigger>
+                      <TabsTrigger value="predictions" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">AI Predictions & GTT</TabsTrigger>
+                      <TabsTrigger value="charts" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">Metrices</TabsTrigger>
+                      <TabsTrigger value="umap" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">UMAP Clustering</TabsTrigger>
                     </TabsList>
                     {/* Drag handle and hide button on the right */}
                     <div
