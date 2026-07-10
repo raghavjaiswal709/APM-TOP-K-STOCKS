@@ -120,6 +120,7 @@ interface CompanyListProps {
     initialSelectedCodes?: string[];
     /** Set of company codes that have cluster (PatternPool) data available */
     clusterSymbols?: Set<string>;
+    hideDateSelector?: boolean;
 }
 
 /** Small curve SVG icon indicating PatternPool cluster data is available */
@@ -154,6 +155,7 @@ export const CompanyList = React.memo(function CompanyList({
     showSubscribeButton = false,
     initialSelectedCodes,
     clusterSymbols,
+    hideDateSelector = false,
 }: CompanyListProps) {
     const [searchTerm, setSearchTerm] = React.useState("");
     const [isFilterOpen, setIsFilterOpen] = React.useState(false);
@@ -657,6 +659,7 @@ export const CompanyList = React.memo(function CompanyList({
 
                 <div className="flex items-center gap-1">
                     {/* DATE & RANGE PICKER */}
+                    {!hideDateSelector && (
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-8 w-8" title="Date Settings">
@@ -734,6 +737,7 @@ export const CompanyList = React.memo(function CompanyList({
                             </div>
                         </PopoverContent>
                     </Popover>
+                    )}
 
                     {/* FILTERS */}
                     <Button
@@ -803,9 +807,11 @@ export const CompanyList = React.memo(function CompanyList({
                 </div>
 
                 {/* ACTIVE DATE DISPLAY (Small) */}
+                {!hideDateSelector && (
                 <div className="text-xs text-muted-foreground font-medium border px-2 py-1 rounded bg-muted/50">
                     {selectedWatchlistDate ? format(new Date(selectedWatchlistDate), "MMM dd") : "All Dates"}
                 </div>
+                )}
 
             </div>
 

@@ -1,0 +1,498 @@
+{
+  "info": {
+    "name": "SENTA API",
+    "_postman_id": "senta-api-collection-v1",
+    "description": "All SENTA cockpit API endpoints. Set the `base_url` variable to your server (default: http://localhost:3000).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "symbol",
+      "value": "BHEL",
+      "type": "string",
+      "description": "Stock symbol (e.g. BHEL, RELIANCE, TCS)"
+    },
+    {
+      "key": "date",
+      "value": "2026-06-26",
+      "type": "string",
+      "description": "Historical date (YYYY-MM-DD). Leave empty for latest live data."
+    }
+  ],
+  "item": [
+    {
+      "name": "Market Overview",
+      "item": [
+        {
+          "name": "Market Pulse — Live",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/market-pulse",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "market-pulse"]
+            },
+            "description": "Returns Gift Nifty premium, VIX, Nifty50, Sensex, Nifty500, global indices, A/D ratio, FII/DII, sector heatmap. Refreshed every 5s on the frontend."
+          }
+        },
+        {
+          "name": "Market Pulse — Historical",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/market-pulse?date={{date}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "market-pulse"],
+              "query": [
+                { "key": "date", "value": "{{date}}", "description": "YYYY-MM-DD" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "FII / DII Chart — 3M",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/fii-dii-chart?period=3M",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "fii-dii-chart"],
+              "query": [
+                { "key": "period", "value": "3M", "description": "1M | 3M | 6M | 1Y | MAX" }
+              ]
+            },
+            "description": "FII and DII net flow history. Source: stock_sentiment_db.fii_dii_activity"
+          }
+        },
+        {
+          "name": "FII / DII Chart — Historical anchor",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/fii-dii-chart?period=3M&date={{date}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "fii-dii-chart"],
+              "query": [
+                { "key": "period", "value": "3M" },
+                { "key": "date", "value": "{{date}}", "description": "Anchor date — returns rows up to this date" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Gift Nifty Chart — All time",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/gift-nifty-chart",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "gift-nifty-chart"]
+            },
+            "description": "Full Gift Nifty price history. Source: stock_sentiment_db.gift_nifty"
+          }
+        },
+        {
+          "name": "Gift Nifty Chart — Historical anchor",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/gift-nifty-chart?date={{date}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "gift-nifty-chart"],
+              "query": [
+                { "key": "date", "value": "{{date}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stock Data",
+      "item": [
+        {
+          "name": "Symbols List",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/symbols",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "symbols"]
+            },
+            "description": "All available stock symbols. Source: stock_sentiment_db"
+          }
+        },
+        {
+          "name": "Stock Panel — Live",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/stock/{{symbol}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "stock", "{{symbol}}"]
+            },
+            "description": "Full stock data: live quote, OHLCV, minute bars, 52W range, market cap, F&O eligibility, derivatives (PCR/max pain), circuit bands, order book, sector index. Refreshed every 3s."
+          }
+        },
+        {
+          "name": "Stock Panel — Historical",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/stock/{{symbol}}?date={{date}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "stock", "{{symbol}}"],
+              "query": [
+                { "key": "date", "value": "{{date}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Stock Chart — Intraday (1D live)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/chart/{{symbol}}?period=1D",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "chart", "{{symbol}}"],
+              "query": [
+                { "key": "period", "value": "1D", "description": "1D | 1W | 1M | 3M | 6M | 1Y | MAX" }
+              ]
+            },
+            "description": "Minute bars for today (if market open) or latest day bars. Source: nse_hist_db + LIVE_DATA_URL:5110"
+          }
+        },
+        {
+          "name": "Stock Chart — 1 Month daily",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/chart/{{symbol}}?period=1M",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "chart", "{{symbol}}"],
+              "query": [
+                { "key": "period", "value": "1M" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Stock Chart — 1 Year daily",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/chart/{{symbol}}?period=1Y",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "chart", "{{symbol}}"],
+              "query": [
+                { "key": "period", "value": "1Y" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Stock Chart — Historical date + period",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/chart/{{symbol}}?period=1D&date={{date}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "chart", "{{symbol}}"],
+              "query": [
+                { "key": "period", "value": "1D" },
+                { "key": "date", "value": "{{date}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "EOD Report — Latest",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/eod-report/{{symbol}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "eod-report", "{{symbol}}"]
+            },
+            "description": "Markdown EOD analysis report. Source: filesystem /app/phase2/eod_report_gen/reports/ (Ollama / qwen2.5)"
+          }
+        },
+        {
+          "name": "EOD Report — Historical date",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/eod-report/{{symbol}}?date={{date}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "eod-report", "{{symbol}}"],
+              "query": [
+                { "key": "date", "value": "{{date}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Events — Live (60s refresh)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/events/{{symbol}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "events", "{{symbol}}"]
+            },
+            "description": "News, filings, board meetings, corporate actions, bulk/block deals. Source: stock_sentiment_db"
+          }
+        },
+        {
+          "name": "Events — Historical date",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/events/{{symbol}}?date={{date}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "events", "{{symbol}}"],
+              "query": [
+                { "key": "date", "value": "{{date}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Index Data",
+      "item": [
+        {
+          "name": "Index Chart — Nifty 50 Intraday",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/index-chart/NIFTY50?period=1D",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "index-chart", "NIFTY50"],
+              "query": [
+                { "key": "period", "value": "1D" }
+              ]
+            },
+            "description": "Supported index symbols: NIFTY50 | INDIAVIX | SENSEX | NIFTY500 | NIFTY_BANK | NIFTY_IT | NIFTY_AUTO | NIFTY_PHARMA | NIFTY_FMCG | NIFTY_METAL | NIFTY_REALTY | NIFTY_MEDIA | NIFTY_ENERGY | NIFTY_INFRA | NIFTY_HEALTHCARE | NIFTY_FIN_SERVICES | NIFTY_PRIVATE_BANK | NIFTY_PSU_BANK | NIFTY_COMMODITIES | NIFTY_OIL_GAS | NIFTY_FIN_SERVICES_2550 | GIFT_NIFTY | FII_DII"
+          }
+        },
+        {
+          "name": "Index Chart — Nifty Bank 3M",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/index-chart/NIFTY_BANK?period=3M",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "index-chart", "NIFTY_BANK"],
+              "query": [
+                { "key": "period", "value": "3M" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Index Chart — India VIX 1Y",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/index-chart/INDIAVIX?period=1Y",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "index-chart", "INDIAVIX"],
+              "query": [
+                { "key": "period", "value": "1Y" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Index Chart — Sensex MAX",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/index-chart/SENSEX?period=MAX",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "index-chart", "SENSEX"],
+              "query": [
+                { "key": "period", "value": "MAX" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Index Chart — Historical date",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/index-chart/NIFTY50?period=1D&date={{date}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "index-chart", "NIFTY50"],
+              "query": [
+                { "key": "period", "value": "1D" },
+                { "key": "date", "value": "{{date}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Nifty 50 Constituents — Latest",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/nifty50-constituents",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "nifty50-constituents"]
+            },
+            "description": "Current Nifty 50 member symbols. Source: static data in indices.ts"
+          }
+        },
+        {
+          "name": "Nifty 50 Constituents — Historical date",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/nifty50-constituents?date={{date}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "nifty50-constituents"],
+              "query": [
+                { "key": "date", "value": "{{date}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Watchlist",
+      "item": [
+        {
+          "name": "Watchlist — Latest",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/watchlist",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "watchlist"]
+            },
+            "description": "Ranked watchlist from the most recent date. Source: nse_hist_db.watchlist_quant"
+          }
+        },
+        {
+          "name": "Watchlist — Historical date",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/watchlist?date={{date}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "watchlist"],
+              "query": [
+                { "key": "date", "value": "{{date}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reference",
+      "item": [
+        {
+          "name": "Holidays — NSE Calendar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/holidays",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "holidays"]
+            },
+            "description": "NSE trading holiday list. Fetched from nseindia.com and cached 12 hours."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Debug / Diagnostics",
+      "item": [
+        {
+          "name": "Debug Live — Nifty 50",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/debug-live?symbol=IDX_NIFTY50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "debug-live"],
+              "query": [
+                { "key": "symbol", "value": "IDX_NIFTY50", "description": "Live API symbol: IDX_NIFTY50 | IDX_NIFTYBANK | IDX_INDIAVIX | IDX_SENSEX | IDX_NIFTY500 | IDX_NIFTYFMCG | IDX_NIFTYIT | IDX_NIFTYMETAL | IDX_FINNIFTY | IDX_NIFTYAUTO | IDX_NIFTYPHARMA | IDX_NIFTYPVTBANK | IDX_NIFTYPSUBANK | IDX_NIFTYREALTY | IDX_NIFTYHEALTHCARE | IDX_NIFTYINFRA | IDX_NIFTYCOMMODITIES | IDX_NIFTYENERGY | IDX_NIFTYMEDIA" }
+              ]
+            },
+            "description": "Probes LIVE_DATA_URL:5110/market_data directly. Returns bar count and sample timestamps. Useful to verify live data pipeline is flowing."
+          }
+        },
+        {
+          "name": "Debug Live — India VIX",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/debug-live?symbol=IDX_INDIAVIX",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "debug-live"],
+              "query": [
+                { "key": "symbol", "value": "IDX_INDIAVIX" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Debug Live — Custom stock symbol",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/senta/debug-live?symbol={{symbol}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "senta", "debug-live"],
+              "query": [
+                { "key": "symbol", "value": "{{symbol}}", "description": "Use the Fyers-style symbol e.g. BHEL, RELIANCE (for stocks the live API maps NSE:BHEL-EQ style)" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

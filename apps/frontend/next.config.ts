@@ -77,10 +77,10 @@ const nextConfig = {
       },
 
       // ⚠️ CATCH-ALL: Proxy remaining /api/* to NestJS backend (port 5002)
-      // This excludes paths already matched above AND Next.js API routes like /api/time-machine
-      // Uses BACKEND_URL env var for Docker compatibility (defaults to localhost for local dev)
+      // Excludes: time-machine (Next.js route), senta/* (Next.js DB routes — dynamic
+      // segments are shadowed by catch-all rewrites, so must be explicitly excluded)
       {
-        source: '/api/:path((?!time-machine).*)*',
+        source: '/api/:path((?!time-machine|senta).*)*',
         destination: `${process.env.BACKEND_URL || 'http://localhost:5002'}/api/:path*`,
       },
 

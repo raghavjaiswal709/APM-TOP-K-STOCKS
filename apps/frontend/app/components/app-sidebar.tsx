@@ -27,6 +27,7 @@ import {
   TrendingUp,
   History,
   Star,
+  Gauge,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -71,6 +72,7 @@ const NAV_MAIN: NavItem[] = [
     icon: Database,
   },
   { title: "Live Market",         url: "/market-data",     icon: LineChart },
+  { title: "SENTA Cockpit",       url: "/senta",           icon: Gauge },
   { title: "Market Movers",       url: "/market-movers",   icon: ArrowLeftRight },
   { title: "Cluster Overlay",     url: "/cluster-overlay", icon: Layers },
   { title: "Multiple Live Chart", url: "/live-market",     icon: LayoutGrid },
