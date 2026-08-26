@@ -11,13 +11,17 @@ export async function POST(req: NextRequest) {
   addLog({ level: 'info', action: 'STOP_SERVICE', message: `Stopping ${name}` });
 
   try {
-    const { ok, data } = await pyFetch('/stop', {
+    const { ok, status, data } = await pyFetch('/stop', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ service }),
     });
 
-    if (!ok) throw new Error((data?.message as string) ?? `Python API error`);
+    if (!ok) {
+      throw new Error(
+        (data?.message as string) ?? (data?.error as string) ?? `Python API returned HTTP ${status}`,
+      );
+    }
 
     if (service === 3) {
       for (const { id } of getCreds()) {

@@ -27,6 +27,36 @@ import {
 
 interface FyersUser   { id: string; displayName: string }
 interface HealthState { Data: boolean; Min: boolean }
+
+/** One service as reported by the controller, including who started it. */
+interface ServiceState {
+  running: boolean;
+  startedBy: string | null;
+  startedAt: string | null;
+  lastStoppedBy: string | null;
+  lastStoppedAt: string | null;
+  option?: string | null;
+  stopsAt?: string | null;
+}
+
+interface PipelineStatus {
+  reachable: boolean;
+  data: ServiceState;
+  min: ServiceState;
+  currentSessionUser: string | null;
+  usersLoggedInToday: string[];
+  validate?: { ran?: boolean; success?: boolean | null; by?: string | null; at?: string | null } | null;
+  error?: string;
+}
+
+/** A refused start — someone else already owns the service. */
+interface StartConflict {
+  conflict: true;
+  service?: string;
+  startedBy: string | null;
+  startedAt: string | null;
+  message?: string;
+}
 interface LogEntry    { timestamp: string; level: 'info'|'success'|'error'|'warning'; action: string; message: string }
 interface ApiError    extends Error { data?: Record<string, unknown> }
 
@@ -72,6 +102,21 @@ function parseAuthCode(raw: string): string {
 
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-IN', { hour12: false });
+}
+
+/**
+ * The controller emits local wall-clock strings; `Date` would read a
+ * zone-less one as UTC and shift it by 5.5 hours. Anything unparseable is
+ * shown verbatim — a raw string still tells the operator something.
+ */
+function fmtStamp(value: string | null | undefined) {
+  if (!value) return '—';
+  const d = new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
 }
 
 // ─── Atoms ────────────────────────────────────────────────────────────────────
@@ -183,6 +228,8 @@ export default function FyersControlPage() {
 
   // ── Services ──────────────────────────────────────────────────────────────
   const [health,        setHealth]       = useState<HealthState | null>(null);
+  const [status,        setStatus]       = useState<PipelineStatus | null>(null);
+  const [conflict,      setConflict]     = useState<StartConflict | null>(null);
   const [healthLoading, setHealthLoading]= useState(false);
   const [startLoading,  setStartLoading] = useState(false);
   const [stopLoading,   setStopLoading]  = useState(false);
@@ -285,17 +332,26 @@ export default function FyersControlPage() {
   // Health polling while on service step
   const pollHealth = useCallback(async () => {
     setHealthLoading(true);
-    try { const h = await apiFetch<HealthState>('/api/fyers-control/health'); setHealth(h); }
-    catch { setHealth(null); }
-    finally { setHealthLoading(false); }
+    try {
+      const st = await apiFetch<PipelineStatus>('/api/fyers-control/status');
+      setStatus(st);
+      setHealth({ Data: st.data.running, Min: st.min.running });
+    } catch {
+      setStatus(null);
+      setHealth(null);
+    } finally {
+      setHealthLoading(false);
+    }
   }, []);
 
+  // Polled unconditionally, not gated on `step`. The pipeline is one shared
+  // machine resource: who started Data has to be answerable by anyone looking
+  // at this page, not only by whoever completed the PIN + auth wizard.
   useEffect(() => {
-    if (step !== 'service') return;
     pollHealth();
     const id = setInterval(pollHealth, 8000);
     return () => clearInterval(id);
-  }, [step, pollHealth]);
+  }, [pollHealth]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Handlers
@@ -374,18 +430,39 @@ export default function FyersControlPage() {
 
   async function handleStartServices() {
     setStartLoading(true);
+    setConflict(null);
     const mode = isPreMarket() ? 'pre-9:15' : 'post-9:15';
     try {
-      await apiFetch('/api/fyers-control/start', {
+      // Data first, then Min. A conflict on Data is not a failure — it means
+      // another operator already owns it — so Min is still attempted.
+      const dataRes = await apiFetch<Record<string, unknown>>('/api/fyers-control/start', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ service: 1, option: 'C' }),
       });
-      addLocalLog({ level: 'success', action: 'START', message: `Data service started (${mode}, option C)` });
-      await apiFetch('/api/fyers-control/start', {
+      if (dataRes.conflict) {
+        setConflict(dataRes as unknown as StartConflict);
+        addLocalLog({
+          level: 'warning', action: 'START',
+          message: `Data already running — started by ${(dataRes.startedBy as string) ?? 'unknown'}`,
+        });
+      } else {
+        addLocalLog({ level: 'success', action: 'START', message: `Data service started (${mode}, option C)` });
+      }
+
+      const minRes = await apiFetch<Record<string, unknown>>('/api/fyers-control/start', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ service: 2 }),
       });
-      addLocalLog({ level: 'success', action: 'START', message: `Min service started (${mode})` });
+      if (minRes.conflict) {
+        setConflict(minRes as unknown as StartConflict);
+        addLocalLog({
+          level: 'warning', action: 'START',
+          message: `Min already running — started by ${(minRes.startedBy as string) ?? 'unknown'}`,
+        });
+      } else {
+        addLocalLog({ level: 'success', action: 'START', message: `Min service started (${mode})` });
+      }
+
       setLastStarted(new Date().toISOString());
       await pollHealth();
     } catch (e: unknown) {
@@ -394,7 +471,7 @@ export default function FyersControlPage() {
   }
 
   async function handleStopServices() {
-    setStopLoading(true); setStopConfirm(false);
+    setStopLoading(true); setStopConfirm(false); setConflict(null);
     try {
       await apiFetch('/api/fyers-control/stop', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -420,7 +497,7 @@ export default function FyersControlPage() {
     setPin(''); setPinError(''); setPinLocked(false); setAttemptsLeft(5);
     setAuthUrl(''); setAuthCode(''); setCodeSource(null);
     setTokenMsg(null); setAuthLocked(false);
-    setHealth(null); setStopConfirm(false); setLastStarted(null);
+    setHealth(null); setStopConfirm(false); setLastStarted(null); setConflict(null);
   }
 
   function addLocalLog(entry: Omit<LogEntry, 'timestamp'>) {
@@ -866,6 +943,123 @@ export default function FyersControlPage() {
     );
   }
 
+  // ── Live status (ungated) ─────────────────────────────────────────────────
+
+  /**
+   * The shared view of the pipeline, shown to everyone who opens this page —
+   * no PIN, no operator unlock, no completed wizard.
+   *
+   * That is the point: the pipeline is one machine resource the whole desk
+   * shares, so "who started Data, and when" must be answerable by anyone
+   * looking at the dashboard, not only by the person who started it.
+   */
+  function LiveStatusPanel() {
+    const Row = ({ label, value }: { label: string; value: string }) => (
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60 shrink-0">{label}</span>
+        <span className="text-[11px] font-mono text-foreground/80 truncate text-right">{value}</span>
+      </div>
+    );
+
+    const Svc = ({ name, desc, st }: { name: string; desc: string; st: ServiceState }) => (
+      <div className={`flex flex-col gap-2 rounded-lg border px-4 py-3
+        ${st.running ? 'border-emerald-500/25 bg-emerald-500/5' : 'border-border bg-muted/20'}`}>
+        <div className="flex items-center gap-2">
+          <StatusDot ok={st.running} pulse={st.running} />
+          <span className={`text-sm font-semibold ${st.running ? 'text-emerald-400' : 'text-muted-foreground'}`}>{name}</span>
+          <Badge variant="outline" className={`ml-auto text-[10px] ${st.running ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' : ''}`}>
+            {st.running ? 'running' : 'stopped'}
+          </Badge>
+        </div>
+        <p className="text-[10px] text-muted-foreground/60">{desc}</p>
+        <div className="flex flex-col gap-1 border-t pt-2">
+          {st.running ? (
+            <>
+              <Row label="Started by" value={st.startedBy ?? 'unknown'} />
+              <Row label="Started at" value={fmtStamp(st.startedAt)} />
+              {st.option && <Row label="Option" value={st.option} />}
+              {st.stopsAt && <Row label="Stops at" value={`${st.stopsAt} IST`} />}
+            </>
+          ) : (
+            <>
+              <Row label="Last stopped by" value={st.lastStoppedBy ?? '—'} />
+              <Row label="Last stopped at" value={fmtStamp(st.lastStoppedAt)} />
+            </>
+          )}
+        </div>
+      </div>
+    );
+
+    return (
+      <Card>
+        <CardHeader className="py-3 px-4 flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-sm">Live pipeline status</CardTitle>
+            <CardDescription className="text-[11px]">
+              Visible to everyone, whichever account is signed in.
+            </CardDescription>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={pollHealth} disabled={healthLoading}>
+            {healthLoading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {status && !status.reachable && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2">
+              <AlertCircle size={13} className="text-red-400 mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-red-400">Controller unreachable</p>
+                <p className="text-[10px] text-muted-foreground break-words">{status.error}</p>
+              </div>
+            </div>
+          )}
+
+          {conflict && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+              <AlertCircle size={13} className="text-amber-400 mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium text-amber-400">Already running — not started again</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {conflict.service ?? 'The service'} was started by{' '}
+                  <strong className="font-mono text-foreground/80">{conflict.startedBy ?? 'someone else'}</strong>
+                  {conflict.startedAt ? ` at ${fmtStamp(conflict.startedAt)}` : ''}. Stop it before starting a new run.
+                </p>
+              </div>
+              <button onClick={() => setConflict(null)} className="text-[10px] text-muted-foreground hover:text-foreground shrink-0">
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {!status ? (
+            <p className="py-6 text-center text-xs text-muted-foreground/40">Loading pipeline status…</p>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Svc name="Data" desc="NSE tick ingestion" st={status.data} />
+                <Svc name="Min"  desc="Minute-bar aggregator" st={status.min} />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 rounded-lg border bg-muted/20 px-4 py-3">
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <User size={12} className="shrink-0 opacity-50" /> Token session
+                  <span className="ml-auto font-mono text-foreground/80 truncate">
+                    {status.currentSessionUser ?? 'none'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <Activity size={12} className="shrink-0 opacity-50" /> Logged in today
+                  <span className="ml-auto font-mono text-foreground/80 truncate">
+                    {status.usersLoggedInToday.length ? status.usersLoggedInToday.join(', ') : 'nobody yet'}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
   // ── Step bar ──────────────────────────────────────────────────────────────
 
   function StepBar() {
@@ -943,6 +1137,9 @@ export default function FyersControlPage() {
                 Ephemeral UI — browser refresh resets visual state. Services keep running on the server.
               </p>
             </div>
+
+            {/* Ungated: everyone sees pipeline state, wizard or not. */}
+            <LiveStatusPanel />
 
             <StepBar />
 
