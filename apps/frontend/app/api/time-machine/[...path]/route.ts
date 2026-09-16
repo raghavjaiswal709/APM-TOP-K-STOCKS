@@ -11,9 +11,11 @@ export async function GET(
         const resolvedParams = await params;
         const pathSegments = resolvedParams.path || [];
         
-        // Filter out empty segments and join
+        // Filter out empty segments and encode each segment properly
         const filteredSegments = pathSegments.filter(segment => segment && segment.trim() !== '');
-        const path = filteredSegments.join('/');
+        const path = filteredSegments
+            .map(segment => encodeURIComponent(decodeURIComponent(segment)))
+            .join('/');
         
         // Add trailing slash for directory listings
         const needsTrailingSlash = !path.includes('.') && !path.endsWith('/');

@@ -277,7 +277,8 @@ export function useStockData({
         queryParams.append('fetchAllData', 'true');
       }
 
-      const url = `/api/companies/${capturedCompany}/ohlcv?${queryParams.toString()}`;
+      const encodedCompany = encodeURIComponent(capturedCompany);
+      const url = `/api/companies/${encodedCompany}/ohlcv?${queryParams.toString()}`;
       console.log(`[useStockData] Fetching: ${url} (fetchId=${thisFetchId}, session=${capturedSession})`);
 
       const response = await fetch(url, {

@@ -14,24 +14,59 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Convert symbol format: NSE:AXISBANK-EQ -> AXISBANK-NSE
-    const symbolParts = symbol.split(':');
-    if (symbolParts.length !== 2) {
+    // Parse symbol format safely (NSE:GVT&D-EQ, GVT&D-NSE, GVT&D, etc.)
+    let exchange = searchParams.get('exchange') || 'NSE';
+    let companyCode = symbol.trim();
+
+    if (companyCode.includes(':')) {
+      const parts = companyCode.split(':');
+      exchange = parts[0].toUpperCase();
+      companyCode = parts.slice(1).join(':');
+    }
+
+    if (companyCode.toUpperCase().endsWith('-EQ') || companyCode.toUpperCase().endsWith('-BE') || companyCode.toUpperCase().endsWith('-BZ')) {
+      companyCode = companyCode.substring(0, companyCode.lastIndexOf('-'));
+    } else if (companyCode.toUpperCase().endsWith('-NSE')) {
+      exchange = 'NSE';
+      companyCode = companyCode.substring(0, companyCode.lastIndexOf('-'));
+    } else if (companyCode.toUpperCase().endsWith('-BSE')) {
+      exchange = 'BSE';
+      companyCode = companyCode.substring(0, companyCode.lastIndexOf('-'));
+    }
+
+    const externalSymbol = `${companyCode}-${exchange}`;
+
+    // Parse date: support both YYYY-MM-DD and DD-MM-YYYY
+    const cleanDate = date.replace(/^LD_/, '').trim();
+    const dateParts = cleanDate.split(/[-/]/);
+    if (dateParts.length !== 3) {
       return NextResponse.json(
-        { error: `Invalid symbol format: ${symbol}` },
+        { error: `Invalid date format: ${date}` },
         { status: 400 }
       );
     }
 
-    const [exchange, codePart] = symbolParts;
-    const companyCode = codePart.split('-')[0];
-    const externalSymbol = `${companyCode}-${exchange}`;
+    let requestedYear: number;
+    let requestedMonth: number;
+    let requestedDay: number;
 
-    // Format date: DD-MM-YYYY
-    const [year, month, day] = date.split('-');
-    const formattedDate = `${day}-${month}-${year}`;
+    if (dateParts[0].length === 4) {
+      // YYYY-MM-DD
+      requestedYear = Number(dateParts[0]);
+      requestedMonth = Number(dateParts[1]);
+      requestedDay = Number(dateParts[2]);
+    } else {
+      // DD-MM-YYYY
+      requestedDay = Number(dateParts[0]);
+      requestedMonth = Number(dateParts[1]);
+      requestedYear = Number(dateParts[2]);
+    }
 
-    // Encode symbol for URL safety
+    const formattedDay = String(requestedDay).padStart(2, '0');
+    const formattedMonth = String(requestedMonth).padStart(2, '0');
+    const formattedDate = `${formattedDay}-${formattedMonth}-${requestedYear}`;
+
+    // Encode symbol for URL safety (e.g. GVT&D-NSE -> GVT%26D-NSE)
     const encodedExternalSymbol = encodeURIComponent(externalSymbol);
     
     // Fetch from external server (server-side, no CORS)
@@ -44,8 +79,8 @@ export async function GET(request: NextRequest) {
       headers: {
         'Accept': 'application/json',
       },
-      // ✅ Reduced timeout: fail fast when external server is unreachable
-      signal: AbortSignal.timeout(10000), // 10 seconds (was 30s)
+      // ✅ Timeout for large historical NDJSON files (26k+ rows) over Tailscale
+      signal: AbortSignal.timeout(45000), // 45 seconds
     });
 
     if (!response.ok) {
@@ -64,10 +99,8 @@ export async function GET(request: NextRequest) {
     const text = await response.text();
     const lines = text.trim().split('\n').filter(line => line.trim());
     
-    // ✅ FIXED: Use the REQUESTED DATE's 9:15 AM in IST, not today's.
+    // ✅ FIXED: Use the REQUESTED DATE's 9:15 AM in IST
     // 09:15 IST = 03:45 UTC (IST is UTC+5:30).
-    // Use Date.UTC() so the result is identical on any server timezone (IST, UTC, etc.).
-    const [requestedYear, requestedMonth, requestedDay] = date.split('-').map(Number);
     const tradingStartTimestamp = Math.floor(
       Date.UTC(requestedYear, requestedMonth - 1, requestedDay, 3, 45, 0) / 1000
     );

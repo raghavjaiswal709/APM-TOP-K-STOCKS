@@ -68,10 +68,11 @@ export async function fetchSthitiCharts(
   date: string // Expected format: YYYY-MM-DD
 ): Promise<SthitiChartFile[]> {
   try {
+    const encodedSymbol = encodeURIComponent(decodeURIComponent(symbol));
     // Use proxy for directory listing (avoids CORS)
-    const proxyUrl = `${STHITI_PROXY_BASE}/charts/${symbol}/${date}/`;
+    const proxyUrl = `${STHITI_PROXY_BASE}/charts/${encodedSymbol}/${date}/`;
     // Use direct URL for image sources (images work cross-origin)
-    const directUrl = `${STHITI_DIRECT_BASE}/charts/${symbol}/${date}/`;
+    const directUrl = `${STHITI_DIRECT_BASE}/charts/${encodedSymbol}/${date}/`;
     
     console.log(`[Sthiti Charts] Fetching from: ${proxyUrl}`);
 
@@ -137,8 +138,9 @@ export async function fetchSthitiClusters(
   sentiment: 'positive' | 'negative' | 'neutral'
 ): Promise<SthitiCluster[]> {
   try {
+    const encodedSymbol = encodeURIComponent(decodeURIComponent(symbol));
     // Use proxy for directory listing
-    const proxyDirUrl = `${STHITI_PROXY_BASE}/clusters/${symbol}/${sentiment}/`;
+    const proxyDirUrl = `${STHITI_PROXY_BASE}/clusters/${encodedSymbol}/${sentiment}/`;
     console.log(`[Sthiti Clusters] Fetching ${sentiment} clusters from: ${proxyDirUrl}`);
 
     // First, fetch the directory listing
@@ -203,8 +205,9 @@ export async function fetchSthitiHeadlines(
   date: string // Expected format: YYYY-MM-DD
 ): Promise<SthitiHeadline[]> {
   try {
+    const encodedSymbol = encodeURIComponent(decodeURIComponent(symbol));
     // Use proxy to fetch JSON (avoids CORS)
-    const url = `${STHITI_PROXY_BASE}/headlines/${symbol}/${date}.json`;
+    const url = `${STHITI_PROXY_BASE}/headlines/${encodedSymbol}/${date}.json`;
     console.log(`[Sthiti Headlines] Fetching from: ${url}`);
 
     const response = await fetch(url);
@@ -251,9 +254,11 @@ export async function fetchSthitiPrediction(
 
     const data = await response.json();
     
-    // Access specific company prediction
-    if (data && data.predictions && data.predictions[symbol]) {
-      return data.predictions[symbol];
+    // Access specific company prediction (support both decoded and encoded symbol keys)
+    if (data && data.predictions) {
+      const decodedSym = decodeURIComponent(symbol);
+      const encodedSym = encodeURIComponent(decodedSym);
+      return data.predictions[symbol] || data.predictions[decodedSym] || data.predictions[encodedSym] || null;
     }
 
     console.warn(`[Sthiti Predictions] No prediction found for ${symbol} in ${date} data`);

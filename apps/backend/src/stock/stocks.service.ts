@@ -113,12 +113,15 @@ export class StockService {
     return new Promise((resolve, reject) => {
       const scriptPath = path.resolve(__dirname, '../../data/data_fetch.py');
 
-      let command = `python3 ${scriptPath} --company_code=${params.companyCode} --interval=${params.interval}`;
+      const safeCompanyCode = (params.companyCode || '').replace(/"/g, '\\"');
+      const safeInterval = (params.interval || '1m').replace(/"/g, '\\"');
+      let command = `python3 ${scriptPath} --company_code="${safeCompanyCode}" --interval="${safeInterval}"`;
 
       if (params.exchange) {
-        command += ` --exchange=${params.exchange}`;
+        const safeExchange = params.exchange.replace(/"/g, '\\"');
+        command += ` --exchange="${safeExchange}"`;
       } else {
-        command += ` --exchange=NSE,BSE`;
+        command += ` --exchange="NSE,BSE"`;
       }
 
       /**

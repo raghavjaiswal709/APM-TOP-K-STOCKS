@@ -167,7 +167,7 @@ export async function fetchCompaniesForDate(isoDate: string): Promise<string[]> 
         const items = parseDirectoryListing(html);
         const symbols = items
             .filter(item => item.endsWith('-NSE.json'))
-            .map(item => item.replace('-NSE.json', ''))
+            .map(item => decodeURIComponent(item).replace('-NSE.json', ''))
             .sort();
 
         console.log(`✅ [fetchCompaniesForDate] Found ${symbols.length} companies`);
@@ -185,7 +185,8 @@ export async function fetchLivePriceData(
     try {
         const baseUrl = getBaseUrl();
         const ldFormat = convertISOToLDFormat(isoDate);
-        const fullUrl = `${baseUrl}/Live/${ldFormat}/${symbol}-NSE.json`;
+        const encodedSymbol = encodeURIComponent(decodeURIComponent(symbol));
+        const fullUrl = `${baseUrl}/Live/${ldFormat}/${encodedSymbol}-NSE.json`;
 
         console.log('🔍 [fetchLivePriceData] URL:', fullUrl);
 
@@ -213,10 +214,11 @@ export async function fetchSthitiCharts(
     isoDate: string
 ): Promise<string[]> {
     try {
+        const encodedSymbol = encodeURIComponent(decodeURIComponent(symbol));
         // Use proxy for directory listing (avoids CORS)
-        const proxyUrl = `${STHITI_PROXY}/charts/${symbol}/${isoDate}/`;
+        const proxyUrl = `${STHITI_PROXY}/charts/${encodedSymbol}/${isoDate}/`;
         // Use direct URL for image sources (images work cross-origin)
-        const directUrl = `${STHITI_DIRECT}/charts/${symbol}/${isoDate}/`;
+        const directUrl = `${STHITI_DIRECT}/charts/${encodedSymbol}/${isoDate}/`;
 
         console.log(`[fetchSthitiCharts] Fetching from: ${proxyUrl}`);
 
@@ -251,8 +253,9 @@ export async function fetchSthitiClusters(
     sentiment: 'positive' | 'negative' | 'neutral'
 ): Promise<SthitiClusterData[]> {
     try {
+        const encodedSymbol = encodeURIComponent(decodeURIComponent(symbol));
         // Use proxy for directory listing
-        const proxyUrl = `${STHITI_PROXY}/clusters/${symbol}/${sentiment}/`;
+        const proxyUrl = `${STHITI_PROXY}/clusters/${encodedSymbol}/${sentiment}/`;
         console.log(`[fetchSthitiClusters] Fetching ${sentiment} clusters from: ${proxyUrl}`);
 
         const response = await fetch(proxyUrl, {
@@ -299,8 +302,9 @@ export async function fetchSthitiHeadlines(
     isoDate: string
 ): Promise<SthitiHeadline[]> {
     try {
+        const encodedSymbol = encodeURIComponent(decodeURIComponent(symbol));
         // Use proxy for JSON fetch
-        const fullUrl = `${STHITI_PROXY}/headlines/${symbol}/${isoDate}.json`;
+        const fullUrl = `${STHITI_PROXY}/headlines/${encodedSymbol}/${isoDate}.json`;
         console.log(`[fetchSthitiHeadlines] Fetching from: ${fullUrl}`);
 
         const response = await fetch(fullUrl, { cache: 'no-cache' });
@@ -353,7 +357,8 @@ export async function parseFullHistoricalData(
     try {
         const baseUrl = getBaseUrl();
         const ldFormat = convertISOToLDFormat(isoDate);
-        const fullUrl = `${baseUrl}/Live/${ldFormat}/${symbol}-NSE.json`;
+        const encodedSymbol = encodeURIComponent(decodeURIComponent(symbol));
+        const fullUrl = `${baseUrl}/Live/${ldFormat}/${encodedSymbol}-NSE.json`;
 
         console.log('🔍 [parseFullHistoricalData] Fetching ALL data from:', fullUrl);
 

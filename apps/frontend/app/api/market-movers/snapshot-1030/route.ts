@@ -35,7 +35,8 @@ export async function GET(request: NextRequest) {
       5, 0, 0
     ) / 1000; // in seconds
 
-    const fileUrl = `http://100.93.172.21:6969/Live/${ldFolder}/${code}-NSE.json`;
+    const encodedCode = encodeURIComponent(decodeURIComponent(code));
+    const fileUrl = `http://100.93.172.21:6969/Live/${ldFolder}/${encodedCode}-NSE.json`;
     const res = await fetch(fileUrl, {
       headers: { 'User-Agent': 'Market-Movers-Snapshot' },
       signal: AbortSignal.timeout(8000),
