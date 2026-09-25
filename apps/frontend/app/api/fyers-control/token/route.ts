@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     if (!ok) throw new Error((data?.message as string) ?? `HTTP error from Python API`);
 
     if (data.accepted) {
-      setAuthState(userId, { authenticated: true, authLocked: true });
+      setAuthState(userId, { authenticated: true, authLocked: true, lockedAt: new Date().toISOString() });
       addLog({ level: 'success', action: 'EXCHANGE_TOKEN', message: String(data.message ?? 'Token accepted') });
     } else {
       addLog({ level: 'error', action: 'EXCHANGE_TOKEN', message: 'Token rejected by server' });

@@ -14,6 +14,8 @@ export interface LogEntry {
 export interface UserAuthState {
   authenticated: boolean;
   authLocked: boolean;
+  /** ISO time the token was exchanged; a lock from an earlier IST day is stale */
+  lockedAt?: string | null;
 }
 
 export interface FyersCreds {
@@ -34,6 +36,16 @@ export function getPythonApi(): string {
 export const PYTHON_API = getPythonApi();
 
 const CREDS_TTL = 5 * 60 * 1000;
+
+// Token files the controller writes for the services. Docker mounts the backend
+// data dir at /fyers-data; local dev reaches it via cwd. Override with
+// FYERS_TOKEN_DIR if the controller writes somewhere else.
+const TOKEN_DIR_CANDIDATES = [
+  process.env.FYERS_TOKEN_DIR,
+  '/fyers-data',
+  path.join(process.cwd(), '..', 'backend', 'data'),
+].filter((x): x is string => !!x);
+const TOKEN_FILES = ['fyers_data_auth.json', 'multi_company_live_data_auth.json', 'auth_status.json'];
 
 // ─── Python API helper ────────────────────────────────────────────────────────
 
@@ -225,8 +237,27 @@ export function updateUserPin(userId: string, newPin: string): void {
 
 // ─── Auth state ───────────────────────────────────────────────────────────────
 
+/** YYYY-MM-DD in IST — Fyers tokens expire at 23:59:59 IST on the day they are issued */
+function istDate(d: Date): string {
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+}
+
 export function getAuthState(userId: string): UserAuthState {
-  return st().authStates.get(userId) ?? { authenticated: false, authLocked: false };
+  const s = st();
+  const cur = s.authStates.get(userId);
+  if (!cur) return { authenticated: false, authLocked: false, lockedAt: null };
+
+  // Locks without a date predate this check, or were issued on an earlier day:
+  // either way the token behind them is dead, so drop the lock.
+  if (cur.authLocked && (!cur.lockedAt || istDate(new Date(cur.lockedAt)) !== istDate(new Date()))) {
+    s.authStates.delete(userId);
+    addLog({
+      level: 'info', action: 'AUTH_EXPIRED',
+      message: `Token from ${cur.lockedAt ? istDate(new Date(cur.lockedAt)) : 'a previous session'} expired — user: ${userId} must re-authenticate`,
+    });
+    return { authenticated: false, authLocked: false, lockedAt: null };
+  }
+  return cur;
 }
 
 export function setAuthState(userId: string, val: UserAuthState): void {
@@ -234,8 +265,30 @@ export function setAuthState(userId: string, val: UserAuthState): void {
 }
 
 export function resetAuth(userId: string): void {
-  st().authStates.set(userId, { authenticated: false, authLocked: false });
+  st().authStates.set(userId, { authenticated: false, authLocked: false, lockedAt: null });
   addLog({ level: 'info', action: 'RESET_AUTH', message: `Auth reset for user: ${userId}` });
+}
+
+/** Release the auth lock and delete the token files so the next login starts clean */
+export function resetToken(userId: string): { deleted: string[]; dir: string | null } {
+  st().authStates.delete(userId);
+
+  const dir = TOKEN_DIR_CANDIDATES.find(d => fs.existsSync(d)) ?? null;
+  const deleted: string[] = [];
+  if (dir) {
+    for (const f of TOKEN_FILES) {
+      const p = path.join(dir, f);
+      if (fs.existsSync(p)) { fs.unlinkSync(p); deleted.push(f); }
+    }
+  }
+
+  addLog({
+    level: dir ? 'success' : 'warning', action: 'RESET_TOKEN',
+    message: !dir ? `Auth lock cleared for ${userId} — token directory not found, no files deleted`
+      : deleted.length ? `Token reset for ${userId} — deleted ${deleted.join(', ')} from ${dir}`
+      : `Auth lock cleared for ${userId} — no token files present in ${dir}`,
+  });
+  return { deleted, dir };
 }
 
 // ─── Logs ─────────────────────────────────────────────────────────────────────

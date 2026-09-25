@@ -77,6 +77,8 @@ services:
       # Only the runtime mounts the app genuinely needs remain.
       - /var/run/docker.sock:/var/run/docker.sock
       - ./apps/backend/data/config.ini:/fyers-config/config.ini
+      # Token files the services read — mounted so "Reset Token" can delete them
+      - ./apps/backend/data:/fyers-data
     depends_on:
       - backend
     networks:

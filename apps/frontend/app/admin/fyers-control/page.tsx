@@ -211,6 +211,9 @@ export default function FyersControlPage() {
   const [tokenLoading,  setTokenLoading] = useState(false);
   const [tokenMsg,      setTokenMsg]     = useState<{ ok: boolean; text: string } | null>(null);
   const [authLocked,    setAuthLocked]   = useState(false);
+  const [lockedAt,      setLockedAt]     = useState<string | null>(null);
+  const [resetTokConfirm, setResetTokConfirm] = useState(false);
+  const [resetTokLoading, setResetTokLoading] = useState(false);
   const popupRef = useRef<Window | null>(null);
 
   // ── Services ──────────────────────────────────────────────────────────────
@@ -225,7 +228,7 @@ export default function FyersControlPage() {
   const [lastStarted,   setLastStarted]  = useState<string | null>(null);
   
   // Service selection states:
-  const [startOption,   setStartOption]  = useState<DataOption>('A');
+  const [startOption,   setStartOption]  = useState<DataOption>('C');
   const [startingState, setStartingState]= useState<string | null>(null);
 
   // ── Logs ──────────────────────────────────────────────────────────────────
@@ -373,10 +376,11 @@ export default function FyersControlPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: activeUser.id, pin }),
       });
-      const state = await apiFetch<{ authenticated: boolean; authLocked: boolean }>(
+      const state = await apiFetch<{ authenticated: boolean; authLocked: boolean; lockedAt?: string | null }>(
         `/api/fyers-control/auth-state/${activeUser.id}`,
       );
       setAuthLocked(state.authLocked);
+      setLockedAt(state.lockedAt ?? null);
       setStep(state.authLocked ? 'service' : 'auth');
     } catch (err: unknown) {
       const e = err as ApiError;
@@ -425,7 +429,7 @@ export default function FyersControlPage() {
           body: JSON.stringify({ userId: activeUser.id, authCode: parseAuthCode(authCode) }) },
       );
       setTokenMsg({ ok: d.accepted, text: d.message ?? (d.accepted ? 'Token accepted' : 'Token rejected') });
-      if (d.accepted) { setAuthLocked(true); setStep('service'); }
+      if (d.accepted) { setAuthLocked(true); setLockedAt(new Date().toISOString()); setStep('service'); }
     } catch (e: unknown) {
       setTokenMsg({ ok: false, text: (e as ApiError).message ?? 'Token exchange failed' });
     } finally { setTokenLoading(false); }
@@ -521,6 +525,27 @@ export default function FyersControlPage() {
     } finally { setStopOneLoading(null); }
   }
 
+  async function handleResetToken() {
+    if (!activeUser) return;
+    setResetTokLoading(true);
+    try {
+      const r = await apiFetch<{ deleted: string[]; dir: string | null }>(
+        `/api/fyers-control/auth-state/${activeUser.id}`, { method: 'DELETE' },
+      );
+      setAuthLocked(false); setLockedAt(null);
+      setAuthUrl(''); setAuthCode(''); setCodeSource(null); setTokenMsg(null);
+      setStep('auth');
+      addLocalLog({
+        level: 'success', action: 'RESET_TOKEN',
+        message: r.deleted.length
+          ? `Token reset — deleted ${r.deleted.join(', ')}. Generate a new login URL to continue.`
+          : 'Auth lock cleared — no token files found. Generate a new login URL to continue.',
+      });
+    } catch (e: unknown) {
+      addLocalLog({ level: 'error', action: 'RESET_TOKEN', message: (e as ApiError).message ?? 'Token reset failed' });
+    } finally { setResetTokLoading(false); setResetTokConfirm(false); }
+  }
+
   async function handleClearLogs() {
     setClearingLogs(true);
     try { await apiFetch('/api/fyers-control/logs', { method: 'DELETE' }); setLogs([]); }
@@ -546,7 +571,7 @@ export default function FyersControlPage() {
     setStep('user-select'); setActiveUser(null);
     setPin(''); setPinError(''); setPinLocked(false); setAttemptsLeft(5);
     setAuthUrl(''); setAuthCode(''); setCodeSource(null);
-    setTokenMsg(null); setAuthLocked(false);
+    setTokenMsg(null); setAuthLocked(false); setLockedAt(null); setResetTokConfirm(false);
     setStopConfirm(false); setLastStarted(null); setConflict(null);
   }
 
@@ -963,6 +988,11 @@ export default function FyersControlPage() {
                         <div>
                           <p className="text-sm font-medium text-emerald-400">Auth lock active</p>
                           <p className="text-xs text-muted-foreground mt-0.5">Token written to service paths. Services can now be started.</p>
+                          {lockedAt && (
+                            <p className="text-[11px] text-muted-foreground/70 mt-1 flex items-center gap-1">
+                              <Clock size={10} /> Issued {fmtStamp(lockedAt)} · valid until 23:59 IST
+                            </p>
+                          )}
                         </div>
                       </div>
                     ) : (
@@ -1045,6 +1075,37 @@ export default function FyersControlPage() {
                           )}
                         </div>
                       </>
+                    )}
+
+                    {/* Reset token — clears the lock and deletes token files */}
+                    {isAuthActive && (
+                      <div className="pt-3 border-t border-border/50">
+                        {!resetTokConfirm ? (
+                          <Button variant="outline" size="sm" onClick={() => setResetTokConfirm(true)}
+                            className="gap-1.5 h-8 w-full text-xs text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-300">
+                            <Trash2 size={12} /> Reset Token
+                          </Button>
+                        ) : (
+                          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 space-y-2.5">
+                            <p className="text-xs text-red-300 flex items-start gap-1.5">
+                              <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                              <span>
+                                Delete the saved token for {activeUser?.displayName} and start fresh?
+                                {anyUp && ' Services are running — they keep using the old token until stopped.'}
+                              </span>
+                            </p>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="destructive" onClick={handleResetToken} disabled={resetTokLoading} className="gap-1.5 h-7 flex-1 text-xs">
+                                {resetTokLoading ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                Delete Token
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => setResetTokConfirm(false)} disabled={resetTokLoading} className="h-7 flex-1 text-xs">
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </CardContent>
                 </Card>
