@@ -291,7 +291,13 @@ export default function FyersControlPage() {
     esRef.current = es;
     es.onopen    = () => setSseStatus('live');
     es.onmessage = (e) => {
-      try { const entry: LogEntry = JSON.parse(e.data); setLogs(prev => [...prev, entry].slice(-600)); }
+      try {
+        const entry: LogEntry = JSON.parse(e.data);
+        // Every (re)connect replays the server's full log buffer — skip entries we already have
+        setLogs(prev => prev.some(p => p.timestamp === entry.timestamp && p.action === entry.action && p.message === entry.message)
+          ? prev
+          : [...prev, entry].slice(-600));
+      }
       catch { /* ignore */ }
     };
     es.onerror = () => {
@@ -573,6 +579,24 @@ export default function FyersControlPage() {
     setAuthUrl(''); setAuthCode(''); setCodeSource(null);
     setTokenMsg(null); setAuthLocked(false); setLockedAt(null); setResetTokConfirm(false);
     setStopConfirm(false); setLastStarted(null); setConflict(null);
+  }
+
+  /**
+   * Services are stopped but the token lock is still held server-side (e.g. after
+   * stopping Data and Min one at a time, which doesn't release it). Release it there
+   * too — otherwise the next token exchange is refused with "Auth locked".
+   */
+  async function handleReAuth() {
+    if (activeUser) {
+      try {
+        await apiFetch(`/api/fyers-control/auth-state/${activeUser.id}`, { method: 'POST' });
+      } catch (e: unknown) {
+        addLocalLog({ level: 'error', action: 'RESET_AUTH', message: (e as ApiError).message ?? 'Could not release auth lock' });
+        return;
+      }
+    }
+    setAuthLocked(false); setLockedAt(null); setTokenMsg(null);
+    setAuthCode(''); setCodeSource(null); setAuthUrl(''); setStep('auth');
   }
 
   function openResetPin(u: FyersUser) {
@@ -1344,7 +1368,7 @@ export default function FyersControlPage() {
                       <div className="flex items-center gap-2 text-[10px] bg-muted/30 border rounded-lg px-2.5 py-2 text-muted-foreground">
                         <Lock size={10} /> Auth token active — services stopped.
                         <Button variant="ghost" size="sm" className="ml-auto h-6 px-2 text-[10px]"
-                          onClick={() => { setAuthLocked(false); setTokenMsg(null); setAuthCode(''); setCodeSource(null); setAuthUrl(''); setStep('auth'); }}>
+                          onClick={handleReAuth}>
                           Re-auth
                         </Button>
                       </div>

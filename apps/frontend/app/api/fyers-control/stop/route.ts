@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addLog, setAuthState, getAuthState, pyFetch, getCreds } from '../_lib/state';
+import { addLog, setAuthState, getAuthState, pyFetch, getCreds, readJson } from '../_lib/state';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const { service } = await req.json();
-  if (!service) return NextResponse.json({ error: 'service is required' }, { status: 400 });
+  const { service } = await readJson(req);
+  if (service !== 1 && service !== 2 && service !== 3) {
+    return NextResponse.json({ error: 'service must be 1 (Data), 2 (Min) or 3 (All)' }, { status: 400 });
+  }
 
   const name = service === 1 ? 'Data' : service === 2 ? 'Min' : 'All';
   addLog({ level: 'info', action: 'STOP_SERVICE', message: `Stopping ${name}` });

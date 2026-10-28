@@ -74,6 +74,7 @@ import { Zap } from 'lucide-react';
 import { usePredictionPolling } from '@/hooks/usePredictionPolling';
 import { useGttPolling } from '@/hooks/useGttPolling';
 import { useGttCountdown } from '@/hooks/useGttCountdown';
+import { GTT_FEATURE_ENABLED } from '@/lib/featureFlags';
 import { usePredictionCountdown } from '@/hooks/usePredictionCountdown';
 import { transformGttToChartPredictions, ALL_HORIZON_KEYS, HORIZON_LINE_CONFIG } from '@/lib/gttTransformers';
 import AIPredictionsDashboard from '../market-data/components/AIPredictionsDashboard';
@@ -229,10 +230,12 @@ const ClusterOverlayPage: React.FC = () => {
     'cluster-overlay-gttChartType',
     'candlestick'
   );
-  const [isGttEnabled, setIsGttEnabled] = usePersistentState<boolean>(
+  const [isGttEnabledPref, setIsGttEnabled] = usePersistentState<boolean>(
     'cluster-overlay-isGttEnabled',
     true
   );
+  // GTT disabled: ignore any persisted "on" value so polling and chart lines stay off
+  const isGttEnabled = GTT_FEATURE_ENABLED && isGttEnabledPref;
   // GTT per-horizon visibility: each of the 10 horizons + input_close can be toggled
   const [gttHorizonVisibility, setGttHorizonVisibility] = usePersistentState<Record<string, boolean>>(
     'cluster-overlay-gttHorizonVisibility',
@@ -1937,6 +1940,8 @@ const ClusterOverlayPage: React.FC = () => {
         setPredictionServiceHealth('unavailable');
       }
 
+      // GTT disabled: health check commented out, service treated as unavailable
+      /*
       try {
         const gttHealth = await gttService.healthCheck();
         const isGttAvailable = gttHealth.proxy || gttHealth.backend;
@@ -1946,6 +1951,8 @@ const ClusterOverlayPage: React.FC = () => {
         console.warn('❌ [Health Check] GTT service unavailable:', error);
         setGttServiceHealth('unavailable');
       }
+      */
+      setGttServiceHealth('unavailable');
 
       setIsCheckingHealth(false);
     };
@@ -3086,8 +3093,8 @@ const ClusterOverlayPage: React.FC = () => {
               </TooltipProvider>
             )}
 
-            {/* GTT Service Status */}
-            {gttServiceHealth === 'checking' || isCheckingHealth ? (
+            {/* GTT Service Status — GTT disabled, hidden via GTT_FEATURE_ENABLED */}
+            {GTT_FEATURE_ENABLED && (gttServiceHealth === 'checking' || isCheckingHealth ? (
               <div className="h-7 px-2.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border flex items-center gap-1.5">
                 <div className="h-3 w-3 rounded-full border border-muted-foreground/50 border-t-transparent animate-spin" />
                 GTT...
@@ -3281,7 +3288,7 @@ const ClusterOverlayPage: React.FC = () => {
                   </PopoverContent>
                 </Popover>
               </div>
-            )}
+            ))}
 
             <Separator orientation="vertical" className="h-4 mx-0.5" />
 
@@ -3593,7 +3600,7 @@ const ClusterOverlayPage: React.FC = () => {
                     {/* Tabs on the left */}
                     <TabsList className="h-7 bg-muted/40 p-0.5 rounded-lg gap-px">
                       <TabsTrigger value="livedata" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">Live Data</TabsTrigger>
-                      <TabsTrigger value="predictions" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">AI Predictions & GTT</TabsTrigger>
+                      <TabsTrigger value="predictions" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">AI Predictions{/* & GTT — GTT disabled */}</TabsTrigger>
                       <TabsTrigger value="charts" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">Metrices</TabsTrigger>
                       <TabsTrigger value="umap" className="text-[11px] h-6 px-3 rounded-md font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-colors">UMAP Clustering</TabsTrigger>
                     </TabsList>
@@ -3665,13 +3672,10 @@ const ClusterOverlayPage: React.FC = () => {
                               <Zap className="h-12 w-12 mx-auto mb-3 opacity-30" />
                               <p className="text-sm">AI Predictions are disabled</p>
                               <p className="text-xs mt-1">
-                                {predictionServiceHealth === 'unavailable' && gttServiceHealth === 'unavailable'
-                                  ? 'Both prediction services are unavailable. Check if servers are running.'
-                                  : predictionServiceHealth === 'unavailable'
-                                    ? 'Regular prediction service (port 5112) is unavailable. GTT can be enabled separately.'
-                                    : gttServiceHealth === 'unavailable'
-                                      ? 'GTT prediction service (port 5113) is unavailable. Regular predictions can be enabled separately.'
-                                      : 'Enable predictions or GTT in the toolbar to view this panel.'}
+                                {/* GTT disabled — original messages also covered the GTT service (port 5113) */}
+                                {predictionServiceHealth === 'unavailable'
+                                  ? 'Regular prediction service (port 5112) is unavailable. Check if the server is running.'
+                                  : 'Enable predictions in the toolbar to view this panel.'}
                               </p>
                             </div>
                           </div>

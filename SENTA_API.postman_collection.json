@@ -21,7 +21,7 @@
       "key": "date",
       "value": "2026-06-26",
       "type": "string",
-      "description": "Historical date (YYYY-MM-DD). Leave empty for latest live data."
+      "description": "Historical date (YYYY-MM-DD) = prediction day. stock_sentiment_db rows are filtered on pred_date <= date. Leave empty for latest live data."
     }
   ],
   "item": [
@@ -38,7 +38,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "senta", "market-pulse"]
             },
-            "description": "Returns Gift Nifty premium, VIX, Nifty50, Sensex, Nifty500, global indices, A/D ratio, FII/DII, sector heatmap. Refreshed every 5s on the frontend."
+            "description": "Returns Gift Nifty premium, VIX, Nifty50, Sensex, Nifty500, global indices, A/D ratio, FII/DII, sector heatmap. Refreshed every 5s on the frontend. Source: stock_sentiment_db.adv_decl, gift_nifty (spot_price, nifty_gap_pct), global_indices, fii_dii + indices_hist_db"
           }
         },
         {
@@ -69,7 +69,7 @@
                 { "key": "period", "value": "3M", "description": "1M | 3M | 6M | 1Y | MAX" }
               ]
             },
-            "description": "FII and DII net flow history. Source: stock_sentiment_db.fii_dii_activity"
+            "description": "FII and DII net flow history. Source: stock_sentiment_db.fii_dii"
           }
         },
         {
@@ -83,7 +83,7 @@
               "path": ["api", "senta", "fii-dii-chart"],
               "query": [
                 { "key": "period", "value": "3M" },
-                { "key": "date", "value": "{{date}}", "description": "Anchor date — returns rows up to this date" }
+                { "key": "date", "value": "{{date}}", "description": "Anchor date — returns rows with pred_date up to this date" }
               ]
             }
           }
@@ -98,7 +98,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "senta", "gift-nifty-chart"]
             },
-            "description": "Full Gift Nifty price history. Source: stock_sentiment_db.gift_nifty"
+            "description": "Full Gift Nifty price history (spot_price). Source: stock_sentiment_db.gift_nifty"
           }
         },
         {
@@ -131,7 +131,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "senta", "symbols"]
             },
-            "description": "All available stock symbols. Source: stock_sentiment_db"
+            "description": "All available stock symbols. Source: stock_sentiment_db.company_list"
           }
         },
         {
@@ -144,7 +144,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "senta", "stock", "{{symbol}}"]
             },
-            "description": "Full stock data: live quote, OHLCV, minute bars, 52W range, market cap, F&O eligibility, derivatives (PCR/max pain), circuit bands, order book, sector index. Refreshed every 3s."
+            "description": "Full stock data: live quote, OHLCV, minute bars, 52W range, market cap, F&O eligibility, derivatives (PCR/max pain), circuit bands, order book, vs-sector. Refreshed every 3s. Source: stock_sentiment_db.delivery, pe_mcap (market-cap category = SEBI rank by market_cap), derivatives (is_fno), company_list, stock_price_vol (t1_pct_chng vs sector_pct_chng, not during market hours) + nse_hist_db"
           }
         },
         {
@@ -262,7 +262,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "senta", "events", "{{symbol}}"]
             },
-            "description": "News, filings, board meetings, corporate actions, bulk/block deals. Source: stock_sentiment_db"
+            "description": "News, filings, board meetings, corporate actions, bulk/block deals. Source: stock_sentiment_db.news_sentiment (sentiment x sentiment_conf), announcements, board_meetings, corporate_actions (event_date), block_bulk_deals"
           }
         },
         {

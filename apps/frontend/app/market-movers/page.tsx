@@ -959,7 +959,8 @@ const MarketMoversPage: React.FC = () => {
 
   /* -- Logic B (GTT Aligned) state (completely independent from Logic 1) --
   ───────────────────────────────────────────────────────────────────────────*/
-  const [gttAligned, setGttAligned] = useState(false);
+  // GTT disabled: setter commented out along with the GTT Aligned toggle, so this stays false
+  const [gttAligned /* , setGttAligned */] = useState(false);
   /* Tile layout view for Logic 1 (no effect when gttAligned is ON) */
   type TileView = 'grid' | 'cluster' | 'ranked' | 'compact' | 'momentum';
   const [tileView, setTileView] = useState<TileView>('cluster');
@@ -1247,7 +1248,7 @@ const MarketMoversPage: React.FC = () => {
             </span>
           </div>
 
-          {/* GTT Aligned toggle */}
+          {/* GTT Aligned toggle — GTT disabled, commented out
           <Button
             variant={gttAligned ? 'default' : 'outline'}
             size="sm"
@@ -1263,6 +1264,7 @@ const MarketMoversPage: React.FC = () => {
             <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', gttAligned ? 'bg-white' : 'bg-violet-500')} />
             GTT Aligned
           </Button>
+          */}
 
           <ModeToggle />
         </header>

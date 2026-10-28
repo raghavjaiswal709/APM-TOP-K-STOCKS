@@ -384,7 +384,7 @@ export function FilterModal({
               </div>
             </div>
 
-            {/* GTT Prediction Filter */}
+            {/* GTT Prediction Filter — GTT disabled, commented out
             <div className="space-y-3">
               <h4 className="font-medium text-sm flex items-center gap-2">
                 <Zap className="h-4 w-4 text-purple-500" />
@@ -446,6 +446,7 @@ export function FilterModal({
                 </div>
               </div>
             </div>
+            */}
 
             {/* Sentiment Filter */}
             <div className="space-y-3">

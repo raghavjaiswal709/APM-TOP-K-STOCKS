@@ -226,33 +226,24 @@ export default function StockPanel({ symbol, date }: Props) {
         </Tile>
         <Tile tile={TILE_MAP.E4} loading={isLoading}>
           {(() => {
-            const si      = data?.sectorIndex as { level: number; pctChange: number } | null | undefined
-            const idxName = data?.universe?.nse_sectoral_index ?? 'sector'
+            // Stock and sector % come from the same stock_price_vol row (same session)
+            const si = data?.sectorIndex as
+              { date: string; pctChange: number; stockPctChange: number | null } | null | undefined
 
-            const stockDayPct: number | null = liveActive
-              ? (data?.liveQuote?.pctChange ?? null)
-              : (histLast && histPrev
-                  ? ((Number(histLast.close) - Number(histPrev.close)) / Number(histPrev.close)) * 100
-                  : null)
+            if (si?.stockPctChange == null) return <span className="text-muted-foreground">—</span>
+            const relPct = Number(si.stockPctChange) - Number(si.pctChange)
 
-            const relPct: number | null = (stockDayPct != null && si)
-              ? stockDayPct - si.pctChange
-              : null
-
-            if (relPct == null) return <span className="text-muted-foreground">—</span>
             return (
               <div className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-1 font-mono text-xs">
                   <span className={colorForPct(relPct)}><PriceArrow value={relPct} className="mr-0.5" /></span>
                   <span className={`font-bold ${colorForPct(relPct)}`}>{fmtPct(relPct, 2)}</span>
-                  <span className="text-muted-foreground text-[10px] font-sans">today</span>
+                  <span className="text-muted-foreground text-[10px] font-sans">{fmtShortDate(si.date)}</span>
                 </div>
-                {si && (
-                  <div className="flex items-center gap-1 text-[10px] font-sans text-muted-foreground">
-                    <span className="truncate max-w-[64px]">{idxName}</span>
-                    <span className={colorForPct(si.pctChange)}>{fmtPct(si.pctChange, 2)}</span>
-                  </div>
-                )}
+                <div className="flex items-center gap-1 text-[10px] font-sans text-muted-foreground">
+                  <span className="truncate max-w-[64px]">sector</span>
+                  <span className={colorForPct(si.pctChange)}>{fmtPct(si.pctChange, 2)}</span>
+                </div>
               </div>
             )
           })()}

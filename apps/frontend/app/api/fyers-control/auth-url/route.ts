@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCreds, addLog, pyFetch } from '../_lib/state';
+import { getCreds, addLog, pyFetch, readJson } from '../_lib/state';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const { userId } = await req.json();
-  if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+  const { userId } = await readJson(req);
+  if (typeof userId !== 'string' || !userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 });
 
   const creds = getCreds().find(u => u.id === userId);
   if (!creds) return NextResponse.json({ error: `User "${userId}" not found in config.ini` }, { status: 404 });
@@ -24,7 +24,8 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    if (!ok) throw new Error((data?.message as string) ?? 'Python API error');
+    if (!ok) throw new Error((data?.message as string) ?? (data?.error as string) ?? 'Python API error');
+    if (typeof data.auth_url !== 'string' || !data.auth_url) throw new Error('Python API returned no auth_url');
 
     addLog({
       level:   'success',

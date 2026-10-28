@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthState, setAuthState, addLog, pyFetch } from '../_lib/state';
+import { getAuthState, setAuthState, addLog, pyFetch, readJson } from '../_lib/state';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const { userId, authCode } = await req.json();
-  if (!userId || !authCode) {
+  const { userId, authCode } = await readJson(req);
+  if (typeof userId !== 'string' || !userId || typeof authCode !== 'string' || !authCode) {
     return NextResponse.json({ error: 'userId and authCode are required' }, { status: 400 });
   }
 
@@ -23,13 +23,13 @@ export async function POST(req: NextRequest) {
       body:    JSON.stringify({ user: userId, auth_code: authCode, force: true }),
     });
 
-    if (!ok) throw new Error((data?.message as string) ?? `HTTP error from Python API`);
+    if (!ok) throw new Error((data?.message as string) ?? (data?.error as string) ?? `HTTP error from Python API`);
 
     if (data.accepted) {
       setAuthState(userId, { authenticated: true, authLocked: true, lockedAt: new Date().toISOString() });
       addLog({ level: 'success', action: 'EXCHANGE_TOKEN', message: String(data.message ?? 'Token accepted') });
     } else {
-      addLog({ level: 'error', action: 'EXCHANGE_TOKEN', message: 'Token rejected by server' });
+      addLog({ level: 'error', action: 'EXCHANGE_TOKEN', message: String(data.message ?? 'Token rejected by server') });
     }
     return NextResponse.json(data);
   } catch (err: unknown) {

@@ -1,62 +1,19 @@
 import { NextResponse } from 'next/server'
-import { query, queryOne } from '@/app/senta/lib/db/sentiment'
+import { queryOne } from '@/app/senta/lib/db/sentiment'
 import { getOrderBook, getCircuitBand } from '@/app/senta/lib/db/live'
 import {
   isPreOpen, isMarketOpen,
   getLiveMinuteBars, getMinuteBars,
   setCachedPreOpen, getCachedPreOpen, currentISTDate,
-  getLiveIndexClose, getIndexPrevClose, getIndexDayBars,
   getStockDayBars, getStock52W, getLastWatchlistOccurrence,
 } from '@/app/senta/lib/db/source'
 import { isInNifty500, getNifty50Status } from '@/app/senta/lib/data/indices'
 import type { LiveQuote } from '@/app/senta/lib/db/live'
 
-const NSE_SECTOR_TO_DB: Record<string, string> = {
-  'Nifty Auto':               'NIFTY_AUTO',
-  'Nifty Bank':               'NIFTY_BANK',
-  'Nifty Consumer Durables':  'NIFTY_CONSUMER_DURABLES',
-  'Nifty Energy':             'NIFTY_ENERGY',
-  'Nifty Financial Services': 'NIFTY_FIN_SERVICES',
-  'Nifty FMCG':               'NIFTY_FMCG',
-  'Nifty Healthcare Index':   'NIFTY_HEALTHCARE',
-  'Nifty Infrastructure':     'NIFTY_INFRA',
-  'Nifty IT':                 'NIFTY_IT',
-  'Nifty Media':              'NIFTY_MEDIA',
-  'Nifty Metal':              'NIFTY_METAL',
-  'Nifty Oil & Gas':              'NIFTY_OIL_GAS',
-  'Nifty Pharma':                 'NIFTY_PHARMA',
-  'Nifty Realty':                 'NIFTY_REALTY',
-  'Nifty Financial Services 25/50': 'NIFTY_FIN_SERVICES_2550',
-}
-
-async function getSectorData(
-  dbSym: string,
-  live: boolean,
-  dateAnchor: string | null,
-): Promise<{ level: number; pctChange: number } | null> {
-  try {
-    if (live) {
-      const [level, prev] = await Promise.all([
-        getLiveIndexClose(dbSym),
-        getIndexPrevClose(dbSym),
-      ])
-      if (level != null && prev != null && prev !== 0) {
-        return { level, pctChange: ((level - prev) / prev) * 100 }
-      }
-    } else {
-      const bars = await getIndexDayBars(dbSym, 10, dateAnchor)
-      if (bars.length >= 1) {
-        const last = bars[bars.length - 1]
-        const prevClose = bars.length >= 2
-          ? bars[bars.length - 2].close
-          : await getIndexPrevClose(dbSym, last.date)
-        if (prevClose) {
-          return { level: last.close, pctChange: ((last.close - prevClose) / prevClose) * 100 }
-        }
-      }
-    }
-  } catch { /* non-critical */ }
-  return null
+// SEBI categorisation: rank 1–100 large, 101–250 mid, rest small
+function mcapCategory(rank: number | null | undefined): string | null {
+  if (rank == null) return null
+  return rank <= 100 ? 'Large Cap' : rank <= 250 ? 'Mid Cap' : 'Small Cap'
 }
 
 export async function GET(
@@ -99,45 +56,80 @@ export async function GET(
     return null
   })()
 
-  const [stubOrderBook, circuitBand, daily, derivatives, universe, histDayBars] =
+  // Historical view: only rows that were available for the selected prediction day
+  const asOf = dateAnchor ? 'AND pred_date <= $2' : ''
+  const args = dateAnchor ? [symbol, dateAnchor] : [symbol]
+
+  const [stubOrderBook, circuitBand, delivery, peMcap, derivatives, company, sectorRow, histDayBars, w52, lastWL] =
     await Promise.all([
       liveOrderBook ? Promise.resolve(null) : getOrderBook(symbol),
       getCircuitBand(symbol),
 
-      queryOne<{ date: string; delivery_pct: number; pe_ratio: number; market_cap: number }>(
-        dateAnchor
-          ? `SELECT date, delivery_pct, pe_ratio, market_cap
-             FROM daily_equity_metrics
-             WHERE symbol = $1 AND date <= $2
-             ORDER BY date DESC LIMIT 1`
-          : `SELECT date, delivery_pct, pe_ratio, market_cap
-             FROM daily_equity_metrics
-             WHERE symbol = $1
-             ORDER BY date DESC LIMIT 1`,
-        dateAnchor ? [symbol, dateAnchor] : [symbol]
+      queryOne<{ date: string; delivery_pct: number | null }>(
+        `SELECT date, delivery_pct FROM delivery
+         WHERE company_code = $1 ${asOf}
+         ORDER BY date DESC LIMIT 1`,
+        args
       ),
 
-      queryOne<{ pcr: number; max_pain_strike: number }>(
-        dateAnchor
-          ? `SELECT pcr, max_pain_strike FROM derivatives_daily
-             WHERE symbol = $1 AND date <= $2 ORDER BY date DESC LIMIT 1`
-          : `SELECT pcr, max_pain_strike FROM derivatives_daily
-             WHERE symbol = $1 ORDER BY date DESC LIMIT 1`,
-        dateAnchor ? [symbol, dateAnchor] : [symbol]
+      queryOne<{ date: string; pe_ratio: number | null; market_cap: number | null; mcap_rank: number | null }>(
+        `SELECT p.date, p.pe_ratio, p.market_cap,
+                CASE WHEN p.market_cap IS NULL THEN NULL ELSE
+                  (SELECT COUNT(*) + 1 FROM pe_mcap q
+                   WHERE q.date = p.date AND q.market_cap > p.market_cap)
+                END AS mcap_rank
+         FROM pe_mcap p
+         WHERE p.company_code = $1 ${asOf}
+         ORDER BY p.date DESC LIMIT 1`,
+        args
       ),
 
-      queryOne<{
-        company_name: string; industry: string; market_cap_category: string
-        f_o_eligible: boolean; nse_sectoral_index: string
-      }>(
-        `SELECT company_name, industry, market_cap_category, f_o_eligible,
-                nse_sectoral_index
-         FROM universe_definition WHERE symbol = $1`,
+      queryOne<{ pcr: number | null; max_pain_strike: number | null; is_fno: number | null }>(
+        `SELECT pcr, max_pain_strike, is_fno FROM derivatives
+         WHERE company_code = $1 ${asOf}
+         ORDER BY date DESC LIMIT 1`,
+        args
+      ),
+
+      queryOne<{ company_name: string }>(
+        `SELECT name AS company_name FROM company_list WHERE company_code = $1`,
         [symbol]
       ),
 
+      // Stock and sector % from the same row so "vs Sector" compares the same session.
+      // No live sector feed in this schema, so it is skipped during market hours.
+      liveSession
+        ? Promise.resolve(null)
+        : queryOne<{ date: string; t1_pct_chng: number | null; sector_pct_chng: number | null }>(
+            `SELECT date, t1_pct_chng, sector_pct_chng FROM stock_price_vol
+             WHERE company_code = $1 ${asOf}
+             ORDER BY date DESC LIMIT 1`,
+            args
+          ),
+
       getStockDayBars(symbol, 30, dateAnchor),
+      getStock52W(symbol, dateAnchor),
+      getLastWatchlistOccurrence(symbol, dateAnchor),
     ])
+
+  const daily = delivery || peMcap
+    ? {
+        date:         peMcap?.date ?? delivery?.date ?? null,
+        delivery_pct: delivery?.delivery_pct ?? null,
+        pe_ratio:     peMcap?.pe_ratio ?? null,
+        market_cap:   peMcap?.market_cap ?? null,
+      }
+    : null
+
+  const universe = {
+    company_name:        company?.company_name ?? null,
+    market_cap_category: mcapCategory(peMcap?.mcap_rank),
+    f_o_eligible:        derivatives?.is_fno != null ? derivatives.is_fno === 1 : null,
+  }
+
+  const sectorIndex = sectorRow?.sector_pct_chng != null
+    ? { date: sectorRow.date, pctChange: sectorRow.sector_pct_chng, stockPctChange: sectorRow.t1_pct_chng }
+    : null
 
   const atrBars = histDayBars.slice(-15)
   const advVal  = histDayBars.length
@@ -159,18 +151,6 @@ export async function GET(
       volume:    totalVol,
     }
   }
-
-  const sectorDbSym = universe?.nse_sectoral_index
-    ? (NSE_SECTOR_TO_DB[universe.nse_sectoral_index.trim()] ?? null)
-    : null
-
-  const [w52, sectorIndex, lastWL] = await Promise.all([
-    getStock52W(symbol, dateAnchor),
-    sectorDbSym
-      ? getSectorData(sectorDbSym, liveSession, dateAnchor)
-      : Promise.resolve(null),
-    getLastWatchlistOccurrence(symbol, dateAnchor),
-  ])
 
   const orderBook = liveOrderBook ?? stubOrderBook
 

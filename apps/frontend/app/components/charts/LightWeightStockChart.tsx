@@ -55,6 +55,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SeparateViewModal } from './SeparateViewModal';
 import { ALL_HORIZON_KEYS, HORIZON_LINE_CONFIG } from '@/lib/gttTransformers';
+import { GTT_FEATURE_ENABLED } from '@/lib/featureFlags';
 import { attachPriceAxisWheelZoom, removePriceAxisWheelZoom } from '@/utils/chartWheelHandler';
 
 // --- Types ---
@@ -1976,8 +1977,8 @@ export function LightWeightStockChart({
             {/* Charts Layout */}
             <div className="flex-1 flex flex-col min-h-0 w-full relative">
                 <div className="flex-1 relative w-full h-full min-h-0" ref={mainChartContainerRef}>
-                    {/* GTT Labels Eye Toggle — floating overlay inside chart, top-right */}
-                    {!hideGttEyeToggle && (
+                    {/* GTT Labels Eye Toggle — floating overlay inside chart, top-right (GTT disabled) */}
+                    {GTT_FEATURE_ENABLED && !hideGttEyeToggle && (
                     <div className="absolute top-2 right-14 z-10">
                         <Button
                             variant={showGttLabels ? "secondary" : "ghost"}

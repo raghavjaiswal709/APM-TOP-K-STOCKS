@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { pbkdf2Sync, randomBytes } from 'crypto';
+import { pbkdf2Sync, randomBytes, timingSafeEqual } from 'crypto';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,6 +74,12 @@ export async function pyFetch(
   }
 }
 
+/** Parse a JSON request body; an empty or malformed body yields {} instead of throwing */
+export async function readJson(req: Request): Promise<Record<string, unknown>> {
+  const body = await req.json().catch(() => null);
+  return body && typeof body === 'object' ? body as Record<string, unknown> : {};
+}
+
 // config.ini candidates — Docker mounts it at /fyers-config/, local dev finds it via cwd
 const CONFIG_INI_CANDIDATES = [
   '/fyers-config/config.ini',                                         // Docker (mounted in docker-compose)
@@ -121,8 +127,9 @@ export function loadCredsFromIni(): FyersCreds[] {
 export function checkPin(userId: string, pin: string): boolean | null {
   const s = parseIni()[userId];
   if (!s?.pin_hash || !s?.pin_salt) return null;
-  const hash = pbkdf2Sync(pin, s.pin_salt, 100000, 64, 'sha512').toString('hex');
-  return hash === s.pin_hash;
+  const hash = pbkdf2Sync(String(pin), s.pin_salt, 100000, 64, 'sha512');
+  const expected = Buffer.from(s.pin_hash, 'hex');
+  return expected.length === hash.length && timingSafeEqual(hash, expected);
 }
 
 // ─── Singleton ────────────────────────────────────────────────────────────────
@@ -181,8 +188,10 @@ export function refreshCreds(): { count: number; source: 'ini' } {
 
 export function validatePin(userId: string, pin: string): { ok: boolean; locked?: boolean; attemptsLeft?: number } {
   const s = st();
-  const failure = s.pinFailures.get(userId);
+  let failure = s.pinFailures.get(userId);
   if (failure && failure.lockedUntil > Date.now()) return { ok: false, locked: true };
+  // Lockout served — start a fresh 5-attempt window instead of re-locking on the next miss
+  if (failure && failure.lockedUntil) { s.pinFailures.delete(userId); failure = undefined; }
 
   const result = checkPin(userId, pin);
   if (result === null) {
@@ -215,17 +224,32 @@ export function updateUserPin(userId: string, newPin: string): void {
 
   const lines  = fs.readFileSync(p, 'utf-8').split('\n');
   let inSection = false;
+  let found = false;
+  let wroteSalt = false;
+  let wroteHash = false;
 
   const updated = lines.map(line => {
     const trimmed = line.trim();
     const secMatch = trimmed.match(/^\[(.+)\]$/);
-    if (secMatch) { inSection = secMatch[1] === userId; return line; }
+    if (secMatch) { inSection = secMatch[1] === userId; found ||= inSection; return line; }
     if (!inSection) return line;
     if (/^;\s*pin\s*=/.test(trimmed))     return `; pin = ${newPin}`;
-    if (/^pin_salt\s*=/.test(trimmed))    return `pin_salt = ${salt}`;
-    if (/^pin_hash\s*=/.test(trimmed))    return `pin_hash = ${hash}`;
+    if (/^pin_salt\s*=/.test(trimmed))    { wroteSalt = true; return `pin_salt = ${salt}`; }
+    if (/^pin_hash\s*=/.test(trimmed))    { wroteHash = true; return `pin_hash = ${hash}`; }
     return line;
   });
+
+  if (!found) throw new Error(`User "${userId}" not found in config.ini`);
+  // A section without pin_salt/pin_hash lines would otherwise be left unchanged
+  // while the API reported success — insert them right after the section header.
+  if (!wroteSalt || !wroteHash) {
+    const at = updated.findIndex(l => l.trim() === `[${userId}]`) + 1;
+    const extra = [
+      ...(wroteSalt ? [] : [`pin_salt = ${salt}`]),
+      ...(wroteHash ? [] : [`pin_hash = ${hash}`]),
+    ];
+    updated.splice(at, 0, ...extra);
+  }
 
   fs.writeFileSync(p, updated.join('\n'), 'utf-8');
   // Bust the credential cache so next getCreds() re-reads the file

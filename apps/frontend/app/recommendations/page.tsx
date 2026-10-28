@@ -428,7 +428,7 @@ const RecommendationListPage: React.FC = () => {
                         <Clock className="h-3 w-3 mr-1" />Closed Price
                       </TabsTrigger>
                       <TabsTrigger value="predictions" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                        <Cpu className="h-3 w-3 mr-1" />AI Predictions &amp; GTT
+                        <Cpu className="h-3 w-3 mr-1" />AI Predictions{/* &amp; GTT — GTT disabled */}
                       </TabsTrigger>
                       <TabsTrigger value="metrices" className="text-xs h-6 data-[state=active]:bg-background data-[state=active]:shadow-sm">
                         <BarChart3 className="h-3 w-3 mr-1" />Metrices
@@ -490,7 +490,7 @@ const RecommendationListPage: React.FC = () => {
                       </ScrollArea>
                     </TabsContent>
 
-                    {/* TAB 2: AI Predictions & GTT — not available in Time Machine */}
+                    {/* TAB 2: AI Predictions (GTT disabled) — not available in Time Machine */}
                     <TabsContent value="predictions" className="h-full m-0">
                       <div className="flex items-center justify-center h-full py-12 text-muted-foreground">
                         <div className="text-center space-y-3 max-w-sm">
@@ -499,7 +499,7 @@ const RecommendationListPage: React.FC = () => {
                           </div>
                           <h3 className="text-sm font-semibold text-foreground">Not Available in Time Machine</h3>
                           <p className="text-xs text-muted-foreground leading-relaxed">
-                            AI Predictions &amp; GTT require a live market connection. This feature is unavailable for historical replay sessions.
+                            AI Predictions require a live market connection. This feature is unavailable for historical replay sessions.
                           </p>
                         </div>
                       </div>

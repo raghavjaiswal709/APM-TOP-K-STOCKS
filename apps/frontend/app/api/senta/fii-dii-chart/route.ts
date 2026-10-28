@@ -19,15 +19,15 @@ export async function GET(req: Request) {
   if (days === null) {
     rows = await query(
       date
-        ? `SELECT ${COLS} FROM fii_dii_activity WHERE date <= $1 ORDER BY date ASC`
-        : `SELECT ${COLS} FROM fii_dii_activity ORDER BY date ASC`,
+        ? `SELECT ${COLS} FROM fii_dii WHERE pred_date <= $1 ORDER BY date ASC`
+        : `SELECT ${COLS} FROM fii_dii ORDER BY date ASC`,
       date ? [date] : undefined
     )
   } else {
     rows = await query(
       date
-        ? `SELECT ${COLS} FROM fii_dii_activity WHERE date <= $1 ORDER BY date DESC LIMIT $2`
-        : `SELECT ${COLS} FROM fii_dii_activity ORDER BY date DESC LIMIT $1`,
+        ? `SELECT ${COLS} FROM fii_dii WHERE pred_date <= $1 ORDER BY date DESC LIMIT $2`
+        : `SELECT ${COLS} FROM fii_dii ORDER BY date DESC LIMIT $1`,
       date ? [date, days] : [days]
     )
     rows = (rows as object[]).reverse()

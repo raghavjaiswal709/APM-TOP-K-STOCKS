@@ -6,6 +6,13 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const enc = new TextEncoder();
   let unsubscribe: (() => void) | null = null;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  const stop = () => {
+    unsubscribe?.();
+    unsubscribe = null;
+    if (heartbeat) clearInterval(heartbeat);
+    heartbeat = null;
+  };
 
   const stream = new ReadableStream({
     start(controller) {
@@ -16,14 +23,15 @@ export async function GET() {
         try {
           controller.enqueue(enc.encode(`data: ${JSON.stringify(log)}\n\n`));
         } catch {
-          unsubscribe?.();
-          unsubscribe = null;
+          stop();
         }
       });
+      heartbeat = setInterval(() => {
+        try { controller.enqueue(enc.encode(': ping\n\n')); } catch { stop(); }
+      }, 25_000);
     },
     cancel() {
-      unsubscribe?.();
-      unsubscribe = null;
+      stop();
     },
   });
 

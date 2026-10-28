@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addLog, pyFetch } from '../_lib/state';
+import { addLog, pyFetch, readJson } from '../_lib/state';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { service, option } = body ?? {};
-  if (!service) return NextResponse.json({ error: 'service is required' }, { status: 400 });
+  const { service, option } = await readJson(req);
+  if (service !== 1 && service !== 2) return NextResponse.json({ error: 'service must be 1 (Data) or 2 (Min)' }, { status: 400 });
 
   const name = service === 1 ? 'Data' : 'Min';
   addLog({ level: 'info', action: 'START_SERVICE', message: `Starting ${name}${option ? ` (option: ${option})` : ''}` });

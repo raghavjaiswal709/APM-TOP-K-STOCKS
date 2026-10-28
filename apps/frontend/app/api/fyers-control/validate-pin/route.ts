@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { validatePin } from '../_lib/state';
+import { validatePin, readJson } from '../_lib/state';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { userId, pin } = body ?? {};
-  if (!userId || !pin) {
+  const { userId, pin } = await readJson(req);
+  if (typeof userId !== 'string' || !userId || (typeof pin !== 'string' && typeof pin !== 'number') || pin === '') {
     return NextResponse.json({ error: 'userId and pin are required' }, { status: 400 });
   }
 
-  const result = validatePin(userId, pin);
+  const result = validatePin(userId, String(pin));
 
   if (!result.ok) {
     if (result.locked) {

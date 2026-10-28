@@ -522,12 +522,15 @@ export const CompanyList = React.memo(function CompanyList({
             });
         }
 
+        // GTT disabled: GTT prediction filter commented out
+        /*
         if (activeFilters.hasGtt !== null) {
             result = result.filter(c => {
                 const hasGtt = hasGttPrediction(c.company_code);
                 return activeFilters.hasGtt ? hasGtt : !hasGtt;
             });
         }
+        */
 
         // 3. Sentiment Filter
         if (activeFilters.sentiment !== null) {
@@ -628,7 +631,7 @@ export const CompanyList = React.memo(function CompanyList({
             count += activeFilters.exchanges.length + activeFilters.markers.length + (activeFilters.refined !== null ? 1 : 0);
         }
         if (activeFilters.hasPrediction !== null) count++;
-        if (activeFilters.hasGtt !== null) count++;
+        // if (activeFilters.hasGtt !== null) count++; // GTT disabled
         if (activeFilters.sentiment !== null) count++;
         if (activeFilters.desirability !== null) count++;
         if (activeFilters.hasUmapData !== null) count++;
@@ -850,7 +853,7 @@ export const CompanyList = React.memo(function CompanyList({
 
                             // Check prediction availability
                             const hasPrediction = hasRegularPrediction(company.company_code);
-                            const hasGtt = hasGttPrediction(company.company_code);
+                            // const hasGtt = hasGttPrediction(company.company_code); // GTT disabled
 
                             const isMultiChecked = multiSelectedCodes.has(company.company_code);
 
@@ -929,6 +932,7 @@ export const CompanyList = React.memo(function CompanyList({
                                                         </TooltipContent>
                                                     </Tooltip>
                                                 )}
+                                                {/* GTT disabled — GTT badge commented out
                                                 {hasGtt && (
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
@@ -941,6 +945,7 @@ export const CompanyList = React.memo(function CompanyList({
                                                         </TooltipContent>
                                                     </Tooltip>
                                                 )}
+                                                */}
                                                 {company.N1_Pattern_count !== undefined && company.N1_Pattern_count > 0 && (
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
