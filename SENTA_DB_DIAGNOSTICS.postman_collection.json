@@ -1,0 +1,1868 @@
+{
+  "info": {
+    "name": "SENTA DB Diagnostics",
+    "_postman_id": "senta-db-diagnostics-v1",
+    "description": "Read-only checks against every Senta database via GET /api/senta/db-check. Each response lists every check with ok, timing, rows, or the exact Postgres error (message, code, detail, hint). Error codes: 28000 = no pg_hba.conf entry (ask for access), 28P01 = wrong password, 42501 = permission denied, 42P01 = table/view missing, ECONNREFUSED / ETIMEDOUT = port blocked. Run the whole collection with the Collection Runner to get a pass/fail list.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Run everything",
+      "item": [
+        {
+          "name": "All DBs + EOD reports dir",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Runs every check on every DB. 200 = all OK, 502 = at least one failed. See the Test Results tab for which.",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "all"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "upstox_db (new)",
+      "item": [
+        {
+          "name": "upstox_db (new) \u2014 all checks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "connect \u2014 Connect + who am I",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=connect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "connect"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "schemas \u2014 9 schemas visible",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=schemas",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "schemas"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "compat_views \u2014 compat views + SELECT privilege",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=compat_views",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "compat_views"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "company_map \u2014 ref.company_map rows (empty = all compat views empty)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=company_map",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "company_map"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "derivatives \u2014 compat.derivatives freshness",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=derivatives",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "derivatives"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "fii_dii \u2014 compat.fii_dii freshness",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=fii_dii",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "fii_dii"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "pe_mcap \u2014 compat.pe_mcap freshness + market_cap fill",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=pe_mcap",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "pe_mcap"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "news_sentiment \u2014 compat.news_sentiment freshness",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=news_sentiment",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "news_sentiment"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "corporate_actions \u2014 compat.corporate_actions freshness",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=corporate_actions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "corporate_actions"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "file_log \u2014 ingest.file_log load summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=file_log",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "file_log"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "file_log_errors \u2014 Failed / partial loads (last 20)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=file_log_errors",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "file_log_errors"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "partitions \u2014 deriv monthly partitions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=partitions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "partitions"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "trading_day \u2014 Trading calendar around today",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=upstox&check=trading_day",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "upstox"
+                },
+                {
+                  "key": "check",
+                  "value": "trading_day"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "stock_sentiment_db (old)",
+      "item": [
+        {
+          "name": "stock_sentiment_db (old) \u2014 all checks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "connect \u2014 Connect + who am I",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=connect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "connect"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "company_list \u2014 company_list rows",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=company_list",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "company_list"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "derivatives \u2014 derivatives last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=derivatives",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "derivatives"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "fii_dii \u2014 fii_dii last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=fii_dii",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "fii_dii"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "pe_mcap \u2014 pe_mcap last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=pe_mcap",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "pe_mcap"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "news_sentiment \u2014 news_sentiment last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=news_sentiment",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "news_sentiment"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "corporate_actions \u2014 corporate_actions last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=corporate_actions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "corporate_actions"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "delivery \u2014 delivery last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=delivery",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "delivery"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "stock_price_vol \u2014 stock_price_vol last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=stock_price_vol",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "stock_price_vol"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "adv_decl \u2014 adv_decl last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=adv_decl",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "adv_decl"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "gift_nifty \u2014 gift_nifty last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=gift_nifty",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "gift_nifty"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "global_indices \u2014 global_indices last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=global_indices",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "global_indices"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "announcements \u2014 announcements last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=announcements",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "announcements"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "board_meetings \u2014 board_meetings last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=board_meetings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "board_meetings"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "block_bulk_deals \u2014 block_bulk_deals last pred_date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=sentiment&check=block_bulk_deals",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "sentiment"
+                },
+                {
+                  "key": "check",
+                  "value": "block_bulk_deals"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "nse_hist_db",
+      "item": [
+        {
+          "name": "nse_hist_db \u2014 all checks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=source",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "source"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "connect \u2014 Connect + who am I",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=source&check=connect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "source"
+                },
+                {
+                  "key": "check",
+                  "value": "connect"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "companies \u2014 companies rows",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=source&check=companies",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "source"
+                },
+                {
+                  "key": "check",
+                  "value": "companies"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "day_data \u2014 Last daily bar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=source&check=day_data",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "source"
+                },
+                {
+                  "key": "check",
+                  "value": "day_data"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "watchlist_quant \u2014 Last watchlist date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=source&check=watchlist_quant",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "source"
+                },
+                {
+                  "key": "check",
+                  "value": "watchlist_quant"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "indices_hist_db",
+      "item": [
+        {
+          "name": "indices_hist_db \u2014 all checks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=indices",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "indices"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "connect \u2014 Connect + who am I",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=indices&check=connect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "indices"
+                },
+                {
+                  "key": "check",
+                  "value": "connect"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "indices \u2014 indices rows",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=indices&check=indices",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "indices"
+                },
+                {
+                  "key": "check",
+                  "value": "indices"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "day_data \u2014 Last daily bar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=indices&check=day_data",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "indices"
+                },
+                {
+                  "key": "check",
+                  "value": "day_data"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "EOD reports",
+      "item": [
+        {
+          "name": "EOD reports dir (EOD_REPORTS_DIR)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const targets = body.targets ?? (body.results ? [body] : []);",
+                  "targets.forEach(t => (t.results || []).forEach(r => {",
+                  "  pm.test(`${t.target}.${r.check}`, () => pm.expect(r.ok, r.error && `${r.error.code ?? ''} ${r.error.message}`).to.be.true);",
+                  "}));",
+                  "if (body.target === 'eod_reports') pm.test('eod_reports dir readable', () => pm.expect(body.ok, body.error && body.error.message).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Lists watchlist_* folders in EOD_REPORTS_DIR (server path /nas1/upStox_exp/prod_p2/reports).",
+            "url": {
+              "raw": "{{base_url}}/api/senta/db-check?db=eod_reports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "senta",
+                "db-check"
+              ],
+              "query": [
+                {
+                  "key": "db",
+                  "value": "eod_reports"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

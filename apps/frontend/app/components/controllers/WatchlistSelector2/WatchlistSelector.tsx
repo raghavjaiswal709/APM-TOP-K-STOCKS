@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
+import { useSurgePrefs } from "@/hooks/useSurge";
+import { SurgeFilterPopover, SurgeToggleButton, SurgeViewSwitch } from "@/app/components/surge/SurgeControls";
 
 interface WatchlistSelectorProps {
   onCompanySelect?: (companyCode: string | null, exchange?: string, marker?: string) => void;
@@ -39,6 +41,12 @@ export const WatchlistSelector = React.memo(({
 }: WatchlistSelectorProps) => {
 
   const [isFilterModalOpen, setIsFilterModalOpen] = React.useState(false);
+  // Surge toggle + filters — one shared setting for every watchlist.
+  const surgePrefs = useSurgePrefs();
+  // Read through a ref so toggling Surge doesn't change handleCompanySelect's
+  // identity — SelectScrollable resets its selection when that changes.
+  const surgeEnabledRef = React.useRef(surgePrefs.enabled);
+  surgeEnabledRef.current = surgePrefs.enabled;
   const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
   const [selectedCompanyCode, setSelectedCompanyCode] = React.useState<string | null>(null);
   const [activeFilters, setActiveFilters] = React.useState<ActiveFilters>({
@@ -121,6 +129,9 @@ export const WatchlistSelector = React.memo(({
     console.log(`[WatchlistSelector] Selected company: ${companyCode}`, selectedCompany);
     if (onCompanySelect && selectedCompany) {
       onCompanySelect(companyCode, selectedCompany.exchange, selectedCompany.marker);
+    } else if (onCompanySelect && surgeEnabledRef.current) {
+      // Picked from the Surge block: a surging NSE name outside this list.
+      onCompanySelect(companyCode, 'NSE', 'EQ');
     }
   }, [companies, onCompanySelect]);
 
@@ -254,6 +265,16 @@ export const WatchlistSelector = React.memo(({
           {error}
         </div>
       )}
+
+      {/* Surge toggle + surge filters */}
+      <div className="flex items-center gap-2">
+        <SurgeToggleButton size="lg" enabled={surgePrefs.enabled} onChange={surgePrefs.setEnabled} />
+        {surgePrefs.enabled && (
+          <SurgeFilterPopover state={surgePrefs} title="Filter surges in this watchlist">
+            <SurgeViewSwitch enabled={surgePrefs.enabled} onChange={surgePrefs.setEnabled} />
+          </SurgeFilterPopover>
+        )}
+      </div>
 
       {/* Company Selection */}
       <div>

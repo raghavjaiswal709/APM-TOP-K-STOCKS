@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { query, queryOne } from '@/app/senta/lib/db/sentiment'
+import { tryQuery, tryQueryOne } from '@/app/senta/lib/db/sentiment'
+import { upstoxQueryOne } from '@/app/senta/lib/db/upstox'
 import {
   isMarketOpen,
   getLiveIndexClose,
@@ -79,14 +80,14 @@ export async function GET(req: Request) {
     live ? getLiveIndexData('NIFTY500') : getIndexDataFromDB(date, 'NIFTY500'),
     live ? getLiveSectors()             : getSectorDataFromDB(date),
 
-    queryOne<{ adv_count: number; decl_count: number; ad_ratio: number }>(
+    tryQueryOne<{ adv_count: number; decl_count: number; ad_ratio: number }>(
       date
         ? `SELECT adv_count, decl_count, ad_ratio FROM adv_decl WHERE pred_date <= $1 ORDER BY date DESC LIMIT 1`
         : `SELECT adv_count, decl_count, ad_ratio FROM adv_decl ORDER BY date DESC LIMIT 1`,
       date ? [date] : undefined
     ),
 
-    queryOne<{ gift_nifty_points: number; gift_nifty_premium_pct: number }>(
+    tryQueryOne<{ gift_nifty_points: number; gift_nifty_premium_pct: number }>(
       date
         ? `SELECT spot_price AS gift_nifty_points, nifty_gap_pct AS gift_nifty_premium_pct
            FROM gift_nifty WHERE pred_date <= $1 ORDER BY date DESC LIMIT 1`
@@ -95,21 +96,21 @@ export async function GET(req: Request) {
       date ? [date] : undefined
     ),
 
-    query<{ index_name: string; region: string; close_price: number; pct_change: number }>(
+    tryQuery<{ index_name: string; region: string; close_price: number; pct_change: number }>(
       date
         ? `SELECT index_name, region, close_price, pct_change FROM global_indices WHERE pred_date <= $1 AND date = (SELECT MAX(date) FROM global_indices WHERE pred_date <= $1) ORDER BY region, index_name`
         : `SELECT index_name, region, close_price, pct_change FROM global_indices WHERE date = (SELECT MAX(date) FROM global_indices) ORDER BY region, index_name`,
       date ? [date] : undefined
     ),
 
-    queryOne<{ date: string; fii_net_value: number; dii_net_value: number; fii_gross_buy: number; fii_gross_sell: number; dii_gross_buy: number; dii_gross_sell: number }>(
+    upstoxQueryOne<{ date: string; fii_net_value: number; dii_net_value: number; fii_gross_buy: number; fii_gross_sell: number; dii_gross_buy: number; dii_gross_sell: number }>(
       date
         ? `SELECT date::text, fii_net_value, dii_net_value, fii_gross_buy, fii_gross_sell, dii_gross_buy, dii_gross_sell
-           FROM fii_dii WHERE pred_date <= $1 ORDER BY date DESC LIMIT 1`
+           FROM compat.fii_dii WHERE date < $1::date ORDER BY date DESC LIMIT 1`
         : `SELECT date::text, fii_net_value, dii_net_value, fii_gross_buy, fii_gross_sell, dii_gross_buy, dii_gross_sell
-           FROM fii_dii ORDER BY date DESC LIMIT 1`,
+           FROM compat.fii_dii ORDER BY date DESC LIMIT 1`,
       date ? [date] : undefined
-    ),
+    ).catch(() => null),
   ])
 
   return NextResponse.json({ vix, nifty, sensex, nifty500, sectors, ad, giftNifty, globalIndices, fiiDii })

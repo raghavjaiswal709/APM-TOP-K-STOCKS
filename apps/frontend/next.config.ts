@@ -79,9 +79,9 @@ const nextConfig = {
       // ⚠️ CATCH-ALL: Proxy remaining /api/* to NestJS backend (port 5002)
       // Excludes: Next.js local API route handlers (time-machine, historical-data,
       // market-data, market-movers, msax, senta, auth, admin, batch, fyers-control,
-      // gtt-predictions, portfolio, predictions) which must NOT be forwarded to NestJS.
+      // gtt-predictions, portfolio, predictions, surge) which must NOT be forwarded to NestJS.
       {
-        source: '/api/:path((?!time-machine|senta|historical-data|market-data|market-movers|msax|auth|admin|batch|fyers-control|gtt-predictions|portfolio|predictions).*)*',
+        source: '/api/:path((?!time-machine|senta|historical-data|market-data|market-movers|msax|auth|admin|batch|fyers-control|gtt-predictions|portfolio|predictions|surge).*)*',
         destination: `${process.env.BACKEND_URL || 'http://localhost:5002'}/api/:path*`,
       },
 

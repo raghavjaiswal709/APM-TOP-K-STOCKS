@@ -46,6 +46,16 @@ import { FilterModal } from "./controllers/WatchlistSelector/FilterModal";
 import { ImageCarousel } from "./ImageCarousel";
 import { clusteringV2Service } from "@/app/services/clusteringService";
 import type { ClusteringAnalysisResponse } from "@/types/clustering";
+import { useFlipAnimation, useSurgeWatchlist } from "@/hooks/useSurge";
+import { parseSearchTerms } from "@/lib/surge/filters";
+import {
+    SurgeFilterChips,
+    SurgeFilterPopover,
+    SurgeStatusLine,
+    SurgeToggleButton,
+    SurgeViewSwitch,
+} from "./surge/SurgeControls";
+import { SurgeNoMatches, SurgeSections } from "./surge/SurgeSections";
 
 export interface Company {
     company_id?: number;
@@ -158,6 +168,12 @@ export const CompanyList = React.memo(function CompanyList({
     hideDateSelector = false,
 }: CompanyListProps) {
     const [searchTerm, setSearchTerm] = React.useState("");
+    // Surge view (shared toggle/filters/pins across every watchlist). Off by
+    // default; while off nothing is fetched and the list is unchanged.
+    const surgeSearchTerms = React.useMemo(() => parseSearchTerms(searchTerm), [searchTerm]);
+    const surge = useSurgeWatchlist(surgeSearchTerms);
+    const surgeOn = surge.enabled;
+    const surgeListRef = React.useRef<HTMLDivElement>(null);
     const [isFilterOpen, setIsFilterOpen] = React.useState(false);
     const [activeFilters, setActiveFilters] = React.useState<{
         exchanges: string[];
@@ -590,7 +606,15 @@ export const CompanyList = React.memo(function CompanyList({
         }
 
         // 6. Search Term
-        if (searchTerm) {
+        if (searchTerm && surgeOn) {
+            // Surge view: comma/space separated names, any one matching (as in
+            // the trading dashboard), so "RELIANCE, TCS" finds both.
+            result = result.filter(company => {
+                const code = company.company_code?.toUpperCase() ?? "";
+                const name = company.name?.toUpperCase() ?? "";
+                return surgeSearchTerms.some(term => code.includes(term) || name.includes(term));
+            });
+        } else if (searchTerm) {
             const searchLower = searchTerm.toLowerCase();
             result = result.filter(company => {
                 const marker = company.marker ?? "";
@@ -603,7 +627,39 @@ export const CompanyList = React.memo(function CompanyList({
             });
         }
         return result;
-    }, [companies, searchTerm, activeFilters, regularPredictions, gttPredictions, mergedSentimentMap, mergedDesirabilityMap, umapSymbolsSet, umapAnalysisMap]);
+    }, [companies, searchTerm, surgeOn, surgeSearchTerms, activeFilters, regularPredictions, gttPredictions, mergedSentimentMap, mergedDesirabilityMap, umapSymbolsSet, umapAnalysisMap]);
+
+    // Surge on: the watchlist's own rows minus what the Pinned / Surging
+    // blocks already show; with a surge filter set, only names that surged.
+    const restCompanies = React.useMemo(() => {
+        if (!surgeOn) return filteredCompanies;
+        return filteredCompanies.filter(c => {
+            const code = c.company_code?.toUpperCase();
+            return !surge.surgingSet.has(code) && !surge.pinnedSet.has(code) && (!surge.filtersActive || surge.surgeByCode.has(code));
+        });
+    }, [surgeOn, filteredCompanies, surge.surgingSet, surge.pinnedSet, surge.filtersActive, surge.surgeByCode]);
+
+    const companyNameByCode = React.useMemo(
+        () => new Map(companies.map(c => [c.company_code?.toUpperCase(), c.name] as [string, string])),
+        [companies]
+    );
+
+    const surgeVisibleCount = surgeOn
+        ? surge.pinnedCodes.length + surge.surgeOrder.length + restCompanies.length
+        : filteredCompanies.length;
+
+    useFlipAnimation(
+        surgeListRef,
+        surgeOn
+            ? [...surge.pinnedCodes, '|', ...surge.surgeOrder, '|', ...restCompanies.map(c => c.company_code)].join(',')
+            : '',
+        surgeOn
+    );
+
+    const handleSurgeRowSelect = React.useCallback((code: string) => {
+        if (isMultiSelectActive) toggleMultiSelect(code);
+        else onSelect(code);
+    }, [isMultiSelectActive, onSelect, toggleMultiSelect]);
 
     const selectAllFiltered = React.useCallback(() => {
         setMultiSelectedCodes(new Set(filteredCompanies.map(c => c.company_code)));
@@ -756,6 +812,19 @@ export const CompanyList = React.memo(function CompanyList({
                         )}
                     </Button>
 
+                    {/* SURGE */}
+                    <SurgeToggleButton
+                        size="icon"
+                        enabled={surgeOn}
+                        onChange={surge.setEnabled}
+                        count={surge.surgeByCode.size}
+                    />
+                    {surgeOn && (
+                        <SurgeFilterPopover state={surge.filterState} title="Filter surges in this watchlist" triggerClassName="border-0">
+                            <SurgeViewSwitch enabled={surgeOn} onChange={surge.setEnabled} />
+                        </SurgeFilterPopover>
+                    )}
+
                     {/* IMAGES */}
                     <Button
                         variant="ghost"
@@ -822,7 +891,7 @@ export const CompanyList = React.memo(function CompanyList({
                 <div className="relative">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Search symbol..."
+                        placeholder={surgeOn ? "Search symbols… (RELIANCE, TCS)" : "Search symbol..."}
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="pl-9 h-9"
@@ -830,8 +899,24 @@ export const CompanyList = React.memo(function CompanyList({
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto" suppressHydrationWarning>
-                {filteredCompanies.length === 0 ? (
+            {surgeOn && (
+                <>
+                    <SurgeFilterChips state={surge.filterState} className="px-2 py-1.5 border-b" />
+                    <SurgeStatusLine view={surge} />
+                </>
+            )}
+
+            <div
+                ref={surgeListRef}
+                className="flex-1 overflow-y-auto relative"
+                suppressHydrationWarning
+                {...(surgeOn ? surge.listHandlers : {})}
+            >
+                {surgeOn && surge.loading ? (
+                    <div className="p-8 text-center text-sm text-muted-foreground">Loading surges…</div>
+                ) : surgeOn && surgeVisibleCount === 0 && (searchTerm || surge.filtersActive) ? (
+                    <SurgeNoMatches view={surge} onClearSearch={() => setSearchTerm("")} />
+                ) : surgeVisibleCount === 0 ? (
                     <div className="p-8 text-center text-sm text-muted-foreground">
                         {searchTerm ? 'No matches found' : 'No companies available'}
                     </div>
@@ -841,7 +926,18 @@ export const CompanyList = React.memo(function CompanyList({
                        watchlists. The per-row Tooltips share this single provider. */
                     <TooltipProvider delayDuration={300}>
                     <div className="flex flex-col" suppressHydrationWarning>
-                        {filteredCompanies.map((company, index) => {
+                        {surgeOn && (
+                            <SurgeSections
+                                view={surge}
+                                activeCode={isMultiSelectActive ? null : selectedCompanyCode?.toUpperCase() ?? null}
+                                onSelect={handleSurgeRowSelect}
+                                nameByCode={companyNameByCode}
+                                isChecked={isMultiSelectActive ? (code) => multiSelectedCodes.has(code) : undefined}
+                                restLabel="Watchlist"
+                                restCount={restCompanies.length}
+                            />
+                        )}
+                        {restCompanies.map((company, index) => {
                             const uniqueKey = `${company.company_code}-${company.exchange}-${index}`;
                             const isSelected = selectedCompanyCode === company.company_code;
                             
@@ -860,6 +956,7 @@ export const CompanyList = React.memo(function CompanyList({
                             return (
                                 <React.Fragment key={uniqueKey}>
                                     <div
+                                        data-flip-key={surgeOn ? `row-${company.company_code}` : undefined}
                                         onClick={() => {
                                             if (isMultiSelectActive) {
                                                 toggleMultiSelect(company.company_code);

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { query } from '@/app/senta/lib/db/sentiment'
+import { tryQuery as query } from '@/app/senta/lib/db/sentiment'
 
 export async function GET(req: Request) {
   const date = new URL(req.url).searchParams.get('date')

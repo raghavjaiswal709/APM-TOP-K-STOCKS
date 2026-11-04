@@ -69,6 +69,9 @@ services:
 
       # Internal server-side URL (container-to-container via Docker DNS)
       - BACKEND_URL=http://backend:5002
+
+      # Senta EOD reports (bind-mounted below)
+      - EOD_REPORTS_DIR=/eod-reports
     env_file:
       - apps/frontend/.env
     volumes:
@@ -79,6 +82,8 @@ services:
       - ./apps/backend/data/config.ini:/fyers-config/config.ini
       # Token files the services read — mounted so "Reset Token" can delete them
       - ./apps/backend/data:/fyers-data
+      # Senta EOD markdown reports written by the upstox pipeline
+      - /nas1/upStox_exp/prod_p2/reports:/eod-reports:ro
     depends_on:
       - backend
     networks:

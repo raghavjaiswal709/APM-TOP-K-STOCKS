@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
-const REPORTS_DIR = path.join(process.cwd(), '..', 'phase2', 'eod_report_gen', 'reports')
+// On dakslabsserver01: EOD_REPORTS_DIR=/nas1/upStox_exp/prod_p2/reports
+const REPORTS_DIR = process.env.EOD_REPORTS_DIR
+  ?? path.join(process.cwd(), '..', 'phase2', 'eod_report_gen', 'reports')
 
 function findLatestReport(symbol: string): { content: string; date: string } | null {
   if (!fs.existsSync(REPORTS_DIR)) return null

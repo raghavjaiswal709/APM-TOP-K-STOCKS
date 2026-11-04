@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { queryOne } from '@/app/senta/lib/db/sentiment'
+import { tryQueryOne } from '@/app/senta/lib/db/sentiment'
+import { upstoxQueryOne } from '@/app/senta/lib/db/upstox'
 import { getOrderBook, getCircuitBand } from '@/app/senta/lib/db/live'
 import {
   isPreOpen, isMarketOpen,
@@ -59,48 +60,53 @@ export async function GET(
   // Historical view: only rows that were available for the selected prediction day
   const asOf = dateAnchor ? 'AND pred_date <= $2' : ''
   const args = dateAnchor ? [symbol, dateAnchor] : [symbol]
+  // upstox_db has no pred_date: data for prediction day D is anything dated before D
+  const upAsOf = dateAnchor ? 'AND date < $2::date' : ''
 
   const [stubOrderBook, circuitBand, delivery, peMcap, derivatives, company, sectorRow, histDayBars, w52, lastWL] =
     await Promise.all([
       liveOrderBook ? Promise.resolve(null) : getOrderBook(symbol),
       getCircuitBand(symbol),
 
-      queryOne<{ date: string; delivery_pct: number | null }>(
+      tryQueryOne<{ date: string; delivery_pct: number | null }>(
         `SELECT date, delivery_pct FROM delivery
          WHERE company_code = $1 ${asOf}
          ORDER BY date DESC LIMIT 1`,
         args
       ),
 
-      queryOne<{ date: string; pe_ratio: number | null; market_cap: number | null; mcap_rank: number | null }>(
+      // market_cap is always NULL in upstox_db until a source is chosen, so mcap_rank stays NULL
+      upstoxQueryOne<{ date: string; pe_ratio: number | null; market_cap: number | null; mcap_rank: number | null }>(
         `SELECT p.date, p.pe_ratio, p.market_cap,
                 CASE WHEN p.market_cap IS NULL THEN NULL ELSE
-                  (SELECT COUNT(*) + 1 FROM pe_mcap q
+                  (SELECT COUNT(*) + 1 FROM compat.pe_mcap q
                    WHERE q.date = p.date AND q.market_cap > p.market_cap)
                 END AS mcap_rank
-         FROM pe_mcap p
-         WHERE p.company_code = $1 ${asOf}
+         FROM compat.pe_mcap p
+         WHERE p.company_code = $1 ${dateAnchor ? 'AND p.date < $2::date' : ''}
          ORDER BY p.date DESC LIMIT 1`,
         args
-      ),
+      ).catch(() => null),
 
-      queryOne<{ pcr: number | null; max_pain_strike: number | null; is_fno: number | null }>(
-        `SELECT pcr, max_pain_strike, is_fno FROM derivatives
-         WHERE company_code = $1 ${asOf}
+      upstoxQueryOne<{ pcr: number | null; max_pain_strike: number | null; is_fno: boolean | null }>(
+        `SELECT pcr, max_pain_strike, is_fno FROM compat.derivatives
+         WHERE company_code = $1 ${upAsOf}
          ORDER BY date DESC LIMIT 1`,
         args
-      ),
+      ).catch(() => null),
 
-      queryOne<{ company_name: string }>(
-        `SELECT name AS company_name FROM company_list WHERE company_code = $1`,
+      upstoxQueryOne<{ company_name: string }>(
+        `SELECT company_name FROM ref.company_map
+         WHERE company_code = $1 AND valid_to IS NULL
+         ORDER BY valid_from DESC LIMIT 1`,
         [symbol]
-      ),
+      ).catch(() => null),
 
       // Stock and sector % from the same row so "vs Sector" compares the same session.
       // No live sector feed in this schema, so it is skipped during market hours.
       liveSession
         ? Promise.resolve(null)
-        : queryOne<{ date: string; t1_pct_chng: number | null; sector_pct_chng: number | null }>(
+        : tryQueryOne<{ date: string; t1_pct_chng: number | null; sector_pct_chng: number | null }>(
             `SELECT date, t1_pct_chng, sector_pct_chng FROM stock_price_vol
              WHERE company_code = $1 ${asOf}
              ORDER BY date DESC LIMIT 1`,
@@ -124,7 +130,7 @@ export async function GET(
   const universe = {
     company_name:        company?.company_name ?? null,
     market_cap_category: mcapCategory(peMcap?.mcap_rank),
-    f_o_eligible:        derivatives?.is_fno != null ? derivatives.is_fno === 1 : null,
+    f_o_eligible:        derivatives?.is_fno ?? null,
   }
 
   const sectorIndex = sectorRow?.sector_pct_chng != null

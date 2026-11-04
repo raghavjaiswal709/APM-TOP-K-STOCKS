@@ -29,3 +29,32 @@ export async function queryOne<T = Record<string, unknown>>(
   const rows = await query<T>(sql, params)
   return rows[0] ?? null
 }
+
+// stock_sentiment_db stopped updating in July 2026 and only holds the tables
+// upstox_db has no source for yet. A failure there must not break a route.
+let lastWarn = 0
+function warnOnce(err: unknown) {
+  if (Date.now() - lastWarn < 60_000) return
+  lastWarn = Date.now()
+  console.warn('[senta] stock_sentiment_db unavailable:', (err as Error).message)
+}
+
+export async function tryQuery<T = Record<string, unknown>>(
+  sql: string,
+  params?: unknown[]
+): Promise<T[]> {
+  try {
+    return await query<T>(sql, params)
+  } catch (e) {
+    warnOnce(e)
+    return []
+  }
+}
+
+export async function tryQueryOne<T = Record<string, unknown>>(
+  sql: string,
+  params?: unknown[]
+): Promise<T | null> {
+  const rows = await tryQuery<T>(sql, params)
+  return rows[0] ?? null
+}

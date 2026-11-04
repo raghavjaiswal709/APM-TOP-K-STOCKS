@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { query } from '@/app/senta/lib/db/sentiment'
+import { upstoxQuery as query } from '@/app/senta/lib/db/upstox'
 
 const PERIOD_DAYS: Record<string, number | null> = {
   '1M': 30, '3M': 91, '6M': 182, '1Y': 365, 'MAX': null,
@@ -19,15 +19,15 @@ export async function GET(req: Request) {
   if (days === null) {
     rows = await query(
       date
-        ? `SELECT ${COLS} FROM fii_dii WHERE pred_date <= $1 ORDER BY date ASC`
-        : `SELECT ${COLS} FROM fii_dii ORDER BY date ASC`,
+        ? `SELECT ${COLS} FROM compat.fii_dii WHERE date < $1::date ORDER BY date ASC`
+        : `SELECT ${COLS} FROM compat.fii_dii ORDER BY date ASC`,
       date ? [date] : undefined
     )
   } else {
     rows = await query(
       date
-        ? `SELECT ${COLS} FROM fii_dii WHERE pred_date <= $1 ORDER BY date DESC LIMIT $2`
-        : `SELECT ${COLS} FROM fii_dii ORDER BY date DESC LIMIT $1`,
+        ? `SELECT ${COLS} FROM compat.fii_dii WHERE date < $1::date ORDER BY date DESC LIMIT $2`
+        : `SELECT ${COLS} FROM compat.fii_dii ORDER BY date DESC LIMIT $1`,
       date ? [date, days] : [days]
     )
     rows = (rows as object[]).reverse()

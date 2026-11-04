@@ -4,6 +4,10 @@ import { Check, ChevronsUpDown, Building2, TrendingUp, Search } from "lucide-rea
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useFlipAnimation, useSurgeWatchlist } from "@/hooks/useSurge"
+import { parseSearchTerms } from "@/lib/surge/filters"
+import { SurgeFilterChips, SurgeStatusLine } from "@/app/components/surge/SurgeControls"
+import { SurgeNoMatches, SurgeSections } from "@/app/components/surge/SurgeSections"
 
 interface MergedCompany {
   company_id?: number;
@@ -37,6 +41,12 @@ export function SelectScrollable({
   const [value, setValue] = React.useState("")
   const [selectedCompany, setSelectedCompany] = React.useState<MergedCompany | null>(null)
   const [searchTerm, setSearchTerm] = React.useState("")
+  // Surge view — toggled from the WatchlistSelector bar, shared by every
+  // watchlist. While off this list renders exactly as before.
+  const surgeSearchTerms = React.useMemo(() => parseSearchTerms(searchTerm), [searchTerm])
+  const surge = useSurgeWatchlist(surgeSearchTerms)
+  const surgeOn = surge.enabled
+  const surgeListRef = React.useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = React.useState(false) // For hydration fix
 
   React.useEffect(() => {
@@ -106,6 +116,13 @@ export function SelectScrollable({
 
 const filteredCompanies = React.useMemo(() => {
   if (!searchTerm) return companies;
+    if (surgeOn) {
+      return companies.filter(company => {
+        const code = company.company_code?.toUpperCase() ?? "";
+        const name = company.name?.toUpperCase() ?? "";
+        return surgeSearchTerms.some(term => code.includes(term) || name.includes(term));
+      });
+    }
   const searchLower = searchTerm.toLowerCase();
   return companies.filter(company => {
     const marker = company.marker ?? "";
@@ -116,7 +133,37 @@ const filteredCompanies = React.useMemo(() => {
       marker.toLowerCase().includes(searchLower)
     );
   });
-}, [companies, searchTerm]);
+}, [companies, searchTerm, surgeOn, surgeSearchTerms]);
+
+  const restCompanies = React.useMemo(() => {
+    if (!surgeOn) return filteredCompanies
+    return filteredCompanies.filter(c => {
+      const code = c.company_code?.toUpperCase()
+      return !surge.surgingSet.has(code) && !surge.pinnedSet.has(code) && (!surge.filtersActive || surge.surgeByCode.has(code))
+    })
+  }, [surgeOn, filteredCompanies, surge.surgingSet, surge.pinnedSet, surge.filtersActive, surge.surgeByCode])
+
+  const companyNameByCode = React.useMemo(
+    () => new Map(companies.map(c => [c.company_code?.toUpperCase(), c.name] as [string, string])),
+    [companies]
+  )
+
+  const visibleCount = surgeOn
+    ? surge.pinnedCodes.length + surge.surgeOrder.length + restCompanies.length
+    : filteredCompanies.length
+
+  useFlipAnimation(
+    surgeListRef,
+    surgeOn && open
+      ? [...surge.pinnedCodes, '|', ...surge.surgeOrder, '|', ...restCompanies.map(c => c.company_code)].join(',')
+      : '',
+    surgeOn && open
+  )
+
+  const handleSurgeSelect = (code: string) => {
+    const known = companies.find(c => c.company_code?.toUpperCase() === code)
+    handleSelect(known ?? { company_code: code, name: companyNameByCode.get(code) ?? surge.screenedByCode.get(code)?.name ?? code, exchange: 'NSE', marker: 'EQ' })
+  }
 
 
   if (!mounted) {
@@ -180,24 +227,50 @@ const filteredCompanies = React.useMemo(() => {
                   onClick={(e) => e.stopPropagation()}
                 />
               </div>
-              {filteredCompanies.length !== companies.length && (
+              {!surgeOn && filteredCompanies.length !== companies.length && (
                 <div className="text-xs text-muted-foreground mt-1">
                   {`Showing ${filteredCompanies.length} of ${companies.length} companies`}
                 </div>
               )}
             </div>
-            <div className="overflow-y-auto max-h-[250px]">
-              {filteredCompanies.length === 0 ? (
+            {surgeOn && (
+              <>
+                <SurgeFilterChips state={surge.filterState} className="px-2 py-1.5 border-b" />
+                <SurgeStatusLine view={surge} />
+              </>
+            )}
+            <div
+              ref={surgeListRef}
+              className={cn("overflow-y-auto relative", surgeOn ? "max-h-[360px]" : "max-h-[250px]")}
+              {...(surgeOn ? surge.listHandlers : {})}
+            >
+              {surgeOn && surge.loading ? (
+                <div className="p-3 text-sm text-muted-foreground text-center">Loading surges…</div>
+              ) : surgeOn && visibleCount === 0 && (searchTerm || surge.filtersActive) ? (
+                <SurgeNoMatches view={surge} onClearSearch={() => setSearchTerm("")} />
+              ) : visibleCount === 0 ? (
                 <div className="p-3 text-sm text-muted-foreground text-center">
                   {searchTerm ? 'No companies match your search' : 'No companies found'}
                 </div>
               ) : (
-                filteredCompanies.map((company, index) => {
+                <>
+                {surgeOn && (
+                  <SurgeSections
+                    view={surge}
+                    activeCode={value ? value.toUpperCase() : null}
+                    onSelect={handleSurgeSelect}
+                    nameByCode={companyNameByCode}
+                    restLabel="Watchlist"
+                    restCount={restCompanies.length}
+                  />
+                )}
+                {restCompanies.map((company, index) => {
                   const uniqueKey = `${company.company_code}-${company.exchange}-${index}`;
                   const isSelected = value === company.company_code;
                   return (
                     <div
                       key={uniqueKey}
+                      data-flip-key={surgeOn ? `row-${company.company_code}` : undefined}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleSelect(company);
@@ -235,7 +308,8 @@ const filteredCompanies = React.useMemo(() => {
                       </div>
                     </div>
                   );
-                })
+                })}
+                </>
               )}
             </div>
           </div>
