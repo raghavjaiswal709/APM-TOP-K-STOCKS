@@ -5,8 +5,17 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useFlipAnimation, useSurgeWatchlist } from "@/hooks/useSurge"
-import { parseSearchTerms } from "@/lib/surge/filters"
-import { SurgeFilterChips, SurgeStatusLine } from "@/app/components/surge/SurgeControls"
+import { formatPrice, formatSignedPct, parseSearchTerms } from "@/lib/surge/filters"
+import {
+  AdditionsHeader,
+  PinButton,
+  RankBadge,
+  RemoveButton,
+  SurgeStatusLine,
+  TargetBadge,
+  WatchlistFilterChips,
+} from "@/app/components/surge/SurgeControls"
+// OLD (Surge as an opt-in overlay): SurgeFilterChips
 import { SurgeNoMatches, SurgeSections } from "@/app/components/surge/SurgeSections"
 
 interface MergedCompany {
@@ -21,9 +30,15 @@ interface MergedCompany {
   avg_trading_capital?: number;
   pe_ratio?: number;
   N1_Pattern_count?: number;
+  // NEW (Surge watchlist — see hooks/useWatchlist.ts)
+  rank?: number;
+  target_move_pct?: number | null;
+  watchlist_source?: 'surge' | 'manual';
 }
 
 interface SelectScrollableProps {
+  /** The watchlist's date — today's screen is the only one with a "Surging today" block. */
+  date?: string | null;
   companies: MergedCompany[];
   loading: boolean;
   exists: boolean;
@@ -31,6 +46,7 @@ interface SelectScrollableProps {
 }
 
 export function SelectScrollable({
+  date,
   companies,
   loading,
   exists,
@@ -40,11 +56,18 @@ export function SelectScrollable({
   const [value, setValue] = React.useState("")
   const [selectedCompany, setSelectedCompany] = React.useState<MergedCompany | null>(null)
   const [searchTerm, setSearchTerm] = React.useState("")
-  // Surge view — toggled from the WatchlistSelector bar, shared by every
-  // watchlist. While off this list renders exactly as before.
+  // The Surge watchlist view (pins, surging today, filters, target floor,
+  // additions) — shared by every watchlist. The Surge screen IS the list now,
+  // so the view is always on. Live prices only while the dropdown is open.
   const surgeSearchTerms = React.useMemo(() => parseSearchTerms(searchTerm), [searchTerm])
-  const surge = useSurgeWatchlist(surgeSearchTerms)
-  const surgeOn = surge.enabled
+  const surgeRowCodes = React.useMemo(
+    () => (open && companies.length <= 400 ? companies.map(c => c.company_code) : []),
+    [open, companies]
+  )
+  const surge = useSurgeWatchlist(surgeSearchTerms, { date, rowCodes: surgeRowCodes, liveQuotes: open })
+  const surgeOn = true
+  // OLD: const surge = useSurgeWatchlist(surgeSearchTerms)
+  // OLD: const surgeOn = surge.enabled // opt-in overlay, toggled from the WatchlistSelector bar
   const surgeListRef = React.useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = React.useState(false) // hydration fix
 
@@ -163,9 +186,15 @@ export function SelectScrollable({
     if (!surgeOn) return filteredCompanies
     return filteredCompanies.filter(c => {
       const code = c.company_code?.toUpperCase()
-      return !surge.surgingSet.has(code) && !surge.pinnedSet.has(code) && (!surge.filtersActive || surge.surgeByCode.has(code))
+      return !surge.surgingSet.has(code) && !surge.pinnedSet.has(code) && surge.passesFilters(code)
+      // OLD: ... && (!surge.filtersActive || surge.surgeByCode.has(code))
     })
-  }, [surgeOn, filteredCompanies, surge.surgingSet, surge.pinnedSet, surge.filtersActive, surge.surgeByCode])
+  }, [surgeOn, filteredCompanies, surge.surgingSet, surge.pinnedSet, surge.passesFilters])
+
+  // The screened list, then "My additions" — as in the dashboard.
+  const restScreened = React.useMemo(() => restCompanies.filter(c => c.watchlist_source !== 'manual'), [restCompanies])
+  const restManual = React.useMemo(() => restCompanies.filter(c => c.watchlist_source === 'manual'), [restCompanies])
+  const restRows = React.useMemo(() => [...restScreened, ...restManual], [restScreened, restManual])
 
   const companyNameByCode = React.useMemo(
     () => new Map(companies.map(c => [c.company_code?.toUpperCase(), c.name] as [string, string])),
@@ -179,7 +208,7 @@ export function SelectScrollable({
   useFlipAnimation(
     surgeListRef,
     surgeOn && open
-      ? [...surge.pinnedCodes, '|', ...surge.surgeOrder, '|', ...restCompanies.map(c => c.company_code)].join(',')
+      ? [...surge.pinnedCodes, '|', ...surge.surgeOrder, '|', ...restScreened.map(c => c.company_code), '|', ...restManual.map(c => c.company_code)].join(',')
       : '',
     surgeOn && open
   )
@@ -258,7 +287,7 @@ export function SelectScrollable({
             </div>
             {surgeOn && (
               <>
-                <SurgeFilterChips state={surge.filterState} className="px-2 py-1.5 border-b" />
+                <WatchlistFilterChips view={surge} className="px-2 py-1.5 border-b" />
                 <SurgeStatusLine view={surge} />
               </>
             )}
@@ -267,9 +296,9 @@ export function SelectScrollable({
               className={cn("overflow-y-auto relative", surgeOn ? "max-h-[360px]" : "max-h-[250px]")}
               {...(surgeOn ? surge.listHandlers : {})}
             >
-              {surgeOn && surge.loading ? (
-                <div className="p-3 text-sm text-muted-foreground text-center">Loading surges…</div>
-              ) : surgeOn && visibleCount === 0 && (searchTerm || surge.filtersActive) ? (
+              {surge.loading && visibleCount === 0 ? (
+                <div className="p-3 text-sm text-muted-foreground text-center">Loading Surge watchlist…</div>
+              ) : visibleCount === 0 && (searchTerm || surge.filtersActive || surge.targetFloorActive) ? (
                 <SurgeNoMatches view={surge} onClearSearch={() => setSearchTerm("")} />
               ) : visibleCount === 0 ? (
                 <div className="p-3 text-sm text-muted-foreground text-center">
@@ -283,23 +312,30 @@ export function SelectScrollable({
                     activeCode={value ? value.toUpperCase() : null}
                     onSelect={handleSurgeSelect}
                     nameByCode={companyNameByCode}
-                    restLabel="Watchlist"
-                    restCount={restCompanies.length}
+                    restLabel="Screened"
+                    restCount={restScreened.length}
                   />
                 )}
-                {restCompanies.map((company, index) => {
+                {restRows.map((company, index) => {
                   const uniqueKey = `${company.company_code}-${company.exchange}-${index}`;
                   const isSelected = value === company.company_code;
+                  const code = company.company_code?.toUpperCase();
+                  const quote = surge.quotes[code];
+                  const isManual = company.watchlist_source === 'manual';
                   return (
+                    <React.Fragment key={uniqueKey}>
+                    {index === restScreened.length && restManual.length > 0 &&
+                      (restScreened.length > 0 || surge.pinnedCodes.length > 0 || surge.surgeOrder.length > 0) && (
+                      <AdditionsHeader count={restManual.length} />
+                    )}
                     <div
-                      key={uniqueKey}
                       data-flip-key={surgeOn ? `row-${company.company_code}` : undefined}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleSelect(company);
                       }}
                       className={cn(
-                        "flex flex-col gap-1 p-3 cursor-pointer hover:bg-accent transition-colors border-b border-border last:border-b-0",
+                        "group flex flex-col gap-1 p-3 cursor-pointer hover:bg-accent transition-colors border-b border-border last:border-b-0",
                         isSelected && "bg-accent"
                       )}
                     >
@@ -315,6 +351,10 @@ export function SelectScrollable({
                           <span className="font-medium">
                             {company.company_code}
                           </span>
+                          <RankBadge rank={company.rank} />
+                          <TargetBadge value={surge.targetOf(code) ?? company.target_move_pct ?? null} />
+                          <PinButton pinned={surge.pinnedSet.has(code)} code={code} onToggle={() => surge.togglePin(code)} />
+                          {isManual && <RemoveButton code={code} onRemove={() => surge.removeAddition(code)} />}
                         </div>
                         {company.N1_Pattern_count !== undefined && company.N1_Pattern_count > 0 && (
                           <div className="flex items-center gap-1 text-xs text-green-600 flex-shrink-0">
@@ -322,14 +362,31 @@ export function SelectScrollable({
                             {company.N1_Pattern_count}
                           </div>
                         )}
+                        {/* Live LTP (Surge watchlist) */}
+                        <span className="font-mono text-xs tabular-nums flex-shrink-0">
+                          {quote ? formatPrice(quote.ltp) : '—'}
+                        </span>
                       </div>
+                      <div className="flex items-center justify-between gap-2 w-full">
+                        <div className="text-sm text-muted-foreground truncate min-w-0 ml-6">
+                          {company.name}
+                        </div>
+                        <span className={cn(
+                          "font-mono text-[10px] tabular-nums flex-shrink-0",
+                          !quote ? "text-muted-foreground/50" : quote.changePercent >= 0 ? "text-green-500" : "text-red-500"
+                        )}>
+                          {quote ? formatSignedPct(quote.changePercent) : '—'}
+                        </span>
+                      </div>
+                      {/* OLD name row:
                       <div className="text-sm text-muted-foreground truncate w-full ml-6">
                         {company.name}
-                      </div>
+                      </div> */}
                       <div className="text-xs text-muted-foreground ml-6">
                         {formatCompanyDetails(company)}
                       </div>
                     </div>
+                    </React.Fragment>
                   );
                 })}
                 </>

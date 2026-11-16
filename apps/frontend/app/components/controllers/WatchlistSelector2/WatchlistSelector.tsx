@@ -9,8 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
-import { useSurgePrefs } from "@/hooks/useSurge";
-import { SurgeFilterPopover, SurgeToggleButton, SurgeViewSwitch } from "@/app/components/surge/SurgeControls";
+import { useWatchlistFilterControls } from "@/hooks/useSurge";
+import { AddSymbolButton, SurgeToggleButton, WatchlistFilterPopover } from "@/app/components/surge/SurgeControls";
+// OLD (Surge as an opt-in overlay): useSurgePrefs, SurgeFilterPopover, SurgeViewSwitch
 
 interface WatchlistSelectorProps {
   onCompanySelect?: (companyCode: string | null, exchange?: string, marker?: string) => void;
@@ -41,12 +42,14 @@ export const WatchlistSelector = React.memo(({
 }: WatchlistSelectorProps) => {
 
   const [isFilterModalOpen, setIsFilterModalOpen] = React.useState(false);
-  // Surge toggle + filters — one shared setting for every watchlist.
-  const surgePrefs = useSurgePrefs();
-  // Read through a ref so toggling Surge doesn't change handleCompanySelect's
-  // identity — SelectScrollable resets its selection when that changes.
-  const surgeEnabledRef = React.useRef(surgePrefs.enabled);
-  surgeEnabledRef.current = surgePrefs.enabled;
+  // OLD (opt-in overlay toggle):
+  // // Surge toggle + filters — one shared setting for every watchlist.
+  // const surgePrefs = useSurgePrefs();
+  // // Read through a ref so toggling Surge doesn't change handleCompanySelect's
+  // // identity — SelectScrollable resets its selection when that changes.
+  // const surgeEnabledRef = React.useRef(surgePrefs.enabled);
+  // surgeEnabledRef.current = surgePrefs.enabled;
+
   const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
   const [selectedCompanyCode, setSelectedCompanyCode] = React.useState<string | null>(null);
   const [activeFilters, setActiveFilters] = React.useState<ActiveFilters>({
@@ -74,6 +77,8 @@ export const WatchlistSelector = React.memo(({
     showAllCompanies,
     setShowAllCompanies
   } = useWatchlist();
+  // Surging on top + watchlist filters — one shared setting for every watchlist.
+  const surgeControls = useWatchlistFilterControls(selectedDate);
 
   // Get available sentiments (you might need to modify this based on your data)
   const availableSentiments = React.useMemo(() => {
@@ -129,10 +134,11 @@ export const WatchlistSelector = React.memo(({
     console.log(`[WatchlistSelector] Selected company: ${companyCode}`, selectedCompany);
     if (onCompanySelect && selectedCompany) {
       onCompanySelect(companyCode, selectedCompany.exchange, selectedCompany.marker);
-    } else if (onCompanySelect && surgeEnabledRef.current) {
-      // Picked from the Surge block: a surging NSE name outside this list.
+    } else if (onCompanySelect) {
+      // Picked from the Pinned / Surging block: an NSE name outside this list.
       onCompanySelect(companyCode, 'NSE', 'EQ');
     }
+    // OLD: } else if (onCompanySelect && surgeEnabledRef.current) { ... }
   }, [companies, onCompanySelect]);
 
   const filteredCompanies = React.useMemo(() => {
@@ -266,7 +272,18 @@ export const WatchlistSelector = React.memo(({
         </div>
       )}
 
-      {/* Surge toggle + surge filters */}
+      {/* Surge watchlist: surging on top, filters (surge + target floor), add symbol */}
+      <div className="flex items-center gap-2">
+        <SurgeToggleButton
+          size="lg"
+          enabled={surgeControls.surgingOnTop}
+          onChange={surgeControls.setSurgingOnTop}
+        />
+        <WatchlistFilterPopover view={surgeControls} triggerClassName="h-20 w-12" />
+        <AddSymbolButton className="h-20 w-12 border" />
+      </div>
+      {/* OLD (opt-in overlay):
+      Surge toggle + surge filters
       <div className="flex items-center gap-2">
         <SurgeToggleButton size="lg" enabled={surgePrefs.enabled} onChange={surgePrefs.setEnabled} />
         {surgePrefs.enabled && (
@@ -275,11 +292,13 @@ export const WatchlistSelector = React.memo(({
           </SurgeFilterPopover>
         )}
       </div>
+      */}
 
       {/* Company Selection */}
       <div>
         <SelectScrollable
           key={`company-selector-${selectedDate}`} // Force re-render when date changes
+          date={selectedDate}
           companies={filteredCompanies}
           loading={loading}
           exists={exists}

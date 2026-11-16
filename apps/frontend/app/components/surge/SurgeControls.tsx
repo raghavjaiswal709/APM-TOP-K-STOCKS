@@ -1,11 +1,13 @@
 'use client';
 
 import * as React from 'react';
-import { Minus, Pin, PinOff, SlidersHorizontal, TrendingDown, TrendingUp, X, Zap } from 'lucide-react';
+import { Minus, Pin, PinOff, Plus, Search, SlidersHorizontal, TrendingDown, TrendingUp, X, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
+  TARGET_MOVE_PRESETS,
   activeFilterCount,
+  companyCodeOf,
   formatPrice,
   formatSignedPct,
   formatTargetMovePct,
@@ -14,12 +16,18 @@ import {
 } from '@/lib/surge/filters';
 import type { SurgeDirection, SurgeTercile, SurgeType } from '@/lib/surge/types';
 import type { SurgeQuote } from '@/lib/surge/quoteSocket';
-import type { SurgeEntry, SurgeFilterState, SurgeWatchlistView } from '@/hooks/useSurge';
+import {
+  useMasterCompanies,
+  useSurgePrefs,
+  type SurgeEntry,
+  type SurgeFilterState,
+  type SurgeWatchlistView,
+} from '@/hooks/useSurge';
 
 /*
- * Surge UI pieces shared by every watchlist — ported from the trading
- * dashboard's `watchlist-panel.tsx` and `surge-filter-bar.tsx`, restyled to
- * this app's shadcn tokens.
+ * Surge watchlist UI pieces shared by every watchlist — ported from the
+ * trading dashboard's `watchlist-panel.tsx` and `surge-filter-bar.tsx`,
+ * restyled to this app's shadcn tokens.
  */
 
 const POSITIVE = 'text-green-500';
@@ -52,7 +60,10 @@ const TERCILE_HINT: Record<SurgeTercile, string> = {
 /** One-tap floors beside the slider, for the values people actually pick. */
 const SCORE_STEPS = [0, 0.5, 0.7, 0.9];
 
-const formatScore = (score: number) => `${Math.round(score * 100)}%`;
+/** Fraction as a percent number, kept to 2 decimals to hide float noise. */
+const toPercent = (fraction: number) => Number((fraction * 100).toFixed(2));
+
+const formatPercentFloor = (fraction: number) => `${toPercent(fraction)}%`;
 
 function toggle<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -60,7 +71,10 @@ function toggle<T>(list: T[], value: T): T[] {
 
 // ── toggle ────────────────────────────────────────────────────────────────
 
-/** Compact on/off button for a watchlist toolbar. */
+/**
+ * Compact "Surging on top" button for a watchlist toolbar — the same switch
+ * as the one in the filter popover, with today's surge count.
+ */
 export function SurgeToggleButton({
   enabled,
   onChange,
@@ -76,7 +90,8 @@ export function SurgeToggleButton({
   /** `icon`: an 8×8 icon button with the count as a corner badge, for tight toolbars. */
   size?: 'icon' | 'sm' | 'lg';
 }) {
-  const title = enabled ? "Surge on — today's surges lead the list" : 'Surge off — plain watchlist order';
+  const title = enabled ? "Surging on top — today's surges lead the watchlist" : 'Plain screener order';
+  // OLD (overlay): enabled ? "Surge on — today's surges lead the list" : 'Surge off — plain watchlist order'
 
   if (size === 'icon') {
     return (
@@ -84,7 +99,7 @@ export function SurgeToggleButton({
         type="button"
         role="switch"
         aria-checked={enabled}
-        aria-label="Surge view"
+        aria-label="Surging on top"
         title={title}
         onClick={() => onChange(!enabled)}
         className={cn(
@@ -111,7 +126,7 @@ export function SurgeToggleButton({
       type="button"
       role="switch"
       aria-checked={enabled}
-      aria-label="Surge view"
+      aria-label="Surging on top"
       title={title}
       onClick={() => onChange(!enabled)}
       className={cn(
@@ -146,7 +161,7 @@ export function SurgeViewSwitch({ enabled, onChange }: { enabled: boolean; onCha
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="text-[11px] font-medium">Surging on top</span>
         <span className="text-[10px] leading-tight text-muted-foreground">
-          {enabled ? "Today's surges lead the list" : 'Plain watchlist order'}
+          {enabled ? "Today's surges lead the list" : 'Plain screener order'}
         </span>
       </span>
       <span
@@ -211,22 +226,125 @@ function FilterGroup({ label, hint, children }: { label: string; hint: string; c
 }
 
 /**
+ * Typed threshold, in percent, decimals allowed. Keeps its own draft so
+ * half-typed values like "2." aren't overwritten mid-keystroke.
+ */
+function PercentInput({
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  ariaLabel: string;
+}) {
+  const [draft, setDraft] = React.useState<string | null>(null);
+  const shown = draft ?? String(toPercent(value));
+
+  return (
+    <div className="relative w-[4.5rem] shrink-0">
+      <input
+        type="number"
+        inputMode="decimal"
+        min={0}
+        max={100}
+        step={0.01}
+        value={shown}
+        aria-label={`${ariaLabel} in percent`}
+        onFocus={() => setDraft(String(toPercent(value)))}
+        onBlur={() => setDraft(null)}
+        onChange={(event) => {
+          const text = event.target.value;
+          setDraft(text);
+          if (text.trim() === '') return;
+          const next = Number(text);
+          if (!Number.isFinite(next)) return;
+          onChange(Math.min(Math.max(next, 0), 100) / 100);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+        }}
+        className={cn(
+          'h-6 w-full rounded-sm border bg-muted/40 pl-1.5 pr-4 text-right font-mono text-[11px] tabular-nums',
+          '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+          'focus:outline-none focus:ring-2 focus:ring-ring',
+        )}
+      />
+      <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
+        %
+      </span>
+    </div>
+  );
+}
+
+/** A "≥ x%" floor: a slider for quick moves, a box for exact values, and one-tap presets. */
+export interface ThresholdConfig {
+  label: string;
+  ariaLabel: string;
+  /** Fraction, e.g. 0.0295 for 2.95%. 0 means no floor. */
+  value: number;
+  onChange: (value: number) => void;
+  /** Slider range and step, in percent. The typed box accepts up to 100. */
+  maxPercent: number;
+  stepPercent: number;
+  /** One-tap floors, as fractions; 0 is shown as "Any". */
+  presets: number[];
+}
+
+function ThresholdControl({ label, ariaLabel, value, onChange, maxPercent, stepPercent, presets }: ThresholdConfig) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+        <span className="font-mono text-[11px] tabular-nums">{value > 0 ? `≥ ${formatPercentFloor(value)}` : 'Any'}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="range"
+          min={0}
+          max={maxPercent}
+          step={stepPercent}
+          value={Math.min(toPercent(value), maxPercent)}
+          aria-label={ariaLabel}
+          className="min-w-0 flex-1 accent-amber-500"
+          onChange={(event) => onChange(Number(event.target.value) / 100)}
+        />
+        <PercentInput value={value} onChange={onChange} ariaLabel={ariaLabel} />
+      </div>
+      <div className="flex gap-1">
+        {presets.map((step) => (
+          <ToggleChip key={step} active={Math.abs(value - step) < 0.00001} onClick={() => onChange(step)}>
+            {step === 0 ? 'Any' : `${formatPercentFloor(step)}+`}
+          </ToggleChip>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The surge filter button and its popover. `children` renders above the
  * filter groups, for view options (the "Surging on top" switch).
  */
 export function SurgeFilterPopover({
   state,
   title = 'Filter surges',
+  threshold,
+  extraActiveCount = 0,
   children,
   triggerClassName,
 }: {
   state: SurgeFilterState;
   title?: string;
+  /** Replaces the surge-score floor with a panel-specific one (the watchlist's target move). */
+  threshold?: ThresholdConfig;
+  /** Filters the panel keeps outside `SurgeFilters`, for the badge and Reset. */
+  extraActiveCount?: number;
   children?: React.ReactNode;
   triggerClassName?: string;
 }) {
   const { filters, setFilters, resetFilters } = state;
-  const count = activeFilterCount(filters);
+  const count = activeFilterCount(filters) + extraActiveCount;
   const update = (patch: Partial<SurgeFilters>) => setFilters({ ...filters, ...patch });
 
   return (
@@ -296,35 +414,17 @@ export function SurgeFilterPopover({
           ))}
         </FilterGroup>
 
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-baseline justify-between">
-            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Minimum score</span>
-            <span className="font-mono text-[11px] tabular-nums">
-              {filters.minScore > 0 ? `≥ ${formatScore(filters.minScore)}` : 'Any'}
-            </span>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={5}
-            value={Math.round(filters.minScore * 100)}
-            aria-label="Minimum surge score"
-            onChange={(event) => update({ minScore: Number(event.target.value) / 100 })}
-            className="accent-amber-500"
-          />
-          <div className="flex gap-1">
-            {SCORE_STEPS.map((step) => (
-              <ToggleChip
-                key={step}
-                active={Math.abs(filters.minScore - step) < 0.001}
-                onClick={() => update({ minScore: step })}
-              >
-                {step === 0 ? 'Any' : `${formatScore(step)}+`}
-              </ToggleChip>
-            ))}
-          </div>
-        </div>
+        <ThresholdControl
+          {...(threshold ?? {
+            label: 'Minimum score',
+            ariaLabel: 'Minimum surge score',
+            value: filters.minScore,
+            onChange: (minScore: number) => update({ minScore }),
+            maxPercent: 100,
+            stepPercent: 1,
+            presets: SCORE_STEPS,
+          })}
+        />
 
         <div className="flex items-center justify-between border-t pt-2.5">
           <span className="text-[10px] leading-tight text-muted-foreground">Shared by every watchlist on this browser</span>
@@ -339,6 +439,58 @@ export function SurgeFilterPopover({
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * The watchlist's filter button, wired the way the dashboard's Watchlist
+ * panel is: "Surging on top" switch, the surge filters, and a minimum
+ * target move in place of the surge-score floor.
+ */
+/** What the watchlist's filter controls need — a full view, or prefs plus `live`. */
+export type WatchlistFilterControls = Pick<
+  SurgeWatchlistView,
+  | 'filterState'
+  | 'targetFloorActive'
+  | 'minTargetMove'
+  | 'setMinTargetMove'
+  | 'surgingOnTop'
+  | 'setSurgingOnTop'
+  | 'live'
+>;
+
+export function WatchlistFilterPopover({
+  view,
+  title = 'Filter watchlist',
+  triggerClassName,
+}: {
+  view: WatchlistFilterControls;
+  title?: string;
+  triggerClassName?: string;
+}) {
+  return (
+    <SurgeFilterPopover
+      state={view.filterState}
+      title={title}
+      triggerClassName={triggerClassName}
+      extraActiveCount={view.targetFloorActive ? 1 : 0}
+      threshold={{
+        label: 'Minimum target move',
+        ariaLabel: 'Minimum target move',
+        value: view.minTargetMove,
+        onChange: view.setMinTargetMove,
+        maxPercent: 10,
+        stepPercent: 0.1,
+        presets: TARGET_MOVE_PRESETS,
+      }}
+    >
+      <SurgeViewSwitch enabled={view.surgingOnTop} onChange={view.setSurgingOnTop} />
+      {!view.live && (
+        <span className="text-[10px] leading-tight text-muted-foreground">
+          Surging today shows on today&apos;s screen only.
+        </span>
+      )}
+    </SurgeFilterPopover>
   );
 }
 
@@ -359,9 +511,18 @@ function RemovableChip({ label, onRemove }: { label: React.ReactNode; onRemove: 
 }
 
 /** What is narrowing the list, each removable in one tap — never a hidden filter. */
-export function SurgeFilterChips({ state, className }: { state: SurgeFilterState; className?: string }) {
+export function SurgeFilterChips({
+  state,
+  className,
+  extra = [],
+}: {
+  state: SurgeFilterState;
+  className?: string;
+  /** Chips for filters kept outside `SurgeFilters` (the watchlist's target floor). */
+  extra?: { key: string; label: React.ReactNode; onRemove: () => void }[];
+}) {
   const { filters, setFilters, resetFilters } = state;
-  if (activeFilterCount(filters) === 0) return null;
+  if (activeFilterCount(filters) === 0 && extra.length === 0) return null;
   const update = (patch: Partial<SurgeFilters>) => setFilters({ ...filters, ...patch });
 
   return (
@@ -393,8 +554,11 @@ export function SurgeFilterChips({ state, className }: { state: SurgeFilterState
         />
       ))}
       {filters.minScore > 0 && (
-        <RemovableChip label={`Score ≥ ${formatScore(filters.minScore)}`} onRemove={() => update({ minScore: 0 })} />
+        <RemovableChip label={`Score ≥ ${formatPercentFloor(filters.minScore)}`} onRemove={() => update({ minScore: 0 })} />
       )}
+      {extra.map((chip) => (
+        <RemovableChip key={chip.key} label={chip.label} onRemove={chip.onRemove} />
+      ))}
       <button
         type="button"
         onClick={resetFilters}
@@ -406,11 +570,158 @@ export function SurgeFilterChips({ state, className }: { state: SurgeFilterState
   );
 }
 
+/** The watchlist's chips: surge filters plus "Target ≥ x%". */
+export function WatchlistFilterChips({
+  view,
+  className,
+}: {
+  view: Pick<WatchlistFilterControls, 'filterState' | 'targetFloorActive' | 'minTargetMove' | 'setMinTargetMove'>;
+  className?: string;
+}) {
+  return (
+    <SurgeFilterChips
+      state={view.filterState}
+      className={className}
+      extra={
+        view.targetFloorActive
+          ? [
+              {
+                key: 'target',
+                label: `Target ≥ ${formatTargetMovePct(view.minTargetMove)}`,
+                onRemove: () => view.setMinTargetMove(0),
+              },
+            ]
+          : []
+      }
+    />
+  );
+}
+
+// ── add symbol ────────────────────────────────────────────────────────────
+
+/**
+ * "+" — search the master company list and add a name to the watchlist
+ * ("My additions"). Additions are saved in this browser and shared by every
+ * watchlist, like the pins.
+ */
+export function AddSymbolButton({ className }: { className?: string }) {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState('');
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const { additions, addAddition, removeAddition } = useSurgePrefs();
+  const { companies, loading, error } = useMasterCompanies(open);
+  const additionSet = React.useMemo(() => new Set(additions.map((entry) => entry.code)), [additions]);
+
+  const results = React.useMemo(() => {
+    const term = query.trim().toUpperCase();
+    if (!companies || !term) return [];
+    const code = companyCodeOf(term);
+    const starts: typeof companies = [];
+    const contains: typeof companies = [];
+    for (const company of companies) {
+      const companyCode = company.company_code.toUpperCase();
+      if (companyCode.startsWith(code)) starts.push(company);
+      else if (companyCode.includes(code) || company.name.toUpperCase().includes(term)) contains.push(company);
+      if (starts.length >= 30) break;
+    }
+    return [...starts, ...contains].slice(0, 30);
+  }, [companies, query]);
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          setQuery('');
+          setNotice(null);
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Add symbol to watchlist"
+          title="Add symbol to watchlist"
+          className={cn(
+            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors',
+            'hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            className,
+          )}
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="flex w-72 flex-col gap-2 p-2" onClick={(event) => event.stopPropagation()}>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setNotice(null);
+            }}
+            placeholder="Add a symbol… (e.g. RELIANCE)"
+            aria-label="Search symbols to add"
+            className="h-8 w-full rounded-md border bg-transparent pl-7 pr-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+        {notice && <p className="px-1 text-[10px] text-amber-600 dark:text-amber-400">{notice}</p>}
+        <div className="max-h-64 overflow-y-auto">
+          {loading ? (
+            <p className="p-2 text-center text-[11px] text-muted-foreground">Loading companies…</p>
+          ) : error ? (
+            <p className="p-2 text-center text-[11px] text-destructive">Could not load companies — {error}</p>
+          ) : !query.trim() ? (
+            <p className="p-2 text-center text-[11px] text-muted-foreground">Type a company code or name.</p>
+          ) : results.length === 0 ? (
+            <p className="p-2 text-center text-[11px] text-muted-foreground">No companies match.</p>
+          ) : (
+            results.map((company) => {
+              const code = companyCodeOf(company.company_code);
+              const added = additionSet.has(code);
+              return (
+                <button
+                  key={`${company.exchange}:${company.company_code}`}
+                  type="button"
+                  onClick={() => {
+                    if (added) {
+                      setNotice(`${code} is already in your additions.`);
+                      return;
+                    }
+                    addAddition({ code, name: company.name, exchange: company.exchange || 'NSE', marker: company.marker });
+                    setNotice(`Added ${code}.`);
+                  }}
+                  className="flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-semibold">{code}</span>
+                    <span className="block truncate text-[10px] text-muted-foreground">{company.name}</span>
+                  </span>
+                  <span className="shrink-0 text-[9px] text-muted-foreground">{added ? 'Added' : company.exchange}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+        {additions.length > 0 && (
+          <div className="flex flex-wrap gap-1 border-t pt-2">
+            {additions.map((entry) => (
+              <RemovableChip key={entry.code} label={entry.code} onRemove={() => removeAddition(entry.code)} />
+            ))}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ── status + sections ─────────────────────────────────────────────────────
 
 /** "Screened 2026-11-04 · 135 names" plus anything that is down. */
 export function SurgeStatusLine({ view, className }: { view: SurgeWatchlistView; className?: string }) {
-  const { snapshot, fetchError, quoteStatus, loading } = view;
+  const { snapshot, fetchError, quoteStatus, loading, live } = view;
   const screener = snapshot?.screener;
   const problems: string[] = [];
   if (fetchError) problems.push('Surge server unreachable');
@@ -429,10 +740,10 @@ export function SurgeStatusLine({ view, className }: { view: SurgeWatchlistView;
     >
       <span className="truncate">
         {loading
-          ? 'Loading surges…'
+          ? 'Loading Surge screen…'
           : screener
-            ? `Screened ${screener.date} · ${screener.n} names${screener.source === 'built' ? ' · built fresh' : ''}`
-            : 'Surge'}
+            ? `Screened ${screener.date} · ${screener.n} names${screener.source === 'built' ? ' · built fresh' : ''}${live ? '' : ' · past screen'}`
+            : 'Surge screener'}
       </span>
       {problems.length > 0 && <span className="shrink-0 text-amber-600 dark:text-amber-400">{problems.join(' · ')}</span>}
     </div>
@@ -471,6 +782,16 @@ export function PinnedHeader({ count }: { count: number }) {
   );
 }
 
+/** "My additions" — the user's own symbols, after the screened list. */
+export function AdditionsHeader({ count }: { count: number }) {
+  return (
+    <SurgeSectionHeader flipKey="header-manual">
+      <span>My additions</span>
+      <span className="normal-case tracking-normal">{count}</span>
+    </SurgeSectionHeader>
+  );
+}
+
 export function TargetBadge({ value }: { value: number | null | undefined }) {
   if (value === null || value === undefined || !Number.isFinite(value)) return null;
   return (
@@ -480,6 +801,37 @@ export function TargetBadge({ value }: { value: number | null | undefined }) {
     >
       {formatTargetMovePct(value)}
     </span>
+  );
+}
+
+/** The screener rank — lower is higher-priority. */
+export function RankBadge({ rank, className }: { rank: number | null | undefined; className?: string }) {
+  if (rank === null || rank === undefined || !Number.isFinite(rank)) return null;
+  return (
+    <span
+      className={cn('shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/70', className)}
+      title="Surge screener rank"
+    >
+      #{rank}
+    </span>
+  );
+}
+
+/** LTP over day change %, right-aligned — the dashboard row's price block. */
+export function LiveQuote({ quote, className }: { quote: SurgeQuote | undefined; className?: string }) {
+  const positive = (quote?.changePercent ?? 0) >= 0;
+  return (
+    <div className={cn('flex shrink-0 flex-col items-end gap-0.5', className)}>
+      <span className="font-mono text-xs tabular-nums">{quote ? formatPrice(quote.ltp) : '—'}</span>
+      <span
+        className={cn(
+          'font-mono text-[10px] tabular-nums',
+          !quote ? 'text-muted-foreground/50' : positive ? POSITIVE : NEGATIVE,
+        )}
+      >
+        {quote ? formatSignedPct(quote.changePercent) : '—'}
+      </span>
+    </div>
   );
 }
 
@@ -507,6 +859,24 @@ export function PinButton({ pinned, code, onToggle }: { pinned: boolean; code: s
   );
 }
 
+/** Remove one of "My additions" — revealed on hover so the resting row stays clean. */
+export function RemoveButton({ code, onRemove }: { code: string; onRemove: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onRemove();
+      }}
+      className="shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+      aria-label={`Remove ${code}`}
+      title="Remove from my additions"
+    >
+      <X className="h-3 w-3 text-muted-foreground hover:text-red-500" />
+    </button>
+  );
+}
+
 // ── the surge row ─────────────────────────────────────────────────────────
 
 const ROW_GRID = 'grid-cols-[18px_1fr_72px]';
@@ -524,6 +894,8 @@ export interface SurgeRowProps {
   pinned?: boolean;
   onSelect: () => void;
   onTogglePin?: () => void;
+  /** Shown for one of "My additions". */
+  onRemove?: () => void;
   /** Multi-select mode: a checkbox replaces the direction icon. */
   checked?: boolean;
   className?: string;
@@ -544,10 +916,10 @@ export function SurgeRow({
   pinned,
   onSelect,
   onTogglePin,
+  onRemove,
   checked,
   className,
 }: SurgeRowProps) {
-  const positive = (quote?.changePercent ?? 0) >= 0;
   const direction = surge ? (DIRECTION_STYLE[surge.entry.latest.direction] ?? DIRECTION_STYLE.NEUTRAL) : null;
   const DirectionIcon = direction?.icon;
   const latest = surge?.entry.latest;
@@ -593,6 +965,7 @@ export function SurgeRow({
           <span className={cn('min-w-0 truncate text-xs font-bold', active && 'text-primary')}>{code}</span>
           <TargetBadge value={targetMovePct} />
           {onTogglePin && <PinButton pinned={!!pinned} code={code} onToggle={onTogglePin} />}
+          {onRemove && <RemoveButton code={code} onRemove={onRemove} />}
         </div>
 
         {surge ? (
@@ -615,17 +988,7 @@ export function SurgeRow({
         )}
       </div>
 
-      <div className="flex flex-col items-end gap-0.5">
-        <span className="font-mono text-xs tabular-nums">{quote ? formatPrice(quote.ltp) : '—'}</span>
-        <span
-          className={cn(
-            'font-mono text-[10px] tabular-nums',
-            !quote ? 'text-muted-foreground/50' : positive ? POSITIVE : NEGATIVE,
-          )}
-        >
-          {quote ? formatSignedPct(quote.changePercent) : '—'}
-        </span>
-      </div>
+      <LiveQuote quote={quote} />
     </div>
   );
 }

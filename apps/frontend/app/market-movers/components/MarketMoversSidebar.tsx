@@ -18,6 +18,21 @@ import {
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
+import { useFlipAnimation, useSurgeWatchlist } from '@/hooks/useSurge';
+import { formatPrice, formatSignedPct, parseSearchTerms } from '@/lib/surge/filters';
+import {
+  AddSymbolButton,
+  AdditionsHeader,
+  PinButton,
+  RankBadge,
+  RemoveButton,
+  SurgeStatusLine,
+  SurgeToggleButton,
+  TargetBadge,
+  WatchlistFilterChips,
+  WatchlistFilterPopover,
+} from '@/app/components/surge/SurgeControls';
+import { SurgeNoMatches, SurgeSections } from '@/app/components/surge/SurgeSections';
 
 interface Company {
   company_id?: number;
@@ -26,6 +41,10 @@ interface Company {
   exchange: string;
   refined?: boolean;
   marker?: string;
+  // NEW (Surge watchlist — see hooks/useWatchlist.ts)
+  rank?: number;
+  target_move_pct?: number | null;
+  watchlist_source?: 'surge' | 'manual';
 }
 
 interface MarketMoversSidebarProps {
@@ -75,16 +94,61 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
     }
   }, [companies, onCompaniesChange]);
 
-  // Filtered list by search
+  // ── Surge watchlist view (pins, surging today, filters, target floor, additions) ──
+  const searchTerms = useMemo(() => parseSearchTerms(search), [search]);
+  const surgeRowCodes = useMemo(
+    () => (companies.length <= 400 ? companies.map(c => c.company_code) : []),
+    [companies]
+  );
+  const surge = useSurgeWatchlist(searchTerms, { date: showAllCompanies ? null : selectedDate, rowCodes: surgeRowCodes });
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Filtered list by search — comma/space separated, any one matching code or name
+  // (as in the dashboard), so "RELIANCE, TCS" finds both.
   const filteredCompanies = useMemo(() => {
-    if (!search.trim()) return companies;
-    const q = search.toLowerCase();
-    return companies.filter(
-      c =>
-        c.company_code.toLowerCase().includes(q) ||
-        c.name.toLowerCase().includes(q)
-    );
-  }, [companies, search]);
+    if (!searchTerms.length) return companies;
+    return companies.filter(c => {
+      const code = c.company_code.toUpperCase();
+      const name = c.name.toUpperCase();
+      return searchTerms.some(term => code.includes(term) || name.includes(term));
+    });
+  }, [companies, searchTerms]);
+  // OLD: single-term search
+  // const filteredCompanies = useMemo(() => {
+  //   if (!search.trim()) return companies;
+  //   const q = search.toLowerCase();
+  //   return companies.filter(
+  //     c =>
+  //       c.company_code.toLowerCase().includes(q) ||
+  //       c.name.toLowerCase().includes(q)
+  //   );
+  // }, [companies, search]);
+
+  // The list's own rows minus what the Pinned / Surging blocks already show,
+  // with the surge filters and target floor applied; screened, then additions.
+  const restCompanies = useMemo(
+    () =>
+      filteredCompanies.filter(c => {
+        const code = c.company_code.toUpperCase();
+        return !surge.surgingSet.has(code) && !surge.pinnedSet.has(code) && surge.passesFilters(code);
+      }),
+    [filteredCompanies, surge.surgingSet, surge.pinnedSet, surge.passesFilters]
+  );
+  const restScreened = useMemo(() => restCompanies.filter(c => c.watchlist_source !== 'manual'), [restCompanies]);
+  const restManual = useMemo(() => restCompanies.filter(c => c.watchlist_source === 'manual'), [restCompanies]);
+  const restRows = useMemo(() => [...restScreened, ...restManual], [restScreened, restManual]);
+
+  // Everything on screen, for Select / Deselect all and the counts.
+  const visibleCodes = useMemo(
+    () => [...surge.pinnedCodes, ...surge.surgeOrder, ...restRows.map(c => c.company_code)],
+    [surge.pinnedCodes, surge.surgeOrder, restRows]
+  );
+
+  useFlipAnimation(
+    listRef,
+    [...surge.pinnedCodes, '|', ...surge.surgeOrder, '|', ...restScreened.map(c => c.company_code), '|', ...restManual.map(c => c.company_code)].join(','),
+    true
+  );
 
   // Toggle a single company
   const handleToggle = useCallback(
@@ -100,27 +164,28 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
     [selectedCodes, onSelectionChange]
   );
 
-  // Select all visible companies
+  // Select all visible companies (pinned + surging + the rest)
   const handleSelectAll = useCallback(() => {
     const next = new Set(selectedCodes);
-    filteredCompanies.forEach(c => next.add(c.company_code));
+    visibleCodes.forEach(code => next.add(code));
     onSelectionChange(next);
-  }, [filteredCompanies, selectedCodes, onSelectionChange]);
+  }, [visibleCodes, selectedCodes, onSelectionChange]);
 
   // Deselect all visible companies
   const handleDeselectAll = useCallback(() => {
     const next = new Set(selectedCodes);
-    filteredCompanies.forEach(c => next.delete(c.company_code));
+    visibleCodes.forEach(code => next.delete(code));
     onSelectionChange(next);
-  }, [filteredCompanies, selectedCodes, onSelectionChange]);
+  }, [visibleCodes, selectedCodes, onSelectionChange]);
 
   const allVisibleSelected =
-    filteredCompanies.length > 0 &&
-    filteredCompanies.every(c => selectedCodes.has(c.company_code));
+    visibleCodes.length > 0 &&
+    visibleCodes.every(code => selectedCodes.has(code));
 
-  const selectedVisibleCount = filteredCompanies.filter(c =>
-    selectedCodes.has(c.company_code)
+  const selectedVisibleCount = visibleCodes.filter(code =>
+    selectedCodes.has(code)
   ).length;
+  // OLD: Select/Deselect all and the counts used filteredCompanies (the search-filtered list).
 
   if (!mounted) {
     return (
@@ -172,6 +237,17 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
             All
           </button>
 
+          {/* Surge watchlist: surging on top, filters (surge + target floor), add symbol */}
+          <SurgeToggleButton
+            size="icon"
+            className="h-6 w-6"
+            enabled={surge.surgingOnTop}
+            onChange={surge.setSurgingOnTop}
+            count={surge.showSurging ? surge.surgeByCode.size : undefined}
+          />
+          <WatchlistFilterPopover view={surge} triggerClassName="h-6 w-6" />
+          <AddSymbolButton className="h-6 w-6" />
+
           {/* Date picker */}
           <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
             <PopoverTrigger asChild>
@@ -207,7 +283,7 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
           <Input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search companies…"
+            placeholder="Search symbols… (RELIANCE, TCS)"
             className="pl-6 h-7 text-xs"
           />
         </div>
@@ -238,6 +314,8 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
       </div>
 
       <Separator />
+      <WatchlistFilterChips view={surge} className="px-2 py-1.5 border-b" />
+      <SurgeStatusLine view={surge} />
 
       {/* ── Company list ── */}
       <ScrollArea className="flex-1">
@@ -246,20 +324,47 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
             <RefreshCw className="h-3 w-3 animate-spin" />
             <span>Loading companies…</span>
           </div>
-        ) : filteredCompanies.length === 0 ? (
+        ) : visibleCodes.length === 0 && (search || surge.filtersActive || surge.targetFloorActive) ? (
+          <SurgeNoMatches view={surge} onClearSearch={() => setSearch('')} />
+        ) : visibleCodes.length === 0 ? (
           <div className="p-4 text-center text-xs text-muted-foreground">
             {search ? 'No companies match your search.' : 'No companies available.'}
           </div>
         ) : (
-          <div className="py-1">
-            {filteredCompanies.map(company => {
+          <div className="py-1 relative" ref={listRef} {...surge.listHandlers}>
+            <SurgeSections
+              view={surge}
+              activeCode={null}
+              onSelect={handleToggle}
+              nameByCode={new Map(companies.map(c => [c.company_code.toUpperCase(), c.name] as [string, string]))}
+              isChecked={code => selectedCodes.has(code)}
+              restLabel="Screened"
+              restCount={restScreened.length}
+            />
+            {restRows.map((company, index) => {
               const isChecked = selectedCodes.has(company.company_code);
+              const code = company.company_code.toUpperCase();
+              const quote = surge.quotes[code];
+              const isManual = company.watchlist_source === 'manual';
               return (
-                <button
-                  key={company.company_code}
+                <React.Fragment key={company.company_code}>
+                {index === restScreened.length && restManual.length > 0 &&
+                  (restScreened.length > 0 || surge.pinnedCodes.length > 0 || surge.surgeOrder.length > 0) && (
+                  <AdditionsHeader count={restManual.length} />
+                )}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  data-flip-key={`row-${company.company_code}`}
                   onClick={() => handleToggle(company.company_code)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleToggle(company.company_code);
+                    }
+                  }}
                   className={cn(
-                    'w-full flex items-center gap-2.5 px-3 py-1.5 text-left transition-colors hover:bg-muted/50',
+                    'group w-full flex items-center gap-2.5 px-3 py-1.5 text-left transition-colors hover:bg-muted/50 cursor-pointer',
                     isChecked && 'bg-primary/5'
                   )}
                 >
@@ -271,9 +376,13 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 min-w-0">
+                      <RankBadge rank={company.rank} />
                       <span className="text-xs font-medium truncate leading-none">
                         {company.company_code}
                       </span>
+                      <TargetBadge value={surge.targetOf(code) ?? company.target_move_pct ?? null} />
+                      <PinButton pinned={surge.pinnedSet.has(code)} code={code} onToggle={() => surge.togglePin(code)} />
+                      {isManual && <RemoveButton code={code} onRemove={() => surge.removeAddition(code)} />}
                       <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-medium shrink-0">
                         {company.exchange}
                       </span>
@@ -287,9 +396,24 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
                       {company.name}
                     </div>
                   </div>
-                </button>
+                  {/* Live LTP + day change (Surge watchlist) */}
+                  <div className="flex shrink-0 flex-col items-end gap-0.5">
+                    <span className="font-mono text-[11px] tabular-nums leading-none">
+                      {quote ? formatPrice(quote.ltp) : '—'}
+                    </span>
+                    <span className={cn(
+                      'font-mono text-[9px] tabular-nums leading-none',
+                      !quote ? 'text-muted-foreground/50' : quote.changePercent >= 0 ? 'text-green-500' : 'text-red-500'
+                    )}>
+                      {quote ? formatSignedPct(quote.changePercent) : '—'}
+                    </span>
+                  </div>
+                </div>
+                </React.Fragment>
               );
             })}
+            {/* OLD rows were <button> elements over filteredCompanies; they are <div role="button">
+                now because the pin / remove controls inside a row are buttons themselves. */}
           </div>
         )}
       </ScrollArea>
@@ -298,8 +422,8 @@ const MarketMoversSidebar: React.FC<MarketMoversSidebarProps> = ({
       <Separator />
       <div className="px-3 py-2 shrink-0 flex items-center justify-between text-[10px] text-muted-foreground">
         <span>
-          {filteredCompanies.length} companies
-          {search && ` (filtered from ${companies.length})`}
+          {visibleCodes.length} companies
+          {(search || surge.filtersActive || surge.targetFloorActive) && ` (filtered from ${companies.length})`}
         </span>
         <span>{selectedVisibleCount} visible</span>
       </div>

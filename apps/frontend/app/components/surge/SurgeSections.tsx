@@ -3,11 +3,13 @@
 import * as React from 'react';
 import { SearchX } from 'lucide-react';
 import { moveSinceSurge, type SurgeWatchlistView } from '@/hooks/useSurge';
+import { formatTargetMovePct } from '@/lib/surge/filters';
 import { PinnedHeader, SurgeRow, SurgeSectionHeader, SurgingHeader } from './SurgeControls';
 
 /**
  * The Pinned and "Surging today" blocks a watchlist shows above its own rows
- * while Surge is on. Pinned names lead in pin order and appear nowhere else;
+ * (the screened list, then "My additions"), as in the trading dashboard's
+ * Watchlist panel. Pinned names lead in pin order and appear nowhere else;
  * a surging name is shown once, in the surging block.
  */
 export function SurgeSections({
@@ -16,7 +18,7 @@ export function SurgeSections({
   onSelect,
   nameByCode,
   isChecked,
-  restLabel,
+  restLabel = 'Screened',
   restCount,
 }: {
   view: SurgeWatchlistView;
@@ -30,14 +32,27 @@ export function SurgeSections({
   restLabel?: string;
   restCount: number;
 }) {
-  const { pinnedCodes, surgeOrder, surgeByCode, quotes, targetByCode, screenedByCode, pinnedSet, togglePin, hovering } =
-    view;
+  const {
+    pinnedCodes,
+    surgeOrder,
+    surgeByCode,
+    quotes,
+    targetOf,
+    screenedByCode,
+    pinnedSet,
+    togglePin,
+    additionSet,
+    removeAddition,
+    hovering,
+    showSurging,
+  } = view;
 
   return (
     <>
       {pinnedCodes.length > 0 && <PinnedHeader count={pinnedCodes.length} />}
       {pinnedCodes.map((code) => {
-        const entry = surgeByCode.get(code);
+        // Off = the plain screener list: a pin keeps its spot but drops the surge line.
+        const entry = showSurging ? surgeByCode.get(code) : undefined;
         const screened = screenedByCode.get(code);
         return (
           <SurgeRow
@@ -46,11 +61,12 @@ export function SurgeSections({
             quote={quotes[code]}
             active={code === activeCode}
             rank={screened?.watchlistRank}
-            targetMovePct={targetByCode.get(code) ?? null}
+            targetMovePct={targetOf(code)}
             subtitle={nameByCode?.get(code) ?? screened?.name ?? 'NSE'}
             surge={entry ? { entry, move: moveSinceSurge(entry, quotes[code]), position: -1 } : undefined}
             pinned
             onTogglePin={() => togglePin(code)}
+            onRemove={additionSet.has(code) ? () => removeAddition(code) : undefined}
             onSelect={() => onSelect(code)}
             checked={isChecked?.(code)}
           />
@@ -66,10 +82,11 @@ export function SurgeSections({
             code={code}
             quote={quotes[code]}
             active={code === activeCode}
-            targetMovePct={targetByCode.get(code) ?? null}
+            targetMovePct={targetOf(code)}
             surge={{ entry, move: moveSinceSurge(entry, quotes[code]), position: index }}
             pinned={pinnedSet.has(code)}
             onTogglePin={() => togglePin(code)}
+            onRemove={additionSet.has(code) ? () => removeAddition(code) : undefined}
             onSelect={() => onSelect(code)}
             checked={isChecked?.(code)}
           />
@@ -86,7 +103,7 @@ export function SurgeSections({
   );
 }
 
-/** Nothing visible while Surge is on: say why and offer the way back. */
+/** Nothing visible: say why and offer the way back. */
 export function SurgeNoMatches({
   view,
   onClearSearch,
@@ -94,15 +111,22 @@ export function SurgeNoMatches({
   view: SurgeWatchlistView;
   onClearSearch: () => void;
 }) {
+  const reason =
+    !view.filtersActive && view.targetFloorActive
+      ? `No names have a target move of ${formatTargetMovePct(view.minTargetMove)} or more.`
+      : view.filtersActive
+        ? view.live
+          ? view.surgingOnTop
+            ? 'Surge filters only show names that surged today.'
+            : 'Surge filters only show names that surged today. Turn on "Surging on top" to see them first.'
+          : 'Surge filters only show names that surged on this day.'
+        : 'Try a different name.';
+
   return (
     <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
       <SearchX className="h-5 w-5 text-muted-foreground/50" />
       <p className="text-xs text-muted-foreground">No symbols match.</p>
-      {view.filtersActive && (
-        <p className="text-[10px] leading-snug text-muted-foreground/70">
-          Surge filters only show names that surged today.
-        </p>
-      )}
+      <p className="text-[10px] leading-snug text-muted-foreground/70">{reason}</p>
       <button
         type="button"
         className="mt-1 rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-accent"
