@@ -82,8 +82,11 @@ services:
       - ./apps/backend/data/config.ini:/fyers-config/config.ini
       # Token files the services read — mounted so "Reset Token" can delete them
       - ./apps/backend/data:/fyers-data
-      # Senta EOD markdown reports written by the upstox pipeline
-      - /nas1/upStox_exp/prod_p2/reports:/eod-reports:ro
+      # Senta EOD markdown reports written by the upstox pipeline.
+      # Defaults to the server's NAS path; on a machine without /nas1 (e.g. a
+      # Mac running Docker Desktop) set EOD_REPORTS_HOST_DIR in the root .env.
+      - ${EOD_REPORTS_HOST_DIR:-/nas1/upStox_exp/prod_p2/reports}:/eod-reports:ro
+      # OLD: - /nas1/upStox_exp/prod_p2/reports:/eod-reports:ro
     depends_on:
       - backend
     networks:
